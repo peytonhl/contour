@@ -1,0 +1,214 @@
+import React from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  ReferenceLine,
+} from "recharts";
+
+const ACCENT_A = "#a78bfa";
+const ACCENT_B = "#34d399";
+
+function CertLabel({ viewBox, value, color, index }) {
+  if (!viewBox) return null;
+  const { x, y } = viewBox;
+  const dy = 14 + index * 14;
+  return (
+    <text x={x + 3} y={y + dy} fill={color} fontSize={9} opacity={0.85} fontWeight={600}>
+      {value}
+    </text>
+  );
+}
+
+function mergeTrajectories(trajA, trajB) {
+  const map = new Map();
+  for (const pt of trajA) {
+    map.set(pt.day, { day: pt.day, a_raw: pt.streams_cumulative, a_norm: pt.normalized });
+  }
+  for (const pt of trajB) {
+    const existing = map.get(pt.day) ?? { day: pt.day };
+    existing.b_raw = pt.streams_cumulative;
+    existing.b_norm = pt.normalized;
+    map.set(pt.day, existing);
+  }
+  return Array.from(map.values()).sort((a, b) => a.day - b.day);
+}
+
+function formatYAxis(val, mode) {
+  if (mode === "normalized") {
+    if (val >= 1) return `${val.toFixed(1)}/user`;
+    if (val >= 0.01) return `${val.toFixed(2)}/user`;
+    return `${val.toFixed(3)}/user`;
+  }
+  if (val >= 1_000_000_000) return `${(val / 1_000_000_000).toFixed(1)}B`;
+  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(0)}M`;
+  if (val >= 1_000) return `${(val / 1_000).toFixed(0)}K`;
+  return val;
+}
+
+function buildCertLines(trajectory, milestones) {
+  if (!milestones?.length || !trajectory?.length) return [];
+  return milestones.flatMap((m) => {
+    const pt = trajectory.find((p) => p.streams_cumulative >= m.streams);
+    return pt ? [{ day: pt.day, label: m.label }] : [];
+  });
+}
+
+function CustomTooltip({ active, payload, label, mode, nameA, nameB }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: 8,
+      padding: "10px 14px",
+      fontSize: 13,
+      lineHeight: 1.6,
+    }}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 6, fontSize: 12 }}>
+        Day {label}
+      </div>
+      {payload.map((p) => (
+        <div key={p.dataKey} style={{ color: p.color }}>
+          <strong>{p.dataKey.startsWith("a_") ? nameA : nameB}:</strong>{" "}
+          {mode === "normalized"
+            ? `${p.value?.toFixed(3)} streams/user`
+            : Number(p.value)?.toLocaleString()}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function ComparisonChart({ data, nameA, nameB, disclaimer }) {
+  const [mode, setMode] = React.useState("normalized");
+
+  const merged = mergeTrajectories(data.trajectory_a, data.trajectory_b);
+  const dataKeyA = mode === "normalized" ? "a_norm" : "a_raw";
+  const dataKeyB = mode === "normalized" ? "b_norm" : "b_raw";
+
+  const certLinesA = buildCertLines(data.trajectory_a, data.album_a.riaa_milestones);
+  const certLinesB = buildCertLines(data.trajectory_b, data.album_b.riaa_milestones);
+
+  return (
+    <div style={{
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: 12,
+      padding: "20px 16px 16px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 14,
+    }}>
+      {/* Toolbar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.04em" }}>
+            VIEW
+          </span>
+          <div style={{
+            display: "flex",
+            background: "var(--surface2)",
+            borderRadius: 8,
+            overflow: "hidden",
+            border: "1px solid var(--border)",
+          }}>
+            <button
+              onClick={() => setMode("normalized")}
+              style={{
+                padding: "7px 16px",
+                background: mode === "normalized" ? "var(--accent-a)" : "transparent",
+                border: "none",
+                color: mode === "normalized" ? "#000" : "var(--text-muted)",
+                fontSize: 13,
+                fontWeight: mode === "normalized" ? 700 : 400,
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              Normalized
+            </button>
+            <button
+              onClick={() => setMode("raw")}
+              style={{
+                padding: "7px 16px",
+                background: mode === "raw" ? "var(--accent-b)" : "transparent",
+                border: "none",
+                color: mode === "raw" ? "#000" : "var(--text-muted)",
+                fontSize: 13,
+                fontWeight: mode === "raw" ? 700 : 400,
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              Raw Streams
+            </button>
+          </div>
+        </div>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          {mode === "normalized"
+            ? "Cumulative streams per Spotify user — controls for platform growth"
+            : "Cumulative streams — unadjusted"}
+        </span>
+      </div>
+
+      <ResponsiveContainer width="100%" height={420}>
+        <LineChart data={merged} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--surface2)" />
+          <XAxis
+            dataKey="day"
+            stroke="var(--text-muted)"
+            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+            label={{ value: "Days since release", position: "insideBottomRight", offset: -8, fontSize: 11, fill: "var(--text-muted)" }}
+          />
+          <YAxis
+            stroke="var(--text-muted)"
+            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+            tickFormatter={(v) => formatYAxis(v, mode)}
+            width={64}
+          />
+          <Tooltip content={<CustomTooltip mode={mode} nameA={nameA} nameB={nameB} />} />
+          <Legend
+            formatter={(value) => value === dataKeyA ? nameA : nameB}
+            wrapperStyle={{ fontSize: 13, paddingTop: 8 }}
+          />
+
+          {certLinesA.map((cl, i) => (
+            <ReferenceLine key={`a-${cl.label}`} x={cl.day} stroke={ACCENT_A}
+              strokeDasharray="4 3" strokeOpacity={0.5}
+              label={<CertLabel value={cl.label} color={ACCENT_A} index={i} />} />
+          ))}
+          {certLinesB.map((cl, i) => (
+            <ReferenceLine key={`b-${cl.label}`} x={cl.day} stroke={ACCENT_B}
+              strokeDasharray="4 3" strokeOpacity={0.5}
+              label={<CertLabel value={cl.label} color={ACCENT_B} index={i} />} />
+          ))}
+
+          <Line type="monotone" dataKey={dataKeyA} stroke={ACCENT_A} strokeWidth={2.5}
+            dot={false} name={dataKeyA} connectNulls />
+          <Line type="monotone" dataKey={dataKeyB} stroke={ACCENT_B} strokeWidth={2.5}
+            dot={false} name={dataKeyB} connectNulls />
+        </LineChart>
+      </ResponsiveContainer>
+
+      {disclaimer && (
+        <div style={{
+          fontSize: 11,
+          color: "var(--text-muted)",
+          fontStyle: "italic",
+          lineHeight: 1.5,
+          padding: "8px 12px",
+          background: "var(--surface2)",
+          borderRadius: 6,
+        }}>
+          ⚠ {disclaimer}
+        </div>
+      )}
+    </div>
+  );
+}

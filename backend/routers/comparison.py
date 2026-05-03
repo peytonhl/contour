@@ -1,0 +1,297 @@
+"""
+Comparison endpoint — builds normalized streaming trajectories for two albums.
+
+Stream counts come from the SQLite cache (populated async by Kworb enrichment).
+If a cache entry is missing or stale, we fall back to a popularity-based estimate
+and trigger background enrichment so subsequent requests get real data.
+"""
+
+from datetime import date
+from typing import Dict, List, Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database import get_db
+from services import spotify
+from services import album_cache as cache
+from services.normalization import model_trajectory, riaa_milestones
+from routers.albums import _enrich_album
+from routers.tracks import _enrich_track
+
+router = APIRouter(prefix="/compare", tags=["comparison"])
+
+
+class TrajectoryPoint(BaseModel):
+    day: int
+    date: str
+    streams_cumulative: int
+    normalized: float
+
+
+class AlbumMeta(BaseModel):
+    id: str
+    name: str
+    artists: List[str]
+    release_date: str
+    label: Optional[str]
+    total_streams: Optional[int]
+    stream_source: str  # "kworb" | "estimated" | "pending"
+    stream_warning: Optional[str]
+    popularity: Optional[int]
+    image_url: Optional[str]
+    riaa_milestones: List[Dict]
+    entity_type: str = "album"  # "album" | "track"
+    album_name: Optional[str] = None  # populated for tracks
+
+
+class ComparisonResponse(BaseModel):
+    album_a: AlbumMeta
+    album_b: AlbumMeta
+    trajectory_a: List[TrajectoryPoint]
+    trajectory_b: List[TrajectoryPoint]
+    data_disclaimer: str
+    enrichment_pending: bool
+
+
+DISCLAIMER = (
+    "Stream trajectories are modeled approximations, not actual historical data. "
+    "The curve is calibrated to the known total stream count and uses a standard "
+    "streaming decay model (exponential early decay + power-law catalog tail). "
+    "Exact day-by-day data requires Luminate licensing."
+)
+
+
+@router.get("/", response_model=ComparisonResponse)
+async def compare_albums(
+    album_a_id: str = Query(...),
+    album_b_id: str = Query(...),
+    edition_ids_a: Optional[str] = Query(None, description="Comma-separated Spotify IDs to aggregate for album A"),
+    edition_ids_b: Optional[str] = Query(None, description="Comma-separated Spotify IDs to aggregate for album B"),
+    track_a_id: Optional[str] = Query(None, description="If set, treat slot A as a track instead of an album"),
+    track_b_id: Optional[str] = Query(None, description="If set, treat slot B as a track instead of an album"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns immediately. If Kworb stream counts aren't cached yet, uses a
+    popularity-based estimate and sets enrichment_pending=true. The frontend
+    should poll and re-compare once enrichment completes.
+
+    Pass track_a_id / track_b_id to compare individual songs instead of albums.
+    """
+    # --- Slot A ---
+    if track_a_id:
+        try:
+            meta_a = await spotify.get_track(track_a_id)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"Track A not found: {e}")
+        streams_a, source_a, pending_a = await _resolve_track_streams(track_a_id, meta_a, background_tasks, db)
+        entity_type_a, album_name_a = "track", meta_a.get("album_name")
+    else:
+        ids_a = [i.strip() for i in edition_ids_a.split(",")] if edition_ids_a else [album_a_id]
+        try:
+            meta_a = await spotify.get_album(album_a_id)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"Album A not found: {e}")
+        streams_a, source_a, pending_a = await _resolve_streams(ids_a, meta_a, background_tasks, db)
+        entity_type_a, album_name_a = "album", None
+
+    # --- Slot B ---
+    if track_b_id:
+        try:
+            meta_b = await spotify.get_track(track_b_id)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"Track B not found: {e}")
+        streams_b, source_b, pending_b = await _resolve_track_streams(track_b_id, meta_b, background_tasks, db)
+        entity_type_b, album_name_b = "track", meta_b.get("album_name")
+    else:
+        ids_b = [i.strip() for i in edition_ids_b.split(",")] if edition_ids_b else [album_b_id]
+        try:
+            meta_b = await spotify.get_album(album_b_id)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"Album B not found: {e}")
+        streams_b, source_b, pending_b = await _resolve_streams(ids_b, meta_b, background_tasks, db)
+        entity_type_b, album_name_b = "album", None
+
+    release_a = _parse_release_date(meta_a["release_date"], meta_a["release_date_precision"])
+    release_b = _parse_release_date(meta_b["release_date"], meta_b["release_date_precision"])
+
+    today = date.today()
+    if release_a is None or release_a.year < 2015:
+        raise HTTPException(status_code=422, detail="Item A released before 2015. Pre-2015 not supported in v1.")
+    if release_b is None or release_b.year < 2015:
+        raise HTTPException(status_code=422, detail="Item B released before 2015. Pre-2015 not supported in v1.")
+    if release_a > today:
+        release_a = today
+    if release_b > today:
+        release_b = today
+
+    traj_a = model_trajectory(release_a, streams_a)
+    traj_b = model_trajectory(release_b, streams_b)
+
+    return ComparisonResponse(
+        album_a=AlbumMeta(
+            id=meta_a["id"],
+            name=meta_a["name"],
+            artists=meta_a["artists"],
+            release_date=meta_a["release_date"],
+            label=meta_a.get("label"),
+            total_streams=streams_a,
+            stream_source=source_a,
+            stream_warning=_warning(source_a, meta_a["name"]),
+            popularity=meta_a.get("popularity"),
+            image_url=meta_a.get("image_url"),
+            riaa_milestones=riaa_milestones(streams_a),
+            entity_type=entity_type_a,
+            album_name=album_name_a,
+        ),
+        album_b=AlbumMeta(
+            id=meta_b["id"],
+            name=meta_b["name"],
+            artists=meta_b["artists"],
+            release_date=meta_b["release_date"],
+            label=meta_b.get("label"),
+            total_streams=streams_b,
+            stream_source=source_b,
+            stream_warning=_warning(source_b, meta_b["name"]),
+            popularity=meta_b.get("popularity"),
+            image_url=meta_b.get("image_url"),
+            riaa_milestones=riaa_milestones(streams_b),
+            entity_type=entity_type_b,
+            album_name=album_name_b,
+        ),
+        trajectory_a=[TrajectoryPoint(**p) for p in traj_a],
+        trajectory_b=[TrajectoryPoint(**p) for p in traj_b],
+        data_disclaimer=DISCLAIMER,
+        enrichment_pending=pending_a or pending_b,
+    )
+
+
+@router.get("/default", response_model=ComparisonResponse)
+async def default_comparison(
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    db: AsyncSession = Depends(get_db),
+):
+    """JID — The Forever Story vs God Does Like Ugly (all editions aggregated)."""
+    TFS_ID = "4rJDCELWL0fjdmN9Gn4f4g"  # The Forever Story (Extended Version)
+
+    # All confirmed GDLU editions on Spotify (standard, preluxe, alternate, second standard)
+    GDLU_IDS = ",".join([
+        "2tU04u3hxtziB4sOVJKak3",  # standard (15 tracks)
+        "4QtC07On8yiD1cZN1zn4RG",  # preluxe (19 tracks)
+        "1wD9BC4z0nChaws7elZs4F",  # alternate (16 tracks)
+        "02JZ3Fonwh7jfHJ2DsRb0j",  # second standard (15 tracks)
+    ])
+
+    return await compare_albums(
+        album_a_id=TFS_ID,
+        album_b_id="2tU04u3hxtziB4sOVJKak3",
+        edition_ids_a=None,
+        edition_ids_b=GDLU_IDS,
+        background_tasks=background_tasks,
+        db=db,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def _resolve_track_streams(
+    track_id: str,
+    meta: dict,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession,
+) -> tuple:
+    """Resolve stream count for a single track. Returns (streams, source, is_pending)."""
+    row = await cache.upsert_album(db, meta)
+    if cache.needs_enrichment(row):
+        background_tasks.add_task(_enrich_track, track_id, meta, db)
+        pending = True
+    else:
+        pending = False
+
+    streams = cache.streams_for_album(row)
+    if streams is None:
+        return _popularity_to_streams(meta.get("popularity")), "estimated", pending
+
+    source = "kworb" if not pending else "partial"
+    return streams, source, pending
+
+
+async def _resolve_streams(
+    spotify_ids: List[str],
+    primary_meta: dict,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession,
+) -> tuple:
+    """
+    Sum stream counts across all provided edition IDs.
+    Returns (total_streams, source, is_pending).
+    """
+    total = 0
+    any_pending = False
+
+    for sid in spotify_ids:
+        try:
+            meta = await spotify.get_album(sid)
+        except Exception:
+            meta = primary_meta
+
+        row = await cache.upsert_album(db, meta)
+        if cache.needs_enrichment(row):
+            background_tasks.add_task(_enrich_album, sid, meta, db)
+            any_pending = True
+
+        streams = cache.streams_for_album(row)
+        if streams is not None:
+            total += streams
+
+    if total == 0:
+        # Nothing cached yet — fall back to popularity estimate
+        total = _popularity_to_streams(primary_meta.get("popularity"))
+        return total, "estimated", any_pending
+
+    source = "kworb" if not any_pending else "partial"
+    return total, source, any_pending
+
+
+def _parse_release_date(release_date: str, precision: str) -> Optional[date]:
+    try:
+        if precision == "day":
+            return date.fromisoformat(release_date)
+        elif precision == "month":
+            year, month = release_date.split("-")[:2]
+            return date(int(year), int(month), 1)
+        else:
+            return date(int(release_date[:4]), 1, 1)
+    except Exception:
+        return None
+
+
+def _warning(source: str, name: str) -> Optional[str]:
+    if source == "kworb":
+        return None
+    if source == "estimated":
+        return f'Stream count for "{name}" not yet available. Chart estimated from Spotify popularity — enriching in background.'
+    if source == "partial":
+        return f'Some editions of "{name}" are still being enriched. Stream count may update shortly.'
+    return None
+
+
+def _popularity_to_streams(popularity: Optional[int]) -> int:
+    if not popularity:
+        return 10_000_000
+    if popularity >= 90:
+        return 2_000_000_000
+    if popularity >= 80:
+        return 800_000_000
+    if popularity >= 70:
+        return 300_000_000
+    if popularity >= 60:
+        return 100_000_000
+    if popularity >= 50:
+        return 40_000_000
+    return 10_000_000
