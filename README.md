@@ -1,84 +1,113 @@
-# Normalized Album Comparison Tool — Music IMDb MVP
+# Contour
 
-Compare any two albums' streaming trajectories on a normalized, apples-to-apples chart. Stream counts are divided by Spotify's total monthly active users at the time, so a 2015 album and a 2025 album can be meaningfully compared despite the platform growing ~10× in between.
+**Era-adjusted music streaming data, community ratings, and reviews.**
 
-## Live Demo Default
+> [**contour-rosy.vercel.app**](https://contour-rosy.vercel.app) — try it live
 
-JID — *The Forever Story* (2022) vs. *God Does Like Ugly* (2024, all editions aggregated)
+---
+
+## What is Contour?
+
+Spotify launched in 2008 with a few million users. Today it has 750M+. A song that hit 500M streams in 2016 did so on a platform a fraction of today's size — it would be a *billion-stream* song if it released now.
+
+Contour adjusts for this. Every stream count is normalized against Spotify's monthly active users at the time of release, so you can finally compare a 2012 classic and a 2024 hit on equal footing.
+
+On top of that, Contour is a place to rate albums and tracks, write reviews, see what the community thinks, and follow people with good taste.
 
 ---
 
 ## Features
 
-- **Search** any two albums by artist + album name
-- **Overlaid line chart** with both trajectories anchored to day 0 (release date)
-- **Toggle** between raw stream count and normalized view (streams per MAU)
-- **RIAA certification milestones** annotated on the chart
-- **Album summary cards**: release date, label, total streams, peak chart position, RIAA certification
+**Music Data**
+- Era-adjusted stream trajectories for any album or track
+- RIAA milestone markers (Gold, Platinum, Diamond) on trajectory charts
+- Artist pages with top tracks, full discography, and catalog stream totals
+- Album tracklists with per-track navigation
+
+**Community**
+- ★ Half-star ratings (0.5–5.0) on albums, tracks, and artists
+- Written reviews with upvote ▲ / downvote ▼ voting
+- Reddit-style controversial sort: surfaces divisive takes, not just popular ones
+- Inline reply threads on reviews
+- Follow other users and see their activity in your feed
+- Share any review as a direct deep link
+
+**Discovery**
+- Discover tab: public global reviews feed sorted by Recent / Top / Controversial — no account needed
+- Trending tracks and new releases on the home screen
+- Search across albums, tracks, artists, and users in one bar
+
+**Compare**
+- Side-by-side trajectory comparison for any two albums or tracks
+- Edition picker: compare standard vs. deluxe editions separately or combined
+- Save and share comparison links
 
 ---
 
 ## Tech Stack
 
-| Layer      | Technology                          |
-|------------|-------------------------------------|
-| Frontend   | React + Vite                        |
-| Charting   | Recharts                            |
-| Backend    | Python 3.11+ / FastAPI              |
-| Storage    | SQLite (dev) — schema-ready for Postgres |
-| Data       | Spotify Web API, MusicBrainz, Kworb.net (scrape), RIAA public database |
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + Vite, React Router v7 |
+| Charts | Recharts |
+| Mobile | Capacitor (iOS/Android — in progress) |
+| Backend | Python 3.12 / FastAPI |
+| Database | PostgreSQL (Railway) + SQLAlchemy async |
+| Auth | Spotify OAuth 2.0 + JWT |
+| Data | Spotify Web API, Kworb.net stream counts |
+| Hosting | Vercel (frontend) · Railway (backend) |
 
 ---
 
-## Data Strategy
+## Normalization Methodology
 
-Exact day-by-day historical stream counts are not publicly available without a Luminate license. This tool approximates trajectories using:
+Stream counts are adjusted using Spotify's reported monthly active users:
 
-1. **Release date** (day 0) from Spotify / MusicBrainz
-2. **Current total stream count** scraped from Kworb.net as the known endpoint
-3. **Modeled curve**: a streaming decay curve (high early velocity tapering to catalog tail) interpolated from day 0 → today
-
-A disclaimer is displayed on the chart whenever modeled data is shown.
-
----
-
-## Normalization Baseline
-
-Spotify MAU by year (from public annual reports):
-
-| Year | MAU  |
-|------|------|
-| 2015 | 75M  |
-| 2016 | 100M |
-| 2017 | 140M |
+| Year | MAU |
+|------|-----|
+| 2008 | 0.1M |
+| 2012 | 20M |
+| 2015 | 75M |
 | 2018 | 191M |
-| 2019 | 232M |
 | 2020 | 345M |
-| 2021 | 406M |
 | 2022 | 456M |
-| 2023 | 602M |
 | 2024 | 678M |
-| 2025 | 750M (estimate) |
+| 2025 | 750M (est.) |
 
-Monthly values are linearly interpolated between annual figures.
+Values between years are linearly interpolated. The era-adjusted equivalent is:
+
+```
+era_adjusted = total_streams × (current_mau / release_era_mau)
+```
+
+The callout appears on album and track pages whenever the multiplier is ≥ 1.5×.
+
+Day-by-day trajectory is modeled (high early velocity tapering to catalog tail) calibrated to the known total. A disclaimer is shown when modeled data is used instead of Kworb actuals.
 
 ---
 
-## Setup
+## Running Locally
 
 ### Prerequisites
 - Node.js 18+
-- Python 3.11+
-- A Spotify Developer account ([create app here](https://developer.spotify.com/dashboard))
+- Python 3.12+
+- A Spotify Developer app ([create one here](https://developer.spotify.com/dashboard))
 
 ### Backend
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp ../.env.example .env    # fill in SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET
+
+# Create backend/.env with:
+# SPOTIFY_CLIENT_ID=...
+# SPOTIFY_CLIENT_SECRET=...
+# SPOTIFY_REDIRECT_URI=http://localhost:8000/auth/callback
+# JWT_SECRET=any-random-string
+
+alembic upgrade head
 uvicorn main:app --reload --port 8000
 ```
 
@@ -90,60 +119,82 @@ npm install
 npm run dev
 ```
 
-Frontend runs on `http://localhost:5173`, proxies API calls to `http://localhost:8000`.
+Runs at `http://localhost:5173`. API calls proxy to `http://localhost:8000`.
 
 ---
 
 ## Environment Variables
 
-See [.env.example](.env.example). Required:
+**Backend (`backend/.env`)**
 
-| Variable                 | Description                          |
-|--------------------------|--------------------------------------|
-| `SPOTIFY_CLIENT_ID`      | From Spotify Developer Dashboard     |
-| `SPOTIFY_CLIENT_SECRET`  | From Spotify Developer Dashboard     |
+| Variable | Description |
+|---|---|
+| `SPOTIFY_CLIENT_ID` | Spotify Developer Dashboard |
+| `SPOTIFY_CLIENT_SECRET` | Spotify Developer Dashboard |
+| `SPOTIFY_REDIRECT_URI` | `https://your-backend.railway.app/auth/callback` |
+| `JWT_SECRET` | Any long random string — never commit this |
+| `DATABASE_URL` | PostgreSQL connection string (Railway provides this) |
+
+**Frontend (`frontend/.env` or Vercel env vars)**
+
+| Variable | Description |
+|---|---|
+| `VITE_API_URL` | Your Railway backend URL, e.g. `https://contour-production.up.railway.app` |
 
 ---
 
-## Known Limitations
+## Project Structure
 
-- **Stream trajectory is modeled, not actual historical data.** True day-by-day counts require Luminate licensing (v2 roadmap item).
-- **Pre-2015 albums are not supported in v1.** The streaming era begins in earnest at 2015; earlier releases lack reliable MAU baselines. Future support planned using sales and radio data as a proxy index.
-- **Normalization is Spotify-only.** Apple Music, Tidal, Amazon Music, and YouTube are not factored in.
-- **GDLU version fragmentation.** *God Does Like Ugly* has standard, alternate, and preluxe editions on Spotify. The tool aggregates all into one combined stream count, with a toggle to view editions individually.
-- **Kworb scraping is best-effort.** Kworb.net may change structure; a scrape failure falls back to Spotify popularity signal with a UI warning.
+```
+backend/
+  main.py                  FastAPI app, CORS, router registration
+  models.py                SQLAlchemy ORM models
+  database.py              Async PostgreSQL connection
+  routers/
+    albums.py              Album search + stream trajectory
+    tracks.py              Track search + stream trajectory
+    artists.py             Artist metadata, discography, top tracks
+    ratings.py             Ratings, reviews, votes, replies
+    reviews.py             Global public reviews feed
+    feed.py                Following activity feed
+    featured.py            Trending + new releases (home screen)
+    users.py               Public profiles, follow/unfollow
+    auth.py                Spotify OAuth, JWT
+    comparison.py          Side-by-side trajectory comparison
+  services/
+    spotify.py             Spotify Web API client
+    normalization.py       MAU interpolation + era-adjustment
+    album_cache.py         DB cache + Kworb stream enrichment
+
+frontend/
+  src/
+    pages/                 SearchPage, AlbumPage, TrackPage, ArtistPage,
+                           ComparePage, FeedPage, ProfilePage, UserPage,
+                           PrivacyPage, ...
+    components/            Layout, ReviewSection, TrajectoryChart,
+                           ComparisonWidget, EraCallout, ShareButton, ...
+    services/api.js        All API calls
+    contexts/AuthContext   JWT auth state
+  capacitor.config.json    iOS/Android app config
+  public/manifest.json     PWA manifest
+```
 
 ---
 
 ## Roadmap
 
-### v2
-- True historical stream data via Luminate API integration
-- Multi-album comparison (beyond two)
-- Cross-platform normalization (Apple Music, YouTube)
-
-### v3
-- Pre-2015 era support using sales + radio proxy index
-- User accounts and saved comparisons
+- [ ] App Store launch (iOS via Codemagic + Capacitor)
+- [ ] Google Play launch (Android via Capacitor)
+- [ ] Push notifications (new follower, review liked)
+- [ ] Onboarding flow for new users
+- [ ] Charts / leaderboard page (top rated this week, most era-adjusted streams)
+- [ ] User-created lists ("My Top 10 Albums")
+- [ ] Pre-2015 era support
 
 ---
 
-## Architecture
+## Data Notes
 
-```
-frontend/          React + Vite SPA
-backend/
-  main.py          FastAPI app entry point
-  database.py      SQLite connection + schema
-  models.py        SQLAlchemy ORM models
-  routers/
-    albums.py      Album search, metadata endpoints
-    comparison.py  Trajectory modeling + normalization
-  services/
-    spotify.py     Spotify Web API client
-    musicbrainz.py MusicBrainz lookup
-    kworb.py       Kworb.net scraper
-    normalization.py  MAU interpolation + curve modeling
-  data/
-    spotify_mau.py Hardcoded MAU table
-```
+- Stream trajectory is **modeled**, not actual historical data. True day-by-day counts require Luminate licensing.
+- Normalization is **Spotify-only**. Apple Music, Tidal, YouTube are not factored in.
+- Kworb stream counts are scraped on demand and cached. Scrape failures fall back to Spotify popularity signal with a UI warning.
