@@ -36,3 +36,40 @@ button {
   cursor: pointer;
   font: inherit;
 }
+
+/* ── Responsive utilities ── */
+@media (max-width: 640px) {
+  .hide-mobile { display: none !important; }
+  .show-mobile { display: flex !important; }
+
+  /* Page padding */
+  .page-pad { padding: 20px 16px !important; }
+
+  /* Hero sections: stack image above text on mobile */
+  .hero-row {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+  }
+  .hero-row img, .hero-row .hero-img {
+    width: 120px !important;
+    height: 120px !important;
+  }
+  .hero-actions {
+    justify-content: center !important;
+  }
+
+  /* Stat blocks: wrap tighter */
+  .stat-row {
+    gap: 16px !important;
+  }
+
+  /* Charts fill full width */
+  .chart-container {
+    padding: 12px !important;
+  }
+}
+
+@media (min-width: 641px) {
+  .show-mobile { display: none !important; }
+}

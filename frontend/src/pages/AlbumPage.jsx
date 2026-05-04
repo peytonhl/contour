@@ -67,7 +67,7 @@ export function AlbumPage() {
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 28 }}>
       {/* Hero */}
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
+      <div className="hero-row" style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
         {album.image_url
           ? <img src={album.image_url} alt={album.name} style={{ width: 160, height: 160, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
           : <div style={{ width: 160, height: 160, borderRadius: 10, background: "var(--surface2)", flexShrink: 0 }} />
@@ -100,7 +100,7 @@ export function AlbumPage() {
               </div>
             )}
           </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <div className="hero-actions" style={{ display: "flex", gap: 10, marginTop: 4 }}>
             <button
               onClick={() => navigate(`/compare`)}
               style={{ padding: "8px 18px", background: "var(--accent-a)", border: "none", borderRadius: 7, color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer" }}

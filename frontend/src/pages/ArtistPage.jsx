@@ -72,7 +72,7 @@ export function ArtistPage() {
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 28 }}>
       {/* Hero */}
-      <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+      <div className="hero-row" style={{ display: "flex", gap: 24, alignItems: "center" }}>
         {artist.image_url
           ? <img src={artist.image_url} alt={artist.name} style={{ width: 120, height: 120, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
           : <div style={{ width: 120, height: 120, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />

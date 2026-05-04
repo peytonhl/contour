@@ -16,6 +16,7 @@ export default defineConfig({
       "/auth/me": "http://localhost:8000",
       "/auth/profile": "http://localhost:8000",
       "/featured": "http://localhost:8000",
+      "/feed": "http://localhost:8000",
       "/users": "http://localhost:8000",
       "/health": "http://localhost:8000",
     },

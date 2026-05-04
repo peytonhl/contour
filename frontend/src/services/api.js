@@ -80,6 +80,9 @@ export const api = {
   // Featured
   getFeatured: () => request(`/featured`),
 
+  // Feed
+  getFeed: () => request(`/feed`),
+
   // Users (follow / public profiles)
   getUser: (id) => request(`/users/${id}`),
   toggleFollow: (id) => post(`/users/${id}/follow`, {}),
