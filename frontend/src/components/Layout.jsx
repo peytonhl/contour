@@ -1,4 +1,4 @@
-import { NavLink, Outlet, Link } from "react-router-dom";
+import { NavLink, Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const ACCENT_A = "#a78bfa";
@@ -81,6 +81,7 @@ function BottomTab({ to, label, icon, end = false }) {
 // ── Layout ────────────────────────────────────────────────────────────────────
 export function Layout() {
   const { user, loading, logout } = useAuth();
+  const location = useLocation();
 
   const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? "https://cylinder-jurist-oozy.ngrok-free.dev"}/auth/login`;
 
@@ -98,6 +99,7 @@ export function Layout() {
       <header style={{
         borderBottom: "1px solid var(--border)",
         padding: "0 16px",
+        paddingTop: "env(safe-area-inset-top, 0px)",  /* iPhone Dynamic Island / notch */
         display: "flex",
         alignItems: "stretch",
         position: "sticky",
@@ -182,6 +184,17 @@ export function Layout() {
       <div className="page-content">
         <Outlet />
       </div>
+
+      {/* ── Desktop footer (privacy link — required by app stores) ── */}
+      <footer className="hide-mobile" style={{
+        borderTop: "1px solid var(--border)", padding: "16px 24px",
+        display: "flex", justifyContent: "center", gap: 24,
+        fontSize: 12, color: "var(--text-muted)",
+      }}>
+        <span>© {new Date().getFullYear()} Contour</span>
+        <Link to="/privacy" style={{ color: "var(--text-muted)" }}>Privacy Policy</Link>
+        <Link to="/methodology" style={{ color: "var(--text-muted)" }}>How It Works</Link>
+      </footer>
 
       {/* ── Mobile bottom tab bar ── */}
       <nav

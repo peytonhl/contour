@@ -229,6 +229,12 @@ export function Methodology() {
         </div>
       </Section>
 
+      {/* Privacy link — always accessible for App Store compliance */}
+      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20, display: "flex", gap: 20, fontSize: 13, color: "var(--text-muted)" }}>
+        <a href="/privacy" style={{ color: "var(--text-muted)" }}>Privacy Policy</a>
+        <span>© {new Date().getFullYear()} Contour</span>
+      </div>
+
     </div>
   );
 }

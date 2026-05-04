@@ -19,6 +19,13 @@ node_modules/
 dist/
 .vite/
 
+# Capacitor — keep ios/ and android/ in git, exclude their build artifacts
+frontend/ios/App/Pods/
+frontend/ios/.xcode.env.local
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/build/
+
 # OS
 .DS_Store
 Thumbs.db
