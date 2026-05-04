@@ -102,6 +102,38 @@ class UserFollow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class StreamAnchor(Base):
+    """
+    Real historical stream count data points for a track or album.
+    Sources: kworb_daily (live Kworb entity page) or wayback (archived snapshots).
+
+    Once stored, these are never deleted — historical data doesn't change.
+    The wayback_fetched_at column prevents redundant Wayback re-fetches.
+    """
+    __tablename__ = "stream_anchors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    entity_id: Mapped[str] = mapped_column(String(64), index=True)
+    entity_type: Mapped[str] = mapped_column(String(16))   # "track" | "album"
+    snapshot_date: Mapped[str] = mapped_column(String(16)) # ISO date "YYYY-MM-DD"
+    stream_count: Mapped[int] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(32))        # "kworb_daily" | "wayback"
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AnchorFetchStatus(Base):
+    """
+    Tracks whether we've attempted Wayback and/or Kworb daily fetches for an entity.
+    Prevents hammering the same entity repeatedly.
+    """
+    __tablename__ = "anchor_fetch_status"
+
+    entity_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(16), primary_key=True)
+    kworb_daily_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    wayback_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class AlbumCache(Base):
     __tablename__ = "album_cache"
 

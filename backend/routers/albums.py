@@ -11,8 +11,8 @@ from datetime import date
 from database import get_db
 from services import kworb, spotify
 from services import album_cache as cache
-from services.normalization import model_trajectory, riaa_milestones, parse_release_date, popularity_to_streams
-from services.normalization import era_context
+from services import stream_anchors as anchors_svc
+from services.normalization import build_trajectory, riaa_milestones, parse_release_date, era_context, data_tier
 
 router = APIRouter(prefix="/albums", tags=["albums"])
 
@@ -180,10 +180,17 @@ async def get_album_trajectory(
         background_tasks.add_task(_enrich_album, album_id, meta, db)
 
     streams = cache.streams_for_album(row)
-    source = "kworb" if row.enrichment_status == "done" else "estimated"
+
+    # No streams yet — nothing to chart
     if streams is None:
-        streams = popularity_to_streams(meta.get("popularity"))
-        source = "estimated"
+        return {
+            "trajectory": [],
+            "total_streams": None,
+            "stream_source": "none",
+            "riaa_milestones": [],
+            "enrichment_pending": True,
+            "era_context": None,
+        }
 
     release = parse_release_date(meta["release_date"], meta["release_date_precision"])
     if release is None:
@@ -192,10 +199,25 @@ async def get_album_trajectory(
     if release > today:
         release = today
 
+    # Load stored anchor points; schedule background fetches if stale/missing
+    stored_anchors = await anchors_svc.load_anchors(db, album_id, "album")
+
+    if await anchors_svc.needs_kworb_daily_refresh(db, album_id, "album"):
+        background_tasks.add_task(
+            anchors_svc.fetch_and_store_kworb_daily, db, album_id, "album"
+        )
+    if await anchors_svc.needs_wayback_fetch(db, album_id, "album"):
+        background_tasks.add_task(
+            anchors_svc.fetch_and_store_wayback, db, album_id, "album"
+        )
+
+    sources = list({a["source"] for a in stored_anchors})
+    tier = data_tier(sources)
+
     return {
-        "trajectory": model_trajectory(release, streams),
+        "trajectory": build_trajectory(release, streams, anchors=stored_anchors),
         "total_streams": streams,
-        "stream_source": source,
+        "stream_source": tier,
         "riaa_milestones": riaa_milestones(streams),
         "enrichment_pending": row.enrichment_status == "pending",
         "era_context": era_context(release, streams),

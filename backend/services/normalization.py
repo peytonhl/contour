@@ -1,14 +1,14 @@
 """
 Trajectory modeling and normalization.
 
-Since day-by-day historical stream data is not publicly available,
-we model the curve using a streaming decay function:
-  - High velocity in the first ~30 days (release week spike)
-  - Gradual decay over months following release
-  - Long catalog tail settling to a low steady-state
+Data quality tiers (best to worst):
+  1. kworb_daily  — real daily chart data from Kworb entity page
+  2. wayback      — cumulative totals at multiple archive snapshots
+  3. kworb_total  — Kworb total only, shape is modeled
+  (popularity fallback removed — it was noise)
 
-The model is calibrated so the cumulative area under the curve
-equals the known total stream count (from Kworb) at the endpoint.
+When anchor points are available, the trajectory is interpolated through them.
+The decay model fills only gaps that real data doesn't cover.
 """
 
 from __future__ import annotations
@@ -33,36 +33,26 @@ def parse_release_date(release_date: str, precision: str) -> Optional[date]:
         return None
 
 
-def popularity_to_streams(popularity: Optional[int]) -> int:
-    if not popularity:
-        return 10_000_000
-    if popularity >= 90:
-        return 2_000_000_000
-    if popularity >= 80:
-        return 800_000_000
-    if popularity >= 70:
-        return 300_000_000
-    if popularity >= 60:
-        return 100_000_000
-    if popularity >= 50:
-        return 40_000_000
-    return 10_000_000
-
-# Sampling resolution — one point every N days for the chart
+# Sampling resolution — one chart point every N days
 SAMPLE_DAYS = 7
 
 
-def model_trajectory(
+def build_trajectory(
     release_date: date,
     total_streams: int,
+    anchors: Optional[list[dict]] = None,
     end_date: Optional[date] = None,
 ) -> list[dict]:
     """
-    Generate a list of data points from day 0 to end_date.
+    Generate trajectory data points from release to end_date.
 
-    Each point: { day: int, date: str, streams_cumulative: int, normalized: float }
+    If `anchors` is provided (list of {date: str, streams_cumulative: int}),
+    the curve is interpolated through them. The decay model fills any gaps
+    at the start (before first anchor) and is used as the sole source
+    when no anchors exist.
 
-    normalized = cumulative_streams / MAU_at_that_date  (as a ratio × 1000 for readability)
+    Each point: {day, date, streams_cumulative, normalized}
+    normalized = cumulative_streams / MAU_at_that_date (streams per million users)
     """
     if end_date is None:
         end_date = date.today()
@@ -71,59 +61,109 @@ def model_trajectory(
     if total_days <= 0:
         return []
 
-    # Build daily weights using the decay model
-    weights = _decay_weights(total_days)
-    total_weight = sum(weights)
+    # Build the sample day list
+    sample_days = list(range(0, total_days + 1, SAMPLE_DAYS))
+    if total_days not in sample_days:
+        sample_days.append(total_days)
+
+    # Convert anchors to (day_offset, stream_count) pairs
+    anchor_pairs: list[tuple[int, int]] = []
+    if anchors:
+        for a in anchors:
+            try:
+                a_date = date.fromisoformat(a["date"])
+                a_streams = int(a.get("streams_cumulative") or a.get("streams") or 0)
+                day_offset = (a_date - release_date).days
+                if 0 < day_offset <= total_days and a_streams > 0:
+                    anchor_pairs.append((day_offset, a_streams))
+            except (ValueError, KeyError):
+                continue
+        anchor_pairs.sort()
+
+    # Always add the total as the final anchor (day = total_days)
+    if total_streams > 0:
+        # If the last anchor is close to total but not exact, just append total
+        if not anchor_pairs or anchor_pairs[-1][0] < total_days:
+            anchor_pairs.append((total_days, total_streams))
 
     points = []
-    cumulative = 0.0
-
-    for day_idx in range(0, total_days + 1, SAMPLE_DAYS):
-        # Accumulate streams up to this sample day
-        block_end = min(day_idx + SAMPLE_DAYS, total_days + 1)
-        cumulative += sum(weights[day_idx:block_end])
-
-        streams = int((cumulative / total_weight) * total_streams)
+    for day_idx in sample_days:
+        streams = _interpolate(day_idx, total_days, total_streams, anchor_pairs)
         sample_date = release_date + timedelta(days=day_idx)
         mau = get_mau_for_date(sample_date)
-
-        points.append(
-            {
-                "day": day_idx,
-                "date": sample_date.isoformat(),
-                "streams_cumulative": streams,
-                # Streams per user (cumulative streams ÷ total MAU)
-                "normalized": round(streams / (mau * 1_000_000), 4),
-            }
-        )
+        points.append({
+            "day": day_idx,
+            "date": sample_date.isoformat(),
+            "streams_cumulative": streams,
+            "normalized": round(streams / (mau * 1_000_000), 4) if mau > 0 else 0,
+        })
 
     return points
 
 
+def _interpolate(
+    day: int,
+    total_days: int,
+    total_streams: int,
+    anchor_pairs: list[tuple[int, int]],
+) -> int:
+    """
+    Return the stream count for `day` by:
+      - If day is before the first anchor: use decay model scaled to reach first anchor
+      - If day is between two anchors: linear interpolation
+      - If day is after the last anchor: shouldn't happen (total is always last anchor)
+    """
+    if not anchor_pairs:
+        # No anchors at all — pure model
+        return _model_value(day, total_days, total_streams)
+
+    first_anchor_day, first_anchor_streams = anchor_pairs[0]
+    last_anchor_day, last_anchor_streams = anchor_pairs[-1]
+
+    # Before the first anchor — use decay model, scaled to hit first anchor
+    if day <= first_anchor_day:
+        if first_anchor_day == 0:
+            return first_anchor_streams
+        model_at_first = _model_value(first_anchor_day, total_days, total_streams)
+        if model_at_first == 0:
+            return 0
+        scale = first_anchor_streams / model_at_first
+        return int(_model_value(day, total_days, total_streams) * scale)
+
+    # Find the surrounding anchor pair and linearly interpolate
+    for i in range(len(anchor_pairs) - 1):
+        d0, s0 = anchor_pairs[i]
+        d1, s1 = anchor_pairs[i + 1]
+        if d0 <= day <= d1:
+            if d1 == d0:
+                return s1
+            t = (day - d0) / (d1 - d0)
+            return int(s0 + t * (s1 - s0))
+
+    # After the last anchor (shouldn't normally reach here since total is last)
+    return last_anchor_streams
+
+
+def _model_value(day: int, total_days: int, total_streams: int) -> int:
+    """Pure decay model — cumulative streams at `day`."""
+    weights = _decay_weights(total_days)
+    if not weights or sum(weights) == 0:
+        return 0
+    cumulative = sum(weights[:day + 1])
+    return int((cumulative / sum(weights)) * total_streams)
+
+
 def _decay_weights(total_days: int) -> list[float]:
     """
-    Per-day streaming weight — two-phase model calibrated to observed patterns:
-
-      Phase 1 (days 0–180): exponential decay, half-life ~45 days.
-        Puts ~20% of lifetime streams in month 1, ~55% by month 6.
-
-      Phase 2 (days 180+): power-law catalog tail connected smoothly at
-        the phase boundary. Exponent -0.45 gives a heavier long tail,
-        reflecting catalog listening on playlists and radio.
-
-    Rough calibration targets (% of lifetime streams):
-      Month 1:  ~15–20%
-      Month 6:  ~45–55%
-      Year 1:   ~60–70%
-      Year 2+:  remainder spread slowly
+    Per-day streaming weight — two-phase model:
+      Phase 1 (days 0–180): exponential decay, half-life ~45 days
+      Phase 2 (days 180+): power-law catalog tail, exponent -0.45
     """
     HALF_LIFE = 45.0
     TRANSITION = 180
     EXPONENT = 0.45
 
-    # Value of phase-1 curve at the transition point
     transition_val = math.exp(-TRANSITION * math.log(2) / HALF_LIFE)
-    # Scale factor so the power-law tail matches at the boundary
     tail_scale = transition_val * (TRANSITION ** EXPONENT)
 
     weights = []
@@ -137,13 +177,7 @@ def _decay_weights(total_days: int) -> list[float]:
 
 
 def era_context(release_date: date, total_streams: int) -> dict:
-    """
-    Return plain-English era adjustment context:
-      - release_mau: Spotify MAU (millions) at time of release
-      - current_mau: Spotify MAU today
-      - era_adjusted_streams: what total_streams would be if released today
-      - multiplier: how many times more impressive than raw number suggests
-    """
+    """Return era-adjustment context for display on album/track pages."""
     today = date.today()
     release_mau = get_mau_for_date(release_date)
     current_mau = get_mau_for_date(today)
@@ -163,16 +197,8 @@ def era_context(release_date: date, total_streams: int) -> dict:
     }
 
 
-def riaa_milestones(total_streams: int, certification_data: Optional[dict] = None) -> list[dict]:
-    """
-    Return RIAA certification thresholds that this album has passed,
-    as day-index annotations for the chart.
-
-    Thresholds are stream equivalents (1 stream = 1/150 album unit, roughly):
-      Gold:     500K album units  →  ~75M streams
-      Platinum: 1M album units    →  ~150M streams
-      (multiplatinum scales linearly)
-    """
+def riaa_milestones(total_streams: int) -> list[dict]:
+    """Return RIAA certification thresholds this track/album has passed."""
     thresholds = [
         {"label": "Gold", "streams": 75_000_000},
         {"label": "Platinum", "streams": 150_000_000},
@@ -183,3 +209,15 @@ def riaa_milestones(total_streams: int, certification_data: Optional[dict] = Non
         {"label": "Diamond", "streams": 1_500_000_000},
     ]
     return [t for t in thresholds if t["streams"] <= total_streams]
+
+
+def data_tier(anchor_sources: list[str]) -> str:
+    """
+    Return a human-readable data quality tier label given the set of
+    anchor sources present for this entity.
+    """
+    if "kworb_daily" in anchor_sources:
+        return "kworb_daily"
+    if "wayback" in anchor_sources:
+        return "wayback"
+    return "modeled"
