@@ -14,6 +14,9 @@ from services import spotify
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
+# Fallback search queries used when the playlist API is unavailable
+_FALLBACK_QUERIES = ["pop hits", "hip hop hits", "indie pop", "top songs 2024"]
+
 
 @router.get("/feed")
 async def get_discover_feed(
@@ -29,6 +32,7 @@ async def get_discover_feed(
     Personalization tiers (best to worst):
       1. Genre-filtered search (genres param from client's learned prefs)
       2. Global Top 50 baseline
+      3. Keyword search fallbacks (always returns something)
 
     Already-rated tracks and client-side seen IDs are excluded.
     """
@@ -55,7 +59,7 @@ async def get_discover_feed(
                 seen.add(t["id"])
                 tracks.append(t)
 
-    # ── Genre-personalized layer ──────────────────────────────────────────────
+    # ── 1. Genre-personalized layer ───────────────────────────────────────────
     if genre_list:
         results = await asyncio.gather(*[
             spotify.search_tracks_by_genre(g, limit=15)
@@ -65,16 +69,18 @@ async def get_discover_feed(
             if isinstance(res, list):
                 _add(res)
 
-    # ── Baseline: global top tracks (always mixed in) ─────────────────────────
+    # ── 2. Global Top 50 baseline ─────────────────────────────────────────────
     if len(tracks) < limit:
-        top = await spotify.get_global_top_tracks(limit=50)
-        _add(top)
+        try:
+            top = await spotify.get_global_top_tracks(limit=50)
+            _add(top)
+        except Exception:
+            pass
 
-    # ── New releases as extra filler ─────────────────────────────────────────
+    # ── 3. New releases as filler ─────────────────────────────────────────────
     if len(tracks) < limit:
         try:
             releases = await spotify.get_new_releases(limit=20)
-            # Get top track from each album for preview
             album_track_tasks = [
                 spotify.get_album_tracks(album["id"])
                 for album in releases[:8]
@@ -82,13 +88,23 @@ async def get_discover_feed(
             album_tracks = await asyncio.gather(*album_track_tasks, return_exceptions=True)
             for result in album_tracks:
                 if isinstance(result, list) and result:
-                    # Take the first track from each album that has a preview
                     for t in result:
                         if t.get("preview_url"):
-                            # Enrich with album image via parent album search
                             _add([t])
                             break
         except Exception:
             pass
+
+    # ── 4. Keyword fallbacks — always produces results ────────────────────────
+    if len(tracks) < limit:
+        fallback_results = await asyncio.gather(*[
+            spotify.search_tracks(q, limit=10)
+            for q in _FALLBACK_QUERIES
+        ], return_exceptions=True)
+        for res in fallback_results:
+            if isinstance(res, list):
+                _add(res)
+            if len(tracks) >= limit:
+                break
 
     return tracks[:limit]

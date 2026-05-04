@@ -348,15 +348,21 @@ function ForYouFeed() {
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [userRatings, setUserRatings] = useState({});
   const containerRef = useRef(null);
   const seenRef = useRef(loadSeen());
   const genresRef = useRef(loadGenres());
+  const fetchingMoreRef = useRef(false); // guard against concurrent fetches
 
   async function fetchBatch(append = false) {
+    if (append && fetchingMoreRef.current) return;
+    if (append) fetchingMoreRef.current = true;
+
     const setter = append ? setLoadingMore : setLoading;
     setter(true);
+    setFetchError(false);
     try {
       const batch = await api.getDiscoverFeed({
         genres: genresRef.current.slice(0, 3),
@@ -366,8 +372,11 @@ function ForYouFeed() {
       saveSeen(batch.map((t) => t.id));
       batch.forEach((t) => seenRef.current.add(t.id));
       setTracks((prev) => append ? [...prev, ...batch] : batch);
+    } catch {
+      if (!append) setFetchError(true);
     } finally {
       setter(false);
+      if (append) fetchingMoreRef.current = false;
     }
   }
 
@@ -431,10 +440,26 @@ function ForYouFeed() {
 
   if (!tracks.length) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 12, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
-        <div style={{ fontSize: 36 }}>🎵</div>
-        <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#fff" }}>Nothing to show</p>
-        <p style={{ margin: 0, fontSize: 13 }}>Try again in a moment — Spotify's feed may be temporarily unavailable.</p>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
+        <div style={{ fontSize: 40 }}>🎵</div>
+        <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#fff" }}>
+          {fetchError ? "Couldn't load tracks" : "Nothing to show"}
+        </p>
+        <p style={{ margin: 0, fontSize: 13, maxWidth: 260, lineHeight: 1.6 }}>
+          {fetchError
+            ? "There was a problem reaching the server. Check your connection and try again."
+            : "Spotify's feed may be temporarily unavailable."}
+        </p>
+        <button
+          onClick={() => fetchBatch()}
+          style={{
+            marginTop: 4, padding: "10px 24px", borderRadius: 20,
+            background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+            border: "none", color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer",
+          }}
+        >
+          Try again
+        </button>
       </div>
     );
   }

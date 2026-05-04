@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
-import { AlbumSearch } from "./AlbumSearch.jsx";
-import { TrackSearch } from "./TrackSearch.jsx";
+import { UnifiedSearch } from "./UnifiedSearch.jsx";
 import { AlbumCard } from "./AlbumCard.jsx";
 import { ComparisonChart } from "./ComparisonChart.jsx";
 import { EditionPicker } from "./EditionPicker.jsx";
@@ -11,13 +10,14 @@ const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
 const POLL_INTERVAL = 4000;
 
+// Tag an existing album object (from props) with _type so it fits the unified selection shape
+function tagAlbum(album) {
+  return album ? { ...album, _type: "album" } : null;
+}
+
 export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null }) {
-  const [modeA, setModeA] = useState("album");
-  const [modeB, setModeB] = useState("album");
-  const [albumA, setAlbumA] = useState(initialAlbumA);
-  const [albumB, setAlbumB] = useState(initialAlbumB);
-  const [trackA, setTrackA] = useState(null);
-  const [trackB, setTrackB] = useState(null);
+  const [selectionA, setSelectionA] = useState(tagAlbum(initialAlbumA));
+  const [selectionB, setSelectionB] = useState(tagAlbum(initialAlbumB));
   const [editionsA, setEditionsA] = useState(initialAlbumA ? [initialAlbumA.id] : []);
   const [editionsB, setEditionsB] = useState(initialAlbumB ? [initialAlbumB.id] : []);
 
@@ -32,11 +32,25 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null })
 
   // Update slots when initialAlbumA/B props change (e.g. artist page pre-fills)
   useEffect(() => {
-    if (initialAlbumA) { setAlbumA(initialAlbumA); setEditionsA([initialAlbumA.id]); }
+    if (initialAlbumA) { setSelectionA(tagAlbum(initialAlbumA)); setEditionsA([initialAlbumA.id]); }
   }, [initialAlbumA?.id]);
   useEffect(() => {
-    if (initialAlbumB) { setAlbumB(initialAlbumB); setEditionsB([initialAlbumB.id]); }
+    if (initialAlbumB) { setSelectionB(tagAlbum(initialAlbumB)); setEditionsB([initialAlbumB.id]); }
   }, [initialAlbumB?.id]);
+
+  // Reset editions when selection changes type or identity
+  function handleSelectA(item) {
+    setSelectionA(item);
+    setEditionsA(item?._type === "album" ? [item.id] : []);
+    setComparison(null);
+    setSavedId(null);
+  }
+  function handleSelectB(item) {
+    setSelectionB(item);
+    setEditionsB(item?._type === "album" ? [item.id] : []);
+    setComparison(null);
+    setSavedId(null);
+  }
 
   useEffect(() => {
     if (!comparison?.enrichment_pending) {
@@ -74,18 +88,16 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null })
   }, [comparison?.enrichment_pending, comparison?.album_a?.id, comparison?.album_b?.id]);
 
   async function runComparison() {
-    const entityA = modeA === "track" ? trackA : albumA;
-    const entityB = modeB === "track" ? trackB : albumB;
-    if (!entityA || !entityB) return;
+    if (!selectionA || !selectionB) return;
     setLoading(true);
     setError(null);
     setSavedId(null);
     try {
-      const data = await api.compare(entityA.id, entityB.id, {
-        editionIdsA: modeA === "album" && editionsA.length ? editionsA : null,
-        editionIdsB: modeB === "album" && editionsB.length ? editionsB : null,
-        trackIdA: modeA === "track" ? entityA.id : null,
-        trackIdB: modeB === "track" ? entityB.id : null,
+      const data = await api.compare(selectionA.id, selectionB.id, {
+        editionIdsA: selectionA._type === "album" && editionsA.length ? editionsA : null,
+        editionIdsB: selectionB._type === "album" && editionsB.length ? editionsB : null,
+        trackIdA: selectionA._type === "track" ? selectionA.id : null,
+        trackIdB: selectionB._type === "track" ? selectionB.id : null,
       });
       setComparison(data);
     } catch (e) {
@@ -106,43 +118,36 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null })
       });
       setSavedId(id);
     } catch {
-      // silently fail — share button just won't show a link
+      // silently fail
     } finally {
       setSaving(false);
     }
   }
 
-  const entityA = modeA === "track" ? trackA : albumA;
-  const entityB = modeB === "track" ? trackB : albumB;
-  const canCompare = entityA && entityB && !loading;
+  const canCompare = selectionA && selectionB && !loading;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Search slots */}
       <div className="compare-grid">
         {[
-          { mode: modeA, setMode: setModeA, album: albumA, setAlbum: setAlbumA, track: trackA, setTrack: setTrackA, setEditions: setEditionsA, accent: ACCENT_A, label: "A" },
-          { mode: modeB, setMode: setModeB, album: albumB, setAlbum: setAlbumB, track: trackB, setTrack: setTrackB, setEditions: setEditionsB, accent: ACCENT_B, label: "B" },
-        ].map(({ mode, setMode, album, setAlbum, track, setTrack, setEditions, accent, label }) => (
+          { sel: selectionA, onSelect: handleSelectA, editions: editionsA, setEditions: setEditionsA, accent: ACCENT_A, label: "A" },
+          { sel: selectionB, onSelect: handleSelectB, editions: editionsB, setEditions: setEditionsB, accent: ACCENT_B, label: "B" },
+        ].map(({ sel, onSelect, editions, setEditions, accent, label }) => (
           <div key={label} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 7, overflow: "hidden", border: "1px solid var(--border)", alignSelf: "flex-start" }}>
-              {["album", "track"].map((m) => (
-                <button key={m} onClick={() => { setMode(m); setAlbum(null); setTrack(null); setEditions([]); }} style={{
-                  padding: "5px 14px", fontSize: 12, fontWeight: mode === m ? 700 : 400,
-                  background: mode === m ? accent : "transparent",
-                  color: mode === m ? "#000" : "var(--text-muted)",
-                  border: "none", cursor: "pointer", textTransform: "capitalize", transition: "all 0.15s",
-                }}>{m}</button>
-              ))}
-            </div>
-            {mode === "album" ? (
-              <>
-                <AlbumSearch label={`Album ${label}`} accentColor={accent} selected={album}
-                  onSelect={(a) => { setAlbum(a); setEditions(a ? [a.id] : []); }} />
-                <EditionPicker album={album} accentColor={accent} onEditionsChange={setEditions} />
-              </>
-            ) : (
-              <TrackSearch label={`Track ${label}`} accentColor={accent} selected={track} onSelect={setTrack} />
+            <UnifiedSearch
+              label={`Side ${label}`}
+              accentColor={accent}
+              selected={sel}
+              onSelect={onSelect}
+            />
+            {/* Edition picker only for album selections */}
+            {sel?._type === "album" && (
+              <EditionPicker
+                album={sel}
+                accentColor={accent}
+                onEditionsChange={setEditions}
+              />
             )}
           </div>
         ))}
@@ -150,26 +155,39 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null })
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <button onClick={runComparison} disabled={!canCompare} style={{
-          padding: "12px 28px",
-          background: "linear-gradient(135deg, var(--accent-a), var(--accent-b))",
-          border: "none", borderRadius: 8, color: "#000", fontWeight: 700, fontSize: 14,
-          opacity: canCompare ? 1 : 0.4, cursor: canCompare ? "pointer" : "default",
-        }}>Compare</button>
+        <button
+          onClick={runComparison}
+          disabled={!canCompare}
+          style={{
+            padding: "12px 28px",
+            background: "linear-gradient(135deg, var(--accent-a), var(--accent-b))",
+            border: "none", borderRadius: 8, color: "#000", fontWeight: 700, fontSize: 14,
+            opacity: canCompare ? 1 : 0.4, cursor: canCompare ? "pointer" : "default",
+          }}
+        >
+          Compare
+        </button>
 
         {comparison && !loading && (
           savedId ? (
-            <Link to={`/compare/${savedId}`} style={{
-              padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)",
-              borderRadius: 8, color: "var(--accent-a)", fontSize: 13, fontWeight: 600,
-            }}>
+            <Link
+              to={`/compare/${savedId}`}
+              style={{
+                padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)",
+                borderRadius: 8, color: ACCENT_A, fontSize: 13, fontWeight: 600, textDecoration: "none",
+              }}
+            >
               Shareable link ↗
             </Link>
           ) : (
-            <button onClick={saveComparison} disabled={saving} style={{
-              padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)",
-              borderRadius: 8, color: "var(--text-muted)", fontSize: 13, cursor: "pointer",
-            }}>
+            <button
+              onClick={saveComparison}
+              disabled={saving}
+              style={{
+                padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)",
+                borderRadius: 8, color: "var(--text-muted)", fontSize: 13, cursor: "pointer",
+              }}
+            >
               {saving ? "Saving…" : "Share"}
             </button>
           )
@@ -178,13 +196,17 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null })
         {enriching && (
           <span style={{ fontSize: 12, color: ACCENT_B, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span>
-            Enriching stream counts from Kworb…
+            Enriching stream counts…
           </span>
         )}
       </div>
 
       {error && (
-        <div style={{ padding: "14px 16px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, color: "var(--danger)", fontSize: 13 }}>
+        <div style={{
+          padding: "14px 16px", background: "rgba(248,113,113,0.1)",
+          border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8,
+          color: "var(--danger)", fontSize: 13,
+        }}>
           Error: {error}
         </div>
       )}
@@ -197,12 +219,25 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null })
 
       {comparison && !loading && (
         <>
-          <ComparisonChart data={comparison} nameA={comparison.album_a.name} nameB={comparison.album_b.name} disclaimer={comparison.data_disclaimer} />
+          <ComparisonChart
+            data={comparison}
+            nameA={comparison.album_a.name}
+            nameB={comparison.album_b.name}
+            disclaimer={comparison.data_disclaimer}
+          />
           <div className="compare-grid">
-            <AlbumCard meta={comparison.album_a} accentColor={ACCENT_A} enriching={enriching}
-              detailLink={comparison.album_a.entity_type === "track" ? `/track/${comparison.album_a.id}` : `/album/${comparison.album_a.id}`} />
-            <AlbumCard meta={comparison.album_b} accentColor={ACCENT_B} enriching={enriching}
-              detailLink={comparison.album_b.entity_type === "track" ? `/track/${comparison.album_b.id}` : `/album/${comparison.album_b.id}`} />
+            <AlbumCard
+              meta={comparison.album_a}
+              accentColor={ACCENT_A}
+              enriching={enriching}
+              detailLink={comparison.album_a.entity_type === "track" ? `/track/${comparison.album_a.id}` : `/album/${comparison.album_a.id}`}
+            />
+            <AlbumCard
+              meta={comparison.album_b}
+              accentColor={ACCENT_B}
+              enriching={enriching}
+              detailLink={comparison.album_b.entity_type === "track" ? `/track/${comparison.album_b.id}` : `/album/${comparison.album_b.id}`}
+            />
           </div>
         </>
       )}
