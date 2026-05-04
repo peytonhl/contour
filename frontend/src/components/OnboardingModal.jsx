@@ -86,18 +86,18 @@ function IllustrationCommunity() {
 const SLIDES = [
   {
     illustration: <IllustrationTrajectory />,
-    title: "Streams, adjusted for time",
-    body: "A song that hit 500M streams in 2014 did it on a platform with 1/10th the users Spotify has today. Contour adjusts for this — so you can finally compare across eras on equal footing.",
+    title: "500M streams isn't what it used to be",
+    body: "Spotify's audience is 10× bigger than it was in 2014. Contour adjusts for that — so old and new releases finally compete on equal footing.",
   },
   {
     illustration: <IllustrationCompare />,
-    title: "Compare any two releases",
-    body: "Put a 2009 classic side-by-side with a 2024 hit and see their adjusted trajectories on the same chart. Switch between standard and deluxe editions, save the link, share it.",
+    title: "Drop any two albums. See who wins.",
+    body: "Adjusted trajectories, side by side. Switch editions, share the link, settle the debate.",
   },
   {
     illustration: <IllustrationCommunity />,
-    title: "Rate, review, discover",
-    body: "Half-star ratings, written reviews, upvotes, replies, and a global feed of what people are saying — sorted by recent, top, or most controversial.",
+    title: "Your take matters here",
+    body: "Rate it, review it, see what everyone else thinks. Search something you love to get started.",
   },
 ];
 
