@@ -1,9 +1,8 @@
 """
-Comparison endpoint — builds normalized streaming trajectories for two albums.
+Comparison endpoint — builds normalized streaming trajectories for two albums or tracks.
 
-Stream counts come from the SQLite cache (populated async by Kworb enrichment).
-If a cache entry is missing or stale, we fall back to a popularity-based estimate
-and trigger background enrichment so subsequent requests get real data.
+Stream counts come from Kworb (populated async). If a cache entry is missing,
+the trajectory is empty and enrichment_pending is set so the frontend can retry.
 """
 
 from datetime import date
@@ -16,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from services import spotify
 from services import album_cache as cache
-from services.normalization import model_trajectory, riaa_milestones
+from services.normalization import build_trajectory, riaa_milestones
 from routers.albums import _enrich_album
 from routers.tracks import _enrich_track
 
@@ -75,9 +74,9 @@ async def compare_albums(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns immediately. If Kworb stream counts aren't cached yet, uses a
-    popularity-based estimate and sets enrichment_pending=true. The frontend
-    should poll and re-compare once enrichment completes.
+    Returns immediately. If Kworb stream counts aren't cached yet, trajectory is
+    empty and enrichment_pending=true. The frontend should retry once enrichment
+    completes.
 
     Pass track_a_id / track_b_id to compare individual songs instead of albums.
     """
@@ -128,8 +127,8 @@ async def compare_albums(
     if release_b > today:
         release_b = today
 
-    traj_a = model_trajectory(release_a, streams_a)
-    traj_b = model_trajectory(release_b, streams_b)
+    traj_a = build_trajectory(release_a, streams_a) if streams_a else []
+    traj_b = build_trajectory(release_b, streams_b) if streams_b else []
 
     return ComparisonResponse(
         album_a=AlbumMeta(
@@ -215,7 +214,7 @@ async def _resolve_track_streams(
 
     streams = cache.streams_for_album(row)
     if streams is None:
-        return _popularity_to_streams(meta.get("popularity")), "estimated", pending
+        return None, "none", pending
 
     source = "kworb" if not pending else "partial"
     return streams, source, pending
@@ -250,9 +249,7 @@ async def _resolve_streams(
             total += streams
 
     if total == 0:
-        # Nothing cached yet — fall back to popularity estimate
-        total = _popularity_to_streams(primary_meta.get("popularity"))
-        return total, "estimated", any_pending
+        return None, "none", any_pending
 
     source = "kworb" if not any_pending else "partial"
     return total, source, any_pending
@@ -274,24 +271,8 @@ def _parse_release_date(release_date: str, precision: str) -> Optional[date]:
 def _warning(source: str, name: str) -> Optional[str]:
     if source == "kworb":
         return None
-    if source == "estimated":
-        return f'Stream count for "{name}" not yet available. Chart estimated from Spotify popularity — enriching in background.'
+    if source == "none":
+        return f'Stream count for "{name}" not yet available — enriching in background.'
     if source == "partial":
         return f'Some editions of "{name}" are still being enriched. Stream count may update shortly.'
     return None
-
-
-def _popularity_to_streams(popularity: Optional[int]) -> int:
-    if not popularity:
-        return 10_000_000
-    if popularity >= 90:
-        return 2_000_000_000
-    if popularity >= 80:
-        return 800_000_000
-    if popularity >= 70:
-        return 300_000_000
-    if popularity >= 60:
-        return 100_000_000
-    if popularity >= 50:
-        return 40_000_000
-    return 10_000_000
