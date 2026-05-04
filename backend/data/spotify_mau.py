@@ -8,6 +8,13 @@ from typing import Dict
 
 # Annual MAU in millions, keyed by year
 ANNUAL_MAU: Dict[int, float] = {
+    2008: 0.1,   # Spotify launched Oct 2008 (invite-only, ~100K users)
+    2009: 1,     # ~1M users end of 2009
+    2010: 5,     # ~5M users end of 2010
+    2011: 10,    # ~10M users end of 2011
+    2012: 20,    # ~20M users end of 2012
+    2013: 24,    # ~24M users end of 2013
+    2014: 60,    # ~60M users end of 2014
     2015: 75,
     2016: 100,
     2017: 140,
@@ -21,7 +28,7 @@ ANNUAL_MAU: Dict[int, float] = {
     2025: 750,  # estimate
 }
 
-MIN_YEAR = min(ANNUAL_MAU)
+MIN_YEAR = min(ANNUAL_MAU)  # 2008
 MAX_YEAR = max(ANNUAL_MAU)
 
 
