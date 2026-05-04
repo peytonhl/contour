@@ -5,22 +5,36 @@ const GOLD = "#f59e0b";
 const ACCENT = "#a78bfa";
 
 function Stars({ value = 0, size = 18, interactive = false, onHover, onClick }) {
+  // All pointer handling lives on the container so touch-drag across stars works.
+  function calcVal(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const starW = rect.width / 5;
+    const i = Math.floor(x / starW);
+    const within = x - i * starW;
+    return Math.max(0.5, Math.min(5, i + (within < starW / 2 ? 0.5 : 1)));
+  }
+
   return (
-    <div style={{ display: "flex", gap: 2, cursor: interactive ? "pointer" : "default" }}>
+    <div
+      style={{
+        display: "flex", gap: 2,
+        cursor: interactive ? "pointer" : "default",
+        // prevent page-scroll interfering with drag-to-rate on touch
+        touchAction: interactive ? "none" : "auto",
+        userSelect: "none",
+      }}
+      onPointerMove={interactive ? (e) => onHover?.(calcVal(e)) : undefined}
+      onPointerUp={interactive ? (e) => onClick?.(calcVal(e)) : undefined}
+      onPointerLeave={interactive ? () => onHover?.(null) : undefined}
+    >
       {[1, 2, 3, 4, 5].map((n) => {
         const fill = value >= n ? "full" : value >= n - 0.5 ? "half" : "empty";
         return (
           <svg
             key={n}
             width={size} height={size} viewBox="0 0 20 20"
-            onMouseMove={interactive ? (e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              onHover?.(e.clientX - rect.left < rect.width / 2 ? n - 0.5 : n);
-            } : undefined}
-            onClick={interactive ? (e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              onClick?.(e.clientX - rect.left < rect.width / 2 ? n - 0.5 : n);
-            } : undefined}
+            style={{ pointerEvents: "none", flexShrink: 0 }}
           >
             <polygon
               points="10,1 12.9,7 19.5,7.6 14.5,12 16.2,18.5 10,15 3.8,18.5 5.5,12 0.5,7.6 7.1,7"
@@ -145,10 +159,7 @@ export function ReviewSection({ entityType, entityId, user }) {
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)" }}>
               {selectedRating ? "Your Rating" : "Rate This"}
             </span>
-            <div
-              style={{ display: "flex", alignItems: "center", gap: 10 }}
-              onMouseLeave={() => setHover(null)}
-            >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Stars
                 value={displayRating}
                 size={24}
@@ -194,7 +205,7 @@ export function ReviewSection({ entityType, entityId, user }) {
             style={{
               width: "100%", boxSizing: "border-box",
               background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7,
-              color: "var(--text)", fontSize: 14, padding: "10px 12px", resize: "vertical",
+              color: "var(--text)", fontSize: 16, padding: "10px 12px", resize: "vertical",
               fontFamily: "inherit", lineHeight: 1.6, outline: "none",
             }}
           />

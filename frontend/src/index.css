@@ -37,7 +37,45 @@ button {
   font: inherit;
 }
 
+/* ── Touch / mobile polish ── */
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;   /* remove 300ms delay */
+}
+
+/* Prevent iOS from zooming into inputs */
+@media (max-width: 640px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 /* ── Responsive utilities ── */
+/* ── Bottom nav (mobile only) ── */
+.bottom-nav { display: none; }
+
+/* ── Responsive grid for comparison widget ── */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .compare-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Space for the fixed bottom nav */
+  .page-content {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .bottom-nav {
+    display: block;
+  }
+}
+
 @media (max-width: 640px) {
   .hide-mobile { display: none !important; }
   .show-mobile { display: flex !important; }
@@ -67,6 +105,18 @@ button {
   /* Charts fill full width */
   .chart-container {
     padding: 12px !important;
+  }
+
+  /* Bigger touch targets on list rows */
+  .touch-row {
+    padding-top: 14px !important;
+    padding-bottom: 14px !important;
+    min-height: 52px;
+  }
+
+  /* Tighten hero padding on album/track pages */
+  .hero-page {
+    padding: 20px 16px !important;
   }
 }
 

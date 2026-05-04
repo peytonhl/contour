@@ -63,7 +63,7 @@ export function TrackPage() {
   const topCert = trajectory?.riaa_milestones?.at(-1);
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 28 }}>
+    <div className="hero-page" style={{ maxWidth: 1000, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 28 }}>
       {/* Hero */}
       <div className="hero-row" style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
         {track.image_url

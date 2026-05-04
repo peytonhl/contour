@@ -66,7 +66,7 @@ export function AlbumPage() {
   const topCert = trajectory?.riaa_milestones?.at(-1);
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 28 }}>
+    <div className="hero-page" style={{ maxWidth: 1000, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 28 }}>
       {/* Hero */}
       <div className="hero-row" style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
         {album.image_url
@@ -148,7 +148,7 @@ export function AlbumPage() {
               to={`/track/${track.id}`}
               style={{
                 display: "flex", alignItems: "center", gap: 14,
-                padding: "10px 20px",
+                padding: "12px 20px",
                 borderBottom: i < tracklist.length - 1 ? "1px solid var(--border)" : "none",
                 textDecoration: "none",
                 color: "var(--text)",

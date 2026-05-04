@@ -98,7 +98,7 @@ export function SearchPage() {
   const hasResults = results.length > 0;
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "60px 24px 40px", display: "flex", flexDirection: "column", gap: 40, alignItems: "center" }}>
+    <div className="hero-page" style={{ maxWidth: 900, margin: "0 auto", padding: "48px 20px 40px", display: "flex", flexDirection: "column", gap: 32, alignItems: "center" }}>
 
       {/* Hero */}
       <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 12 }}>

@@ -119,7 +119,7 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null })
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Search slots */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="compare-grid">
         {[
           { mode: modeA, setMode: setModeA, album: albumA, setAlbum: setAlbumA, track: trackA, setTrack: setTrackA, setEditions: setEditionsA, accent: ACCENT_A, label: "A" },
           { mode: modeB, setMode: setModeB, album: albumB, setAlbum: setAlbumB, track: trackB, setTrack: setTrackB, setEditions: setEditionsB, accent: ACCENT_B, label: "B" },
@@ -198,7 +198,7 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null })
       {comparison && !loading && (
         <>
           <ComparisonChart data={comparison} nameA={comparison.album_a.name} nameB={comparison.album_b.name} disclaimer={comparison.data_disclaimer} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="compare-grid">
             <AlbumCard meta={comparison.album_a} accentColor={ACCENT_A} enriching={enriching}
               detailLink={comparison.album_a.entity_type === "track" ? `/track/${comparison.album_a.id}` : `/album/${comparison.album_a.id}`} />
             <AlbumCard meta={comparison.album_b} accentColor={ACCENT_B} enriching={enriching}
