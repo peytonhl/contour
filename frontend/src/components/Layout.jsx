@@ -88,7 +88,7 @@ export function Layout() {
   const desktopNavLinks = [
     { to: "/", label: "Search", end: true },
     { to: "/compare", label: "Compare" },
-    ...(user ? [{ to: "/feed", label: "Feed" }] : []),
+    { to: "/feed", label: "Feed" },
     { to: "/methodology", label: "How It Works" },
   ];
 
@@ -211,10 +211,7 @@ export function Layout() {
           <BottomTab to="/" end label="Search" icon={<SearchIcon />} />
           <BottomTab to="/compare" label="Compare" icon={<CompareIcon />} />
 
-          {user
-            ? <BottomTab to="/feed" label="Feed" icon={<FeedIcon />} />
-            : <BottomTab to="/methodology" label="About" icon={<InfoIcon />} />
-          }
+          <BottomTab to="/feed" label="Feed" icon={<FeedIcon />} />
 
           {user ? (
             <NavLink
