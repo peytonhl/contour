@@ -32,7 +32,7 @@ class AuthSettings(BaseSettings):
     spotify_client_secret: str
     spotify_redirect_uri: str = "http://localhost:8000/auth/callback"
     frontend_url: str = "http://localhost:5173"
-    jwt_secret: str = "dev-secret-change-in-production"
+    jwt_secret: str
     jwt_expire_days: int = 7
 
 

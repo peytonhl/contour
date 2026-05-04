@@ -1,7 +1,17 @@
+import re
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
+
+SPOTIFY_ID_RE = re.compile(r'^[A-Za-z0-9]{22}$')
+VALID_ENTITY_TYPES = {"album", "track", "artist"}
+
+def _validate_entity(entity_type: str, entity_id: str):
+    if entity_type not in VALID_ENTITY_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid entity_type")
+    if not SPOTIFY_ID_RE.match(entity_id):
+        raise HTTPException(status_code=400, detail="Invalid entity_id format")
 from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +34,7 @@ class RatingIn(BaseModel):
 
 
 class ReviewIn(BaseModel):
-    body: str
+    body: str = Field(..., min_length=1, max_length=5000)
     value: Optional[float] = None
 
     @field_validator("value")
@@ -45,8 +55,7 @@ async def rate(
 ):
     if not user_id:
         raise HTTPException(status_code=401, detail="Sign in to rate")
-    if entity_type not in ("album", "track"):
-        raise HTTPException(status_code=400, detail="entity_type must be album or track")
+    _validate_entity(entity_type, entity_id)
 
     result = await db.execute(
         select(Rating).where(
