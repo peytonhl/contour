@@ -23,7 +23,8 @@ export default function App() {
     <OnboardingModal />
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<SearchPage />} />
+        <Route index element={<ForYouPage />} />
+        <Route path="search" element={<SearchPage />} />
         <Route path="compare" element={<ComparePage />} />
         <Route path="methodology" element={<Methodology />} />
         <Route path="album/:id" element={<AlbumPage />} />

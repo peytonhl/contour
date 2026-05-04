@@ -39,7 +39,7 @@ export function SavedComparisonPage() {
             </div>
           )}
         </div>
-        <Link to="/" style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13 }}>
+        <Link to="/compare" style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13 }}>
           Run a new comparison
         </Link>
       </div>

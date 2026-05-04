@@ -235,33 +235,42 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
         </div>
 
         {/* Preview player */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {track.preview_url ? (
+          // Custom player when Spotify provides a preview URL
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button
               onClick={togglePlay}
-              disabled={!track.preview_url}
               style={{
                 width: 44, height: 44, borderRadius: "50%",
-                background: track.preview_url ? `linear-gradient(135deg, ${ACCENT_A}, ${ACCENT_B})` : "rgba(255,255,255,0.1)",
-                border: "none", cursor: track.preview_url ? "pointer" : "default",
+                background: `linear-gradient(135deg, ${ACCENT_A}, ${ACCENT_B})`,
+                border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 18, flexShrink: 0,
-                boxShadow: track.preview_url ? `0 2px 12px ${ACCENT_A}50` : "none",
+                boxShadow: `0 2px 12px ${ACCENT_A}50`,
                 transition: "transform 0.1s",
               }}
-              onMouseDown={(e) => { if (track.preview_url) e.currentTarget.style.transform = "scale(0.92)"; }}
-              onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+              onMouseDown={(e) => { e.currentTarget.style.transform = "scale(0.92)"; }}
+              onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
             >
               {playing ? "⏸" : "▶"}
             </button>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
               <AudioBar progress={progress} />
-              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
-                {track.preview_url ? "30s preview" : "No preview available"}
-              </span>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>30s preview</span>
             </div>
           </div>
-        </div>
+        ) : (
+          // Spotify embed iframe fallback — works without preview_url
+          <iframe
+            src={`https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0`}
+            width="100%"
+            height="80"
+            style={{ borderRadius: 10, border: "none", display: "block" }}
+            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+            loading="lazy"
+            title={`${track.name} preview`}
+          />
+        )}
 
         {/* Rating */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
