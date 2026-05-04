@@ -1,6 +1,6 @@
-"""Spotify OAuth 2.0 flow and JWT session management."""
+"""Google OAuth 2.0 flow and JWT session management."""
 
-import base64
+import asyncio
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,8 +15,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import asyncio
-
 from database import get_db
 from models import ArtistFavorite, Rating, Review, User
 from services import spotify
@@ -25,15 +23,19 @@ _ENV_FILE = Path(__file__).parent.parent / ".env"
 
 JWT_ALGORITHM = "HS256"
 
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
 
 class AuthSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_file_encoding="utf-8")
-    spotify_client_id: str
-    spotify_client_secret: str
-    spotify_redirect_uri: str = "http://localhost:8000/auth/callback"
+    google_client_id: str
+    google_client_secret: str
+    google_redirect_uri: str = "http://localhost:8000/auth/callback"
     frontend_url: str = "http://localhost:5173"
     jwt_secret: str
-    jwt_expire_days: int = 7
+    jwt_expire_days: int = 30
 
 
 _settings: Optional[AuthSettings] = None
@@ -81,64 +83,67 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.get("/login")
 async def login():
-    """Redirect the browser to Spotify's OAuth authorization page."""
+    """Redirect the browser to Google's OAuth authorization page."""
     s = _get_settings()
     params = urlencode({
-        "client_id": s.spotify_client_id,
+        "client_id": s.google_client_id,
+        "redirect_uri": s.google_redirect_uri,
         "response_type": "code",
-        "redirect_uri": s.spotify_redirect_uri,
-        "scope": "user-read-private",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "prompt": "select_account",
     })
-    return RedirectResponse(f"https://accounts.spotify.com/authorize?{params}")
+    return RedirectResponse(f"{GOOGLE_AUTH_URL}?{params}")
 
 
 @router.get("/callback")
 async def callback(code: str, db: AsyncSession = Depends(get_db)):
-    """Handle Spotify's OAuth callback, create/update user, issue JWT."""
+    """Handle Google's OAuth callback, create/update user, issue JWT."""
     s = _get_settings()
-    creds = base64.b64encode(
-        f"{s.spotify_client_id}:{s.spotify_client_secret}".encode()
-    ).decode()
 
     async with httpx.AsyncClient() as client:
-        # Exchange code for Spotify tokens
+        # Exchange authorization code for tokens
         token_resp = await client.post(
-            "https://accounts.spotify.com/api/token",
-            headers={"Authorization": f"Basic {creds}"},
+            GOOGLE_TOKEN_URL,
             data={
-                "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": s.spotify_redirect_uri,
+                "client_id": s.google_client_id,
+                "client_secret": s.google_client_secret,
+                "redirect_uri": s.google_redirect_uri,
+                "grant_type": "authorization_code",
             },
         )
         token_resp.raise_for_status()
         tokens = token_resp.json()
 
-        # Fetch Spotify profile
+        # Fetch Google user profile
         profile_resp = await client.get(
-            "https://api.spotify.com/v1/me",
+            GOOGLE_USERINFO_URL,
             headers={"Authorization": f"Bearer {tokens['access_token']}"},
         )
         profile_resp.raise_for_status()
         profile = profile_resp.json()
 
-    spotify_id = profile["id"]
-    images = profile.get("images", [])
-    image_url = images[0]["url"] if images else None
+    google_id = profile["id"]
+    email = profile.get("email", "")
+    display_name = profile.get("name") or email.split("@")[0]
+    image_url = profile.get("picture")
 
-    # Upsert user
-    result = await db.execute(select(User).where(User.spotify_id == spotify_id))
+    # Upsert user by Google ID
+    result = await db.execute(select(User).where(User.google_id == google_id))
     user = result.scalar_one_or_none()
 
     if user:
-        user.display_name = profile.get("display_name") or spotify_id
+        user.display_name = display_name
         user.image_url = image_url
+        user.email = email
         user.last_seen = datetime.utcnow()
     else:
         user = User(
             id=str(uuid.uuid4()),
-            spotify_id=spotify_id,
-            display_name=profile.get("display_name") or spotify_id,
+            google_id=google_id,
+            email=email,
+            display_name=display_name,
             image_url=image_url,
         )
         db.add(user)
@@ -167,9 +172,9 @@ async def get_me(
 
     return {
         "id": user.id,
-        "spotify_id": user.spotify_id,
         "display_name": user.display_name,
         "image_url": user.image_url,
+        "email": user.email,
     }
 
 
@@ -188,7 +193,6 @@ async def get_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Recent ratings
     ratings_result = await db.execute(
         select(Rating)
         .where(Rating.user_id == user_id)
@@ -197,7 +201,6 @@ async def get_profile(
     )
     ratings = ratings_result.scalars().all()
 
-    # Recent reviews
     reviews_result = await db.execute(
         select(Review)
         .where(Review.user_id == user_id)
@@ -206,7 +209,6 @@ async def get_profile(
     )
     reviews = reviews_result.scalars().all()
 
-    # Favorited artists
     favs_result = await db.execute(
         select(ArtistFavorite)
         .where(ArtistFavorite.user_id == user_id)
@@ -214,8 +216,10 @@ async def get_profile(
     )
     favorites = favs_result.scalars().all()
 
-    # Enrich entity names/images from Spotify for ratings + reviews
-    unique_entities = {(r.entity_type, r.entity_id) for r in ratings} | {(r.entity_type, r.entity_id) for r in reviews}
+    unique_entities = (
+        {(r.entity_type, r.entity_id) for r in ratings}
+        | {(r.entity_type, r.entity_id) for r in reviews}
+    )
 
     async def fetch_entity_meta(entity_type: str, entity_id: str):
         try:

@@ -37,11 +37,11 @@ export function PrivacyPage() {
       </p>
 
       <Section title="1. Information We Collect">
-        <p>When you sign in with Spotify, we receive from Spotify's API:</p>
+        <p>When you sign in with Google, we receive from Google's API:</p>
         <ul style={{ paddingLeft: 20, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-          <li><strong style={{ color: "var(--text)" }}>Spotify user ID</strong> — a unique identifier for your account</li>
-          <li><strong style={{ color: "var(--text)" }}>Display name</strong> — the name shown on your Spotify profile</li>
-          <li><strong style={{ color: "var(--text)" }}>Profile photo</strong> — your Spotify profile image URL</li>
+          <li><strong style={{ color: "var(--text)" }}>Google user ID</strong> — a unique identifier for your Google account</li>
+          <li><strong style={{ color: "var(--text)" }}>Display name</strong> — the name on your Google profile</li>
+          <li><strong style={{ color: "var(--text)" }}>Profile photo</strong> — your Google profile image</li>
           <li><strong style={{ color: "var(--text)" }}>Email address</strong> — used only for account identification, never for marketing</li>
         </ul>
         <p style={{ marginTop: 10 }}>
@@ -63,19 +63,15 @@ export function PrivacyPage() {
         </p>
       </Section>
 
-      <Section title="3. Spotify">
+      <Section title="3. Third-Party Services">
         <p>
-          Contour uses the Spotify API for authentication and to retrieve music metadata
-          (album art, track names, stream counts). We access only the minimum Spotify scopes
-          required: <code style={{ background: "var(--surface2)", padding: "1px 5px", borderRadius: 4, fontSize: 12 }}>user-read-private</code> and{" "}
-          <code style={{ background: "var(--surface2)", padding: "1px 5px", borderRadius: 4, fontSize: 12 }}>user-read-email</code>.
-        </p>
-        <p style={{ marginTop: 8 }}>
-          Contour is not affiliated with Spotify. Your use of Spotify is governed by{" "}
-          <a href="https://www.spotify.com/legal/privacy-policy/" target="_blank" rel="noreferrer"
-            style={{ color: ACCENT_A }}>
-            Spotify's Privacy Policy
-          </a>.
+          Contour uses <strong style={{ color: "var(--text)" }}>Google OAuth</strong> for sign-in
+          (governed by{" "}
+          <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" style={{ color: ACCENT_A }}>
+            Google's Privacy Policy
+          </a>) and the <strong style={{ color: "var(--text)" }}>Spotify API</strong> to retrieve
+          music metadata — album art, track names, and stream data. Spotify is used only for
+          music data, not for user authentication. Contour is not affiliated with Spotify or Google.
         </p>
       </Section>
 

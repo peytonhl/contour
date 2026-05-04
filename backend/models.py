@@ -13,7 +13,11 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    spotify_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # Google OAuth identity (new primary auth method)
+    google_id: Mapped[Optional[str]] = mapped_column(String(128), unique=True, index=True, nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    # Legacy Spotify ID — kept nullable for existing rows, no longer populated
+    spotify_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True, nullable=True)
     display_name: Mapped[str] = mapped_column(String(256))
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
