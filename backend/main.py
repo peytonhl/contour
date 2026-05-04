@@ -20,7 +20,7 @@ app.add_middleware(
         "https://contour-rosy.vercel.app",
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["Authorization", "Content-Type"],
 )
 

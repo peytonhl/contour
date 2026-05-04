@@ -1,5 +1,7 @@
 """Public user profiles and follow/unfollow."""
 
+import asyncio
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -10,6 +12,7 @@ from database import get_db
 from models import User, UserFollow, Rating, Review, ArtistFavorite
 from routers.auth import decode_jwt, optional_user_id
 from routers.notifications import create_notification
+from services import spotify
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -124,6 +127,160 @@ async def get_user(
         "is_following": is_following,
         "is_self": viewer_id == user_id,
     }
+
+
+@router.get("/{user_id}/taste")
+async def get_user_taste(user_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Return a user's taste profile:
+      - rating_distribution: count per star level (1–5)
+      - top_genres: up to 5 genres from their highest-rated content
+      - pinned_albums: up to 4 curated albums the user picked
+    """
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # ── 1. Rating distribution ────────────────────────────────────────────────
+    ratings = (await db.execute(
+        select(Rating).where(Rating.user_id == user_id)
+    )).scalars().all()
+
+    distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for r in ratings:
+        star = int(round(r.value))
+        if 1 <= star <= 5:
+            distribution[star] += 1
+
+    # ── 2. Top genres from highly-rated content ───────────────────────────────
+    top_rated = [r for r in ratings if r.value >= 4][:12]
+
+    async def get_entity_artist_ids(entity_type: str, entity_id: str) -> list[str]:
+        try:
+            if entity_type == "track":
+                data = await spotify.get_track(entity_id)
+            else:
+                data = await spotify.get_album(entity_id)
+            return data.get("artist_ids", [])[:1]  # primary artist only
+        except Exception:
+            return []
+
+    artist_results = await asyncio.gather(
+        *[get_entity_artist_ids(r.entity_type, r.entity_id) for r in top_rated],
+        return_exceptions=True,
+    )
+
+    artist_id_set: set[str] = set()
+    for res in artist_results:
+        if isinstance(res, list):
+            artist_id_set.update(res)
+
+    async def get_genres(artist_id: str) -> list[str]:
+        try:
+            a = await spotify.get_artist(artist_id)
+            return a.get("genres", [])[:3]
+        except Exception:
+            return []
+
+    genre_results = await asyncio.gather(
+        *[get_genres(aid) for aid in list(artist_id_set)[:6]],
+        return_exceptions=True,
+    )
+
+    genre_counts: dict[str, int] = {}
+    for res in genre_results:
+        if isinstance(res, list):
+            for g in res:
+                genre_counts[g] = genre_counts.get(g, 0) + 1
+
+    top_genres = sorted(genre_counts, key=lambda k: genre_counts[k], reverse=True)[:5]
+
+    # ── 3. Pinned albums ──────────────────────────────────────────────────────
+    pinned_albums = []
+    if user.pinned_album_ids:
+        try:
+            album_ids = json.loads(user.pinned_album_ids)[:4]
+            album_data = await asyncio.gather(
+                *[spotify.get_album(aid) for aid in album_ids],
+                return_exceptions=True,
+            )
+            for res in album_data:
+                if isinstance(res, dict):
+                    pinned_albums.append(res)
+        except Exception:
+            pass
+
+    return {
+        "rating_distribution": distribution,
+        "top_genres": top_genres,
+        "pinned_albums": pinned_albums,
+    }
+
+
+@router.get("/{user_id}/reviews")
+async def get_user_reviews(user_id: str, db: AsyncSession = Depends(get_db)):
+    """Return a user's most recent reviews, enriched with entity metadata."""
+    from sqlalchemy import desc as sa_desc
+    from models import Review, Rating
+
+    reviews = (await db.execute(
+        select(Review)
+        .where(Review.user_id == user_id)
+        .order_by(sa_desc(Review.created_at))
+        .limit(30)
+    )).scalars().all()
+
+    if not reviews:
+        return []
+
+    # Enrich with Spotify metadata + ratings
+    unique_entities = list({(r.entity_type, r.entity_id) for r in reviews})
+
+    async def fetch_meta(entity_type: str, entity_id: str):
+        try:
+            if entity_type == "track":
+                data = await spotify.get_track(entity_id)
+            elif entity_type == "album":
+                data = await spotify.get_album(entity_id)
+            else:
+                data = await spotify.get_artist(entity_id)
+            return (entity_type, entity_id), {
+                "name": data["name"],
+                "image_url": data.get("image_url"),
+                "artists": data.get("artists", []),
+            }
+        except Exception:
+            return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
+
+    enriched = dict(await asyncio.gather(*[fetch_meta(et, eid) for et, eid in unique_entities]))
+
+    # Look up each review's rating value
+    rating_map: dict[tuple, float] = {}
+    for et, eid in unique_entities:
+        row = (await db.execute(
+            select(Rating).where(
+                Rating.user_id == user_id,
+                Rating.entity_type == et,
+                Rating.entity_id == eid,
+            )
+        )).scalar_one_or_none()
+        if row:
+            rating_map[(et, eid)] = row.value
+
+    return [
+        {
+            "id": r.id,
+            "entity_type": r.entity_type,
+            "entity_id": r.entity_id,
+            "entity_name": enriched.get((r.entity_type, r.entity_id), {}).get("name"),
+            "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
+            "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
+            "body": r.body,
+            "rating": rating_map.get((r.entity_type, r.entity_id)),
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in reviews
+    ]
 
 
 @router.post("/{user_id}/follow")

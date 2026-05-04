@@ -106,6 +106,18 @@ export const api = {
     }).then((r) => r.json());
   },
 
+  updatePinnedAlbums: (ids) => {
+    const token = getToken();
+    return fetch(`${BASE}/auth/profile`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ pinned_album_ids: ids }),
+    }).then((r) => r.json());
+  },
+
+  // Taste profile
+  getUserTaste: (id) => request(`/users/${id}/taste`),
+
   // Suggested users
   getSuggestedUsers: () => request(`/users/suggested`),
 
@@ -126,6 +138,7 @@ export const api = {
   toggleFollow: (id) => post(`/users/${id}/follow`, {}),
   getFollowing: (id) => request(`/users/${id}/following`),
   getFollowers: (id) => request(`/users/${id}/followers`),
+  getUserReviews: (id) => request(`/users/${id}/reviews`),
 
   getMe: (token) => {
     return fetch(`${BASE}/auth/me`, {

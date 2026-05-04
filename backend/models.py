@@ -21,6 +21,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(256))
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pinned_album_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array of up to 4 Spotify album IDs
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

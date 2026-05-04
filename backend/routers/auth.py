@@ -279,6 +279,7 @@ async def get_profile(
 
 class ProfileUpdate(BaseModel):
     bio: Optional[str] = None
+    pinned_album_ids: Optional[list[str]] = None
 
 
 @router.patch("/profile")
@@ -287,7 +288,8 @@ async def update_profile(
     authorization: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update the current user's editable profile fields (bio)."""
+    """Update the current user's editable profile fields (bio, pinned albums)."""
+    import json as _json
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -299,6 +301,10 @@ async def update_profile(
 
     if body.bio is not None:
         user.bio = body.bio.strip()[:300] or None  # max 300 chars, empty → null
+
+    if body.pinned_album_ids is not None:
+        ids = [str(i) for i in body.pinned_album_ids[:4]]
+        user.pinned_album_ids = _json.dumps(ids)
 
     await db.commit()
     return {"ok": True, "bio": user.bio}

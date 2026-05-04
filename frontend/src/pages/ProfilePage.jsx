@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { TasteSection } from "../components/TasteSection.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#a78bfa";
@@ -186,6 +187,9 @@ export function ProfilePage() {
           </button>
         </div>
       </div>
+
+      {/* Taste profile */}
+      <TasteSection userId={user.id} isOwner={true} />
 
       {/* Tabs */}
       <div style={{ display: "flex", borderBottom: "1px solid var(--border)", gap: 0, overflowX: "auto" }}>
