@@ -11,6 +11,7 @@ import { SavedComparisonPage } from "./pages/SavedComparisonPage.jsx";
 import { AuthSuccessPage } from "./pages/AuthSuccessPage.jsx";
 import { UserPage } from "./pages/UserPage.jsx";
 import { FeedPage } from "./pages/FeedPage.jsx";
+import { LeaderboardPage } from "./pages/LeaderboardPage.jsx";
 import { Methodology } from "./components/Methodology.jsx";
 import { PrivacyPage } from "./pages/PrivacyPage.jsx";
 
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="user/:id" element={<UserPage />} />
         <Route path="feed" element={<FeedPage />} />
+        <Route path="charts" element={<LeaderboardPage />} />
         <Route path="auth/success" element={<AuthSuccessPage />} />
         <Route path="privacy" element={<PrivacyPage />} />
       </Route>

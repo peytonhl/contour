@@ -88,6 +88,9 @@ export const api = {
   // Featured
   getFeatured: () => request(`/featured`),
 
+  // Leaderboard
+  getLeaderboard: (sort = "era", limit = 50) => request(`/leaderboard/?sort=${sort}&limit=${limit}`),
+
   // Feed
   getFeed: () => request(`/feed`),
 

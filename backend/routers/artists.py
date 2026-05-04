@@ -1,5 +1,6 @@
 """Artist search, metadata, and discography endpoints."""
 
+from datetime import date
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -13,6 +14,8 @@ from services import spotify
 from services import album_cache as cache
 from routers.albums import _enrich_album
 from routers.auth import optional_user_id
+from services.normalization import parse_release_date
+from data.spotify_mau import get_mau_for_date
 
 router = APIRouter(prefix="/artists", tags=["artists"])
 
@@ -35,6 +38,8 @@ class ArtistAlbum(BaseModel):
     image_url: Optional[str]
     popularity: Optional[int]
     streams: Optional[int]
+    era_adjusted_streams: Optional[int] = None
+    multiplier: Optional[float] = None
     enrichment_status: str
 
 
@@ -76,11 +81,27 @@ async def get_artist_albums(
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
+    current_mau = get_mau_for_date(date.today())
+
     results = []
     for album in albums:
         row = await cache.upsert_album(db, album)
         if cache.needs_enrichment(row):
             background_tasks.add_task(_enrich_album, album["id"], album, db)
+
+        streams = cache.streams_for_album(row)
+        era_adjusted = None
+        multiplier = None
+        if streams:
+            rd = album.get("release_date", "")
+            rdp = album.get("release_date_precision", "year")
+            release = parse_release_date(rd, rdp)
+            if release:
+                release_mau = get_mau_for_date(release)
+                if release_mau > 0:
+                    multiplier = round(current_mau / release_mau, 1)
+                    era_adjusted = int(streams * multiplier)
+
         results.append(ArtistAlbum(
             id=album["id"],
             name=album["name"],
@@ -88,7 +109,9 @@ async def get_artist_albums(
             total_tracks=album.get("total_tracks"),
             image_url=album.get("image_url"),
             popularity=album.get("popularity"),
-            streams=cache.streams_for_album(row),
+            streams=streams,
+            era_adjusted_streams=era_adjusted,
+            multiplier=multiplier,
             enrichment_status=row.enrichment_status,
         ))
 

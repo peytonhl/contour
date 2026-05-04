@@ -8,6 +8,16 @@ const ACCENT_B = "#34d399";
 const ACCENT_C = "#fb923c";
 
 const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? "https://cylinder-jurist-oozy.ngrok-free.dev"}/auth/login`;
+const RECENT_KEY = "contour_recent_v1";
+const RECENT_MAX = 8;
+
+function loadRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch { return []; }
+}
+function saveRecent(item) {
+  const prev = loadRecent().filter((r) => r.id !== item.id);
+  localStorage.setItem(RECENT_KEY, JSON.stringify([item, ...prev].slice(0, RECENT_MAX)));
+}
 
 function formatStreams(n) {
   if (!n && n !== 0) return null;
@@ -66,6 +76,7 @@ export function SearchPage() {
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [featured, setFeatured] = useState(null);
+  const [recent, setRecent] = useState(loadRecent);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const debounceRef = useRef(null);
@@ -104,10 +115,18 @@ export function SearchPage() {
   }
 
   function handleSelect(item) {
+    saveRecent({ id: item.id, name: item.name, image_url: item.image_url, _type: item._type,
+      sub: Array.isArray(item.artists) ? item.artists.join(", ") : (item.artists ?? "") });
+    setRecent(loadRecent());
     if (item._type === "album") navigate(`/album/${item.id}`);
     else if (item._type === "track") navigate(`/track/${item.id}`);
     else if (item._type === "user") navigate(`/user/${item.id}`);
     else navigate(`/artist/${item.id}`);
+  }
+
+  function clearRecent() {
+    localStorage.removeItem(RECENT_KEY);
+    setRecent([]);
   }
 
   const hasResults = results.length > 0;
@@ -204,6 +223,54 @@ export function SearchPage() {
           </p>
         )}
       </div>
+
+      {/* Recent searches */}
+      {!query && recent.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+              Recent
+            </span>
+            <button
+              onClick={clearRecent}
+              style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+            >
+              Clear
+            </button>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {recent.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => navigate(
+                  item._type === "album" ? `/album/${item.id}`
+                  : item._type === "track" ? `/track/${item.id}`
+                  : item._type === "user" ? `/user/${item.id}`
+                  : `/artist/${item.id}`
+                )}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "6px 12px 6px 6px",
+                  background: "var(--surface)", border: "1px solid var(--border)",
+                  borderRadius: 24, cursor: "pointer", color: "var(--text)",
+                  transition: "border-color 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT_A}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+              >
+                {item.image_url
+                  ? <img src={item.image_url} alt={item.name} style={{ width: 24, height: 24, borderRadius: item._type === "artist" ? "50%" : 4, objectFit: "cover", flexShrink: 0 }} />
+                  : <div style={{ width: 24, height: 24, borderRadius: item._type === "artist" ? "50%" : 4, background: "var(--surface2)", flexShrink: 0 }} />
+                }
+                <div style={{ textAlign: "left", minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{item.name}</div>
+                  {item.sub && <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{item.sub}</div>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sign-in nudge for logged-out users */}
       {!authLoading && !user && !query && (

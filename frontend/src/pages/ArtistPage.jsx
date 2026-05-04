@@ -132,6 +132,7 @@ export function ArtistPage() {
 
   const sorted = [...albums].sort((a, b) => {
     if (sort === "streams") return (b.streams ?? -1) - (a.streams ?? -1);
+    if (sort === "era") return (b.era_adjusted_streams ?? -1) - (a.era_adjusted_streams ?? -1);
     return b.release_date.localeCompare(a.release_date);
   });
 
@@ -254,7 +255,7 @@ export function ArtistPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700 }}>Discography</h2>
           <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 7, overflow: "hidden", border: "1px solid var(--border)", flexShrink: 0 }}>
-            {[["date", "Latest"], ["streams", "Most Streamed"]].map(([val, lbl]) => (
+            {[["date", "Latest"], ["streams", "Streams"], ["era", "Era Score"]].map(([val, lbl]) => (
               <button key={val} onClick={() => setSort(val)} style={{
                 padding: "5px 14px", fontSize: 12, fontWeight: sort === val ? 700 : 400,
                 background: sort === val ? ACCENT_A : "transparent",
@@ -285,12 +286,24 @@ export function ArtistPage() {
                   </div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{album.release_date?.slice(0, 4)}</div>
                   <div style={{ fontSize: 12, color: ACCENT_A, marginTop: 4, fontWeight: 600 }}>
-                    {album.streams ? formatStreams(album.streams) : (
+                    {album.streams ? (
+                      sort === "era" && album.era_adjusted_streams
+                        ? formatStreams(album.era_adjusted_streams)
+                        : formatStreams(album.streams)
+                    ) : (
                       <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
                         {album.enrichment_status === "pending" ? "loading…" : "—"}
                       </span>
                     )}
                   </div>
+                  {sort === "era" && album.multiplier > 1.1 && (
+                    <div style={{
+                      fontSize: 10, fontWeight: 700, marginTop: 3,
+                      color: ACCENT_A, opacity: 0.75,
+                    }}>
+                      ×{album.multiplier.toFixed(1)} era adj.
+                    </div>
+                  )}
                 </div>
               </div>
             </Link>
