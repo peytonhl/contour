@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api.js";
+import { useAuth } from "../contexts/AuthContext.jsx";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
 const ACCENT_C = "#fb923c";
+
+const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? "https://cylinder-jurist-oozy.ngrok-free.dev"}/auth/login`;
 
 function formatStreams(n) {
   if (!n && n !== 0) return null;
@@ -15,6 +18,17 @@ function formatStreams(n) {
 
 const TYPE_LABELS = { album: "Album", track: "Track", artist: "Artist", user: "User" };
 const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C, user: "#60a5fa" };
+
+function GoogleIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+      <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+      <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+      <path fill="#FBBC05" d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"/>
+      <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z"/>
+    </svg>
+  );
+}
 
 function FeaturedCard({ item, type }) {
   const navigate = useNavigate();
@@ -52,6 +66,7 @@ export function SearchPage() {
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [featured, setFeatured] = useState(null);
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const debounceRef = useRef(null);
 
@@ -98,101 +113,131 @@ export function SearchPage() {
   const hasResults = results.length > 0;
 
   return (
-    <div className="hero-page" style={{ maxWidth: 900, margin: "0 auto", padding: "48px 20px 40px", display: "flex", flexDirection: "column", gap: 32, alignItems: "center" }}>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px 60px", display: "flex", flexDirection: "column", gap: 28 }}>
 
-      {/* Hero */}
-      <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 12 }}>
-        <h1 style={{
-          fontSize: 36, fontWeight: 800, lineHeight: 1.15,
-          background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+      {/* Search bar — the hero */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <p style={{
+          fontSize: 13, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
+          color: "var(--text-muted)", margin: 0,
         }}>
-          Explore Music
-        </h1>
-        <p style={{ fontSize: 15, color: "var(--text-muted)", maxWidth: 480, margin: "0 auto", lineHeight: 1.6 }}>
-          Search for an album, track, or artist to see stream trajectories, community ratings, and reviews.
+          Contour · Era-adjusted music data
         </p>
-      </div>
+        <div style={{ position: "relative" }}>
+          <div style={{
+            display: "flex", background: "var(--surface)", border: "1px solid var(--border)",
+            borderRadius: hasResults ? "12px 12px 0 0" : 12,
+            boxShadow: "0 2px 12px rgba(0,0,0,0.25)",
+          }}>
+            <span style={{ display: "flex", alignItems: "center", paddingLeft: 18, color: "var(--text-muted)", fontSize: 18, flexShrink: 0 }}>
+              🔍
+            </span>
+            <input
+              autoFocus
+              value={query}
+              onChange={handleInput}
+              placeholder="Search albums, tracks, artists…"
+              style={{
+                flex: 1, padding: "18px 16px", fontSize: 16,
+                background: "transparent", border: "none", outline: "none",
+                color: "var(--text)",
+              }}
+            />
+            {searching && (
+              <div style={{ display: "flex", alignItems: "center", paddingRight: 18, color: "var(--text-muted)", fontSize: 12 }}>…</div>
+            )}
+          </div>
 
-      {/* Search box */}
-      <div style={{ width: "100%", display: "flex", flexDirection: "column" }}>
-        <div style={{
-          display: "flex", background: "var(--surface)", border: "1px solid var(--border)",
-          borderRadius: hasResults ? "10px 10px 0 0" : 10, overflow: "hidden",
-        }}>
-          <input
-            autoFocus
-            value={query}
-            onChange={handleInput}
-            placeholder="Search albums, tracks, artists…"
-            style={{
-              flex: 1, padding: "16px 20px", fontSize: 15,
-              background: "transparent", border: "none", outline: "none",
-              color: "var(--text)",
-            }}
-          />
-          {searching && (
-            <div style={{ display: "flex", alignItems: "center", paddingRight: 16, color: "var(--text-muted)", fontSize: 12 }}>…</div>
+          {hasResults && (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 12px 12px", overflow: "hidden" }}>
+              {results.map((item, i) => (
+                <button
+                  key={`${item._type}-${item.id}`}
+                  onClick={() => handleSelect(item)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 14,
+                    padding: "10px 16px", background: "transparent", border: "none",
+                    borderTop: i > 0 ? "1px solid var(--border)" : "none",
+                    cursor: "pointer", textAlign: "left", color: "var(--text)",
+                    transition: "background 0.1s",
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                >
+                  {item.image_url
+                    ? <img src={item.image_url} alt={item.name} style={{ width: 40, height: 40, borderRadius: item._type === "artist" ? "50%" : 5, objectFit: "cover", flexShrink: 0 }} />
+                    : <div style={{ width: 40, height: 40, borderRadius: item._type === "artist" ? "50%" : 5, background: "var(--surface2)", flexShrink: 0 }} />
+                  }
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {Array.isArray(item.artists) ? item.artists.join(", ") : item.artists}
+                      {item.release_date && ` · ${item.release_date.slice(0, 4)}`}
+                      {formatStreams(item.streams) && ` · ${formatStreams(item.streams)}`}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+                    color: TYPE_COLORS[item._type], flexShrink: 0,
+                    background: `${TYPE_COLORS[item._type]}18`,
+                    padding: "2px 8px", borderRadius: 20,
+                    border: `1px solid ${TYPE_COLORS[item._type]}40`,
+                  }}>
+                    {TYPE_LABELS[item._type]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {query && !searching && results.length === 0 && (
+            <div style={{ padding: 16, background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 12px 12px", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
+              No results for "{query}"
+            </div>
           )}
         </div>
 
-        {hasResults && (
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
-            {results.map((item, i) => (
-              <button
-                key={`${item._type}-${item.id}`}
-                onClick={() => handleSelect(item)}
-                style={{
-                  width: "100%", display: "flex", alignItems: "center", gap: 14,
-                  padding: "10px 16px", background: "transparent", border: "none",
-                  borderTop: i > 0 ? "1px solid var(--border)" : "none",
-                  cursor: "pointer", textAlign: "left", color: "var(--text)",
-                  transition: "background 0.1s",
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-              >
-                {item.image_url
-                  ? <img src={item.image_url} alt={item.name} style={{ width: 40, height: 40, borderRadius: item._type === "artist" ? "50%" : 5, objectFit: "cover", flexShrink: 0 }} />
-                  : <div style={{ width: 40, height: 40, borderRadius: item._type === "artist" ? "50%" : 5, background: "var(--surface2)", flexShrink: 0 }} />
-                }
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {Array.isArray(item.artists) ? item.artists.join(", ") : item.artists}
-                    {item.release_date && ` · ${item.release_date.slice(0, 4)}`}
-                    {formatStreams(item.streams) && ` · ${formatStreams(item.streams)}`}
-                  </div>
-                </div>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
-                  color: TYPE_COLORS[item._type], flexShrink: 0,
-                  background: `${TYPE_COLORS[item._type]}18`,
-                  padding: "2px 8px", borderRadius: 20,
-                  border: `1px solid ${TYPE_COLORS[item._type]}40`,
-                }}>
-                  {TYPE_LABELS[item._type]}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {query && !searching && results.length === 0 && (
-          <div style={{ padding: 16, background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 10px 10px", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
-            No results for "{query}"
-          </div>
+        {/* Quick hint — only while idle */}
+        {!query && (
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+            Stream trajectories, era-adjusted comparisons, and community ratings — all in one place.
+          </p>
         )}
       </div>
 
+      {/* Sign-in nudge for logged-out users */}
+      {!authLoading && !user && !query && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+          background: "var(--surface)", border: "1px solid var(--border)",
+          borderRadius: 12, padding: "14px 18px", flexWrap: "wrap",
+        }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Rate, review &amp; follow listeners</span>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Sign in to unlock ratings, reviews, and your personalized feed.</span>
+          </div>
+          <a
+            href={LOGIN_URL}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "8px 16px", background: "#fff", borderRadius: 20,
+              color: "#3c3c3c", fontSize: 13, fontWeight: 600, textDecoration: "none",
+              border: "1px solid #dadce0", flexShrink: 0,
+            }}
+          >
+            <GoogleIcon size={15} />
+            Sign in with Google
+          </a>
+        </div>
+      )}
+
       {/* Featured — only show when not searching */}
       {!query && featured && (
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 32 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
 
-          {/* Global Top Tracks */}
           {featured.top_tracks?.length > 0 && (
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, color: "var(--text)" }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: "var(--text)" }}>
                 🔥 Trending right now
               </h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
@@ -203,10 +248,9 @@ export function SearchPage() {
             </div>
           )}
 
-          {/* New Releases */}
           {featured.new_releases?.length > 0 && (
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, color: "var(--text)" }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: "var(--text)" }}>
                 ✨ New releases
               </h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>

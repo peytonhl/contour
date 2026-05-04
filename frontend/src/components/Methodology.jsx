@@ -171,7 +171,7 @@ export function Methodology() {
         {[
           ["Spotify Web API", "Album search, metadata, release dates, and popularity scores."],
           ["MusicBrainz", "Cross-referenced release dates and structured catalog metadata."],
-          ["Kworb.net", "Total stream counts by album. Scraped on demand; used as the trajectory endpoint. Falls back to a Spotify-popularity-based estimate if unavailable."],
+          ["Kworb.net", "Stream counts by album and track. Scraped on demand and cached; also used to pull historical snapshots via the Wayback Machine for more accurate trajectory curves."],
           ["RIAA Public Database", "Certification milestones (Gold, Platinum, Diamond) annotated on the chart as vertical reference lines."],
         ].map(([src, desc]) => (
           <div key={src} style={{ display: "flex", gap: 12, fontSize: 13, lineHeight: 1.7, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
@@ -197,13 +197,13 @@ export function Methodology() {
 
       <Section title="Your Data & Privacy">
         <P>
-          Signing in with Spotify lets you save comparisons and build a listening history on Contour.
-          We request only the minimum Spotify permissions needed to identify you.
+          Signing in with Google lets you rate albums, write reviews, follow other listeners,
+          and build your activity history on Contour. We request only your basic Google profile.
         </P>
         {[
-          ["What we store", "Your Spotify display name and profile photo — used to show who you are in the header."],
-          ["What we don't store", "Your listening history, playlists, saved songs, follows, or subscription type. We never read or write anything in your Spotify account."],
-          ["Why Spotify at all?", "Spotify is our identity layer — it lets you sign in without creating yet another password. Your Contour account is separate from your Spotify account in all other respects."],
+          ["What we store", "Your Google display name and profile photo — used to show who you are in the app."],
+          ["What we don't store", "Your Google Drive, Gmail, contacts, or any other Google account data. We never read or write anything in your Google account beyond basic profile info."],
+          ["Why Google?", "Google Sign-In is a familiar, secure, password-free way to create an account. Your Contour activity (ratings, reviews, follows) is kept entirely separate from your Google account."],
         ].map(([term, desc]) => (
           <div key={term} style={{ display: "flex", gap: 12, fontSize: 13, lineHeight: 1.7, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
             <span style={{ fontWeight: 700, color: "var(--text)", minWidth: 160, flexShrink: 0 }}>{term}</span>
