@@ -13,8 +13,8 @@ function formatStreams(n) {
   return null;
 }
 
-const TYPE_LABELS = { album: "Album", track: "Track", artist: "Artist" };
-const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C };
+const TYPE_LABELS = { album: "Album", track: "Track", artist: "Artist", user: "User" };
+const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C, user: "#60a5fa" };
 
 function FeaturedCard({ item, type }) {
   const navigate = useNavigate();
@@ -67,15 +67,17 @@ export function SearchPage() {
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const [albums, tracks, artists] = await Promise.all([
+        const [albums, tracks, artists, users] = await Promise.all([
           api.searchAlbums(q).catch(() => []),
           api.searchTracks(q).catch(() => []),
           api.searchArtists(q).catch(() => []),
+          api.searchUsers(q).catch(() => []),
         ]);
         const tagged = [
           ...albums.slice(0, 4).map(r => ({ ...r, _type: "album" })),
           ...tracks.slice(0, 4).map(r => ({ ...r, _type: "track" })),
           ...artists.slice(0, 3).map(r => ({ ...r, _type: "artist" })),
+          ...users.slice(0, 3).map(r => ({ ...r, _type: "user" })),
         ];
         setResults(tagged);
       } catch {
@@ -89,6 +91,7 @@ export function SearchPage() {
   function handleSelect(item) {
     if (item._type === "album") navigate(`/album/${item.id}`);
     else if (item._type === "track") navigate(`/track/${item.id}`);
+    else if (item._type === "user") navigate(`/user/${item.id}`);
     else navigate(`/artist/${item.id}`);
   }
 

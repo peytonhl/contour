@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,17 @@ from models import User, UserFollow, Rating, Review, ArtistFavorite
 from routers.auth import decode_jwt, optional_user_id
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/search")
+async def search_users(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
+    """Search users by display name."""
+    results = (await db.execute(
+        select(User)
+        .where(User.display_name.ilike(f"%{q}%"))
+        .limit(5)
+    )).scalars().all()
+    return [{"id": u.id, "display_name": u.display_name, "image_url": u.image_url} for u in results]
 
 
 @router.get("/{user_id}")

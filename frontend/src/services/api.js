@@ -84,6 +84,7 @@ export const api = {
   getFeed: () => request(`/feed`),
 
   // Users (follow / public profiles)
+  searchUsers: (q) => request(`/users/search?q=${encodeURIComponent(q)}`),
   getUser: (id) => request(`/users/${id}`),
   toggleFollow: (id) => post(`/users/${id}/follow`, {}),
   getFollowing: (id) => request(`/users/${id}/following`),
