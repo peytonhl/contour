@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import { Layout } from "./components/Layout.jsx";
+import { OnboardingModal } from "./components/OnboardingModal.jsx";
 import { SearchPage } from "./pages/SearchPage.jsx";
 import { ComparePage } from "./pages/ComparePage.jsx";
 import { ProfilePage } from "./pages/ProfilePage.jsx";
@@ -15,6 +16,8 @@ import { PrivacyPage } from "./pages/PrivacyPage.jsx";
 
 export default function App() {
   return (
+    <>
+    <OnboardingModal />
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<SearchPage />} />
@@ -31,5 +34,6 @@ export default function App() {
         <Route path="privacy" element={<PrivacyPage />} />
       </Route>
     </Routes>
+    </>
   );
 }
