@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
@@ -218,16 +218,64 @@ function SuggestedUser({ u, onFollow }) {
   );
 }
 
+// ── Following tab — exported so ForYouPage can embed it ──────────────────────
+export function FollowingTab() {
+  const { user } = useAuth();
+  const [following, setFollowing] = useState([]);
+  const [suggested, setSuggested] = useState([]);
+  const [loadingFollowing, setLoadingFollowing] = useState(false);
+
+  useEffect(() => {
+    api.getSuggestedUsers().then(setSuggested).catch(() => {});
+    if (!user) return;
+    setLoadingFollowing(true);
+    api.getFeed()
+      .then(setFollowing)
+      .catch(() => setFollowing([]))
+      .finally(() => setLoadingFollowing(false));
+  }, [user]);
+
+  return (
+    <div style={{ maxWidth: 600, margin: "0 auto", padding: "0 20px", overflowY: "auto", height: "100%" }}>
+      {!user && (
+        <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 32 }}>🔒</div>
+          <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Sign in to see your feed</p>
+          <p style={{ fontSize: 13 }}>Follow other users to see their activity here.</p>
+        </div>
+      )}
+      {user && loadingFollowing && <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>}
+      {user && !loadingFollowing && following.length === 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "24px 0" }}>
+          <div style={{ textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 6 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", margin: 0 }}>Nothing here yet</p>
+            <p style={{ fontSize: 13, margin: 0 }}>Follow people to see their activity in your feed.</p>
+          </div>
+          {suggested.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
+                People to follow
+              </p>
+              {suggested.map((u) => (
+                <SuggestedUser key={u.id} u={u} onFollow={(id) => setSuggested((prev) => prev.filter((x) => x.id !== id))} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {user && !loadingFollowing && following.map((item, i) => (
+        <FollowingItem key={`${item.type}-${item.user?.id}-${item.entity_id}-${i}`} item={item} />
+      ))}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export function FeedPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [tab, setTab] = useState("discover"); // "following" | "discover"
   const [sort, setSort] = useState("recent");
-  const [following, setFollowing] = useState([]);
   const [discover, setDiscover] = useState([]);
-  const [suggested, setSuggested] = useState([]);
-  const [loadingFollowing, setLoadingFollowing] = useState(false);
   const [loadingDiscover, setLoadingDiscover] = useState(true);
 
   // Discover always loads
@@ -238,20 +286,6 @@ export function FeedPage() {
       .catch(() => setDiscover([]))
       .finally(() => setLoadingDiscover(false));
   }, [sort]);
-
-  // Following + suggested load when tab is active
-  useEffect(() => {
-    if (tab !== "following") return;
-    if (suggested.length === 0) {
-      api.getSuggestedUsers().then(setSuggested).catch(() => {});
-    }
-    if (!user || following.length > 0) return;
-    setLoadingFollowing(true);
-    api.getFeed()
-      .then(setFollowing)
-      .catch(() => setFollowing([]))
-      .finally(() => setLoadingFollowing(false));
-  }, [user, tab]);
 
   function handleVote(reviewId, value) {
     if (!user) return;
@@ -314,39 +348,7 @@ export function FeedPage() {
       )}
 
       {/* Following tab */}
-      {tab === "following" && (
-        <>
-          {!user && (
-            <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ fontSize: 32 }}>🔒</div>
-              <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Sign in to see your feed</p>
-              <p style={{ fontSize: 13 }}>Follow other users to see their activity here.</p>
-            </div>
-          )}
-          {user && loadingFollowing && <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>}
-          {user && !loadingFollowing && following.length === 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "24px 0" }}>
-              <div style={{ textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 6 }}>
-                <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", margin: 0 }}>Nothing here yet</p>
-                <p style={{ fontSize: 13, margin: 0 }}>Follow people to see their activity in your feed.</p>
-              </div>
-              {suggested.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
-                    People to follow
-                  </p>
-                  {suggested.map((u) => (
-                    <SuggestedUser key={u.id} u={u} onFollow={(id) => setSuggested((prev) => prev.filter((x) => x.id !== id))} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {user && !loadingFollowing && following.map((item, i) => (
-            <FollowingItem key={`${item.type}-${item.user?.id}-${item.entity_id}-${i}`} item={item} />
-          ))}
-        </>
-      )}
+      {tab === "following" && <FollowingTab />}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { UserPage } from "./pages/UserPage.jsx";
 import { FeedPage } from "./pages/FeedPage.jsx";
 import { LeaderboardPage } from "./pages/LeaderboardPage.jsx";
 import { NotificationsPage } from "./pages/NotificationsPage.jsx";
+import { ForYouPage } from "./pages/ForYouPage.jsx";
 import { Methodology } from "./components/Methodology.jsx";
 import { PrivacyPage } from "./pages/PrivacyPage.jsx";
 
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="feed" element={<FeedPage />} />
         <Route path="charts" element={<LeaderboardPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="for-you" element={<ForYouPage />} />
         <Route path="auth/success" element={<AuthSuccessPage />} />
         <Route path="privacy" element={<PrivacyPage />} />
       </Route>

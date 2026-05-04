@@ -109,6 +109,14 @@ export const api = {
   // Suggested users
   getSuggestedUsers: () => request(`/users/suggested`),
 
+  // Discover / For You feed
+  getDiscoverFeed: ({ genres = [], exclude = [], limit = 10 } = {}) => {
+    const params = new URLSearchParams({ limit });
+    if (genres.length) params.set("genres", genres.join(","));
+    if (exclude.length) params.set("exclude", exclude.join(","));
+    return request(`/discover/feed?${params}`);
+  },
+
   // Feed
   getFeed: () => request(`/feed`),
 

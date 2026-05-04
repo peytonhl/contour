@@ -132,7 +132,7 @@ export function Layout() {
     { to: "/", label: "Search", end: true },
     { to: "/compare", label: "Compare" },
     { to: "/charts", label: "Charts" },
-    { to: "/feed", label: "Feed" },
+    { to: "/for-you", label: "For You" },
     { to: "/methodology", label: "How It Works" },
   ];
 
@@ -295,7 +295,7 @@ export function Layout() {
           <BottomTab to="/" end label="Search" icon={<SearchIcon />} />
           <BottomTab to="/compare" label="Compare" icon={<CompareIcon />} />
           <BottomTab to="/charts" label="Charts" icon={<ChartsIcon />} />
-          <BottomTab to="/feed" label="Feed" icon={<FeedIcon />} />
+          <BottomTab to="/for-you" label="For You" icon={<FeedIcon />} />
 
           {user ? (
             <NavLink

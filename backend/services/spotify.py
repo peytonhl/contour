@@ -176,6 +176,20 @@ async def get_new_releases(limit: int = 10) -> list[dict]:
     return [_parse_album(a) for a in items]
 
 
+async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
+    """Search for tracks by genre tag using Spotify's genre filter."""
+    async with httpx.AsyncClient() as client:
+        token = await _get_token(client)
+        resp = await client.get(
+            "https://api.spotify.com/v1/search",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"q": f"genre:{genre}", "type": "track", "limit": limit, "market": "US"},
+        )
+        resp.raise_for_status()
+        items = resp.json().get("tracks", {}).get("items", [])
+    return [_parse_track(t) for t in items if t.get("id")]
+
+
 async def get_global_top_tracks(limit: int = 10) -> list[dict]:
     """Fetch top tracks from Spotify's Global Top 50 playlist."""
     GLOBAL_TOP_50 = "37i9dQZEVXbMDoHDwVN2tF"
@@ -311,6 +325,7 @@ def _parse_track(t: dict) -> dict:
         "explicit": t.get("explicit", False),
         "track_number": t.get("track_number"),
         "image_url": image_url,
+        "preview_url": t.get("preview_url"),
         "external_url": t.get("external_urls", {}).get("spotify"),
         # Fields needed by album cache upsert
         "label": None,
