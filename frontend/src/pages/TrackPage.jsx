@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { TrajectoryChart } from "../components/TrajectoryChart.jsx";
 import { ReviewSection } from "../components/ReviewSection.jsx";
 import { EraCallout } from "../components/EraCallout.jsx";
+import { ShareButton } from "../components/ShareButton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const DISCLAIMER = "Stream trajectory is a modeled approximation calibrated to the known total stream count. Exact day-by-day data requires Luminate licensing.";
@@ -108,17 +109,18 @@ export function TrackPage() {
             )}
           </div>
 
-          <div className="hero-actions" style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <div className="hero-actions" style={{ display: "flex", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
             <button
               onClick={() => navigate("/compare")}
               style={{ padding: "8px 18px", background: "var(--accent-b)", border: "none", borderRadius: 7, color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
             >
-              Compare this track
+              Compare
             </button>
+            <ShareButton title={`${track.name} on Contour`} />
             {track.external_url && (
               <a href={track.external_url} target="_blank" rel="noreferrer"
                 style={{ padding: "8px 18px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13, display: "inline-flex", alignItems: "center" }}>
-                Open in Spotify ↗
+                Spotify ↗
               </a>
             )}
           </div>

@@ -196,6 +196,20 @@ async def get_global_top_tracks(limit: int = 10) -> list[dict]:
     return tracks
 
 
+async def get_artist_top_tracks(artist_id: str, market: str = "US") -> list[dict]:
+    """Fetch an artist's top 10 tracks from Spotify."""
+    async with httpx.AsyncClient() as client:
+        token = await _get_token(client)
+        resp = await client.get(
+            f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"market": market},
+        )
+        resp.raise_for_status()
+        tracks = resp.json().get("tracks", [])
+    return [_parse_track(t) for t in tracks[:10]]
+
+
 async def get_artist_albums(artist_id: str) -> list[dict]:
     """
     Fetch all albums for an artist by their Spotify artist ID.

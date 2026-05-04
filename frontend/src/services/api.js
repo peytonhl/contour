@@ -50,6 +50,7 @@ export const api = {
   searchArtists: (q) => request(`/artists/search?q=${encodeURIComponent(q)}`),
   getArtist: (id) => request(`/artists/${id}`),
   getArtistAlbums: (id) => request(`/artists/${id}/albums`),
+  getArtistTopTracks: (id) => request(`/artists/${id}/top-tracks`),
   getArtistFavorite: (id) => request(`/artists/${id}/favorite`),
   toggleArtistFavorite: (id) => post(`/artists/${id}/favorite`, {}),
 

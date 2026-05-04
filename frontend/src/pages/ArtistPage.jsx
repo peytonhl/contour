@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../services/api.js";
-import { ComparisonWidget } from "../components/ComparisonWidget.jsx";
 import { ReviewSection } from "../components/ReviewSection.jsx";
+import { ShareButton } from "../components/ShareButton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
+const ACCENT_A = "#a78bfa";
+
+// ── Formatters ────────────────────────────────────────────────────────────────
 function formatStreams(n) {
   if (!n && n !== 0) return "—";
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
@@ -14,16 +17,83 @@ function formatStreams(n) {
 
 function formatFollowers(n) {
   if (!n) return null;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M followers`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K followers`;
-  return `${n} followers`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return `${n}`;
 }
 
+function formatDuration(ms) {
+  if (!ms) return "—";
+  const m = Math.floor(ms / 60000);
+  const s = String(Math.floor((ms % 60000) / 1000)).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+function StatPill({ label, value }) {
+  if (!value && value !== 0) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center" }}>
+      <span style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>{value}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>{label}</span>
+    </div>
+  );
+}
+
+function TopTrackRow({ track, rank }) {
+  return (
+    <Link
+      to={`/track/${track.id}`}
+      style={{
+        display: "flex", alignItems: "center", gap: 14,
+        padding: "10px 16px",
+        textDecoration: "none", color: "var(--text)",
+        borderRadius: 8,
+        transition: "background 0.1s",
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
+      onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+    >
+      {/* Rank */}
+      <span style={{ width: 20, textAlign: "right", fontSize: 13, color: "var(--text-muted)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+        {rank}
+      </span>
+
+      {/* Art */}
+      {track.image_url
+        ? <img src={track.image_url} alt={track.name} style={{ width: 42, height: 42, borderRadius: 5, objectFit: "cover", flexShrink: 0 }} />
+        : <div style={{ width: 42, height: 42, borderRadius: 5, background: "var(--surface2)", flexShrink: 0 }} />
+      }
+
+      {/* Name + album */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {track.name}
+          {track.explicit && (
+            <span style={{ marginLeft: 6, fontSize: 9, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 3, padding: "1px 4px", color: "var(--text-muted)", verticalAlign: "middle", fontWeight: 600 }}>E</span>
+          )}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+          {track.album_name}
+        </div>
+      </div>
+
+      {/* Duration */}
+      <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+        {formatDuration(track.duration_ms)}
+      </span>
+    </Link>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 export function ArtistPage() {
   const { id } = useParams();
   const { user } = useAuth();
+
   const [artist, setArtist] = useState(null);
   const [albums, setAlbums] = useState([]);
+  const [topTracks, setTopTracks] = useState([]);
   const [sort, setSort] = useState("date");
   const [favorited, setFavorited] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
@@ -37,11 +107,13 @@ export function ArtistPage() {
       api.getArtist(id),
       api.getArtistAlbums(id),
       api.getArtistFavorite(id),
+      api.getArtistTopTracks(id).catch(() => []),
     ])
-      .then(([artistData, albumData, favData]) => {
+      .then(([artistData, albumData, favData, tracksData]) => {
         setArtist(artistData);
         setAlbums(albumData);
         setFavorited(favData.favorited);
+        setTopTracks(tracksData);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -64,62 +136,128 @@ export function ArtistPage() {
   });
 
   const totalStreams = albums.reduce((sum, a) => sum + (a.streams ?? 0), 0);
+  const topAlbum = [...albums].sort((a, b) => (b.streams ?? -1) - (a.streams ?? -1))[0];
 
   if (loading) return <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>;
   if (error) return <div style={{ padding: 60, textAlign: "center", color: "var(--danger)" }}>Error: {error}</div>;
   if (!artist) return null;
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 28 }}>
-      {/* Hero */}
-      <div className="hero-row" style={{ display: "flex", gap: 24, alignItems: "center" }}>
+    <div className="hero-page" style={{ maxWidth: 1000, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 32 }}>
+
+      {/* ── Hero ── */}
+      <div className="hero-row" style={{ display: "flex", gap: 28, alignItems: "center" }}>
+        {/* Photo */}
         {artist.image_url
-          ? <img src={artist.image_url} alt={artist.name} style={{ width: 120, height: 120, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-          : <div style={{ width: 120, height: 120, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
+          ? <img src={artist.image_url} alt={artist.name} style={{ width: 140, height: 140, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+          : <div style={{ width: 140, height: 140, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
         }
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)" }}>Artist</div>
-          <h1 style={{ fontSize: 32, fontWeight: 800, lineHeight: 1.1 }}>{artist.name}</h1>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--text-muted)" }}>
-            {formatFollowers(artist.followers) && <span>{formatFollowers(artist.followers)}</span>}
+
+        {/* Info */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minWidth: 0 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 4 }}>Artist</div>
+            <h1 style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1 }}>{artist.name}</h1>
+          </div>
+
+          {/* Followers + genres */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            {formatFollowers(artist.followers) && (
+              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                <strong style={{ color: "var(--text)" }}>{formatFollowers(artist.followers)}</strong> Spotify followers
+              </span>
+            )}
             {artist.genres?.slice(0, 3).map((g) => (
-              <span key={g} style={{ padding: "2px 10px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 20 }}>{g}</span>
+              <span key={g} style={{ fontSize: 12, padding: "2px 10px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 20, color: "var(--text-muted)" }}>{g}</span>
             ))}
           </div>
+
+          {/* Total streams */}
           {totalStreams > 0 && (
-            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              <strong style={{ color: "var(--accent-a)" }}>{formatStreams(totalStreams)}</strong> total streams across {albums.length} releases
+            <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
+              <strong style={{ color: ACCENT_A, fontSize: 16 }}>{formatStreams(totalStreams)}</strong>
+              {" "}combined catalog streams · {albums.length} release{albums.length !== 1 ? "s" : ""}
             </div>
           )}
-          {user && (
-            <button
-              onClick={handleToggleFavorite}
-              disabled={favLoading}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-                background: favorited ? "rgba(167,139,250,0.15)" : "var(--surface2)",
-                border: `1px solid ${favorited ? "var(--accent-a)" : "var(--border)"}`,
-                color: favorited ? "var(--accent-a)" : "var(--text-muted)",
-                cursor: favLoading ? "default" : "pointer", alignSelf: "flex-start",
-                transition: "all 0.15s",
-              }}
-            >
-              {favorited ? "♥ Favorited" : "♡ Favorite Artist"}
-            </button>
-          )}
+
+          {/* Action buttons */}
+          <div className="hero-actions" style={{ display: "flex", gap: 10, marginTop: 2, flexWrap: "wrap" }}>
+            {user && (
+              <button
+                onClick={handleToggleFavorite}
+                disabled={favLoading}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 18px", borderRadius: 7, fontSize: 13, fontWeight: 600,
+                  background: favorited ? "rgba(167,139,250,0.15)" : "var(--surface2)",
+                  border: `1px solid ${favorited ? ACCENT_A : "var(--border)"}`,
+                  color: favorited ? ACCENT_A : "var(--text-muted)",
+                  cursor: favLoading ? "default" : "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                {favorited ? "♥ Favorited" : "♡ Add to Favorites"}
+              </button>
+            )}
+            <ShareButton title={`${artist.name} on Contour`} />
+            {artist.external_url && (
+              <a href={artist.external_url} target="_blank" rel="noreferrer"
+                style={{ display: "inline-flex", alignItems: "center", padding: "8px 18px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13 }}>
+                Open in Spotify ↗
+              </a>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Discography */}
+      {/* ── Stats bar ── */}
+      {(totalStreams > 0 || albums.length > 0) && (
+        <div style={{
+          display: "flex", gap: 0,
+          background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
+          overflow: "hidden",
+        }}>
+          {[
+            { label: "Catalog Streams", value: totalStreams > 0 ? formatStreams(totalStreams) : null },
+            { label: "Releases", value: albums.length > 0 ? albums.length : null },
+            topAlbum?.streams ? { label: "Top Release", value: topAlbum.name.length > 20 ? topAlbum.name.slice(0, 18) + "…" : topAlbum.name } : null,
+          ].filter(Boolean).map((stat, i, arr) => (
+            <div key={stat.label} style={{
+              flex: 1, padding: "16px 20px", textAlign: "center",
+              borderRight: i < arr.length - 1 ? "1px solid var(--border)" : "none",
+            }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {stat.value}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+                {stat.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Top Tracks ── */}
+      {topTracks.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Popular Tracks</h2>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", padding: "6px 0" }}>
+            {topTracks.map((track, i) => (
+              <TopTrackRow key={track.id} track={track} rank={i + 1} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Discography ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700 }}>Discography</h2>
-          <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 7, overflow: "hidden", border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 7, overflow: "hidden", border: "1px solid var(--border)", flexShrink: 0 }}>
             {[["date", "Latest"], ["streams", "Most Streamed"]].map(([val, lbl]) => (
               <button key={val} onClick={() => setSort(val)} style={{
                 padding: "5px 14px", fontSize: 12, fontWeight: sort === val ? 700 : 400,
-                background: sort === val ? "var(--accent-a)" : "transparent",
+                background: sort === val ? ACCENT_A : "transparent",
                 color: sort === val ? "#000" : "var(--text-muted)",
                 border: "none", cursor: "pointer", transition: "all 0.15s",
               }}>{lbl}</button>
@@ -127,14 +265,14 @@ export function ArtistPage() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 14 }}>
           {sorted.map((album) => (
             <Link key={album.id} to={`/album/${album.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
               <div style={{
                 background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10,
                 overflow: "hidden", transition: "border-color 0.15s, transform 0.15s",
               }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent-a)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT_A; e.currentTarget.style.transform = "translateY(-2px)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; }}
               >
                 {album.image_url
@@ -146,10 +284,10 @@ export function ArtistPage() {
                     {album.name}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{album.release_date?.slice(0, 4)}</div>
-                  <div style={{ fontSize: 12, color: "var(--accent-a)", marginTop: 4, fontWeight: 600 }}>
+                  <div style={{ fontSize: 12, color: ACCENT_A, marginTop: 4, fontWeight: 600 }}>
                     {album.streams ? formatStreams(album.streams) : (
                       <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
-                        {album.enrichment_status === "pending" ? "enriching…" : "—"}
+                        {album.enrichment_status === "pending" ? "loading…" : "—"}
                       </span>
                     )}
                   </div>
@@ -160,7 +298,7 @@ export function ArtistPage() {
         </div>
       </div>
 
-      {/* Ratings & Reviews */}
+      {/* ── Ratings & Reviews ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700 }}>Ratings & Reviews</h2>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px" }}>
@@ -168,18 +306,28 @@ export function ArtistPage() {
         </div>
       </div>
 
-      {/* Compare albums from this artist */}
+      {/* ── Compare ── */}
       {albums.length >= 2 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Compare</h2>
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 20px" }}>
-            <ComparisonWidget
-              initialAlbumA={sorted[0] ? { id: sorted[0].id, name: sorted[0].name, artists: [artist.name], image_url: sorted[0].image_url } : null}
-              initialAlbumB={sorted[1] ? { id: sorted[1].id, name: sorted[1].name, artists: [artist.name], image_url: sorted[1].image_url } : null}
-            />
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Compare Albums</h2>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px" }}>
+            {/* Lazy import to avoid increasing initial bundle */}
+            <CompareSection sorted={sorted} artistName={artist.name} />
           </div>
         </div>
       )}
+
     </div>
+  );
+}
+
+// Split out so ComparisonWidget doesn't load until it's needed
+import { ComparisonWidget } from "../components/ComparisonWidget.jsx";
+function CompareSection({ sorted, artistName }) {
+  return (
+    <ComparisonWidget
+      initialAlbumA={sorted[0] ? { id: sorted[0].id, name: sorted[0].name, artists: [artistName], image_url: sorted[0].image_url } : null}
+      initialAlbumB={sorted[1] ? { id: sorted[1].id, name: sorted[1].name, artists: [artistName], image_url: sorted[1].image_url } : null}
+    />
   );
 }

@@ -52,6 +52,15 @@ async def get_artist(artist_id: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/{artist_id}/top-tracks")
+async def get_artist_top_tracks(artist_id: str):
+    """Return the artist's top 10 tracks from Spotify."""
+    try:
+        return await spotify.get_artist_top_tracks(artist_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @router.get("/{artist_id}/albums", response_model=List[ArtistAlbum])
 async def get_artist_albums(
     artist_id: str,
