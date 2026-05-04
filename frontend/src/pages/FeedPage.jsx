@@ -165,6 +165,59 @@ function FollowingItem({ item }) {
   );
 }
 
+// ── Suggested user row ────────────────────────────────────────────────────────
+function SuggestedUser({ u, onFollow }) {
+  const [followed, setFollowed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
+
+  async function handleFollow() {
+    if (!user) return;
+    setLoading(true);
+    try {
+      await api.toggleFollow(u.id);
+      setFollowed(true);
+      setTimeout(() => onFollow(u.id), 600);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <Link to={`/user/${u.id}`} style={{ flexShrink: 0 }}>
+        {u.image_url
+          ? <img src={u.image_url} alt={u.display_name} style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover" }} />
+          : <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--surface2)" }} />
+        }
+      </Link>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Link to={`/user/${u.id}`} style={{ color: "var(--text)", fontWeight: 600, fontSize: 14, textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {u.display_name}
+        </Link>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}>
+          {u.bio ? u.bio.slice(0, 60) + (u.bio.length > 60 ? "…" : "") : `${u.reviews_count} review${u.reviews_count !== 1 ? "s" : ""}`}
+        </div>
+      </div>
+      {user && (
+        <button
+          onClick={handleFollow} disabled={loading || followed}
+          style={{
+            padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+            border: `1px solid ${followed ? "var(--border)" : ACCENT_A}`,
+            background: followed ? "var(--surface2)" : `${ACCENT_A}18`,
+            color: followed ? "var(--text-muted)" : ACCENT_A,
+            cursor: loading || followed ? "default" : "pointer",
+            transition: "all 0.15s", flexShrink: 0,
+          }}
+        >
+          {followed ? "Following ✓" : "Follow"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export function FeedPage() {
   const { user } = useAuth();
@@ -173,6 +226,7 @@ export function FeedPage() {
   const [sort, setSort] = useState("recent");
   const [following, setFollowing] = useState([]);
   const [discover, setDiscover] = useState([]);
+  const [suggested, setSuggested] = useState([]);
   const [loadingFollowing, setLoadingFollowing] = useState(false);
   const [loadingDiscover, setLoadingDiscover] = useState(true);
 
@@ -185,10 +239,13 @@ export function FeedPage() {
       .finally(() => setLoadingDiscover(false));
   }, [sort]);
 
-  // Following only loads if logged in
+  // Following + suggested load when tab is active
   useEffect(() => {
-    if (!user || tab !== "following") return;
-    if (following.length > 0) return; // already loaded
+    if (tab !== "following") return;
+    if (suggested.length === 0) {
+      api.getSuggestedUsers().then(setSuggested).catch(() => {});
+    }
+    if (!user || following.length > 0) return;
     setLoadingFollowing(true);
     api.getFeed()
       .then(setFollowing)
@@ -268,10 +325,21 @@ export function FeedPage() {
           )}
           {user && loadingFollowing && <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>}
           {user && !loadingFollowing && following.length === 0 && (
-            <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ fontSize: 32 }}>👥</div>
-              <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Nothing here yet</p>
-              <p style={{ fontSize: 13 }}>Follow other users to see their ratings and reviews here.</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "24px 0" }}>
+              <div style={{ textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 6 }}>
+                <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", margin: 0 }}>Nothing here yet</p>
+                <p style={{ fontSize: 13, margin: 0 }}>Follow people to see their activity in your feed.</p>
+              </div>
+              {suggested.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
+                    People to follow
+                  </p>
+                  {suggested.map((u) => (
+                    <SuggestedUser key={u.id} u={u} onFollow={(id) => setSuggested((prev) => prev.filter((x) => x.id !== id))} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {user && !loadingFollowing && following.map((item, i) => (

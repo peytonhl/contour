@@ -20,6 +20,7 @@ class User(Base):
     spotify_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True, nullable=True)
     display_name: Mapped[str] = mapped_column(String(256))
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -136,6 +137,21 @@ class AnchorFetchStatus(Base):
     entity_type: Mapped[str] = mapped_column(String(16), primary_key=True)
     kworb_daily_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     wayback_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class Notification(Base):
+    """In-app notifications: follow, upvote, reply."""
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)   # recipient
+    type: Mapped[str] = mapped_column(String(16))                  # "follow" | "upvote" | "reply"
+    actor_id: Mapped[str] = mapped_column(String(64))              # who triggered it
+    review_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    entity_type: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    entity_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    read: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class AlbumCache(Base):

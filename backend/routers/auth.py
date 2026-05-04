@@ -15,6 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pydantic import BaseModel
 from database import get_db
 from models import ArtistFavorite, Rating, Review, User
 from services import spotify
@@ -175,6 +176,7 @@ async def get_me(
         "display_name": user.display_name,
         "image_url": user.image_url,
         "email": user.email,
+        "bio": user.bio,
     }
 
 
@@ -273,3 +275,30 @@ async def get_profile(
         ],
         "favorite_artists": [f.artist_id for f in favorites],
     }
+
+
+class ProfileUpdate(BaseModel):
+    bio: Optional[str] = None
+
+
+@router.patch("/profile")
+async def update_profile(
+    body: ProfileUpdate,
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the current user's editable profile fields (bio)."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = decode_jwt(authorization[7:])
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if body.bio is not None:
+        user.bio = body.bio.strip()[:300] or None  # max 300 chars, empty → null
+
+    await db.commit()
+    return {"ok": True, "bio": user.bio}

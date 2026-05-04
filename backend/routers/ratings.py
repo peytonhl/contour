@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import Rating, Review, ReviewLike, ReviewVote, ReviewReply, User
 from routers.auth import optional_user_id
+from routers.notifications import create_notification
 
 SPOTIFY_ID_RE = re.compile(r'^[A-Za-z0-9]{22}$')
 VALID_ENTITY_TYPES = {"album", "track", "artist"}
@@ -308,6 +309,7 @@ async def vote_review(
         )
     )).scalar_one_or_none()
 
+    is_new_upvote = False
     if existing:
         if existing.value == body.value:
             # Same vote — toggle off
@@ -317,12 +319,22 @@ async def vote_review(
             ))
             user_vote = None
         else:
-            # Flip vote
             existing.value = body.value
             user_vote = body.value
+            is_new_upvote = body.value == 1
     else:
         db.add(ReviewVote(user_id=user_id, review_id=review_id, value=body.value))
         user_vote = body.value
+        is_new_upvote = body.value == 1
+
+    # Notify review author on new upvote
+    if is_new_upvote:
+        review = (await db.execute(
+            select(Review).where(Review.id == review_id)
+        )).scalar_one_or_none()
+        if review:
+            await create_notification(db, user_id=review.user_id, type="upvote",
+                                      actor_id=user_id, review_id=review_id)
 
     await db.commit()
 
@@ -381,6 +393,8 @@ async def post_reply(
         raise HTTPException(status_code=404, detail="Review not found")
 
     db.add(ReviewReply(review_id=review_id, user_id=user_id, body=body.body.strip()))
+    await create_notification(db, user_id=review.user_id, type="reply",
+                              actor_id=user_id, review_id=review_id)
     await db.commit()
     return {"ok": True}
 

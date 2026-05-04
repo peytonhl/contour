@@ -91,6 +91,24 @@ export const api = {
   // Leaderboard
   getLeaderboard: (sort = "era", limit = 50) => request(`/leaderboard/?sort=${sort}&limit=${limit}`),
 
+  // Notifications
+  getNotifications: () => request(`/notifications`),
+  getUnreadCount: () => request(`/notifications/unread-count`),
+  markNotificationsRead: () => post(`/notifications/read-all`, {}),
+
+  // Profile update
+  updateProfile: (bio) => {
+    const token = getToken();
+    return fetch(`${BASE}/auth/profile`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ bio }),
+    }).then((r) => r.json());
+  },
+
+  // Suggested users
+  getSuggestedUsers: () => request(`/users/suggested`),
+
   // Feed
   getFeed: () => request(`/feed`),
 

@@ -60,6 +60,9 @@ export function ProfilePage() {
   const [followers, setFollowers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("ratings");
+  const [editingBio, setEditingBio] = useState(false);
+  const [bioInput, setBioInput] = useState("");
+  const [savingBio, setSavingBio] = useState(false);
 
   useEffect(() => {
     if (!user) { navigate("/"); return; }
@@ -87,6 +90,17 @@ export function ProfilePage() {
       } catch {}
     });
   }, [profile?.favorite_artists]);
+
+  async function handleSaveBio() {
+    setSavingBio(true);
+    try {
+      await api.updateProfile(bioInput);
+      setProfile((p) => p ? { ...p } : p);
+      setEditingBio(false);
+    } finally {
+      setSavingBio(false);
+    }
+  }
 
   if (!user) return null;
   if (loading) return <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>;
@@ -116,6 +130,54 @@ export function ProfilePage() {
             <span><strong style={{ color: "var(--text)" }}>{following.length}</strong> following</span>
             <span><strong style={{ color: "var(--text)" }}>{followers.length}</strong> followers</span>
           </div>
+          {/* Bio */}
+          {!editingBio && (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              {user.bio
+                ? <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6, maxWidth: 400 }}>{user.bio}</p>
+                : <p style={{ fontSize: 13, color: "var(--border)", margin: 0, fontStyle: "italic" }}>No bio yet</p>
+              }
+              <button
+                onClick={() => { setBioInput(user.bio ?? ""); setEditingBio(true); }}
+                style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer", padding: "2px 8px", flexShrink: 0 }}
+              >
+                Edit
+              </button>
+            </div>
+          )}
+          {editingBio && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 400 }}>
+              <textarea
+                autoFocus
+                value={bioInput}
+                onChange={(e) => setBioInput(e.target.value.slice(0, 300))}
+                placeholder="Tell people about your taste…"
+                rows={3}
+                style={{
+                  width: "100%", padding: "8px 10px", fontSize: 13,
+                  background: "var(--surface2)", border: "1px solid var(--border)",
+                  borderRadius: 8, color: "var(--text)", resize: "vertical",
+                  outline: "none", boxSizing: "border-box",
+                }}
+              />
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  onClick={handleSaveBio} disabled={savingBio}
+                  style={{ fontSize: 12, fontWeight: 700, padding: "5px 14px", borderRadius: 6, background: ACCENT, border: "none", color: "#000", cursor: "pointer" }}
+                >
+                  {savingBio ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={() => setEditingBio(false)}
+                  style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", padding: "5px 10px" }}
+                >
+                  Cancel
+                </button>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>{bioInput.length}/300</span>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={logout}
             style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", padding: "4px 10px", alignSelf: "flex-start" }}

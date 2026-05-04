@@ -9,8 +9,59 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import User, UserFollow, Rating, Review, ArtistFavorite
 from routers.auth import decode_jwt, optional_user_id
+from routers.notifications import create_notification
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/suggested")
+async def get_suggested_users(
+    db: AsyncSession = Depends(get_db),
+    viewer_id: Optional[str] = Depends(optional_user_id),
+):
+    """
+    Return up to 6 active users (most reviews) that the viewer doesn't already follow.
+    Works for logged-out users too — just excludes nobody.
+    """
+    # Users already followed
+    already_following: set = set()
+    if viewer_id:
+        rows = (await db.execute(
+            select(UserFollow.following_id).where(UserFollow.follower_id == viewer_id)
+        )).scalars().all()
+        already_following = set(rows)
+        already_following.add(viewer_id)  # don't suggest yourself
+
+    # Most reviewed users
+    review_counts = (await db.execute(
+        select(Review.user_id, func.count(Review.id).label("n"))
+        .group_by(Review.user_id)
+        .order_by(func.count(Review.id).desc())
+        .limit(30)
+    )).all()
+
+    user_ids = [r.user_id for r in review_counts if r.user_id not in already_following][:6]
+    if not user_ids:
+        return []
+
+    users = (await db.execute(
+        select(User).where(User.id.in_(user_ids))
+    )).scalars().all()
+    user_map = {u.id: u for u in users}
+
+    count_map = {r.user_id: r.n for r in review_counts}
+    result = []
+    for uid in user_ids:
+        u = user_map.get(uid)
+        if u:
+            result.append({
+                "id": u.id,
+                "display_name": u.display_name,
+                "image_url": u.image_url,
+                "bio": u.bio,
+                "reviews_count": count_map.get(uid, 0),
+            })
+    return result
 
 
 @router.get("/search")
@@ -65,6 +116,7 @@ async def get_user(
         "id": user.id,
         "display_name": user.display_name,
         "image_url": user.image_url,
+        "bio": user.bio,
         "ratings_count": ratings_count,
         "reviews_count": reviews_count,
         "followers_count": followers_count,
@@ -106,6 +158,7 @@ async def toggle_follow(
         return {"following": False}
     else:
         db.add(UserFollow(follower_id=viewer_id, following_id=user_id))
+        await create_notification(db, user_id=user_id, type="follow", actor_id=viewer_id)
         await db.commit()
         return {"following": True}
 
