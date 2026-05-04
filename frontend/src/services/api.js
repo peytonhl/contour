@@ -68,8 +68,15 @@ export const api = {
   getRatingSummary: (entityType, entityId) => request(`/ratings/${entityType}/${entityId}/summary`),
   rateEntity: (entityType, entityId, value) => post(`/ratings/${entityType}/${entityId}/rate`, { value }),
   submitReview: (entityType, entityId, body, value) => post(`/ratings/${entityType}/${entityId}/review`, { body, value }),
-  getReviews: (entityType, entityId) => request(`/ratings/${entityType}/${entityId}/reviews`),
-  toggleLike: (reviewId) => post(`/ratings/reviews/${reviewId}/like`, {}),
+  getReviews: (entityType, entityId, sort = "recent") => request(`/ratings/${entityType}/${entityId}/reviews?sort=${sort}`),
+  voteReview: (reviewId, value) => post(`/ratings/reviews/${reviewId}/vote`, { value }),
+  getReplies: (reviewId) => request(`/ratings/reviews/${reviewId}/replies`),
+  postReply: (reviewId, body) => post(`/ratings/reviews/${reviewId}/reply`, { body }),
+  toggleLike: (reviewId) => post(`/ratings/reviews/${reviewId}/like`, {}), // legacy
+
+  // Global reviews feed
+  getGlobalReviews: (sort = "recent", entityType = "all") =>
+    request(`/reviews/global?sort=${sort}&entity_type=${entityType}`),
 
   // Saved comparisons
   saveComparison: (body) => post("/comparisons/", body),

@@ -18,6 +18,7 @@ export default defineConfig({
       "/featured": "http://localhost:8000",
       "/feed": "http://localhost:8000",
       "/users": "http://localhost:8000",
+      "/reviews": "http://localhost:8000",
       "/health": "http://localhost:8000",
     },
   },
