@@ -15,8 +15,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import asyncio
+
 from database import get_db
 from models import ArtistFavorite, Rating, Review, User
+from services import spotify
 
 _ENV_FILE = Path(__file__).parent.parent / ".env"
 
@@ -211,6 +214,29 @@ async def get_profile(
     )
     favorites = favs_result.scalars().all()
 
+    # Enrich entity names/images from Spotify for ratings + reviews
+    unique_entities = {(r.entity_type, r.entity_id) for r in ratings} | {(r.entity_type, r.entity_id) for r in reviews}
+
+    async def fetch_entity_meta(entity_type: str, entity_id: str):
+        try:
+            if entity_type == "album":
+                data = await spotify.get_album(entity_id)
+            elif entity_type == "track":
+                data = await spotify.get_track(entity_id)
+            else:
+                data = await spotify.get_artist(entity_id)
+            return (entity_type, entity_id), {
+                "name": data["name"],
+                "image_url": data.get("image_url"),
+                "artists": data.get("artists", []),
+            }
+        except Exception:
+            return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
+
+    enriched = dict(await asyncio.gather(*[
+        fetch_entity_meta(et, eid) for et, eid in unique_entities
+    ]))
+
     return {
         "user": {
             "id": user.id,
@@ -218,11 +244,27 @@ async def get_profile(
             "image_url": user.image_url,
         },
         "ratings": [
-            {"entity_type": r.entity_type, "entity_id": r.entity_id, "value": r.value, "created_at": r.created_at.isoformat()}
+            {
+                "entity_type": r.entity_type,
+                "entity_id": r.entity_id,
+                "entity_name": enriched.get((r.entity_type, r.entity_id), {}).get("name"),
+                "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
+                "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
+                "value": r.value,
+                "created_at": r.created_at.isoformat(),
+            }
             for r in ratings
         ],
         "reviews": [
-            {"entity_type": r.entity_type, "entity_id": r.entity_id, "body": r.body, "created_at": r.created_at.isoformat()}
+            {
+                "entity_type": r.entity_type,
+                "entity_id": r.entity_id,
+                "entity_name": enriched.get((r.entity_type, r.entity_id), {}).get("name"),
+                "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
+                "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
+                "body": r.body,
+                "created_at": r.created_at.isoformat(),
+            }
             for r in reviews
         ],
         "favorite_artists": [f.artist_id for f in favorites],

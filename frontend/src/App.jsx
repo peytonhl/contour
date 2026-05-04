@@ -8,6 +8,7 @@ import { TrackPage } from "./pages/TrackPage.jsx";
 import { ArtistPage } from "./pages/ArtistPage.jsx";
 import { SavedComparisonPage } from "./pages/SavedComparisonPage.jsx";
 import { AuthSuccessPage } from "./pages/AuthSuccessPage.jsx";
+import { UserPage } from "./pages/UserPage.jsx";
 import { Methodology } from "./components/Methodology.jsx";
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="artist/:id" element={<ArtistPage />} />
         <Route path="compare/:id" element={<SavedComparisonPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="user/:id" element={<UserPage />} />
         <Route path="auth/success" element={<AuthSuccessPage />} />
       </Route>
     </Routes>

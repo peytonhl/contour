@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import albums, artists, auth, comparison, ratings, saved_comparisons, tracks
+from routers import albums, artists, auth, comparison, featured, ratings, saved_comparisons, tracks, users
 
 app = FastAPI(
     title="Contour — Stream Trajectory Comparison",
@@ -31,6 +31,8 @@ app.include_router(artists.router)
 app.include_router(comparison.router)
 app.include_router(ratings.router)
 app.include_router(saved_comparisons.router)
+app.include_router(featured.router)
+app.include_router(users.router)
 
 
 @app.on_event("startup")

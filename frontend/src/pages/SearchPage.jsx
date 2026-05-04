@@ -1,9 +1,10 @@
-import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
+const ACCENT_C = "#fb923c";
 
 function formatStreams(n) {
   if (!n && n !== 0) return null;
@@ -13,14 +14,50 @@ function formatStreams(n) {
 }
 
 const TYPE_LABELS = { album: "Album", track: "Track", artist: "Artist" };
-const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: "#fb923c" };
+const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C };
+
+function FeaturedCard({ item, type }) {
+  const navigate = useNavigate();
+  const path = type === "album" ? `/album/${item.id}` : `/track/${item.id}`;
+  return (
+    <button
+      onClick={() => navigate(path)}
+      style={{
+        background: "var(--surface)", border: "1px solid var(--border)",
+        borderRadius: 10, overflow: "hidden", cursor: "pointer",
+        textAlign: "left", transition: "border-color 0.15s, transform 0.15s",
+        display: "flex", flexDirection: "column",
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = TYPE_COLORS[type]; e.currentTarget.style.transform = "translateY(-2px)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; }}
+    >
+      {item.image_url
+        ? <img src={item.image_url} alt={item.name} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
+        : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)" }} />
+      }
+      <div style={{ padding: "10px 12px", flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>
+          {item.name}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {Array.isArray(item.artists) ? item.artists.join(", ") : item.artists}
+        </div>
+      </div>
+    </button>
+  );
+}
 
 export function SearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [featured, setFeatured] = useState(null);
   const navigate = useNavigate();
   const debounceRef = useRef(null);
+
+  useEffect(() => {
+    api.getFeatured().then(setFeatured).catch(() => {});
+  }, []);
 
   function handleInput(e) {
     const q = e.target.value;
@@ -35,7 +72,6 @@ export function SearchPage() {
           api.searchTracks(q).catch(() => []),
           api.searchArtists(q).catch(() => []),
         ]);
-        // Tag each result with its type and merge, interleaving top results
         const tagged = [
           ...albums.slice(0, 4).map(r => ({ ...r, _type: "album" })),
           ...tracks.slice(0, 4).map(r => ({ ...r, _type: "track" })),
@@ -59,7 +95,7 @@ export function SearchPage() {
   const hasResults = results.length > 0;
 
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto", padding: "60px 24px 40px", display: "flex", flexDirection: "column", gap: 32, alignItems: "center" }}>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "60px 24px 40px", display: "flex", flexDirection: "column", gap: 40, alignItems: "center" }}>
 
       {/* Hero */}
       <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -97,7 +133,6 @@ export function SearchPage() {
           )}
         </div>
 
-        {/* Results */}
         {hasResults && (
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
             {results.map((item, i) => (
@@ -119,9 +154,7 @@ export function SearchPage() {
                   : <div style={{ width: 40, height: 40, borderRadius: item._type === "artist" ? "50%" : 5, background: "var(--surface2)", flexShrink: 0 }} />
                 }
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {item.name}
-                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {Array.isArray(item.artists) ? item.artists.join(", ") : item.artists}
                     {item.release_date && ` · ${item.release_date.slice(0, 4)}`}
@@ -148,6 +181,41 @@ export function SearchPage() {
           </div>
         )}
       </div>
+
+      {/* Featured — only show when not searching */}
+      {!query && featured && (
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 32 }}>
+
+          {/* Global Top Tracks */}
+          {featured.top_tracks?.length > 0 && (
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, color: "var(--text)" }}>
+                🔥 Trending right now
+              </h2>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
+                {featured.top_tracks.map((track) => (
+                  <FeaturedCard key={track.id} item={track} type="track" />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* New Releases */}
+          {featured.new_releases?.length > 0 && (
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, color: "var(--text)" }}>
+                ✨ New releases
+              </h2>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
+                {featured.new_releases.map((album) => (
+                  <FeaturedCard key={album.id} item={album} type="album" />
+                ))}
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
     </div>
   );
 }

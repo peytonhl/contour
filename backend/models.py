@@ -72,6 +72,14 @@ class SavedComparison(Base):
     name_b: Mapped[str] = mapped_column(String(256))
 
 
+class UserFollow(Base):
+    __tablename__ = "user_follows"
+
+    follower_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    following_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AlbumCache(Base):
     __tablename__ = "album_cache"
 

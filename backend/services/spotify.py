@@ -162,6 +162,40 @@ async def get_album(album_id: str) -> dict:
         return _parse_album(resp.json())
 
 
+async def get_new_releases(limit: int = 10) -> list[dict]:
+    """Fetch newly released albums from Spotify."""
+    async with httpx.AsyncClient() as client:
+        token = await _get_token(client)
+        resp = await client.get(
+            "https://api.spotify.com/v1/browse/new-releases",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"limit": limit, "country": "US"},
+        )
+        resp.raise_for_status()
+        items = resp.json()["albums"]["items"]
+    return [_parse_album(a) for a in items]
+
+
+async def get_global_top_tracks(limit: int = 10) -> list[dict]:
+    """Fetch top tracks from Spotify's Global Top 50 playlist."""
+    GLOBAL_TOP_50 = "37i9dQZEVXbMDoHDwVN2tF"
+    async with httpx.AsyncClient() as client:
+        token = await _get_token(client)
+        resp = await client.get(
+            f"https://api.spotify.com/v1/playlists/{GLOBAL_TOP_50}/tracks",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"limit": limit},
+        )
+        resp.raise_for_status()
+        items = resp.json()["items"]
+    tracks = []
+    for item in items:
+        t = item.get("track")
+        if t and t.get("id"):
+            tracks.append(_parse_track(t))
+    return tracks
+
+
 async def get_artist_albums(artist_id: str) -> list[dict]:
     """
     Fetch all albums for an artist by their Spotify artist ID.

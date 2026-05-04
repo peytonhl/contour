@@ -77,6 +77,15 @@ export const api = {
   // Auth
   getProfile: () => request(`/auth/profile`),
 
+  // Featured
+  getFeatured: () => request(`/featured`),
+
+  // Users (follow / public profiles)
+  getUser: (id) => request(`/users/${id}`),
+  toggleFollow: (id) => post(`/users/${id}/follow`, {}),
+  getFollowing: (id) => request(`/users/${id}/following`),
+  getFollowers: (id) => request(`/users/${id}/followers`),
+
   getMe: (token) => {
     return fetch(`${BASE}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
