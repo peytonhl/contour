@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { TrajectoryChart } from "../components/TrajectoryChart.jsx";
 import { ReviewSection } from "../components/ReviewSection.jsx";
+import { EraCallout } from "../components/EraCallout.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const DISCLAIMER = "Stream trajectory is a modeled approximation calibrated to the known total stream count. Exact day-by-day data requires Luminate licensing.";
@@ -116,6 +117,9 @@ export function AlbumPage() {
           </div>
         </div>
       </div>
+
+      {/* Era context */}
+      <EraCallout eraContext={trajectory?.era_context} totalStreams={trajectory?.total_streams} />
 
       {/* Trajectory */}
       {trajectory && (

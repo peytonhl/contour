@@ -136,6 +136,33 @@ def _decay_weights(total_days: int) -> list[float]:
     return weights
 
 
+def era_context(release_date: date, total_streams: int) -> dict:
+    """
+    Return plain-English era adjustment context:
+      - release_mau: Spotify MAU (millions) at time of release
+      - current_mau: Spotify MAU today
+      - era_adjusted_streams: what total_streams would be if released today
+      - multiplier: how many times more impressive than raw number suggests
+    """
+    today = date.today()
+    release_mau = get_mau_for_date(release_date)
+    current_mau = get_mau_for_date(today)
+
+    if release_mau <= 0:
+        return None
+
+    multiplier = current_mau / release_mau
+    era_adjusted = int(total_streams * multiplier)
+
+    return {
+        "release_year": release_date.year,
+        "release_mau": round(release_mau),
+        "current_mau": round(current_mau),
+        "era_adjusted_streams": era_adjusted,
+        "multiplier": round(multiplier, 1),
+    }
+
+
 def riaa_milestones(total_streams: int, certification_data: Optional[dict] = None) -> list[dict]:
     """
     Return RIAA certification thresholds that this album has passed,

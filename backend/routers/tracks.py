@@ -12,6 +12,7 @@ from database import get_db
 from services import kworb, spotify
 from services import album_cache as cache
 from services.normalization import model_trajectory, riaa_milestones, parse_release_date, popularity_to_streams
+from services.normalization import era_context
 
 router = APIRouter(prefix="/tracks", tags=["tracks"])
 
@@ -112,6 +113,7 @@ async def get_track_trajectory(
         "stream_source": source,
         "riaa_milestones": riaa_milestones(streams),
         "enrichment_pending": row.enrichment_status == "pending",
+        "era_context": era_context(release, streams),
     }
 
 
