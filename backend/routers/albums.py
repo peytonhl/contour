@@ -20,6 +20,7 @@ class AlbumResult(BaseModel):
     id: str
     name: str
     artists: List[str]
+    artist_ids: List[str] = []
     release_date: str
     release_date_precision: str
     label: Optional[str]

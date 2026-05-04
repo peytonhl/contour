@@ -79,7 +79,9 @@ export function AlbumPage() {
               {album.artists?.map((artist, i) => (
                 <span key={i}>
                   {i > 0 && ", "}
-                  <Link to={`/artist/${album.id}`} style={{ color: "var(--accent-a)" }}>{artist}</Link>
+                  {album.artist_ids?.[i]
+                    ? <Link to={`/artist/${album.artist_ids[i]}`} style={{ color: "var(--accent-a)" }}>{artist}</Link>
+                    : artist}
                 </span>
               ))}
             </div>

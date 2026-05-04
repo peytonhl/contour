@@ -12,9 +12,11 @@ function formatStreams(n) {
   return null;
 }
 
+const TYPE_LABELS = { album: "Album", track: "Track", artist: "Artist" };
+const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: "#fb923c" };
+
 export function SearchPage() {
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState("albums"); // "albums" | "tracks" | "artists"
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const navigate = useNavigate();
@@ -28,8 +30,18 @@ export function SearchPage() {
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const fn = mode === "albums" ? api.searchAlbums : mode === "tracks" ? api.searchTracks : api.searchArtists;
-        setResults(await fn(q));
+        const [albums, tracks, artists] = await Promise.all([
+          api.searchAlbums(q).catch(() => []),
+          api.searchTracks(q).catch(() => []),
+          api.searchArtists(q).catch(() => []),
+        ]);
+        // Tag each result with its type and merge, interleaving top results
+        const tagged = [
+          ...albums.slice(0, 4).map(r => ({ ...r, _type: "album" })),
+          ...tracks.slice(0, 4).map(r => ({ ...r, _type: "track" })),
+          ...artists.slice(0, 3).map(r => ({ ...r, _type: "artist" })),
+        ];
+        setResults(tagged);
       } catch {
         setResults([]);
       } finally {
@@ -38,33 +50,18 @@ export function SearchPage() {
     }, 350);
   }
 
-  function handleModeChange(newMode) {
-    setMode(newMode);
-    setResults([]);
-    if (query.trim()) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(async () => {
-        setSearching(true);
-        try {
-          const fn = newMode === "albums" ? api.searchAlbums : newMode === "tracks" ? api.searchTracks : api.searchArtists;
-          setResults(await fn(query));
-        } catch {
-          setResults([]);
-        } finally {
-          setSearching(false);
-        }
-      }, 0);
-    }
+  function handleSelect(item) {
+    if (item._type === "album") navigate(`/album/${item.id}`);
+    else if (item._type === "track") navigate(`/track/${item.id}`);
+    else navigate(`/artist/${item.id}`);
   }
 
-  function handleSelect(item) {
-    navigate(mode === "albums" ? `/album/${item.id}` : mode === "tracks" ? `/track/${item.id}` : `/artist/${item.id}`);
-  }
+  const hasResults = results.length > 0;
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "60px 24px 40px", display: "flex", flexDirection: "column", gap: 32, alignItems: "center" }}>
 
-      {/* Hero text */}
+      {/* Hero */}
       <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 12 }}>
         <h1 style={{
           fontSize: 36, fontWeight: 800, lineHeight: 1.15,
@@ -79,50 +76,33 @@ export function SearchPage() {
       </div>
 
       {/* Search box */}
-      <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
-        {/* Mode toggle + input */}
-        <div style={{ display: "flex", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: results.length > 0 ? "10px 10px 0 0" : 10, overflow: "hidden" }}>
-          {/* Toggle */}
-          <div style={{ display: "flex", borderRight: "1px solid var(--border)", flexShrink: 0 }}>
-            {[["albums", "Albums"], ["tracks", "Tracks"], ["artists", "Artists"]].map(([val, lbl]) => (
-              <button
-                key={val}
-                onClick={() => handleModeChange(val)}
-                style={{
-                  padding: "14px 16px", fontSize: 12, fontWeight: mode === val ? 700 : 400,
-                  background: mode === val ? "var(--surface2)" : "transparent",
-                  color: mode === val ? "var(--text)" : "var(--text-muted)",
-                  border: "none", cursor: "pointer", whiteSpace: "nowrap",
-                }}
-              >
-                {lbl}
-              </button>
-            ))}
-          </div>
+      <div style={{ width: "100%", display: "flex", flexDirection: "column" }}>
+        <div style={{
+          display: "flex", background: "var(--surface)", border: "1px solid var(--border)",
+          borderRadius: hasResults ? "10px 10px 0 0" : 10, overflow: "hidden",
+        }}>
           <input
             autoFocus
             value={query}
             onChange={handleInput}
-            placeholder={mode === "albums" ? "Search albums…" : mode === "tracks" ? "Search tracks…" : "Search artists…"}
+            placeholder="Search albums, tracks, artists…"
             style={{
-              flex: 1, padding: "14px 16px", fontSize: 15,
+              flex: 1, padding: "16px 20px", fontSize: 15,
               background: "transparent", border: "none", outline: "none",
               color: "var(--text)",
             }}
           />
           {searching && (
-            <div style={{ display: "flex", alignItems: "center", paddingRight: 16, color: "var(--text-muted)", fontSize: 12 }}>
-              …
-            </div>
+            <div style={{ display: "flex", alignItems: "center", paddingRight: 16, color: "var(--text-muted)", fontSize: 12 }}>…</div>
           )}
         </div>
 
-        {/* Results dropdown */}
-        {results.length > 0 && (
+        {/* Results */}
+        {hasResults && (
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
             {results.map((item, i) => (
               <button
-                key={item.id}
+                key={`${item._type}-${item.id}`}
                 onClick={() => handleSelect(item)}
                 style={{
                   width: "100%", display: "flex", alignItems: "center", gap: 14,
@@ -135,8 +115,8 @@ export function SearchPage() {
                 onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
               >
                 {item.image_url
-                  ? <img src={item.image_url} alt={item.name} style={{ width: 40, height: 40, borderRadius: 5, objectFit: "cover", flexShrink: 0 }} />
-                  : <div style={{ width: 40, height: 40, borderRadius: 5, background: "var(--surface2)", flexShrink: 0 }} />
+                  ? <img src={item.image_url} alt={item.name} style={{ width: 40, height: 40, borderRadius: item._type === "artist" ? "50%" : 5, objectFit: "cover", flexShrink: 0 }} />
+                  : <div style={{ width: 40, height: 40, borderRadius: item._type === "artist" ? "50%" : 5, background: "var(--surface2)", flexShrink: 0 }} />
                 }
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -148,14 +128,22 @@ export function SearchPage() {
                     {formatStreams(item.streams) && ` · ${formatStreams(item.streams)}`}
                   </div>
                 </div>
-                <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>→</span>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+                  color: TYPE_COLORS[item._type], flexShrink: 0,
+                  background: `${TYPE_COLORS[item._type]}18`,
+                  padding: "2px 8px", borderRadius: 20,
+                  border: `1px solid ${TYPE_COLORS[item._type]}40`,
+                }}>
+                  {TYPE_LABELS[item._type]}
+                </span>
               </button>
             ))}
           </div>
         )}
 
         {query && !searching && results.length === 0 && (
-          <div style={{ padding: "16px", background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 10px 10px", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
+          <div style={{ padding: 16, background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 10px 10px", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
             No results for "{query}"
           </div>
         )}

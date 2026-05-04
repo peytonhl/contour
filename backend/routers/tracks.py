@@ -20,6 +20,7 @@ class TrackResult(BaseModel):
     id: str
     name: str
     artists: List[str]
+    artist_ids: List[str] = []
     album_name: str
     album_id: Optional[str]
     release_date: str

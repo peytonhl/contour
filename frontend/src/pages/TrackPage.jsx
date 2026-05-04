@@ -77,7 +77,14 @@ export function TrackPage() {
               {track.explicit && <span style={{ marginLeft: 10, fontSize: 11, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 6px", color: "var(--text-muted)", verticalAlign: "middle", fontWeight: 600 }}>EXPLICIT</span>}
             </h1>
             <div style={{ fontSize: 15, color: "var(--text-muted)" }}>
-              {track.artists?.join(", ")}
+              {track.artists?.map((artist, i) => (
+                <span key={i}>
+                  {i > 0 && ", "}
+                  {track.artist_ids?.[i]
+                    ? <Link to={`/artist/${track.artist_ids[i]}`} style={{ color: "var(--accent-a)" }}>{artist}</Link>
+                    : artist}
+                </span>
+              ))}
             </div>
           </div>
 
