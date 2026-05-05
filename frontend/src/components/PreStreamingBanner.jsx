@@ -31,15 +31,13 @@ export function PreStreamingBanner({ releaseDate }) {
         <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
           {isPreStreaming
             ? <>
-                This {year < 1990 ? "classic" : "release"} predates Spotify ({year} vs. Spotify's 2008 launch).
-                Any trajectory is modeled from when the track entered the streaming era, not its original release date.
-                Raw stream totals will be lower than a comparable modern release simply because less of its commercial
-                life overlapped with streaming.
+                Released in {year}, before Spotify's 2008 launch. Any trajectory is modeled from
+                when this {year < 1990 ? "classic" : "release"} entered the streaming era — so the chart
+                starts in 2008, not {year}.
               </>
             : <>
-                Released in {year}, this track arrived when Spotify had a fraction of its current user base
-                (Spotify launched in the US in 2011 and didn't reach 100M users until 2016).
-                Streaming data from this period is often incomplete or unavailable — chart data may be missing.
+                Released in {year}, when Spotify was still in its infancy. Historical streaming data
+                from this period is often sparse or unavailable.
               </>
           }
         </span>
