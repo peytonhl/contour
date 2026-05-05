@@ -1,6 +1,6 @@
 # Contour
 
-**Era-adjusted music streaming data, community ratings, and reviews.**
+**Music ratings, reviews, and era-adjusted streaming analytics.**
 
 > [**contour-rosy.vercel.app**](https://contour-rosy.vercel.app) — try it live
 
@@ -8,11 +8,11 @@
 
 ## What is Contour?
 
-Spotify launched in 2008 with a few million users. Today it has 750M+. A song that hit 500M streams in 2016 did so on a platform a fraction of today's size — it would be a *billion-stream* song if it released now.
+Spotify launched in 2008 with a few million users. Today it has 800M+. A song that hit 500M streams in 2016 did so on a platform a fraction of today's size — it would be a *billion-stream* song if it released now.
 
 Contour adjusts for this. Every stream count is normalized against Spotify's monthly active users at the time of release, so you can finally compare a 2012 classic and a 2024 hit on equal footing.
 
-On top of that, Contour is a place to rate albums and tracks, write reviews, see what the community thinks, and follow people with good taste.
+On top of the analytics, Contour is a place to rate albums and tracks, write reviews, see what the community thinks, discover new music, and follow people with good taste.
 
 ---
 
@@ -20,8 +20,11 @@ On top of that, Contour is a place to rate albums and tracks, write reviews, see
 
 **Music Data**
 - Era-adjusted stream trajectories for any album or track
+- Era Score leaderboard — seeded from Kworb's global top albums chart
 - RIAA milestone markers (Gold, Platinum, Diamond) on trajectory charts
-- Artist pages with top tracks, full discography, and catalog stream totals
+- Artist pages with "Known For" (top hits by popularity), top tracks, full discography
+- Early streaming era banners for releases before 2013 with context about sparse data
+- Clear "no data" placeholder when Kworb stream data is unavailable (instead of a blank chart)
 - Album tracklists with per-track navigation
 
 **Community**
@@ -36,12 +39,19 @@ On top of that, Contour is a place to rate albums and tracks, write reviews, see
 **Profiles & Taste**
 - Public user profiles with rating history, reviews, and follower counts
 - Taste profile: rating distribution chart, top genres, and pinned albums
+- Server-side taste profile synced across devices — preferences follow you when you sign in
 - User-created lists (ranked or unranked) — build your top albums, hidden gems, whatever
 
 **Discovery**
-- For You feed: personalized album recommendations that learn from your ratings
+- For You feed: TikTok-style track preview scroll, personalized by your ratings and genre picks
+  - Tier 1: related-artist tracks from artists you've rated 4–5 stars
+  - Tier 2: genre-filtered search from your learned genre profile
+  - Tier 3: Global Top 50 baseline
+  - Tier 4: new releases
+  - Tier 5: keyword fallbacks — always returns something
+- Onboarding genre picker on first visit — seeds your taste profile immediately
 - Global reviews feed sorted by Recent / Top / Controversial — no account needed
-- Charts page: era-adjusted leaderboard across releases
+- Charts page: era-adjusted leaderboard ranked by Era Score or raw streams
 - Trending tracks and new releases on the home screen
 - Search across albums, tracks, artists, and users in one bar
 
@@ -61,9 +71,11 @@ On top of that, Contour is a place to rate albums and tracks, write reviews, see
 | Mobile | Capacitor (iOS/Android — in progress) |
 | Backend | Python 3.12 / FastAPI |
 | Database | PostgreSQL (Railway) + SQLAlchemy async |
+| Cache | Redis (Railway) — 24h TTL on hot Spotify API calls |
+| Rate limiting | slowapi — per-IP, Railway proxy-aware via `X-Forwarded-For` |
 | Auth | Google OAuth 2.0 + JWT |
-| Data | Spotify Web API, Kworb.net stream counts |
-| Hosting | Vercel (frontend) · Railway (backend) |
+| Data | Spotify Web API, Kworb.net, Deezer (preview fallback) |
+| Hosting | Vercel (frontend) · Railway (backend + Redis) |
 
 ---
 
@@ -81,16 +93,15 @@ Stream counts are adjusted using Spotify's reported monthly active users:
 | 2022 | 456M |
 | 2024 | 678M |
 | 2025 | 750M (est.) |
+| 2026 | 800M (est.) |
 
-Values between years are linearly interpolated. The era-adjusted equivalent is:
+Values between years are linearly interpolated. The Era Score formula:
 
 ```
 era_adjusted = total_streams × (current_mau / release_era_mau)
 ```
 
-The callout appears on album and track pages whenever the multiplier is ≥ 1.5×.
-
-Day-by-day trajectory is modeled (high early velocity tapering to catalog tail) calibrated to the known total. A disclaimer is shown when modeled data is used instead of Kworb actuals.
+Day-by-day trajectory is modeled (high early velocity tapering to catalog tail) calibrated to the known total stream count from Kworb. A disclaimer is shown when modeled data is used instead of Kworb actuals.
 
 ---
 
@@ -99,8 +110,9 @@ Day-by-day trajectory is modeled (high early velocity tapering to catalog tail) 
 ### Prerequisites
 - Node.js 18+
 - Python 3.12+
-- A Spotify Developer app ([create one here](https://developer.spotify.com/dashboard)) — for music metadata
-- A Google Cloud project with OAuth 2.0 credentials ([create one here](https://console.cloud.google.com/)) — for user authentication
+- A Spotify Developer app ([create one here](https://developer.spotify.com/dashboard))
+- A Google Cloud project with OAuth 2.0 credentials ([create one here](https://console.cloud.google.com/))
+- Redis is optional locally — the app degrades gracefully without it
 
 ### Backend
 
@@ -115,8 +127,7 @@ cp .env.example .env
 # Edit backend/.env (see Environment Variables below)
 
 # Database — SQLite is used automatically for local dev, no setup needed.
-# On first run, init_db() creates all tables. Alembic handles incremental
-# migrations; to apply them: alembic upgrade head
+# Alembic runs migrations on startup; tables are created automatically.
 uvicorn main:app --reload --port 8000
 ```
 
@@ -148,6 +159,7 @@ Runs at `http://localhost:5173`. API calls proxy to `http://localhost:8000`.
 | `SPOTIFY_CLIENT_SECRET` | ✅ | — | Spotify Developer Dashboard |
 | `FRONTEND_URL` | ✅ | `http://localhost:5173` | Used in OAuth redirect to return the token to the correct origin |
 | `DATABASE_URL` | prod only | SQLite | PostgreSQL connection string. Railway sets this automatically. Format: `postgresql://user:pass@host:5432/db` |
+| `REDIS_URL` | optional | — | Redis connection string. Railway sets this automatically when you add the Redis plugin. Without it, caching is silently skipped. |
 | `JWT_EXPIRE_DAYS` | ❌ | `30` | How long session tokens stay valid |
 
 ### Frontend (`frontend/.env`)
@@ -164,15 +176,15 @@ See `backend/.env.example` and `frontend/.env.example` for ready-to-copy templat
 
 ```
 backend/
-  main.py                  FastAPI app, CORS, router registration
-  models.py                SQLAlchemy ORM models
+  main.py                  FastAPI app, CORS, rate limiter, router registration, leaderboard seed task
+  models.py                SQLAlchemy ORM models (User, Rating, Review, AlbumCache, UserTasteProfile, …)
   database.py              Async engine — SQLite locally, Postgres in prod
   routers/
-    auth.py                Google OAuth 2.0 flow, JWT issuance
+    auth.py                Google OAuth 2.0 flow, JWT issuance, optional/required user deps
     albums.py              Album search, metadata, stream trajectory
     tracks.py              Track search, metadata, stream trajectory
     artists.py             Artist metadata, discography, top tracks, favorites
-    ratings.py             Ratings, reviews, upvote/downvote votes, replies
+    ratings.py             Ratings, reviews, upvote/downvote votes, replies; auto-updates taste profile
     reviews.py             Global public reviews feed
     feed.py                Following activity feed
     featured.py            Trending tracks + new releases (home screen)
@@ -182,50 +194,56 @@ backend/
     lists.py               User-created lists (CRUD + item management)
     leaderboard.py         Era-adjusted charts
     notifications.py       Follow and review interaction notifications
-    discover.py            Personalized For You feed
+    discover.py            Personalized For You feed (rate-limited 60/min per IP)
+    taste.py               Server-side taste profile (GET + POST)
   services/
-    spotify.py             Spotify Web API client (search, metadata, top tracks)
+    spotify.py             Spotify Web API client; hot calls Redis-cached for 24h
     normalization.py       MAU table, era-adjustment, trajectory modeling
-    album_cache.py         DB-backed cache + async Kworb stream enrichment
-    kworb.py               Kworb.net scraper for real stream counts
+    album_cache.py         DB-backed cache + Kworb stream enrichment state machine
+    kworb.py               Kworb.net scraper — artist streams, top albums list
+    redis_cache.py         Async Redis helper (get/set with graceful no-op when REDIS_URL absent)
+    limiter.py             slowapi Limiter using X-Forwarded-For for real IP behind Railway proxy
+    deezer.py              Deezer preview fallback for tracks missing Spotify preview URL
   migrations/
     versions/              Alembic migration chain
 
 frontend/
   src/
     pages/
-      ForYouPage.jsx       Home — personalized discovery feed
-      SearchPage.jsx        Albums, tracks, artists, users in one bar
-      AlbumPage.jsx         Album detail — streams, ratings, reviews, tracklist
-      TrackPage.jsx         Track detail — streams, ratings, reviews
-      ArtistPage.jsx        Artist — top tracks, discography, favorites
-      ComparePage.jsx       Side-by-side trajectory comparison
-      FeedPage.jsx          Activity feed from followed users
-      LeaderboardPage.jsx   Era-adjusted charts
-      ProfilePage.jsx       Your profile — ratings, reviews, lists, taste
-      UserPage.jsx          Public profile — same tabs, with follow button
-      ListDetailPage.jsx    View/edit a user-created list
-      NotificationsPage.jsx Notification inbox
+      ForYouPage.jsx        Home — personalized track discovery feed (TikTok-style)
+      SearchPage.jsx         Albums, tracks, artists, users in one bar
+      AlbumPage.jsx          Album detail — streams, ratings, reviews, tracklist
+      TrackPage.jsx          Track detail — streams, ratings, reviews
+      ArtistPage.jsx         Artist — Known For, top tracks, discography, favorites
+      ComparePage.jsx        Side-by-side trajectory comparison
+      FeedPage.jsx           Activity feed from followed users
+      LeaderboardPage.jsx    Era Score + Raw Streams charts
+      ProfilePage.jsx        Your profile — ratings, reviews, lists, taste
+      UserPage.jsx           Public profile — same tabs, with follow button
+      ListDetailPage.jsx     View/edit a user-created list
+      NotificationsPage.jsx  Notification inbox
       SavedComparisonPage.jsx Shared comparison permalink
     components/
-      Layout.jsx            Nav, search bar, auth button, bottom bar (mobile)
-      ReviewSection.jsx     Ratings, reviews, votes, replies (shared widget)
-      TrajectoryChart.jsx   Line chart with RIAA milestone markers
-      ComparisonChart.jsx   Dual-series comparison chart
-      ComparisonWidget.jsx  Inline album-vs-album widget (used on album pages)
-      EditionPicker.jsx     Standard vs. deluxe edition selector
-      EraCallout.jsx        Era-adjustment callout banner
-      TasteSection.jsx      Rating distribution + top genres + pinned albums
-      OnboardingModal.jsx   First-time genre picker
-      UnifiedSearch.jsx     Shared search dropdown (albums + tracks)
-      StarRating.jsx        Interactive half-star rating widget
-      ShareButton.jsx       Copy/share link helper
-      AlbumCard.jsx         Compact album card used in feeds
-    services/api.js         All API calls — single source of truth
+      Layout.jsx             Nav, search bar, auth button, bottom bar (mobile)
+      ReviewSection.jsx      Ratings, reviews, votes, replies (shared widget)
+      TrajectoryChart.jsx    Line chart with RIAA milestone markers
+      ComparisonChart.jsx    Dual-series comparison chart
+      ComparisonWidget.jsx   Inline album-vs-album widget (used on album pages)
+      EditionPicker.jsx      Standard vs. deluxe edition selector
+      EraCallout.jsx         Era-adjustment callout banner
+      PreStreamingBanner.jsx Pre-streaming / early streaming era context banner
+      Methodology.jsx        How It Works page content
+      TasteSection.jsx       Rating distribution + top genres + pinned albums
+      OnboardingModal.jsx    First-time genre picker (saves to server taste profile)
+      UnifiedSearch.jsx      Shared search dropdown (albums + tracks)
+      StarRating.jsx         Interactive half-star rating widget
+      ShareButton.jsx        Copy/share link helper
+      AlbumCard.jsx          Compact album card used in feeds
+    services/api.js          All API calls — single source of truth
     contexts/AuthContext.jsx JWT auth state (login, logout, current user)
   public/
-    manifest.json           PWA manifest
-  capacitor.config.json     iOS/Android app config
+    manifest.json            PWA manifest
+  capacitor.config.json      iOS/Android app config
 ```
 
 ---
@@ -236,9 +254,10 @@ frontend/
 
 1. Create a new Railway project and connect this repo.
 2. Add a **PostgreSQL** plugin — Railway sets `DATABASE_URL` automatically.
-3. Set the environment variables listed above under **Backend**.
-4. Railway runs `uvicorn main:app --host 0.0.0.0 --port $PORT` via `Procfile` or start command.
-5. On first deploy `init_db()` creates all tables automatically at startup.
+3. Add a **Redis** plugin — Railway sets `REDIS_URL` automatically. Without it the app still works; hot Spotify calls just won't be cached.
+4. Set the environment variables listed above under **Backend**.
+5. Railway runs `uvicorn main:app --host 0.0.0.0 --port $PORT` via `Procfile` or start command.
+6. On startup: Alembic migrations run, then `create_all` as a safety net, then the leaderboard seed task fires after 60 seconds in the background.
 
 ### Vercel (frontend)
 
@@ -253,8 +272,8 @@ frontend/
 - [ ] App Store launch (iOS via Codemagic + Capacitor)
 - [ ] Google Play launch (Android via Capacitor)
 - [ ] Push notifications (new follower, review reply)
-- [ ] Pre-2015 era support
-- [ ] Artist and user list support (currently albums and tracks only)
+- [ ] Cross-platform normalization (Apple Music, YouTube, Tidal)
+- [ ] True historical stream data via Luminate API
 
 ---
 
@@ -262,4 +281,5 @@ frontend/
 
 - Stream trajectory is **modeled**, not actual historical data. True day-by-day counts require Luminate licensing.
 - Normalization is **Spotify-only**. Apple Music, Tidal, YouTube are not factored in.
-- Kworb stream counts are scraped on demand and cached. Scrape failures fall back to Spotify popularity signal with a UI warning.
+- Kworb stream counts are scraped on demand and cached in Redis for 24 hours. Scrape failures set `enrichment_status = "failed"` and the album is excluded from the leaderboard.
+- The For You feed rate limit is **60 requests/minute per real client IP**. Railway's reverse proxy is handled via `X-Forwarded-For`.
