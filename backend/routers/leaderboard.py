@@ -73,6 +73,41 @@ async def get_leaderboard(
     return entries[:limit]
 
 
+@router.post("/seed-catalog")
+async def seed_catalog(db: AsyncSession = Depends(get_db)):
+    """
+    One-shot endpoint: seed the leaderboard with the curated catalog of
+    major albums using Last.fm play counts.  Safe to call multiple times —
+    already-fresh albums are skipped.  Runs as a background task so the
+    response returns immediately.
+    """
+    import asyncio
+    from main import _CATALOG, _enrich_album_ids
+    from services import spotify as spotify_svc
+
+    async def _run():
+        album_ids: list[str] = []
+        for artist_name, album_title in _CATALOG:
+            try:
+                results = await spotify_svc.search_albums(f"{album_title} {artist_name}", limit=3)
+                target = album_title.lower()
+                match = next(
+                    (r for r in results if r.get("name", "").lower() == target),
+                    results[0] if results else None,
+                )
+                if match and match.get("id") and match["id"] not in album_ids:
+                    album_ids.append(match["id"])
+            except Exception:
+                pass
+            await asyncio.sleep(0.4)  # stay under Spotify rate limit
+        seeded = await _enrich_album_ids(album_ids, label="Catalog")
+        import logging
+        logging.getLogger(__name__).info("Catalog seed complete — %d/%d enriched", seeded, len(album_ids))
+
+    asyncio.create_task(_run())
+    return {"status": "started", "catalog_size": len(_CATALOG)}
+
+
 @router.get("/debug")
 async def leaderboard_debug(db: AsyncSession = Depends(get_db)):
     """
