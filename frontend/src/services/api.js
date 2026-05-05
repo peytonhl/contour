@@ -99,7 +99,6 @@ export const api = {
   voteReview: (reviewId, value) => post(`/ratings/reviews/${reviewId}/vote`, { value }),
   getReplies: (reviewId) => request(`/ratings/reviews/${reviewId}/replies`),
   postReply: (reviewId, body) => post(`/ratings/reviews/${reviewId}/reply`, { body }),
-  toggleLike: (reviewId) => post(`/ratings/reviews/${reviewId}/like`, {}), // legacy
 
   // Global reviews feed
   getGlobalReviews: (sort = "recent", entityType = "all") =>
@@ -124,23 +123,8 @@ export const api = {
   markNotificationsRead: () => post(`/notifications/read-all`, {}),
 
   // Profile update
-  updateProfile: (bio) => {
-    const token = getToken();
-    return fetch(`${BASE}/auth/profile`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ bio }),
-    }).then((r) => r.json());
-  },
-
-  updatePinnedAlbums: (ids) => {
-    const token = getToken();
-    return fetch(`${BASE}/auth/profile`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ pinned_album_ids: ids }),
-    }).then((r) => r.json());
-  },
+  updateProfile: (bio) => patch(`/auth/profile`, { bio }),
+  updatePinnedAlbums: (ids) => patch(`/auth/profile`, { pinned_album_ids: ids }),
 
   // Taste profile
   getUserTaste: (id) => request(`/users/${id}/taste`),

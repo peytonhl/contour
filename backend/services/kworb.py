@@ -104,21 +104,6 @@ async def get_track_streams(artist_spotify_id: str, track_name: str) -> Optional
     return None
 
 
-async def get_multiple_edition_streams(
-    artist_spotify_id: str, album_name: str
-) -> list[dict]:
-    """
-    Return all editions of an album (standard, deluxe, alternate, etc.)
-    as a list of {"name": str, "streams": int}.
-    """
-    albums = await get_artist_albums_by_id(artist_spotify_id)
-    if not albums:
-        return []
-
-    base = _normalize(album_name)
-    return [a for a in albums if base in _normalize(a["name"])]
-
-
 def _parse_album_page(html: str) -> list[dict]:
     soup = BeautifulSoup(html, "html.parser")
     results = []

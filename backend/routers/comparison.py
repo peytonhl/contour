@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from services import spotify
 from services import album_cache as cache
-from services.normalization import build_trajectory, riaa_milestones
+from services.normalization import build_trajectory, riaa_milestones, parse_release_date
 from routers.albums import _enrich_album
 from routers.tracks import _enrich_track
 
@@ -114,8 +114,8 @@ async def compare_albums(
         streams_b, source_b, pending_b = await _resolve_streams(ids_b, meta_b, background_tasks, db)
         entity_type_b, album_name_b = "album", None
 
-    release_a = _parse_release_date(meta_a["release_date"], meta_a["release_date_precision"])
-    release_b = _parse_release_date(meta_b["release_date"], meta_b["release_date_precision"])
+    release_a = parse_release_date(meta_a["release_date"], meta_a["release_date_precision"])
+    release_b = parse_release_date(meta_b["release_date"], meta_b["release_date_precision"])
 
     today = date.today()
     if release_a is None or release_a.year < 2015:
@@ -253,19 +253,6 @@ async def _resolve_streams(
 
     source = "kworb" if not any_pending else "partial"
     return total, source, any_pending
-
-
-def _parse_release_date(release_date: str, precision: str) -> Optional[date]:
-    try:
-        if precision == "day":
-            return date.fromisoformat(release_date)
-        elif precision == "month":
-            year, month = release_date.split("-")[:2]
-            return date(int(year), int(month), 1)
-        else:
-            return date(int(release_date[:4]), 1, 1)
-    except Exception:
-        return None
 
 
 def _warning(source: str, name: str) -> Optional[str]:

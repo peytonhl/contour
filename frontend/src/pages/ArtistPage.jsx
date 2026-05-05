@@ -30,16 +30,6 @@ function formatDuration(ms) {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function StatPill({ label, value }) {
-  if (!value && value !== 0) return null;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center" }}>
-      <span style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>{value}</span>
-      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>{label}</span>
-    </div>
-  );
-}
-
 function TopTrackRow({ track, rank }) {
   return (
     <Link

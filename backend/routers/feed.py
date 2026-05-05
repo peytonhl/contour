@@ -4,7 +4,7 @@ import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select, or_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db

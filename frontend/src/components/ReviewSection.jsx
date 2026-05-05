@@ -17,15 +17,6 @@ function timeAgo(iso) {
   return `${Math.floor(days / 365)}y ago`;
 }
 
-async function copyReviewLink(entityType, entityId, reviewId) {
-  const url = `${window.location.origin}/${entityType}/${entityId}#review-${reviewId}`;
-  if (navigator.share) {
-    try { await navigator.share({ url }); } catch { /* cancelled */ }
-  } else {
-    try { await navigator.clipboard.writeText(url); } catch { /* blocked */ }
-  }
-}
-
 // ── Stars (read-only + interactive) ──────────────────────────────────────────
 function Stars({ value = 0, size = 18, interactive = false, onHover, onClick }) {
   function calcVal(e) {

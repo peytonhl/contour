@@ -117,7 +117,7 @@ export function ProfilePage() {
     setSavingBio(true);
     try {
       await api.updateProfile(bioInput);
-      setProfile((p) => p ? { ...p } : p);
+      setProfile((p) => p ? { ...p, bio: bioInput } : p);
       setEditingBio(false);
     } finally {
       setSavingBio(false);
@@ -167,12 +167,12 @@ export function ProfilePage() {
           {/* Bio */}
           {!editingBio && (
             <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-              {user.bio
-                ? <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6, maxWidth: 400 }}>{user.bio}</p>
+              {profile?.bio
+                ? <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6, maxWidth: 400 }}>{profile.bio}</p>
                 : <p style={{ fontSize: 13, color: "var(--border)", margin: 0, fontStyle: "italic" }}>No bio yet</p>
               }
               <button
-                onClick={() => { setBioInput(user.bio ?? ""); setEditingBio(true); }}
+                onClick={() => { setBioInput(profile?.bio ?? ""); setEditingBio(true); }}
                 style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer", padding: "2px 8px", flexShrink: 0 }}
               >
                 Edit

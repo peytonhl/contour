@@ -5,7 +5,7 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -220,12 +220,10 @@ async def get_user_taste(user_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/{user_id}/ratings")
 async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
     """Return all ratings for a user, enriched with entity metadata, newest first."""
-    from sqlalchemy import desc as sa_desc
-
     ratings = (await db.execute(
         select(Rating)
         .where(Rating.user_id == user_id)
-        .order_by(sa_desc(Rating.created_at))
+        .order_by(desc(Rating.created_at))
         .limit(200)
     )).scalars().all()
 
@@ -269,12 +267,10 @@ async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/{user_id}/lists")
 async def get_user_lists(user_id: str, db: AsyncSession = Depends(get_db)):
     """Return all lists created by a user, newest first."""
-    from sqlalchemy import desc as sa_desc, func
-
     lists = (await db.execute(
         select(UserList)
         .where(UserList.user_id == user_id)
-        .order_by(sa_desc(UserList.updated_at))
+        .order_by(desc(UserList.updated_at))
     )).scalars().all()
 
     result = []
@@ -323,13 +319,10 @@ async def get_user_lists(user_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/{user_id}/reviews")
 async def get_user_reviews(user_id: str, db: AsyncSession = Depends(get_db)):
     """Return a user's most recent reviews, enriched with entity metadata."""
-    from sqlalchemy import desc as sa_desc
-    from models import Review, Rating
-
     reviews = (await db.execute(
         select(Review)
         .where(Review.user_id == user_id)
-        .order_by(sa_desc(Review.created_at))
+        .order_by(desc(Review.created_at))
         .limit(30)
     )).scalars().all()
 

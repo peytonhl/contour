@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import Review, AlbumCache
 from routers.auth import optional_user_id
-from routers.ratings import _enrich_reviews, _controversial_score
+from routers.ratings import _enrich_reviews
 from services import spotify
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])

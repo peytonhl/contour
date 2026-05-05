@@ -4,7 +4,6 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
 
 function timeAgo(iso) {
   const diff = Date.now() - new Date(iso).getTime();

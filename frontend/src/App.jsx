@@ -37,7 +37,6 @@ export default function App() {
         <Route path="feed" element={<FeedPage />} />
         <Route path="charts" element={<LeaderboardPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="for-you" element={<ForYouPage />} />
         <Route path="auth/success" element={<AuthSuccessPage />} />
         <Route path="privacy" element={<PrivacyPage />} />
         <Route path="list/:id" element={<ListDetailPage />} />
