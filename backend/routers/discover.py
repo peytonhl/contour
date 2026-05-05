@@ -186,13 +186,32 @@ async def get_discover_feed(
             if len(tracks) >= limit:
                 break
 
+    # ── Tier 6: Exclude-blind fallback ───────────────────────────────────────
+    # If all tiers returned nothing it's because the user has seen every popular
+    # track we'd normally serve (large exclude list).  Re-run Tier 3 ignoring
+    # the exclude filter so there's always something to show.
+    if not tracks:
+        logger.warning(
+            "discover: all tiers empty after exclude filter (exclude=%d) — retrying without filter",
+            len(exclude_ids),
+        )
+        try:
+            top = await spotify.get_global_top_tracks(limit=50)
+            random.shuffle(top)
+            for t in top:
+                if t.get("id") and t["id"] not in seen:
+                    seen.add(t["id"])
+                    tracks.append(t)
+                    if len(tracks) >= limit:
+                        break
+        except Exception as exc:
+            logger.warning("discover: tier6 failed — %s", exc)
+
     logger.info(
         "discover: returning %d tracks (exclude=%d, genres=%s, artists=%s)",
         len(tracks), len(exclude_ids), genre_list[:2], liked_artist_ids[:2],
     )
 
-    # If every tier failed (Spotify down / rate-limited), return an empty list
-    # so the client can show its own "nothing to show" state rather than an error.
     if not tracks:
         logger.error("discover: all tiers failed — returning empty feed")
         return []

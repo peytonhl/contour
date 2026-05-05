@@ -34,7 +34,9 @@ function loadSeen() {
 }
 function saveSeen(ids) {
   const all = [...loadSeen(), ...ids];
-  localStorage.setItem(SEEN_KEY, JSON.stringify(all.slice(-200)));
+  // Cap at 100 so the exclude list never grows large enough to filter
+  // out all popular tracks and produce an empty feed.
+  localStorage.setItem(SEEN_KEY, JSON.stringify(all.slice(-100)));
 }
 
 // ── Listen / rating history ───────────────────────────────────────────────────
