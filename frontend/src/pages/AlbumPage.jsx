@@ -33,6 +33,35 @@ function StatBlock({ label, value }) {
   );
 }
 
+function NoChartData({ releaseDate }) {
+  const year = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : null;
+  const isEarlyEra = year && year < 2013;
+
+  return (
+    <div style={{
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: 12,
+      padding: "48px 24px",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: 12,
+      textAlign: "center",
+    }}>
+      <span style={{ fontSize: 32, opacity: 0.4 }}>{isEarlyEra ? "📡" : "📊"}</span>
+      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-muted)" }}>
+        No streaming data available
+      </div>
+      <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 420, lineHeight: 1.6, opacity: 0.75 }}>
+        {isEarlyEra
+          ? `Streaming chart data isn't available for this album. Releases from ${year} predate widespread streaming adoption, so historical data is often absent from our sources.`
+          : "Streaming chart data isn't available for this album yet. This can happen for albums with very few streams or those not yet indexed by our data sources."}
+      </div>
+    </div>
+  );
+}
+
 export function AlbumPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -133,13 +162,15 @@ export function AlbumPage() {
       <EraCallout eraContext={trajectory?.era_context} totalStreams={trajectory?.total_streams} />
 
       {/* Trajectory */}
-      {trajectory && (
+      {trajectory?.trajectory?.length > 0 ? (
         <TrajectoryChart
           trajectory={trajectory.trajectory}
           milestones={trajectory.riaa_milestones}
           accentColor="var(--accent-a)"
           disclaimer={trajectory.stream_source !== "kworb" ? DISCLAIMER : undefined}
         />
+      ) : (
+        <NoChartData releaseDate={album.release_date} />
       )}
 
       {/* Ratings & Reviews */}

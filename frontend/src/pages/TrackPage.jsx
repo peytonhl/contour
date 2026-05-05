@@ -33,6 +33,35 @@ function StatBlock({ label, value }) {
   );
 }
 
+function NoChartData({ releaseDate }) {
+  const year = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : null;
+  const isEarlyEra = year && year < 2013;
+
+  return (
+    <div style={{
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: 12,
+      padding: "48px 24px",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: 12,
+      textAlign: "center",
+    }}>
+      <span style={{ fontSize: 32, opacity: 0.4 }}>{isEarlyEra ? "📡" : "📊"}</span>
+      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-muted)" }}>
+        No streaming data available
+      </div>
+      <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 420, lineHeight: 1.6, opacity: 0.75 }}>
+        {isEarlyEra
+          ? `Streaming chart data isn't available for this track. Releases from ${year} predate widespread streaming adoption, so historical data is often absent from our sources.`
+          : "Streaming chart data isn't available for this track yet. This can happen for tracks with very few streams or those not yet indexed by our data sources."}
+      </div>
+    </div>
+  );
+}
+
 export function TrackPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -143,13 +172,15 @@ export function TrackPage() {
       </div>
 
       {/* Trajectory */}
-      {trajectory && (
+      {trajectory?.trajectory?.length > 0 ? (
         <TrajectoryChart
           trajectory={trajectory.trajectory}
           milestones={trajectory.riaa_milestones}
           accentColor="var(--accent-b)"
           disclaimer={trajectory.stream_source !== "kworb" ? DISCLAIMER : undefined}
         />
+      ) : (
+        <NoChartData releaseDate={track.release_date} />
       )}
     </div>
   );
