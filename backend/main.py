@@ -3,6 +3,9 @@
 import asyncio
 import logging
 import os
+
+# Ensure all application loggers emit at INFO level so Railway shows them.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s: %(message)s")
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
