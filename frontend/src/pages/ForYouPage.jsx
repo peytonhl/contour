@@ -561,7 +561,9 @@ function ForYouFeed() {
           if (entry.isIntersecting) {
             const idx = parseInt(entry.target.dataset.card);
             setActiveIdx(idx);
-            if (idx >= tracks.length - 2) fetchBatch(true);
+            // Prefetch the next batch while the user is still 4 cards from the
+            // end so it arrives before the loading spinner ever shows.
+            if (idx >= tracks.length - 4) fetchBatch(true);
           }
         });
       },
