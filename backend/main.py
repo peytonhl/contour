@@ -294,6 +294,27 @@ async def health():
         results["redis"] = {"ok": False, "error": str(exc)}
     # Redis missing = slower but not broken
 
+    # ── Kworb reachability ────────────────────────────────────────────────────
+    # Kworb powers the comparison/trajectory feature. Tests with a known
+    # artist ID (Ed Sheeran) — if empty, Kworb is unreachable from this IP
+    # and trajectory data will be empty for all comparison charts.
+    try:
+        import time as _time
+        from services import kworb as kworb_svc
+        t0 = _time.monotonic()
+        albums = await kworb_svc.get_artist_albums_by_id("6eUKZXaKkcviH0Ku9w2n3V")  # Ed Sheeran
+        latency = round((_time.monotonic() - t0) * 1000)
+        if albums:
+            results["kworb"] = {"ok": True, "latency_ms": latency, "albums_returned": len(albums)}
+        else:
+            results["kworb"] = {
+                "ok": False, "latency_ms": latency,
+                "note": "returned empty — likely IP-blocked. Trajectory comparison will show no data.",
+            }
+    except Exception as exc:
+        results["kworb"] = {"ok": False, "error": str(exc)}
+    # Kworb down = comparison charts empty, but rest of app still works
+
     # ── Leaderboard data ──────────────────────────────────────────────────────
     try:
         from sqlalchemy import select, func

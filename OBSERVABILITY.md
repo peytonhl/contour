@@ -29,7 +29,10 @@ GET https://contour-production.up.railway.app/health
 | `spotify` | ✅ Yes | Search, For You feed, album pages |
 | `lastfm` | No | Leaderboard won't seed new data |
 | `redis` | No | Feed is slower (live Spotify calls every request) |
+| `kworb` | No | Comparison/trajectory charts show no data |
 | `leaderboard` | No | Charts page shows empty |
+
+> **Note on `kworb`:** Kworb is the only source for daily streaming trajectory data (the comparison feature). If `ok: false`, it means either Kworb's IP is blocked on this server, the scraper is broken, or Kworb is down. There is no fallback source for this data.
 
 **Railway monitoring:** Railway → your backend service → Settings → Health Check Path → set to `/health`. Railway will alert you if it returns non-200.
 
