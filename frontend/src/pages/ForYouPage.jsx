@@ -12,6 +12,7 @@ const GOLD = "#f59e0b";
 // ── LocalStorage keys ─────────────────────────────────────────────────────────
 const GENRES_KEY = "contour_genres_v1";
 const HISTORY_KEY = "contour_history_v1";
+const DISLIKED_KEY = "contour_disliked_v1";
 
 // How many ratings before we switch from cold-start to personalized mode
 const COLD_START_THRESHOLD = 5;
@@ -57,6 +58,18 @@ function getLikedArtists() {
 /** How many tracks the user has rated (used for cold-start gate). */
 function getRatingCount() {
   return loadHistory().filter((h) => h.rating !== null).length;
+}
+
+// ── Disliked artists ──────────────────────────────────────────────────────────
+function loadDisliked() {
+  try { return JSON.parse(localStorage.getItem(DISLIKED_KEY) || "[]"); } catch { return []; }
+}
+function recordDislike(artistId) {
+  if (!artistId) return;
+  const prev = loadDisliked();
+  if (!prev.includes(artistId)) {
+    localStorage.setItem(DISLIKED_KEY, JSON.stringify([...prev, artistId].slice(0, 50)));
+  }
 }
 
 // ── Share helper ──────────────────────────────────────────────────────────────
@@ -124,7 +137,7 @@ function ShareIcon() {
 }
 
 // ── Individual discover card ──────────────────────────────────────────────────
-function DiscoverCard({ track, isActive, onRate, onReview, userRating, cardIndex, totalCards, onNext, onPrev }) {
+function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating, cardIndex, totalCards, onNext, onPrev }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -459,6 +472,23 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating, cardIndex
           </div>
         )}
 
+        {/* Not interested */}
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 2 }}>
+          <button
+            onClick={() => onDislike(track)}
+            style={{
+              fontSize: 11, color: "rgba(255,255,255,0.3)",
+              background: "none", border: "none", cursor: "pointer",
+              padding: "4px 10px", borderRadius: 20,
+              transition: "color 0.15s",
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "rgba(255,255,255,0.3)"}
+          >
+            ✕ Not interested in {track.artists?.[0]}
+          </button>
+        </div>
+
         {/* Swipe hint — shown on first card only */}
         {cardIndex === 0 && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4, opacity: 0.3 }}>
@@ -525,9 +555,11 @@ function ForYouFeed() {
     setFetchError(false);
     try {
       const likedArtists = isPersonalized ? getLikedArtists() : [];
+      const dislikedArtists = loadDisliked();
       const batch = await api.getDiscoverFeed({
         genres: isPersonalized ? genresRef.current.slice(0, 3) : [],
         liked_artists: likedArtists,
+        disliked_artists: dislikedArtists,
         limit: 10,
       });
 
@@ -621,6 +653,13 @@ function ForYouFeed() {
     try { await api.submitReview("track", track.id, body, ratingValue); } catch { }
   }
 
+  function handleDislike(track) {
+    const artistId = track.artist_ids?.[0];
+    recordDislike(artistId);
+    // Immediately remove every track by this artist from the current feed
+    setTracks((prev) => prev.filter((t) => t.artist_ids?.[0] !== artistId));
+  }
+
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "rgba(255,255,255,0.4)" }}>
@@ -634,12 +673,12 @@ function ForYouFeed() {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
         <div style={{ fontSize: 40 }}>🎵</div>
         <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#fff" }}>
-          {fetchError ? "Couldn't load tracks" : "Nothing to show"}
+          {fetchError ? "Couldn't load tracks" : "No tracks right now"}
         </p>
         <p style={{ margin: 0, fontSize: 13, maxWidth: 260, lineHeight: 1.6 }}>
           {fetchError
             ? "There was a problem reaching the server. Check your connection and try again."
-            : "Spotify's feed may be temporarily unavailable."}
+            : "Nothing new matched your taste at the moment — try again in a bit or rate more tracks to improve suggestions."}
         </p>
         <button
           onClick={() => fetchBatch()}
@@ -683,6 +722,7 @@ function ForYouFeed() {
               isActive={activeIdx === i}
               onRate={handleRate}
               onReview={handleReview}
+              onDislike={handleDislike}
               userRating={userRatings[track.id] ?? null}
               cardIndex={i}
               totalCards={tracks.length}

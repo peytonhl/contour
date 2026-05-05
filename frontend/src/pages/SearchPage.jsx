@@ -154,7 +154,7 @@ export function SearchPage() {
               onChange={handleInput}
               placeholder="Search albums, tracks, artists, users…"
               style={{
-                flex: 1, padding: "18px 16px", fontSize: 16,
+                flex: 1, padding: "18px 16px 18px 20px", fontSize: 16,
                 background: "transparent", border: "none", outline: "none",
                 color: "var(--text)",
               }}

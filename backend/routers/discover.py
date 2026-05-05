@@ -55,6 +55,7 @@ async def get_discover_feed(
     request: Request,
     genres: Optional[str] = Query(None, description="Comma-separated genre slugs from client prefs"),
     liked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs rated 4–5 stars"),
+    disliked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs the user has marked 'not interested'"),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
@@ -97,12 +98,24 @@ async def get_discover_feed(
     if not liked_artist_ids:
         liked_artist_ids = [a.strip() for a in liked_artists.split(",")] if liked_artists else []
 
+    # Build disliked artist set — tracks from these artists are excluded
+    disliked_ids: set[str] = (
+        {a.strip() for a in disliked_artists.split(",") if a.strip()}
+        if disliked_artists else set()
+    )
+
     tracks: list[dict] = []
     seen: set[str] = set()
 
     def _add(batch: list[dict]) -> None:
         for t in batch:
-            if t.get("id") and t["id"] not in exclude_ids and t["id"] not in seen:
+            artist_id = (t.get("artist_ids") or [None])[0]
+            if (
+                t.get("id")
+                and t["id"] not in exclude_ids
+                and t["id"] not in seen
+                and artist_id not in disliked_ids
+            ):
                 seen.add(t["id"])
                 tracks.append(t)
 
