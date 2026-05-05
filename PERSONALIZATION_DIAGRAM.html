@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Contour — Personalization Architecture</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0a0a0a;
+    color: #e5e7eb;
+    min-height: 100vh;
+    padding: 48px 24px 80px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #a78bfa, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 13px;
+    color: #6b7280;
+    margin-bottom: 56px;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #6b7280;
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  /* ── Layout ── */
+  .diagrams {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .diagrams { grid-template-columns: 1fr; }
+  }
+
+  .diagram-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .diagram-header {
+    text-align: center;
+    padding: 16px 24px 14px;
+    border-radius: 14px 14px 0 0;
+    border: 1px solid;
+    border-bottom: none;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+  .current .diagram-header {
+    background: rgba(167,139,250,0.08);
+    border-color: rgba(167,139,250,0.3);
+    color: #a78bfa;
+  }
+  .future .diagram-header {
+    background: rgba(52,211,153,0.08);
+    border-color: rgba(52,211,153,0.3);
+    color: #34d399;
+  }
+
+  .diagram-body {
+    border: 1px solid;
+    border-radius: 0 0 14px 14px;
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+  }
+  .current .diagram-body { border-color: rgba(167,139,250,0.2); background: rgba(167,139,250,0.03); }
+  .future .diagram-body  { border-color: rgba(52,211,153,0.2);  background: rgba(52,211,153,0.03); }
+
+  /* ── Nodes ── */
+  .node {
+    border-radius: 10px;
+    padding: 11px 16px;
+    font-size: 13px;
+    line-height: 1.45;
+    border: 1px solid;
+    position: relative;
+  }
+  .node .label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .node .title {
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .node .desc {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 2px;
+    line-height: 1.5;
+  }
+
+  /* node colour variants */
+  .node-purple {
+    background: rgba(167,139,250,0.1);
+    border-color: rgba(167,139,250,0.35);
+    color: #e5e7eb;
+  }
+  .node-green {
+    background: rgba(52,211,153,0.1);
+    border-color: rgba(52,211,153,0.35);
+    color: #e5e7eb;
+  }
+  .node-orange {
+    background: rgba(251,146,60,0.1);
+    border-color: rgba(251,146,60,0.3);
+    color: #e5e7eb;
+  }
+  .node-gold {
+    background: rgba(245,158,11,0.1);
+    border-color: rgba(245,158,11,0.3);
+    color: #e5e7eb;
+  }
+  .node-surface {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.1);
+    color: #e5e7eb;
+  }
+  .node-new {
+    background: rgba(52,211,153,0.07);
+    border-color: rgba(52,211,153,0.25);
+    color: #e5e7eb;
+  }
+
+  /* ── Tier pills inside a group ── */
+  .tier-group {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.02);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .tier-group .group-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin-bottom: 2px;
+  }
+  .tier-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 7px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    font-size: 12px;
+  }
+  .tier-row .tier-badge {
+    font-size: 9px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 20px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .tier-row .tier-name { font-weight: 600; flex: 1; }
+  .tier-row .tier-detail { font-size: 11px; color: #6b7280; }
+
+  .t1 .tier-badge { background: rgba(167,139,250,0.2); color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); }
+  .t2 .tier-badge { background: rgba(52,211,153,0.15); color: #34d399; border: 1px solid rgba(52,211,153,0.25); }
+  .t3 .tier-badge { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); }
+  .t4 .tier-badge { background: rgba(251,146,60,0.15); color: #fb923c; border: 1px solid rgba(251,146,60,0.25); }
+  .t5 .tier-badge { background: rgba(156,163,175,0.15); color: #9ca3af; border: 1px solid rgba(156,163,175,0.2); }
+
+  /* ── Arrow connector ── */
+  .arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4b5563;
+    font-size: 18px;
+    line-height: 1;
+    margin: 2px 0;
+    flex-shrink: 0;
+  }
+
+  /* ── Tag for new items ── */
+  .new-tag {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 20px;
+    background: rgba(52,211,153,0.15);
+    border: 1px solid rgba(52,211,153,0.3);
+    color: #34d399;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+
+  /* ── Signal columns ── */
+  .signals-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+  .signal-col {
+    border-radius: 9px;
+    padding: 10px 11px;
+    font-size: 11px;
+    border: 1px solid;
+    line-height: 1.6;
+  }
+  .signal-col .signal-title {
+    font-weight: 800;
+    font-size: 11px;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .signal-col.explicit { background: rgba(167,139,250,0.08); border-color: rgba(167,139,250,0.25); }
+  .signal-col.explicit .signal-title { color: #a78bfa; }
+  .signal-col.implicit { background: rgba(52,211,153,0.07); border-color: rgba(52,211,153,0.2); }
+  .signal-col.implicit .signal-title { color: #34d399; }
+  .signal-col.social   { background: rgba(251,146,60,0.07); border-color: rgba(251,146,60,0.2); }
+  .signal-col.social   .signal-title { color: #fb923c; }
+
+  /* ── Candidate source rows ── */
+  .source-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 11px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.025);
+    font-size: 12px;
+  }
+  .source-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0; margin-top: 3px;
+  }
+  .source-row .source-name { font-weight: 700; flex: 1; }
+  .source-row .source-desc { font-size: 11px; color: #6b7280; margin-top: 1px; }
+
+  /* ── Profile store block ── */
+  .profile-store {
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: rgba(245,158,11,0.06);
+  }
+  .profile-store .ps-title {
+    font-size: 12px; font-weight: 800; color: #f59e0b; margin-bottom: 8px;
+  }
+  .profile-store .ps-fields {
+    display: flex; flex-wrap: wrap; gap: 5px;
+  }
+  .ps-field {
+    font-size: 10px; padding: 2px 8px; border-radius: 20px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    color: #d1d5db;
+    font-family: monospace;
+  }
+  .ps-field.new-field {
+    background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.25);
+    color: #34d399;
+  }
+
+  /* ── Ranking block ── */
+  .ranking-block {
+    border: 1px solid rgba(167,139,250,0.2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: rgba(167,139,250,0.05);
+    font-size: 12px;
+  }
+  .ranking-block .rb-title {
+    font-size: 12px; font-weight: 800; color: #a78bfa; margin-bottom: 8px;
+  }
+  .ranking-formula {
+    font-family: monospace; font-size: 11px;
+    background: rgba(0,0,0,0.3); border-radius: 6px;
+    padding: 7px 10px; color: #c4b5fd; margin-bottom: 8px;
+    line-height: 1.6;
+  }
+  .ranking-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+  .ranking-pill {
+    font-size: 10px; padding: 3px 9px; border-radius: 20px;
+    background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.2);
+    color: #c4b5fd;
+  }
+  .ranking-pill.new-pill {
+    background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.25); color: #34d399;
+  }
+
+  /* ── Terminal node ── */
+  .terminal {
+    text-align: center;
+    padding: 11px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .terminal-purple { background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.3); color: #a78bfa; }
+  .terminal-green  { background: rgba(52,211,153,0.12);  border: 1px solid rgba(52,211,153,0.3);  color: #34d399;  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex; align-items: center; justify-content: center;
+    gap: 20px; margin-top: 40px; flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; color: #9ca3af;
+  }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+</style>
+</head>
+<body>
+
+<h1>Contour Personalization Architecture</h1>
+<p class="subtitle">Current feed system vs. proposed future-state layered personalization</p>
+
+<div class="diagrams">
+
+  <!-- ════════════════════════════════════════════
+       CURRENT STATE
+  ═════════════════════════════════════════════ -->
+  <div class="diagram-col current">
+    <div class="diagram-header">Current State — 5-Tier Feed</div>
+    <div class="diagram-body">
+
+      <!-- Input -->
+      <div class="node node-purple">
+        <span class="label">Taste Resolution (priority order)</span>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;">
+          <div style="font-size:11px;display:flex;align-items:center;gap:6px;">
+            <span style="background:rgba(167,139,250,0.25);color:#a78bfa;border-radius:4px;padding:1px 6px;font-weight:800;font-size:10px;">①</span>
+            Server <code style="font-size:10px;background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:3px;">UserTasteProfile</code> — genres + liked_artist_ids
+          </div>
+          <div style="font-size:11px;display:flex;align-items:center;gap:6px;">
+            <span style="background:rgba(167,139,250,0.15);color:#a78bfa;border-radius:4px;padding:1px 6px;font-weight:800;font-size:10px;">②</span>
+            Client localStorage — genres + liked_artists
+          </div>
+          <div style="font-size:11px;display:flex;align-items:center;gap:6px;">
+            <span style="background:rgba(156,163,175,0.15);color:#9ca3af;border-radius:4px;padding:1px 6px;font-weight:800;font-size:10px;">③</span>
+            No prefs → cold-start baseline
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow">↓</div>
+
+      <!-- Tiers -->
+      <div class="tier-group">
+        <div class="group-label">Feed Generation Pipeline</div>
+        <div class="tier-row t1">
+          <span class="tier-badge">Tier 1</span>
+          <span class="tier-name">Related Artists</span>
+          <span class="tier-detail">most personalized</span>
+        </div>
+        <div class="tier-row t2">
+          <span class="tier-badge">Tier 2</span>
+          <span class="tier-name">Genre Keyword Search</span>
+          <span class="tier-detail">based on taste profile</span>
+        </div>
+        <div class="tier-row t3">
+          <span class="tier-badge">Tier 3</span>
+          <span class="tier-name">Global Top 50</span>
+          <span class="tier-detail">Spotify baseline · always fires</span>
+        </div>
+        <div class="tier-row t4">
+          <span class="tier-badge">Tier 4</span>
+          <span class="tier-name">New Releases</span>
+          <span class="tier-detail">freshness filler</span>
+        </div>
+        <div class="tier-row t5">
+          <span class="tier-badge">Tier 5</span>
+          <span class="tier-name">Keyword Fallbacks</span>
+          <span class="tier-detail">guarantees results</span>
+        </div>
+      </div>
+
+      <div class="arrow">↓</div>
+
+      <div class="node node-surface">
+        <span class="title">🔵 Dedup + Exclusion</span>
+        <div class="desc">Exclude already-rated tracks · deduplicate within batch</div>
+      </div>
+
+      <div class="arrow">↓</div>
+
+      <div class="node node-surface">
+        <span class="title">🟢 Deezer Preview Enrichment</span>
+        <div class="desc">Fills missing preview_url from Deezer API</div>
+      </div>
+
+      <div class="arrow">↓</div>
+      <div class="terminal terminal-purple">↩ Return ≤ 10 tracks</div>
+
+      <!-- Limitations -->
+      <div style="margin-top:16px;padding:12px 14px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:#f87171;margin-bottom:6px;">Current Limitations</div>
+        <ul style="font-size:11px;color:#9ca3af;line-height:1.8;padding-left:14px;">
+          <li>Tiers 3 & 5 are the same for every user</li>
+          <li>No negative signals (skip / dislike)</li>
+          <li>Can flood feed with one artist</li>
+          <li>No collaborative filtering</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       FUTURE STATE
+  ═════════════════════════════════════════════ -->
+  <div class="diagram-col future">
+    <div class="diagram-header">Proposed Future State — Layered</div>
+    <div class="diagram-body">
+
+      <!-- Signals -->
+      <div style="margin-bottom:2px;">
+        <div class="group-label" style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;margin-bottom:6px;">① Signal Collection Layer</div>
+        <div class="signals-row">
+          <div class="signal-col explicit">
+            <span class="signal-title">Explicit</span>
+            Star ratings<br>Written reviews<br>Onboarding genres<br><span style="color:#34d399;font-weight:700;">Skip / dislike ★</span>
+          </div>
+          <div class="signal-col implicit">
+            <span class="signal-title">Implicit</span>
+            <span style="color:#34d399;font-weight:700;">Play duration ★</span><br><span style="color:#34d399;font-weight:700;">Page views ★</span><br><span style="color:#34d399;font-weight:700;">Search queries ★</span>
+          </div>
+          <div class="signal-col social">
+            <span class="signal-title">Social</span>
+            Follows<br>Shared tracks<br><span style="color:#34d399;font-weight:700;">Liked reviews ★</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow">↓</div>
+
+      <!-- Profile store -->
+      <div class="profile-store">
+        <div class="ps-title">② Profile Store (Redis + Postgres)</div>
+        <div class="ps-fields">
+          <span class="ps-field">genre_weights {}</span>
+          <span class="ps-field">liked_artist_ids []</span>
+          <span class="ps-field new-field">disliked_artist_ids [] ★</span>
+          <span class="ps-field new-field">listened_track_ids 30d ★</span>
+          <span class="ps-field new-field">era_preference {} ★</span>
+        </div>
+      </div>
+
+      <div class="arrow">↓</div>
+
+      <!-- Candidate generation -->
+      <div style="margin-bottom:2px;">
+        <div class="group-label" style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;margin-bottom:6px;">③ Candidate Generation</div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <div class="source-row">
+            <div class="source-dot" style="background:#a78bfa;"></div>
+            <div>
+              <div class="source-name">Collaborative Filtering <span class="new-tag">NEW</span></div>
+              <div class="source-desc">Taste-twin rated tracks via similarity clustering</div>
+            </div>
+          </div>
+          <div class="source-row">
+            <div class="source-dot" style="background:#34d399;"></div>
+            <div>
+              <div class="source-name">Related Artists <span class="new-tag">IMPROVED</span></div>
+              <div class="source-desc">Expanded to 2nd-degree; weighted by genre overlap</div>
+            </div>
+          </div>
+          <div class="source-row">
+            <div class="source-dot" style="background:#fb923c;"></div>
+            <div>
+              <div class="source-name">Genre + Era Search <span class="new-tag">IMPROVED</span></div>
+              <div class="source-desc">Era-preference biased queries by decade</div>
+            </div>
+          </div>
+          <div class="source-row">
+            <div class="source-dot" style="background:#f59e0b;"></div>
+            <div>
+              <div class="source-name">Community Trending <span class="new-tag">NEW</span></div>
+              <div class="source-desc">Tracks with most 4–5★ ratings in last 7 days</div>
+            </div>
+          </div>
+          <div class="source-row">
+            <div class="source-dot" style="background:#6b7280;"></div>
+            <div>
+              <div class="source-name">Global Baseline</div>
+              <div class="source-desc">Spotify Top 50 + new releases (existing)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow">↓</div>
+
+      <!-- Ranking -->
+      <div class="ranking-block">
+        <div class="rb-title">④ Ranking + Diversity Layer</div>
+        <div class="ranking-formula">
+          score = genre_match × artist_affinity<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;× recency_decay × era_alignment
+        </div>
+        <div class="ranking-pills">
+          <span class="ranking-pill new-pill">max 2 tracks / artist ★</span>
+          <span class="ranking-pill new-pill">min 3 genres / batch ★</span>
+          <span class="ranking-pill">exclude rated tracks</span>
+          <span class="ranking-pill new-pill">exclude disliked artists ★</span>
+          <span class="ranking-pill new-pill">soft exclude heard &lt; 30d ★</span>
+        </div>
+      </div>
+
+      <div class="arrow">↓</div>
+      <div class="terminal terminal-green">↩ Return ≤ 10 ranked tracks</div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#34d399;"></div>
+    <span><strong style="color:#34d399;">★ New</strong> or improved vs current state</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#a78bfa;"></div>
+    <span>Existing, carried forward</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#6b7280;"></div>
+    <span>Baseline / fallback</span>
+  </div>
+</div>
+
+</body>
+</html>
