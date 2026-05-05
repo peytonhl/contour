@@ -61,39 +61,68 @@ async def _seed_leaderboard() -> None:
     """
     Background task: prime the leaderboard with popular albums on startup.
 
-    Strategy:
-      1. Scrape Kworb's own top-albums list (kworb.net/spotify/albums.html).
-         These entries already have Spotify IDs and confirmed stream counts so
-         no per-artist scraping guesswork is needed.
-      2. For each album, fetch Spotify metadata (name, art, release date) and
-         upsert into AlbumCache with the stream count pre-filled.
-      3. Skip albums that were enriched recently (TTL from album_cache).
+    Two-stage strategy:
+      Stage 1 — Spotify-sourced IDs (reliable):
+        Pull album IDs from the Global Top 50 playlist + new releases.
+        For each, fetch Kworb's individual album page to get total streams.
+        Individual Kworb album pages (same ones used for trajectory data)
+        are more reliably parseable than the global listing page.
 
-    This runs 60 s after startup so early user requests don't compete for
-    Spotify quota.  A 1 s delay between Spotify calls avoids rate-limiting.
-    Already-enriched albums are skipped quickly so repeated deploys are cheap.
+      Stage 2 — Kworb global list (bonus, best-effort):
+        Also try kworb.net/spotify/albums.html for additional historically
+        popular albums.  Falls back silently if the page can't be parsed.
+
+    Runs 60 s after startup.  Already-fresh albums are skipped.
     """
     from services import spotify, kworb
     from services import album_cache as cache
 
-    # Wait 60 s after startup before hitting external APIs.
     await asyncio.sleep(60)
 
-    logger.info("Leaderboard seed: fetching Kworb top albums list…")
+    # ── Stage 1: collect album IDs from Spotify's own top data ───────────────
+    album_ids: list[str] = []
+
+    try:
+        top_tracks = await spotify.get_global_top_tracks(limit=50)
+        for t in top_tracks:
+            aid = t.get("album_id")
+            if aid and aid not in album_ids:
+                album_ids.append(aid)
+        logger.info("Leaderboard seed: %d album IDs from Global Top 50", len(album_ids))
+    except Exception as exc:
+        logger.warning("Leaderboard seed: top tracks fetch failed — %s", exc)
+
+    try:
+        releases = await spotify.get_new_releases(limit=20)
+        for a in releases:
+            if a.get("id") and a["id"] not in album_ids:
+                album_ids.append(a["id"])
+        logger.info("Leaderboard seed: %d album IDs after new releases", len(album_ids))
+    except Exception as exc:
+        logger.warning("Leaderboard seed: new releases fetch failed — %s", exc)
+
+    # ── Stage 2: bonus IDs from Kworb global list ─────────────────────────────
+    kworb_entries: dict[str, int] = {}  # spotify_id → streams (pre-fetched)
     try:
         top_albums = await kworb.get_top_albums(limit=200)
+        for entry in top_albums:
+            sid = entry["spotify_id"]
+            kworb_entries[sid] = entry["streams"]
+            if sid not in album_ids:
+                album_ids.append(sid)
+        logger.info("Leaderboard seed: %d album IDs after Kworb list (%d with pre-fetched streams)",
+                    len(album_ids), len(kworb_entries))
     except Exception as exc:
-        logger.warning("Leaderboard seed: failed to fetch Kworb top albums: %s", exc)
+        logger.warning("Leaderboard seed: Kworb global list skipped — %s", exc)
+
+    if not album_ids:
+        logger.warning("Leaderboard seed: no album IDs found — aborting")
         return
 
-    if not top_albums:
-        logger.warning("Leaderboard seed: Kworb top albums returned empty list")
-        return
+    logger.info("Leaderboard seed: processing %d albums…", len(album_ids))
 
-    logger.info("Leaderboard seed: seeding %d albums from Kworb", len(top_albums))
-
-    for entry in top_albums:
-        spotify_id = entry["spotify_id"]
+    seeded = 0
+    for spotify_id in album_ids:
         try:
             async with AsyncSessionLocal() as db:
                 existing = await cache.get_cached_album(db, spotify_id)
@@ -103,19 +132,30 @@ async def _seed_leaderboard() -> None:
             meta = await spotify.get_album(spotify_id)
             async with AsyncSessionLocal() as db:
                 await cache.upsert_album(db, meta)
-                await cache.save_kworb_streams(db, spotify_id, entry["streams"])
-                logger.info(
-                    "Leaderboard seed: %s — %s streams",
-                    meta["name"],
-                    f"{entry['streams']:,}",
-                )
+
+            # Use pre-fetched Kworb stream count if available; otherwise scrape
+            # the individual album page (same endpoint used for trajectory data)
+            streams = kworb_entries.get(spotify_id)
+            if streams is None:
+                daily = await kworb.get_entity_daily_data(spotify_id, "album")
+                if daily:
+                    streams = daily[-1]["streams_cumulative"]
+
+            async with AsyncSessionLocal() as db:
+                await cache.save_kworb_streams(db, spotify_id, streams)
+
+            if streams:
+                logger.info("Leaderboard seed: ✓ %s — %s streams", meta["name"], f"{streams:,}")
+                seeded += 1
+            else:
+                logger.info("Leaderboard seed: %s — no Kworb data", meta["name"])
+
         except Exception as exc:
-            logger.warning("Leaderboard seed: skipped %s (%s) — %s", spotify_id, entry.get("name"), exc)
+            logger.warning("Leaderboard seed: skipped %s — %s", spotify_id, exc)
 
-        # Polite delay between Spotify calls — always fires, even on failure
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
 
-    logger.info("Leaderboard seed: complete")
+    logger.info("Leaderboard seed: complete — %d albums with stream data", seeded)
 
 
 @app.on_event("startup")

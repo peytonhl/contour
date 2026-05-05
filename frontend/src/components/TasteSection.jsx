@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
+import { GENRE_OPTIONS, GenreChip } from "./OnboardingModal.jsx";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -328,6 +329,79 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
   );
 }
 
+// ── Genre editor sheet ────────────────────────────────────────────────────────
+function GenreEditorSheet({ currentGenres, onSave, onClose }) {
+  const [selected, setSelected] = useState(currentGenres ?? []);
+  const [saving, setSaving] = useState(false);
+
+  function toggle(slug) {
+    setSelected((prev) =>
+      prev.includes(slug) ? prev.filter((g) => g !== slug) : [...prev, slug]
+    );
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      localStorage.setItem("contour_genres_v1", JSON.stringify(selected));
+      await api.saveTasteProfile(selected, [], true);
+      onSave(selected);
+      onClose();
+    } catch {
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 300 }} />
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 301,
+        padding: "0 16px calc(env(safe-area-inset-bottom, 16px) + 16px)",
+      }}>
+        <div style={{
+          background: "var(--surface)", border: "1px solid var(--border)",
+          borderRadius: "20px 20px 16px 16px", padding: "22px 22px 20px",
+          maxWidth: 480, margin: "0 auto", boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
+        }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 20px" }} />
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Edit your genres</h3>
+              <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--text-muted)" }}>
+                {selected.length > 0 ? `${selected.length} selected` : "None selected — your feed will use defaults"}
+              </p>
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                padding: "7px 18px", borderRadius: 20, fontSize: 13, fontWeight: 800,
+                background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                border: "none", color: "#000", cursor: "pointer", opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+
+          <div style={{
+            display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center",
+            maxHeight: 260, overflowY: "auto", padding: "4px 0",
+          }}>
+            {GENRE_OPTIONS.map((g) => (
+              <GenreChip key={g.slug} genre={g} selected={selected} onToggle={toggle} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Rating distribution bar chart ─────────────────────────────────────────────
 function RatingDistribution({ distribution }) {
   const maxCount = Math.max(...Object.values(distribution), 1);
@@ -374,6 +448,10 @@ export function TasteSection({ userId, isOwner }) {
   const [taste, setTaste] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [genreEditorOpen, setGenreEditorOpen] = useState(false);
+  const [savedGenres, setSavedGenres] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("contour_genres_v1") || "[]"); } catch { return []; }
+  });
 
   useEffect(() => {
     setLoading(true);
@@ -417,21 +495,33 @@ export function TasteSection({ userId, isOwner }) {
         gap: 20,
       }}>
         {/* Section header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>
             Music Taste
           </h3>
           {isOwner && (
-            <button
-              onClick={() => setPickerOpen(true)}
-              style={{
-                fontSize: 11, fontWeight: 700, color: ACCENT_A,
-                background: `${ACCENT_A}14`, border: `1px solid ${ACCENT_A}35`,
-                borderRadius: 20, padding: "4px 12px", cursor: "pointer",
-              }}
-            >
-              {taste?.pinned_albums?.length ? "Edit albums" : "+ Pick albums"}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setGenreEditorOpen(true)}
+                style={{
+                  fontSize: 11, fontWeight: 700, color: ACCENT_B,
+                  background: `${ACCENT_B}14`, border: `1px solid ${ACCENT_B}35`,
+                  borderRadius: 20, padding: "4px 12px", cursor: "pointer",
+                }}
+              >
+                {savedGenres.length > 0 ? `Genres (${savedGenres.length})` : "+ Add genres"}
+              </button>
+              <button
+                onClick={() => setPickerOpen(true)}
+                style={{
+                  fontSize: 11, fontWeight: 700, color: ACCENT_A,
+                  background: `${ACCENT_A}14`, border: `1px solid ${ACCENT_A}35`,
+                  borderRadius: 20, padding: "4px 12px", cursor: "pointer",
+                }}
+              >
+                {taste?.pinned_albums?.length ? "Edit albums" : "+ Pick albums"}
+              </button>
+            </div>
           )}
         </div>
 
@@ -483,6 +573,14 @@ export function TasteSection({ userId, isOwner }) {
           selected={taste?.pinned_albums ?? []}
           onSave={handleSavePins}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {genreEditorOpen && (
+        <GenreEditorSheet
+          currentGenres={savedGenres}
+          onSave={(genres) => setSavedGenres(genres)}
+          onClose={() => setGenreEditorOpen(false)}
         />
       )}
     </>

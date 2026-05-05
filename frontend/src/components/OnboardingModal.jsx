@@ -6,75 +6,10 @@ const STORAGE_KEY = "contour_onboarded_v1";
 const GENRES_KEY = "contour_genres_v1";
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
+const ACCENT_C = "#fb923c";
 
-// ── Slide illustrations ───────────────────────────────────────────────────────
-
-function IllustrationTrajectory() {
-  return (
-    <svg viewBox="0 0 160 90" width="160" height="90" style={{ display: "block", margin: "0 auto" }}>
-      <defs>
-        <linearGradient id="tg" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor={ACCENT_A} />
-          <stop offset="100%" stopColor={ACCENT_B} />
-        </linearGradient>
-      </defs>
-      <line x1="16" y1="10" x2="16" y2="74" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="16" y1="74" x2="148" y2="74" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M 20 70 C 40 65 60 55 100 44 C 120 38 135 35 145 33"
-        stroke={ACCENT_A} strokeWidth="2" fill="none" strokeLinecap="round" opacity="0.35" strokeDasharray="4 3" />
-      <path d="M 20 70 C 40 60 60 45 90 30 C 110 20 130 15 145 13"
-        stroke="url(#tg)" strokeWidth="3" fill="none" strokeLinecap="round" />
-      <text x="52" y="86" fontSize="8" fill="var(--text-muted)" textAnchor="middle">2012 release</text>
-      <text x="118" y="86" fontSize="8" fill="var(--text-muted)" textAnchor="middle">today</text>
-      <circle cx="145" cy="13" r="3.5" fill={ACCENT_B} />
-      <circle cx="145" cy="33" r="3.5" fill={ACCENT_A} opacity="0.4" />
-    </svg>
-  );
-}
-
-function IllustrationCompare() {
-  return (
-    <svg viewBox="0 0 160 90" width="160" height="90" style={{ display: "block", margin: "0 auto" }}>
-      <defs>
-        <linearGradient id="cg1" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor={ACCENT_A} />
-          <stop offset="100%" stopColor={ACCENT_A} stopOpacity="0.6" />
-        </linearGradient>
-        <linearGradient id="cg2" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor={ACCENT_B} />
-          <stop offset="100%" stopColor={ACCENT_B} stopOpacity="0.6" />
-        </linearGradient>
-      </defs>
-      <rect x="16" y="10" width="52" height="52" rx="6" fill="var(--surface2)" />
-      <rect x="92" y="10" width="52" height="52" rx="6" fill="var(--surface2)" />
-      <path d="M 22 56 C 30 50 40 38 62 26" stroke="url(#cg1)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-      <path d="M 98 56 C 106 44 116 32 138 22" stroke="url(#cg2)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-      <circle cx="80" cy="36" r="10" fill="var(--bg)" stroke="var(--border)" strokeWidth="1.5" />
-      <text x="80" y="40" fontSize="8" fill="var(--text-muted)" textAnchor="middle" fontWeight="700">VS</text>
-      <text x="42" y="74" fontSize="8" fill={ACCENT_A} textAnchor="middle">2012</text>
-      <text x="118" y="74" fontSize="8" fill={ACCENT_B} textAnchor="middle">2024</text>
-    </svg>
-  );
-}
-
-function IllustrationCommunity() {
-  return (
-    <svg viewBox="0 0 160 90" width="160" height="90" style={{ display: "block", margin: "0 auto" }}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <text key={i} x={28 + i * 22} y="32" fontSize="20" textAnchor="middle" fill={i < 4 ? "#f59e0b" : "var(--border)"}>★</text>
-      ))}
-      <rect x="16" y="44" width="90" height="6" rx="3" fill="var(--surface2)" />
-      <rect x="16" y="56" width="68" height="6" rx="3" fill="var(--surface2)" />
-      <rect x="16" y="68" width="50" height="6" rx="3" fill="var(--surface2)" />
-      <rect x="118" y="44" width="30" height="20" rx="10" fill={`${ACCENT_A}20`} stroke={ACCENT_A} strokeWidth="1.5" />
-      <text x="133" y="58" fontSize="10" fill={ACCENT_A} textAnchor="middle" fontWeight="700">▲ 12</text>
-    </svg>
-  );
-}
-
-// ── Genre picker data ─────────────────────────────────────────────────────────
-
-const GENRE_OPTIONS = [
+// ── Genre picker data (also exported for reuse in TasteSection) ───────────────
+export const GENRE_OPTIONS = [
   { label: "Hip-Hop",     slug: "hip-hop",     from: "#fb923c", to: "#f97316" },
   { label: "R&B",         slug: "r-n-b",       from: "#c084fc", to: "#a855f7" },
   { label: "Pop",         slug: "pop",          from: "#f472b6", to: "#ec4899" },
@@ -95,7 +30,7 @@ const GENRE_OPTIONS = [
   { label: "Ambient",     slug: "ambient",      from: "#67e8f9", to: "#818cf8" },
 ];
 
-function GenreChip({ genre, selected, onToggle }) {
+export function GenreChip({ genre, selected, onToggle }) {
   const active = selected.includes(genre.slug);
   return (
     <button
@@ -120,28 +55,29 @@ function GenreChip({ genre, selected, onToggle }) {
   );
 }
 
-// ── Slides data ───────────────────────────────────────────────────────────────
-
-const SLIDES = [
+// ── Quick tips for the second screen ─────────────────────────────────────────
+const TIPS = [
   {
-    illustration: <IllustrationTrajectory />,
-    title: "500M streams isn't what it used to be",
-    body: "Spotify's audience is 10× bigger than it was in 2014. Contour adjusts for that — so old and new releases finally compete on equal footing.",
+    icon: "★",
+    color: ACCENT_B,
+    title: "Rate tracks on your feed",
+    body: "Stars on the For You cards tune your feed. 5 ratings is all it takes to personalize it.",
   },
   {
-    illustration: <IllustrationCompare />,
-    title: "Drop any two albums. See who wins.",
-    body: "Adjusted trajectories, side by side. Switch editions, share the link, settle the debate.",
+    icon: "↗",
+    color: ACCENT_A,
+    title: "Search any album or artist",
+    body: "Look up anything to see its streaming history, community ratings, and compare it to something else.",
   },
   {
-    illustration: <IllustrationCommunity />,
-    title: "Your take matters here",
-    body: "Rate it, review it, see what everyone else thinks. Search something you love to get started.",
+    icon: "⟺",
+    color: ACCENT_C,
+    title: "Compare releases head-to-head",
+    body: "Head to Compare to put any two albums or tracks side-by-side — across any era.",
   },
 ];
 
 // ── Dot indicator ─────────────────────────────────────────────────────────────
-
 function Dots({ total, active }) {
   return (
     <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
@@ -159,18 +95,12 @@ function Dots({ total, active }) {
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
-
 export function OnboardingModal() {
   const { user } = useAuth();
   const [visible, setVisible] = useState(false);
-  const [slide, setSlide] = useState(0);
+  const [step, setStep] = useState(0); // 0 = genres, 1 = tips
   const [exiting, setExiting] = useState(false);
-  const [genrePicker, setGenrePicker] = useState(false); // true = genre step
   const [selectedGenres, setSelectedGenres] = useState([]);
-
-  // total dots = slides + genre step
-  const totalSteps = SLIDES.length + 1;
-  const currentStep = genrePicker ? SLIDES.length : slide;
 
   useEffect(() => {
     if (!localStorage.getItem(STORAGE_KEY)) {
@@ -188,16 +118,14 @@ export function OnboardingModal() {
     }, 220);
   }
 
-  async function saveGenresAndDismiss() {
+  async function saveGenresAndNext() {
     if (selectedGenres.length > 0) {
-      // Always save locally for fast access
       localStorage.setItem(GENRES_KEY, JSON.stringify(selectedGenres));
-      // If logged in, persist to server so preferences follow the user across devices
       if (user) {
         api.saveTasteProfile(selectedGenres, [], true).catch(() => {});
       }
     }
-    dismiss();
+    setStep(1);
   }
 
   function toggleGenre(slug) {
@@ -206,31 +134,7 @@ export function OnboardingModal() {
     );
   }
 
-  function next() {
-    if (genrePicker) {
-      saveGenresAndDismiss();
-      return;
-    }
-    if (slide < SLIDES.length - 1) {
-      setSlide((s) => s + 1);
-    } else {
-      // Move to genre picker step
-      setGenrePicker(true);
-    }
-  }
-
-  function prev() {
-    if (genrePicker) {
-      setGenrePicker(false);
-      setSlide(SLIDES.length - 1);
-      return;
-    }
-    if (slide > 0) setSlide((s) => s - 1);
-  }
-
   if (!visible) return null;
-
-  const current = SLIDES[slide];
 
   return (
     <>
@@ -246,7 +150,7 @@ export function OnboardingModal() {
         }}
       />
 
-      {/* Card */}
+      {/* Sheet */}
       <div style={{
         position: "fixed",
         bottom: 0, left: 0, right: 0,
@@ -259,115 +163,114 @@ export function OnboardingModal() {
           background: "var(--surface)",
           border: "1px solid var(--border)",
           borderRadius: "20px 20px 16px 16px",
-          padding: genrePicker ? "24px 24px 20px" : "28px 24px 24px",
+          padding: "24px 24px 20px",
           maxWidth: 480,
           margin: "0 auto",
           boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
         }}>
           {/* Drag handle */}
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 24px" }} />
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 22px" }} />
 
-          {/* ── Genre picker step ── */}
-          {genrePicker ? (
+          {/* ── Step 0: Genre picker ── */}
+          {step === 0 && (
             <>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h2 style={{
-                  fontSize: 20, fontWeight: 800, margin: "0 0 8px",
+                  fontSize: 22, fontWeight: 800, margin: "0 0 8px",
                   background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                   WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
                 }}>
-                  What do you listen to?
+                  What do you love listening to?
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                  Pick your genres — your For You feed starts here.
+                  Pick your genres to get a personalized feed from day one.
                   {selectedGenres.length > 0 && (
                     <span style={{ color: ACCENT_A, fontWeight: 700 }}> {selectedGenres.length} selected</span>
                   )}
                 </p>
               </div>
 
-              {/* Genre grid */}
               <div style={{
                 display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center",
                 marginBottom: 20,
-                maxHeight: 240, overflowY: "auto",
+                maxHeight: 220, overflowY: "auto",
               }}>
                 {GENRE_OPTIONS.map((g) => (
                   <GenreChip key={g.slug} genre={g} selected={selectedGenres} onToggle={toggleGenre} />
                 ))}
               </div>
 
-              {/* Dots */}
               <div style={{ marginBottom: 18 }}>
-                <Dots total={totalSteps} active={currentStep} />
+                <Dots total={2} active={0} />
               </div>
 
-              {/* Buttons */}
               <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={prev} style={{
+                <button onClick={dismiss} style={{
                   flex: 1, padding: "12px 0", borderRadius: 12,
-                  background: "var(--surface2)", border: "1px solid var(--border)",
-                  color: "var(--text-muted)", fontSize: 14, fontWeight: 600, cursor: "pointer",
+                  background: "none", border: "1px solid var(--border)",
+                  color: "var(--text-muted)", fontSize: 14, cursor: "pointer",
                 }}>
-                  Back
+                  Skip
                 </button>
-                <button onClick={saveGenresAndDismiss} style={{
+                <button onClick={saveGenresAndNext} style={{
                   flex: 2, padding: "12px 0", borderRadius: 12,
                   background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                   border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
                 }}>
-                  {selectedGenres.length > 0 ? "Start listening →" : "Skip for now →"}
+                  {selectedGenres.length > 0 ? "Continue →" : "Skip for now →"}
                 </button>
               </div>
             </>
-          ) : (
-            <>
-              {/* ── Standard slide ── */}
-              <div style={{ marginBottom: 24 }}>{current.illustration}</div>
+          )}
 
-              <div style={{ textAlign: "center", marginBottom: 24 }}>
+          {/* ── Step 1: Quick tips ── */}
+          {step === 1 && (
+            <>
+              <div style={{ textAlign: "center", marginBottom: 22 }}>
                 <h2 style={{
-                  fontSize: 20, fontWeight: 800, margin: "0 0 10px",
+                  fontSize: 22, fontWeight: 800, margin: "0 0 6px",
                   background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                   WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
                 }}>
-                  {current.title}
+                  You're in. Here's what to try:
                 </h2>
-                <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.7, margin: 0 }}>
-                  {current.body}
-                </p>
               </div>
 
-              <div style={{ marginBottom: 20 }}>
-                <Dots total={totalSteps} active={currentStep} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 22 }}>
+                {TIPS.map((tip) => (
+                  <div key={tip.title} style={{
+                    display: "flex", alignItems: "flex-start", gap: 14,
+                    background: "var(--surface2)", borderRadius: 12, padding: "13px 15px",
+                    border: "1px solid var(--border)",
+                  }}>
+                    <span style={{
+                      fontSize: 18, width: 32, height: 32, flexShrink: 0,
+                      borderRadius: 8, background: `${tip.color}18`,
+                      border: `1px solid ${tip.color}35`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      color: tip.color, fontWeight: 800,
+                    }}>
+                      {tip.icon}
+                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{tip.title}</span>
+                      <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55 }}>{tip.body}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              <div style={{ display: "flex", gap: 10 }}>
-                {slide > 0 ? (
-                  <button onClick={prev} style={{
-                    flex: 1, padding: "12px 0", borderRadius: 12,
-                    background: "var(--surface2)", border: "1px solid var(--border)",
-                    color: "var(--text-muted)", fontSize: 14, fontWeight: 600, cursor: "pointer",
-                  }}>
-                    Back
-                  </button>
-                ) : (
-                  <button onClick={dismiss} style={{
-                    flex: 1, padding: "12px 0", borderRadius: 12,
-                    background: "none", border: "1px solid var(--border)",
-                    color: "var(--text-muted)", fontSize: 14, cursor: "pointer",
-                  }}>
-                    Skip
-                  </button>
-                )}
-                <button onClick={next} style={{
-                  flex: 2, padding: "12px 0", borderRadius: 12,
-                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                  border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
-                }}>
-                  {slide === SLIDES.length - 1 ? "Pick your genres →" : "Next →"}
-                </button>
+              <div style={{ marginBottom: 18 }}>
+                <Dots total={2} active={1} />
               </div>
+
+              <button onClick={dismiss} style={{
+                width: "100%", padding: "13px 0", borderRadius: 12,
+                background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
+              }}>
+                Start exploring →
+              </button>
             </>
           )}
         </div>
