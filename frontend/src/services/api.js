@@ -124,6 +124,7 @@ export const api = {
 
   // Profile update
   updateProfile: (bio) => patch(`/auth/profile`, { bio }),
+  updateProfilePhoto: (image_url) => patch(`/auth/profile`, { image_url }),
   updatePinnedAlbums: (ids) => patch(`/auth/profile`, { pinned_album_ids: ids }),
 
   // Taste profile

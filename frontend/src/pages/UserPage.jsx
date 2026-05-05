@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
+import { userAvatar } from "../utils/userAvatar.js";
 
 function ListCollage({ images }) {
   const slots = [0, 1, 2, 3];
@@ -93,10 +94,7 @@ export function UserPage() {
 
       {/* Profile header */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, textAlign: "center" }}>
-        {profile.image_url
-          ? <img src={profile.image_url} alt={profile.display_name} style={{ width: 88, height: 88, borderRadius: "50%", objectFit: "cover", border: "3px solid var(--border)" }} />
-          : <div style={{ width: 88, height: 88, borderRadius: "50%", background: "var(--surface2)", border: "3px solid var(--border)" }} />
-        }
+        <img src={userAvatar(profile, 176)} alt={profile.display_name} style={{ width: 88, height: 88, borderRadius: "50%", objectFit: "cover", border: "3px solid var(--border)" }} />
 
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>{profile.display_name}</h1>

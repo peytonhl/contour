@@ -2,6 +2,7 @@ import { NavLink, Outlet, Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
+import { userAvatar } from "../utils/userAvatar.js";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -204,10 +205,7 @@ export function Layout() {
           )}
           {loading ? null : user ? (
             <Link to="/profile" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-              {user.image_url
-                ? <img src={user.image_url} alt={user.display_name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
-                : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface2)" }} />
-              }
+              <img src={userAvatar(user, 56)} alt={user.display_name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
               <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{user.display_name}</span>
             </Link>
           ) : (
@@ -244,10 +242,7 @@ export function Layout() {
           )}
           {!loading && user && (
             <NavLink to="/profile" style={{ display: "flex", alignItems: "center", padding: "12px 0" }}>
-              {user.image_url
-                ? <img src={user.image_url} alt={user.display_name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
-                : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface2)" }} />
-              }
+              <img src={userAvatar(user, 56)} alt={user.display_name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
             </NavLink>
           )}
           {!loading && !user && (
@@ -309,10 +304,7 @@ export function Layout() {
                 transition: "color 0.12s",
               })}
             >
-              {user.image_url
-                ? <img src={user.image_url} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", border: "1.5px solid var(--border)" }} />
-                : <PersonIcon />
-              }
+              <img src={userAvatar(user, 48)} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", border: "1.5px solid var(--border)" }} />
               <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.02em" }}>Profile</span>
             </NavLink>
           ) : (

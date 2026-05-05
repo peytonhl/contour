@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
+import { userAvatar } from "../utils/userAvatar.js";
 
 function ListCollage({ images }) {
   const slots = [0, 1, 2, 3];
@@ -78,6 +79,10 @@ export function ProfilePage() {
   const [bioInput, setBioInput] = useState("");
   const [savingBio, setSavingBio] = useState(false);
   const [lists, setLists] = useState([]);
+  const [editingPhoto, setEditingPhoto] = useState(false);
+  const [photoInput, setPhotoInput] = useState("");
+  const [savingPhoto, setSavingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState("");
   const [showCreateList, setShowCreateList] = useState(false);
   const [newListTitle, setNewListTitle] = useState("");
   const [newListDesc, setNewListDesc] = useState("");
@@ -124,6 +129,25 @@ export function ProfilePage() {
     }
   }
 
+  async function handleSavePhoto() {
+    const url = photoInput.trim();
+    if (url && !url.startsWith("http://") && !url.startsWith("https://")) {
+      setPhotoError("URL must start with https://");
+      return;
+    }
+    setSavingPhoto(true);
+    setPhotoError("");
+    try {
+      await api.updateProfilePhoto(url);
+      setProfile((p) => p ? { ...p, image_url: url || null } : p);
+      setEditingPhoto(false);
+    } catch (e) {
+      setPhotoError(e.message ?? "Failed to save");
+    } finally {
+      setSavingPhoto(false);
+    }
+  }
+
   async function handleCreateList() {
     if (!newListTitle.trim()) return;
     setCreatingList(true);
@@ -152,10 +176,66 @@ export function ProfilePage() {
 
       {/* Profile hero */}
       <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-        {user.image_url
-          ? <img src={user.image_url} alt={user.display_name} style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover" }} />
-          : <div style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--surface2)" }} />
-        }
+        {/* Avatar — click to edit */}
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <img
+            src={userAvatar(profile ?? user, 160)}
+            alt={user.display_name}
+            style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", display: "block" }}
+          />
+          <button
+            onClick={() => { setPhotoInput(profile?.image_url ?? ""); setEditingPhoto(true); setPhotoError(""); }}
+            title="Change photo"
+            style={{
+              position: "absolute", bottom: 0, right: 0,
+              width: 26, height: 26, borderRadius: "50%",
+              background: "var(--surface)", border: "2px solid var(--bg)",
+              cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
+              color: "var(--text-muted)",
+            }}
+          >✎</button>
+        </div>
+
+        {/* Photo URL editor */}
+        {editingPhoto && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+            onClick={(e) => e.target === e.currentTarget && setEditingPhoto(false)}>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "24px 22px", width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", gap: 14 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Change profile photo</h3>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+                Paste a direct image URL (e.g. from imgur, Discord CDN, or anywhere ending in .jpg/.png).
+                Leave blank to use your Google photo.
+              </p>
+              <input
+                autoFocus
+                value={photoInput}
+                onChange={(e) => { setPhotoInput(e.target.value); setPhotoError(""); }}
+                placeholder="https://i.imgur.com/..."
+                style={{ padding: "9px 12px", background: "var(--surface2)", border: `1px solid ${photoError ? "#f87171" : "var(--border)"}`, borderRadius: 8, color: "var(--text)", fontSize: 14, outline: "none" }}
+              />
+              {photoError && <p style={{ margin: 0, fontSize: 12, color: "#f87171" }}>{photoError}</p>}
+              {/* Preview */}
+              {photoInput.trim() && (
+                <img
+                  src={photoInput.trim()}
+                  alt="Preview"
+                  onError={(e) => { e.currentTarget.style.display = "none"; setPhotoError("Couldn't load that URL — check the link and try again."); }}
+                  style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", alignSelf: "center", border: "2px solid var(--border)" }}
+                />
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={handleSavePhoto} disabled={savingPhoto}
+                  style={{ padding: "8px 20px", borderRadius: 8, fontWeight: 700, fontSize: 13, background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT_B})`, border: "none", color: "#000", cursor: "pointer" }}>
+                  {savingPhoto ? "Saving…" : "Save"}
+                </button>
+                <button onClick={() => setEditingPhoto(false)}
+                  style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <h1 style={{ fontSize: 26, fontWeight: 800 }}>{user.display_name}</h1>
           <div style={{ display: "flex", gap: 20, fontSize: 13, color: "var(--text-muted)", flexWrap: "wrap" }}>

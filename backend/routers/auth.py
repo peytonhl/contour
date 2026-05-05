@@ -280,6 +280,7 @@ async def get_profile(
 class ProfileUpdate(BaseModel):
     bio: Optional[str] = None
     pinned_album_ids: Optional[list[str]] = None
+    image_url: Optional[str] = None
 
 
 @router.patch("/profile")
@@ -288,7 +289,7 @@ async def update_profile(
     authorization: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update the current user's editable profile fields (bio, pinned albums)."""
+    """Update the current user's editable profile fields (bio, pinned albums, photo)."""
     import json as _json
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -306,5 +307,11 @@ async def update_profile(
         ids = [str(i) for i in body.pinned_album_ids[:4]]
         user.pinned_album_ids = _json.dumps(ids)
 
+    if body.image_url is not None:
+        url = body.image_url.strip()
+        if url and not url.startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="image_url must start with http:// or https://")
+        user.image_url = url[:500] or None  # empty string → clear back to Google photo
+
     await db.commit()
-    return {"ok": True, "bio": user.bio}
+    return {"ok": True, "bio": user.bio, "image_url": user.image_url}
