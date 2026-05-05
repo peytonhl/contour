@@ -233,7 +233,7 @@ async def get_artist_albums(artist_id: str) -> list[dict]:
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         url = f"https://api.spotify.com/v1/artists/{artist_id}/albums"
-        params = {"include_groups": "album,compilation", "limit": 50, "market": "US"}
+        params = {"include_groups": "album,compilation", "limit": 50}
         while url:
             resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
             resp.raise_for_status()
