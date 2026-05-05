@@ -1,9 +1,10 @@
 """Era-adjusted streaming leaderboard."""
 
+import os
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -70,3 +71,44 @@ async def get_leaderboard(
         e["rank"] = i + 1
 
     return entries[:limit]
+
+
+@router.get("/debug")
+async def leaderboard_debug(db: AsyncSession = Depends(get_db)):
+    """
+    Diagnostic endpoint — returns DB counts and a Last.fm test call.
+    Hit /leaderboard/debug to see exactly why the leaderboard is empty.
+    """
+    from services import lastfm as lastfm_svc
+
+    # Count rows by enrichment status
+    counts_result = await db.execute(
+        select(AlbumCache.enrichment_status, func.count())
+        .group_by(AlbumCache.enrichment_status)
+    )
+    status_counts = {row[0]: row[1] for row in counts_result.all()}
+
+    # Count rows that would appear on the leaderboard
+    done_result = await db.execute(
+        select(func.count()).where(
+            AlbumCache.enrichment_status == "done",
+            AlbumCache.kworb_streams > 0,
+        )
+    )
+    leaderboard_count = done_result.scalar()
+
+    # Quick Last.fm test with a well-known album
+    test_artist = "Taylor Swift"
+    test_album = "1989"
+    lastfm_result = await lastfm_svc.get_album_playcount(test_artist, test_album)
+
+    return {
+        "album_cache_counts": status_counts,
+        "leaderboard_eligible": leaderboard_count,
+        "lastfm_api_key_set": bool(os.environ.get("LASTFM_API_KEY")),
+        "lastfm_test": {
+            "query": f"{test_artist} / {test_album}",
+            "playcount": lastfm_result,
+            "working": lastfm_result is not None,
+        },
+    }
