@@ -334,7 +334,11 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating, cardIndex
           </div>
         </div>
 
-        {/* Preview player */}
+        {/* Preview player
+            Spotify deprecated preview_url for most tracks in late 2023.
+            We prefer the direct 30s clip when available; otherwise fall back
+            to the Spotify embed (30s for non-premium, full for premium — we
+            can't restrict that without violating Spotify's TOS). */}
         {track.preview_url ? (
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button
@@ -359,22 +363,15 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating, cardIndex
             </div>
           </div>
         ) : (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 14px", borderRadius: 10,
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.08)",
-          }}>
-            <span style={{ fontSize: 16, opacity: 0.4 }}>🎵</span>
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", lineHeight: 1.4 }}>
-              No preview available.{" "}
-              {track.external_url && (
-                <a href={track.external_url} target="_blank" rel="noreferrer" style={{ color: ACCENT_A }}>
-                  Open in Spotify ↗
-                </a>
-              )}
-            </span>
-          </div>
+          <iframe
+            src={`https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0`}
+            width="100%"
+            height="80"
+            style={{ borderRadius: 10, border: "none", display: "block" }}
+            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+            loading="lazy"
+            title={`${track.name} preview`}
+          />
         )}
 
         {/* Rating */}
@@ -639,13 +636,16 @@ function ForYouFeed() {
       {/* Cold-start progress banner */}
       <ColdStartBanner ratingCount={ratingCount} />
 
-      {/* Scroll container */}
+      {/* Scroll container
+          "proximity" snaps when close to a boundary but doesn't trap scroll
+          events inside a card, so inner elements (textarea, review section)
+          stay scrollable. "mandatory" was causing the lockout. */}
       <div
         ref={containerRef}
         style={{
           flex: 1,
           overflowY: "scroll",
-          scrollSnapType: "y mandatory",
+          scrollSnapType: "y proximity",
           scrollBehavior: "smooth",
           WebkitOverflowScrolling: "touch",
         }}

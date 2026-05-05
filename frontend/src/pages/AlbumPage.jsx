@@ -47,15 +47,20 @@ export function AlbumPage() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([
-      api.getAlbum(id),
-      api.getAlbumTrajectory(id),
-      api.getAlbumTracklist(id),
-    ])
-      .then(([albumData, trajData, tracks]) => {
+
+    // Fetch album metadata first (required). Trajectory and tracklist are
+    // treated as non-fatal so a Kworb or Spotify hiccup doesn't kill the page.
+    api.getAlbum(id)
+      .then((albumData) => {
         setAlbum(albumData);
-        setTrajectory(trajData);
-        setTracklist(tracks);
+        return Promise.allSettled([
+          api.getAlbumTrajectory(id),
+          api.getAlbumTracklist(id),
+        ]);
+      })
+      .then(([trajResult, trackResult]) => {
+        if (trajResult.status === "fulfilled") setTrajectory(trajResult.value);
+        if (trackResult.status === "fulfilled") setTracklist(trackResult.value);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));

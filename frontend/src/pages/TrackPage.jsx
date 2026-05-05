@@ -46,13 +46,16 @@ export function TrackPage() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([
-      api.getTrack(id),
-      api.getTrackTrajectory(id),
-    ])
-      .then(([trackData, trajData]) => {
+
+    // Metadata is required; trajectory is non-fatal so a Kworb hiccup
+    // doesn't prevent the page from loading at all.
+    api.getTrack(id)
+      .then((trackData) => {
         setTrack(trackData);
-        setTrajectory(trajData);
+        return api.getTrackTrajectory(id).catch(() => null);
+      })
+      .then((trajData) => {
+        if (trajData) setTrajectory(trajData);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
