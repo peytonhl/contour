@@ -160,7 +160,7 @@ export function Layout() {
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
           }}>Contour</span>
-          <span className="hide-mobile" style={{ fontSize: 12, color: "var(--text-muted)" }}>Era-adjusted music data</span>
+          <span className="hide-mobile" style={{ fontSize: 12, color: "var(--text-muted)" }}>Music history, in context</span>
         </NavLink>
 
         {/* Desktop nav links */}

@@ -24,6 +24,60 @@ function formatDuration(ms) {
   return `${m}:${s}`;
 }
 
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+function formatReleaseDate(dateStr) {
+  if (!dateStr) return "—";
+  const parts = dateStr.split("-");
+  if (parts.length === 3) {
+    return `${parseInt(parts[2], 10)} ${MONTHS[parseInt(parts[1], 10) - 1]} ${parts[0]}`;
+  }
+  if (parts.length === 2) {
+    return `${MONTHS[parseInt(parts[1], 10) - 1]} ${parts[0]}`;
+  }
+  return parts[0];
+}
+
+function RiaaTooltip() {
+  const [open, setOpen] = useState(false);
+  return (
+    <span
+      style={{ position: "relative", display: "inline-flex", alignItems: "center", marginLeft: 4 }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <span style={{
+        fontSize: 10, width: 15, height: 15, borderRadius: "50%",
+        background: "rgba(255,255,255,0.12)", color: "var(--text-muted)",
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        cursor: "default", fontWeight: 800, lineHeight: 1, border: "1px solid var(--border)",
+      }}>i</span>
+      {open && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 8px)", left: "50%",
+          transform: "translateX(-50%)",
+          background: "var(--surface2)", border: "1px solid var(--border)",
+          borderRadius: 10, padding: "12px 14px",
+          fontSize: 12, lineHeight: 1.55, color: "var(--text)",
+          width: 230, zIndex: 200,
+          boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
+          pointerEvents: "none",
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 6, color: "var(--text)" }}>RIAA Certification</div>
+          <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>
+            Awarded by the Recording Industry Association of America based on certified units (streams + downloads + physical sales).
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, color: "var(--gold)", fontWeight: 600 }}>
+            <span>⬡ Gold — 500K units</span>
+            <span>⬡ Platinum — 1M units</span>
+            <span>⬡ Diamond — 10M units</span>
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
 function StatBlock({ label, value }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -129,12 +183,15 @@ export function TrackPage() {
                 ? <Link to={`/album/${track.album_id}`} style={{ color: "var(--accent-b)" }}>{track.album_name}</Link>
                 : track.album_name
             } />
-            <StatBlock label="Released" value={track.release_date} />
+            <StatBlock label="Released" value={formatReleaseDate(track.release_date)} />
             <StatBlock label="Duration" value={formatDuration(track.duration_ms)} />
             <StatBlock label="Total Streams" value={formatStreams(trajectory?.total_streams)} />
             {topCert && (
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)" }}>RIAA</span>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)" }}>RIAA</span>
+                  <RiaaTooltip />
+                </div>
                 <span style={{ fontSize: 13, fontWeight: 600, padding: "2px 10px", borderRadius: 20, background: "rgba(245,158,11,0.15)", color: "var(--gold)", border: "1px solid rgba(245,158,11,0.3)", alignSelf: "flex-start" }}>
                   ⬡ {topCert.label}
                 </span>
@@ -156,6 +213,14 @@ export function TrackPage() {
                 Spotify ↗
               </a>
             )}
+            <a
+              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.name} ${track.artists?.[0] ?? ""}`)}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ padding: "8px 18px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13, display: "inline-flex", alignItems: "center" }}
+            >
+              YouTube ↗
+            </a>
           </div>
         </div>
       </div>

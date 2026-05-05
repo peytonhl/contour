@@ -140,7 +140,7 @@ export function SearchPage() {
           fontSize: 13, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
           color: "var(--text-muted)", margin: 0,
         }}>
-          Contour · Era-adjusted music data
+          Contour · Music history, in context
         </p>
         <div style={{ position: "relative" }}>
           <div style={{
@@ -148,9 +148,6 @@ export function SearchPage() {
             borderRadius: hasResults ? "12px 12px 0 0" : 12,
             boxShadow: "0 2px 12px rgba(0,0,0,0.25)",
           }}>
-            <span style={{ display: "flex", alignItems: "center", paddingLeft: 18, color: "var(--text-muted)", fontSize: 18, flexShrink: 0 }}>
-              🔍
-            </span>
             <input
               autoFocus
               value={query}

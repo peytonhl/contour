@@ -247,45 +247,70 @@ def _parse_top_albums_page(html: str, limit: int) -> list[dict]:
     """
     Parse kworb.net/spotify/albums.html.
 
-    Table columns (typical): Album title (link) | Artist | Streams | …
-    Album links are of the form: /spotify/album/{SPOTIFY_ID}.html
+    Column order varies — we scan every cell for the album link (which
+    embeds the Spotify ID), then extract the largest integer as the stream
+    count and any remaining non-numeric text as the artist.
+
+    Album links use relative hrefs like: album/{SPOTIFY_ID}.html
+    or /spotify/album/{SPOTIFY_ID}.html
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     soup = BeautifulSoup(html, "html.parser")
     results = []
 
     table = soup.find("table")
     if not table:
+        logger.warning("kworb top albums: no <table> found in HTML")
         return results
 
     rows = table.find_all("tr")
+    logger.info("kworb top albums: found table with %d rows", len(rows))
+
     for row in rows[1:]:  # skip header
         cells = row.find_all("td")
-        if len(cells) < 3:
+        if len(cells) < 2:
             continue
 
-        # First cell: album link
-        link_tag = cells[0].find("a", href=True)
-        if not link_tag:
-            continue
-        href = link_tag["href"]
-        # href like "/spotify/album/3T4tUhGYeRNVUGevb0wThu.html"
-        m = re.search(r"/spotify/album/([A-Za-z0-9]+)\.html", href)
-        if not m:
-            continue
-        spotify_id = m.group(1)
-        name = link_tag.get_text(strip=True)
+        spotify_id = None
+        name = None
+        album_col_idx = None
 
-        # Second cell: artist name
-        artist = cells[1].get_text(strip=True)
+        # Scan all cells for a link containing a Spotify album ID
+        for ci, cell in enumerate(cells):
+            link_tag = cell.find("a", href=True)
+            if not link_tag:
+                continue
+            href = link_tag["href"]
+            m = re.search(r"album/([A-Za-z0-9]{15,25})\.html", href)
+            if m:
+                spotify_id = m.group(1)
+                name = link_tag.get_text(strip=True)
+                album_col_idx = ci
+                break
 
-        # Third cell: streams (may contain commas)
-        streams_text = cells[2].get_text(strip=True).replace(",", "")
-        try:
-            streams = int(streams_text)
-        except ValueError:
+        if not spotify_id or not name:
             continue
 
-        if name and streams > 0:
+        # From the remaining cells, pick the largest integer as stream count
+        # and any non-empty non-numeric text as artist
+        streams = None
+        artist = ""
+        for ci, cell in enumerate(cells):
+            if ci == album_col_idx:
+                continue
+            text = cell.get_text(strip=True).replace(",", "").replace(".", "")
+            try:
+                val = int(text)
+                if val > 0 and (streams is None or val > streams):
+                    streams = val
+            except ValueError:
+                raw = cell.get_text(strip=True)
+                if raw and not artist:
+                    artist = raw
+
+        if streams and streams > 0:
             results.append({
                 "spotify_id": spotify_id,
                 "name": name,
@@ -296,6 +321,7 @@ def _parse_top_albums_page(html: str, limit: int) -> list[dict]:
         if len(results) >= limit:
             break
 
+    logger.info("kworb top albums: parsed %d entries", len(results))
     return results
 
 

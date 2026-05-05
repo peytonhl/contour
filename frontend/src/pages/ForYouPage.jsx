@@ -328,7 +328,9 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating, cardIndex
               overflow: "hidden", display: "-webkit-box",
               WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
             }}>
-              {track.name}
+              <Link to={`/track/${track.id}`} style={{ color: "#fff", textDecoration: "none" }}>
+                {track.name}
+              </Link>
             </h2>
             {track.explicit && (
               <span style={{ fontSize: 9, background: "rgba(255,255,255,0.15)", borderRadius: 3, padding: "2px 5px", color: "rgba(255,255,255,0.5)", fontWeight: 700, flexShrink: 0, marginTop: 2 }}>E</span>
@@ -338,7 +340,10 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating, cardIndex
             <Link to={`/artist/${track.artist_ids?.[0]}`} style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, textDecoration: "none" }}>
               {track.artists?.[0]}
             </Link>
-            {track.album_name && ` · ${track.album_name}`}
+            {track.album_name && track.album_id && (
+              <> · <Link to={`/album/${track.album_id}`} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none" }}>{track.album_name}</Link></>
+            )}
+            {track.album_name && !track.album_id && ` · ${track.album_name}`}
             {year && ` · ${year}`}
           </div>
         </div>
