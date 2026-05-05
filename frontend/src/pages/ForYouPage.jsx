@@ -29,14 +29,33 @@ function saveGenre(genre) {
 }
 
 // ── Seen-track deduplication ──────────────────────────────────────────────────
+const SEEN_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 2 weeks
+
 function loadSeen() {
-  try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || "[]")); } catch { return new Set(); }
+  try {
+    const raw = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]");
+    const now = Date.now();
+    // Support both old format (array of id strings) and new format (array of {id, ts})
+    const fresh = raw
+      .map((entry) => typeof entry === "string" ? { id: entry, ts: 0 } : entry)
+      .filter((entry) => now - entry.ts < SEEN_TTL_MS);
+    return new Set(fresh.map((e) => e.id));
+  } catch { return new Set(); }
 }
+
 function saveSeen(ids) {
-  const all = [...loadSeen(), ...ids];
-  // Cap at 100 so the exclude list never grows large enough to filter
-  // out all popular tracks and produce an empty feed.
-  localStorage.setItem(SEEN_KEY, JSON.stringify(all.slice(-100)));
+  try {
+    const raw = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]");
+    const now = Date.now();
+    const existing = raw
+      .map((entry) => typeof entry === "string" ? { id: entry, ts: 0 } : entry)
+      .filter((entry) => now - entry.ts < SEEN_TTL_MS);
+    const newEntries = ids.map((id) => ({ id, ts: now }));
+    const merged = [...existing, ...newEntries];
+    // Dedupe by id, keeping most recent
+    const byId = new Map(merged.map((e) => [e.id, e]));
+    localStorage.setItem(SEEN_KEY, JSON.stringify([...byId.values()].slice(-150)));
+  } catch {}
 }
 
 // ── Listen / rating history ───────────────────────────────────────────────────
