@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { TrajectoryChart } from "../components/TrajectoryChart.jsx";
 import { ReviewSection } from "../components/ReviewSection.jsx";
 import { EraCallout } from "../components/EraCallout.jsx";
+import { PreStreamingBanner } from "../components/PreStreamingBanner.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
@@ -119,6 +120,9 @@ export function AlbumPage() {
           </div>
         </div>
       </div>
+
+      {/* Pre-streaming era notice */}
+      <PreStreamingBanner releaseDate={album.release_date} />
 
       {/* Era context */}
       <EraCallout eraContext={trajectory?.era_context} totalStreams={trajectory?.total_streams} />
