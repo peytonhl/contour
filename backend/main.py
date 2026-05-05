@@ -133,13 +133,14 @@ async def _seed_leaderboard() -> None:
             async with AsyncSessionLocal() as db:
                 await cache.upsert_album(db, meta)
 
-            # Use pre-fetched Kworb stream count if available; otherwise scrape
-            # the individual album page (same endpoint used for trajectory data)
+            # Use the same enrichment path as _enrich_album in albums.py:
+            # scrape the Kworb *artist* page (proven to work) rather than the
+            # individual album entity page (which only exists for charted albums).
             streams = kworb_entries.get(spotify_id)
             if streams is None:
-                daily = await kworb.get_entity_daily_data(spotify_id, "album")
-                if daily:
-                    streams = daily[-1]["streams_cumulative"]
+                artist_ids = meta.get("artist_ids", [])
+                if artist_ids:
+                    streams = await kworb.get_album_streams(artist_ids[0], meta["name"])
 
             async with AsyncSessionLocal() as db:
                 await cache.save_kworb_streams(db, spotify_id, streams)
