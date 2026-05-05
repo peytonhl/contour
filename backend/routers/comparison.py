@@ -118,10 +118,10 @@ async def compare_albums(
     release_b = parse_release_date(meta_b["release_date"], meta_b["release_date_precision"])
 
     today = date.today()
-    if release_a is None or release_a.year < 2015:
-        raise HTTPException(status_code=422, detail="Item A released before 2015. Pre-2015 not supported in v1.")
-    if release_b is None or release_b.year < 2015:
-        raise HTTPException(status_code=422, detail="Item B released before 2015. Pre-2015 not supported in v1.")
+    if release_a is None or release_a.year < 2006:
+        raise HTTPException(status_code=422, detail="Item A released before 2006. Pre-2006 is not supported — Spotify launched in 2008 and reliable stream totals require at least a few years of platform history.")
+    if release_b is None or release_b.year < 2006:
+        raise HTTPException(status_code=422, detail="Item B released before 2006. Pre-2006 is not supported — Spotify launched in 2008 and reliable stream totals require at least a few years of platform history.")
     if release_a > today:
         release_a = today
     if release_b > today:

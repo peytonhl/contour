@@ -152,7 +152,7 @@ export function Methodology() {
           {[
             ["Day 0", "Release date from Spotify / MusicBrainz. Streams start at zero."],
             ["Endpoint", "Current total stream count scraped from Kworb.net."],
-            ["Curve shape", "Two-phase decay: exponential drop-off in the first 90 days (half-life ~14 days, reflecting the release-week spike and its decay), followed by a power-law catalog tail for the remaining life of the album."],
+            ["Curve shape", "Two-phase decay for post-2015 releases: exponential drop-off in the first 180 days (half-life ~45 days, reflecting the release-week spike and its decay), followed by a power-law catalog tail. Pre-2015 releases skip the spike phase entirely — they were already in catalog mode when streaming began — and use a pure power-law model from day one."],
           ].map(([term, def]) => (
             <div key={term} style={{ display: "flex", gap: 12, fontSize: 13, lineHeight: 1.7 }}>
               <span style={{ fontWeight: 700, color: "var(--accent-a)", minWidth: 80, flexShrink: 0 }}>{term}</span>
@@ -185,7 +185,7 @@ export function Methodology() {
         {[
           ["Modeled trajectories", "The streaming curve between release day and today is a model, not recorded history. Early-career or catalog-heavy streaming patterns may not fit the default decay shape well."],
           ["Spotify-only", "Normalization uses Spotify MAU only. Apple Music, Tidal, Amazon Music, and YouTube are not factored in. Cross-platform normalization is a v2 roadmap item."],
-          ["Pre-2015 not supported", "Reliable streaming-era MAU data begins in 2015. Albums from before then lack the baseline needed for normalization. A future version will use sales and radio data as a proxy index."],
+          ["Catalog-era accuracy", "For releases before 2015, the streaming trajectory is modeled from Spotify's launch (October 2008) using a catalog-only decay curve. The shape is a reasonable approximation but cannot capture pre-streaming peaks from radio or physical sales."],
           ["GDLU edition fragmentation", "God Does Like Ugly exists in multiple editions on Spotify. We aggregate all editions into one combined stream count by default, with a per-edition breakdown available."],
         ].map(([title, desc]) => (
           <div key={title} style={{ display: "flex", gap: 12, fontSize: 13, lineHeight: 1.7, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
@@ -216,7 +216,7 @@ export function Methodology() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {[
             ["v2", "Ratings and reviews · Era-adjusted leaderboard · Multi-album comparison · Cross-platform normalization"],
-            ["v3", "True historical stream data via Luminate API · Pre-2015 era support using sales + radio proxy index"],
+            ["v3", "True historical stream data via Luminate API · Cross-platform normalization (Apple Music, YouTube, Tidal)"],
           ].map(([v, items]) => (
             <div key={v} style={{ display: "flex", gap: 12, fontSize: 13, lineHeight: 1.7 }}>
               <span style={{

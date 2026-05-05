@@ -37,6 +37,16 @@ def parse_release_date(release_date: str, precision: str) -> Optional[date]:
 SAMPLE_DAYS = 7
 
 
+# Spotify launched October 2008. Music released before this date
+# was added to the platform later, so its "streaming career" starts
+# no earlier than mid-2008 regardless of original release year.
+SPOTIFY_LAUNCH = date(2008, 10, 1)
+
+# Music released before this year is treated as catalog-mode from day one
+# (no early-peak spike) because it pre-dates meaningful streaming volume.
+CATALOG_CUTOFF_YEAR = 2015
+
+
 def build_trajectory(
     release_date: date,
     total_streams: int,
@@ -57,7 +67,13 @@ def build_trajectory(
     if end_date is None:
         end_date = date.today()
 
-    total_days = (end_date - release_date).days
+    # For pre-Spotify releases, the streaming career starts at platform launch,
+    # not the original release date. We model from SPOTIFY_LAUNCH so the curve
+    # isn't stretched across years where streaming didn't exist.
+    effective_start = max(release_date, SPOTIFY_LAUNCH)
+    is_catalog = release_date.year < CATALOG_CUTOFF_YEAR
+
+    total_days = (end_date - effective_start).days
     if total_days <= 0:
         return []
 
@@ -73,7 +89,7 @@ def build_trajectory(
             try:
                 a_date = date.fromisoformat(a["date"])
                 a_streams = int(a.get("streams_cumulative") or a.get("streams") or 0)
-                day_offset = (a_date - release_date).days
+                day_offset = (a_date - effective_start).days
                 if 0 < day_offset <= total_days and a_streams > 0:
                     anchor_pairs.append((day_offset, a_streams))
             except (ValueError, KeyError):
@@ -82,14 +98,13 @@ def build_trajectory(
 
     # Always add the total as the final anchor (day = total_days)
     if total_streams > 0:
-        # If the last anchor is close to total but not exact, just append total
         if not anchor_pairs or anchor_pairs[-1][0] < total_days:
             anchor_pairs.append((total_days, total_streams))
 
     points = []
     for day_idx in sample_days:
-        streams = _interpolate(day_idx, total_days, total_streams, anchor_pairs)
-        sample_date = release_date + timedelta(days=day_idx)
+        streams = _interpolate(day_idx, total_days, total_streams, anchor_pairs, is_catalog)
+        sample_date = effective_start + timedelta(days=day_idx)
         mau = get_mau_for_date(sample_date)
         points.append({
             "day": day_idx,
@@ -106,6 +121,7 @@ def _interpolate(
     total_days: int,
     total_streams: int,
     anchor_pairs: list[tuple[int, int]],
+    is_catalog: bool = False,
 ) -> int:
     """
     Return the stream count for `day` by:
@@ -114,8 +130,7 @@ def _interpolate(
       - If day is after the last anchor: shouldn't happen (total is always last anchor)
     """
     if not anchor_pairs:
-        # No anchors at all — pure model
-        return _model_value(day, total_days, total_streams)
+        return _model_value(day, total_days, total_streams, is_catalog)
 
     first_anchor_day, first_anchor_streams = anchor_pairs[0]
     last_anchor_day, last_anchor_streams = anchor_pairs[-1]
@@ -124,11 +139,11 @@ def _interpolate(
     if day <= first_anchor_day:
         if first_anchor_day == 0:
             return first_anchor_streams
-        model_at_first = _model_value(first_anchor_day, total_days, total_streams)
+        model_at_first = _model_value(first_anchor_day, total_days, total_streams, is_catalog)
         if model_at_first == 0:
             return 0
         scale = first_anchor_streams / model_at_first
-        return int(_model_value(day, total_days, total_streams) * scale)
+        return int(_model_value(day, total_days, total_streams, is_catalog) * scale)
 
     # Find the surrounding anchor pair and linearly interpolate
     for i in range(len(anchor_pairs) - 1):
@@ -144,24 +159,37 @@ def _interpolate(
     return last_anchor_streams
 
 
-def _model_value(day: int, total_days: int, total_streams: int) -> int:
+def _model_value(day: int, total_days: int, total_streams: int, is_catalog: bool = False) -> int:
     """Pure decay model — cumulative streams at `day`."""
-    weights = _decay_weights(total_days)
+    weights = _decay_weights(total_days, is_catalog)
     if not weights or sum(weights) == 0:
         return 0
     cumulative = sum(weights[:day + 1])
     return int((cumulative / sum(weights)) * total_streams)
 
 
-def _decay_weights(total_days: int) -> list[float]:
+def _decay_weights(total_days: int, is_catalog: bool = False) -> list[float]:
     """
     Per-day streaming weight — two-phase model:
       Phase 1 (days 0–180): exponential decay, half-life ~45 days
       Phase 2 (days 180+): power-law catalog tail, exponent -0.45
+
+    For catalog releases (pre-2015), the exponential spike never happened —
+    the song was already years old when streaming began. We skip Phase 1
+    entirely and model from the power-law tail from day 0.
     """
     HALF_LIFE = 45.0
     TRANSITION = 180
     EXPONENT = 0.45
+
+    if is_catalog:
+        # Catalog mode: pure power-law from day 0 (no spike).
+        # d=0 is treated as d=1 to avoid division by zero.
+        weights = []
+        for d in range(total_days + 1):
+            w = math.pow(max(d, 1), -EXPONENT)
+            weights.append(w)
+        return weights
 
     transition_val = math.exp(-TRANSITION * math.log(2) / HALF_LIFE)
     tail_scale = transition_val * (TRANSITION ** EXPONENT)
