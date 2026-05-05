@@ -275,11 +275,29 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating, cardIndex
             <ShareIcon />
             {copied ? "Copied!" : "Share"}
           </button>
-          {track.external_url && (
+          {/* Platform links — works regardless of which service the user has */}
+          <div style={{ display: "flex", gap: 6 }}>
+            {track.external_url && (
+              <a
+                href={track.external_url}
+                target="_blank"
+                rel="noreferrer"
+                title="Open in Spotify"
+                style={{
+                  fontSize: 11, color: "rgba(255,255,255,0.6)",
+                  background: "rgba(0,0,0,0.4)", borderRadius: 20,
+                  padding: "4px 10px", textDecoration: "none",
+                  backdropFilter: "blur(4px)",
+                }}
+              >
+                Spotify ↗
+              </a>
+            )}
             <a
-              href={track.external_url}
+              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.name} ${track.artists?.[0] ?? ""}`)}`}
               target="_blank"
               rel="noreferrer"
+              title="Search on YouTube"
               style={{
                 fontSize: 11, color: "rgba(255,255,255,0.6)",
                 background: "rgba(0,0,0,0.4)", borderRadius: 20,
@@ -287,9 +305,9 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating, cardIndex
                 backdropFilter: "blur(4px)",
               }}
             >
-              Open ↗
+              YT ↗
             </a>
-          )}
+          </div>
         </div>
 
         {/* Card position indicator */}

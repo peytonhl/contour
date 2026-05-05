@@ -28,6 +28,7 @@ from database import get_db
 from models import Rating
 from routers.auth import optional_user_id
 from services import spotify
+from services.deezer import get_preview as deezer_preview
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
@@ -154,4 +155,23 @@ async def get_discover_feed(
     # Shuffle the final slice lightly so tiers don't feel rigidly ordered
     result = tracks[:limit]
     random.shuffle(result)
+
+    # ── Deezer preview enrichment ─────────────────────────────────────────────
+    # Spotify deprecated preview_url for most tracks in late 2023.
+    # For tracks still missing one, fetch a 30s Deezer preview concurrently.
+    # The frontend's existing custom audio player picks them up automatically.
+    no_preview = [t for t in result if not t.get("preview_url")]
+    if no_preview:
+        deezer_tasks = [
+            deezer_preview(t.get("name", ""), (t.get("artists") or [""])[0])
+            for t in no_preview
+        ]
+        deezer_urls = await asyncio.gather(*deezer_tasks, return_exceptions=True)
+        url_iter = iter(deezer_urls)
+        for t in result:
+            if not t.get("preview_url"):
+                url = next(url_iter)
+                if isinstance(url, str) and url:
+                    t["preview_url"] = url
+
     return result
