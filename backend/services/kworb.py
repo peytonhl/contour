@@ -221,6 +221,84 @@ def _parse_date(s: str) -> Optional[str]:
     return None
 
 
+async def get_top_albums(limit: int = 200) -> list[dict]:
+    """
+    Scrape Kworb's global top albums page and return entries with Spotify IDs.
+
+    Returns a list of:
+        {"spotify_id": str, "name": str, "artist": str, "streams": int}
+
+    The Kworb page at kworb.net/spotify/albums.html lists every album with a
+    known stream count — album links contain the Spotify album ID directly so
+    no guessing is required.
+    """
+    url = "https://kworb.net/spotify/albums.html"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
+            resp = await client.get(url, headers=HEADERS)
+            if resp.status_code != 200:
+                return []
+            return _parse_top_albums_page(resp.text, limit)
+    except Exception:
+        return []
+
+
+def _parse_top_albums_page(html: str, limit: int) -> list[dict]:
+    """
+    Parse kworb.net/spotify/albums.html.
+
+    Table columns (typical): Album title (link) | Artist | Streams | …
+    Album links are of the form: /spotify/album/{SPOTIFY_ID}.html
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    results = []
+
+    table = soup.find("table")
+    if not table:
+        return results
+
+    rows = table.find_all("tr")
+    for row in rows[1:]:  # skip header
+        cells = row.find_all("td")
+        if len(cells) < 3:
+            continue
+
+        # First cell: album link
+        link_tag = cells[0].find("a", href=True)
+        if not link_tag:
+            continue
+        href = link_tag["href"]
+        # href like "/spotify/album/3T4tUhGYeRNVUGevb0wThu.html"
+        m = re.search(r"/spotify/album/([A-Za-z0-9]+)\.html", href)
+        if not m:
+            continue
+        spotify_id = m.group(1)
+        name = link_tag.get_text(strip=True)
+
+        # Second cell: artist name
+        artist = cells[1].get_text(strip=True)
+
+        # Third cell: streams (may contain commas)
+        streams_text = cells[2].get_text(strip=True).replace(",", "")
+        try:
+            streams = int(streams_text)
+        except ValueError:
+            continue
+
+        if name and streams > 0:
+            results.append({
+                "spotify_id": spotify_id,
+                "name": name,
+                "artist": artist,
+                "streams": streams,
+            })
+
+        if len(results) >= limit:
+            break
+
+    return results
+
+
 def _normalize(s: str) -> str:
     """Lowercase, strip punctuation and common edition suffixes for matching."""
     s = s.lower()
