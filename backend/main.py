@@ -121,6 +121,8 @@ async def _seed_leaderboard() -> None:
 
     logger.info("Leaderboard seed: processing %d albums…", len(album_ids))
 
+    from services import lastfm as lastfm_svc  # imported here to avoid circular at module load
+
     seeded = 0
     for spotify_id in album_ids:
         try:
@@ -133,23 +135,36 @@ async def _seed_leaderboard() -> None:
             async with AsyncSessionLocal() as db:
                 await cache.upsert_album(db, meta)
 
-            # Use the same enrichment path as _enrich_album in albums.py:
-            # scrape the Kworb *artist* page (proven to work) rather than the
-            # individual album entity page (which only exists for charted albums).
+            # Enrichment strategy (same priority order as _enrich_album in albums.py):
+            #   1. Pre-fetched Kworb global list streams (fastest — already in memory)
+            #   2. Kworb artist albums page scrape
+            #   3. Last.fm album.getInfo (reliable REST API, works from any IP)
+
             streams = kworb_entries.get(spotify_id)
+            source = "kworb-list"
+
             if streams is None:
                 artist_ids = meta.get("artist_ids", [])
                 if artist_ids:
                     streams = await kworb.get_album_streams(artist_ids[0], meta["name"])
+                    if streams:
+                        source = "kworb-artist"
+
+            if streams is None:
+                artists = meta.get("artists", [])
+                if artists:
+                    streams = await lastfm_svc.get_album_playcount(artists[0], meta["name"])
+                    if streams:
+                        source = "lastfm"
 
             async with AsyncSessionLocal() as db:
                 await cache.save_kworb_streams(db, spotify_id, streams)
 
             if streams:
-                logger.info("Leaderboard seed: ✓ %s — %s streams", meta["name"], f"{streams:,}")
+                logger.info("Leaderboard seed: ✓ %s — %s plays [%s]", meta["name"], f"{streams:,}", source)
                 seeded += 1
             else:
-                logger.info("Leaderboard seed: %s — no Kworb data", meta["name"])
+                logger.info("Leaderboard seed: %s — no play data found", meta["name"])
 
         except Exception as exc:
             logger.warning("Leaderboard seed: skipped %s — %s", spotify_id, exc)

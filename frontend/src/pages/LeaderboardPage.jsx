@@ -94,7 +94,7 @@ function LeaderboardRow({ entry, sort }) {
           </span>
           {sort === "era" && (
             <span style={{ fontSize: 11, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-              {formatStreams(entry.streams)} raw
+              {formatStreams(entry.streams)} raw plays
             </span>
           )}
           {sort === "streams" && entry.multiplier > 1.1 && (
@@ -133,8 +133,8 @@ export function LeaderboardPage() {
         </h1>
         <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
           {sort === "era"
-            ? "Ranked by era-adjusted streams — what each album would have if released today."
-            : "Ranked by raw total streams from Kworb."}
+            ? "Ranked by era-adjusted plays — what each album would have if released today."
+            : "Ranked by total lifetime plays."}
         </p>
       </div>
 
@@ -142,7 +142,7 @@ export function LeaderboardPage() {
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Sort by</span>
         <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-          {[["era", "Era Score"], ["streams", "Raw Streams"]].map(([val, lbl]) => (
+          {[["era", "Era Score"], ["streams", "Raw Plays"]].map(([val, lbl]) => (
             <button
               key={val}
               onClick={() => setSort(val)}
@@ -191,7 +191,7 @@ export function LeaderboardPage() {
               Album
             </span>
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", flexShrink: 0 }}>
-              {sort === "era" ? "Era Score" : "Streams"}
+              {sort === "era" ? "Era Score" : "Plays"}
             </span>
           </div>
 
@@ -203,9 +203,9 @@ export function LeaderboardPage() {
 
       {/* Explainer */}
       <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.7, margin: 0 }}>
-        <strong style={{ color: "var(--text)" }}>Era Score</strong> multiplies raw streams by how much larger Spotify's audience is today compared to when the album released.
-        A ×5 multiplier means Spotify had 5× fewer users at release — so those streams were 5× harder to accumulate.{" "}
-        Only albums with confirmed stream data from Kworb appear here.
+        <strong style={{ color: "var(--text)" }}>Era Score</strong> multiplies raw play count by how much larger Spotify's audience is today compared to when the album released.
+        A ×5 multiplier means Spotify had 5× fewer users at release — so those plays were 5× harder to accumulate.{" "}
+        Play data sourced from Last.fm and Kworb. Only albums with confirmed data appear here.
       </p>
     </div>
   );

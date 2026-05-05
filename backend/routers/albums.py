@@ -241,10 +241,34 @@ async def get_album_tracklist(album_id: str):
 # ---------------------------------------------------------------------------
 
 async def _enrich_album(album_id: str, meta: dict, db: AsyncSession) -> None:
-    """Scrape Kworb for stream count using Spotify artist ID, then cache result."""
+    """
+    Fetch play count for an album, then cache result.
+
+    Strategy (in priority order):
+      1. Kworb artist albums page — most accurate (Spotify streams), but only
+         works when the server's IP isn't blocked by Kworb.
+      2. Last.fm album.getInfo — reliable REST API, returns lifetime scrobbles.
+         Slightly different scale than Spotify streams but suitable for ranking
+         and era-adjustment comparisons.
+    """
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
     artist_ids = meta.get("artist_ids", [])
-    if not artist_ids:
-        await cache.save_kworb_streams(db, album_id, None)
-        return
-    streams = await kworb.get_album_streams(artist_ids[0], meta["name"])
+    artists = meta.get("artists", [])
+    streams: int | None = None
+
+    # 1. Kworb
+    if artist_ids:
+        streams = await kworb.get_album_streams(artist_ids[0], meta["name"])
+        if streams:
+            _log.info("enrichment: kworb  %s — %s", meta["name"], f"{streams:,}")
+
+    # 2. Last.fm fallback
+    if streams is None and artists:
+        from services import lastfm
+        streams = await lastfm.get_album_playcount(artists[0], meta["name"])
+        if streams:
+            _log.info("enrichment: lastfm %s — %s", meta["name"], f"{streams:,}")
+
     await cache.save_kworb_streams(db, album_id, streams)
