@@ -137,14 +137,22 @@ async def _enrich_album_ids(album_ids: list[str], label: str = "seed") -> int:
 
 async def _seed_leaderboard() -> None:
     """
-    Background task: seed the leaderboard from Spotify's current top data.
-    Runs 60 s after startup.  Catalog albums are seeded separately via
-    POST /leaderboard/seed-catalog.
+    Background task: seed the leaderboard on startup.
+
+    Phase 1 (fast, ~1 min): enrich albums from Spotify's Global Top 50 +
+      new releases using Last.fm.  Gives the leaderboard immediate data.
+
+    Phase 2 (catalog, ~3 min): search Spotify for each entry in _CATALOG
+      and enrich with Last.fm.  Already-seeded albums are skipped, so on
+      subsequent deploys this phase completes almost instantly.
+
+    Runs 60 s after startup so the app is fully ready first.
     """
     from services import spotify
 
     await asyncio.sleep(60)
 
+    # ── Phase 1: current hits ─────────────────────────────────────────────────
     album_ids: list[str] = []
 
     try:
@@ -153,25 +161,48 @@ async def _seed_leaderboard() -> None:
             aid = t.get("album_id")
             if aid and aid not in album_ids:
                 album_ids.append(aid)
-        logger.info("Seed: %d album IDs from Global Top 50", len(album_ids))
+        logger.info("Seed phase1: %d album IDs from Global Top 50", len(album_ids))
     except Exception as exc:
-        logger.warning("Seed: top tracks failed — %s", exc)
+        logger.warning("Seed phase1: top tracks failed — %s", exc)
 
     try:
         releases = await spotify.get_new_releases(limit=20)
         for a in releases:
             if a.get("id") and a["id"] not in album_ids:
                 album_ids.append(a["id"])
-        logger.info("Seed: %d album IDs after new releases", len(album_ids))
+        logger.info("Seed phase1: %d album IDs after new releases", len(album_ids))
     except Exception as exc:
-        logger.warning("Seed: new releases failed — %s", exc)
+        logger.warning("Seed phase1: new releases failed — %s", exc)
 
-    if not album_ids:
-        logger.warning("Seed: no album IDs — aborting")
-        return
+    if album_ids:
+        seeded = await _enrich_album_ids(album_ids, label="Seed/hits")
+        logger.info("Seed phase1: complete — %d/%d with play data", seeded, len(album_ids))
 
-    seeded = await _enrich_album_ids(album_ids, label="Seed")
-    logger.info("Seed: complete — %d/%d albums with play data", seeded, len(album_ids))
+    # ── Phase 2: curated catalog ──────────────────────────────────────────────
+    # Search Spotify for each catalog entry, then enrich with Last.fm.
+    # 0.4 s between searches keeps us under Spotify's rate limit.
+    # Already-done albums are skipped by _enrich_album_ids, so on re-deploys
+    # this phase finishes in seconds.
+    logger.info("Seed phase2: searching catalog (%d entries)…", len(_CATALOG))
+    catalog_ids: list[str] = []
+    for artist_name, album_title in _CATALOG:
+        try:
+            results = await spotify.search_albums(f"{album_title} {artist_name}", limit=3)
+            target = album_title.lower()
+            match = next(
+                (r for r in results if r.get("name", "").lower() == target),
+                results[0] if results else None,
+            )
+            if match and match.get("id") and match["id"] not in catalog_ids:
+                catalog_ids.append(match["id"])
+        except Exception as exc:
+            logger.debug("Seed phase2: search failed %s/%s — %s", artist_name, album_title, exc)
+        await asyncio.sleep(0.4)
+
+    logger.info("Seed phase2: %d catalog album IDs found", len(catalog_ids))
+    if catalog_ids:
+        seeded = await _enrich_album_ids(catalog_ids, label="Seed/catalog")
+        logger.info("Seed phase2: complete — %d/%d with play data", seeded, len(catalog_ids))
 
 
 @app.on_event("startup")
