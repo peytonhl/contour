@@ -213,6 +213,9 @@ async def _seed_leaderboard() -> None:
     from services import lastfm as lastfm_svc  # imported here to avoid circular at module load
 
     seeded = 0
+    kworb_failures = 0       # circuit breaker — skip Kworb after 2 consecutive timeouts
+    KWORB_FAILURE_LIMIT = 2  # Railway IPs are often blocked; fail fast
+
     for spotify_id in album_ids:
         try:
             async with AsyncSessionLocal() as db:
@@ -232,12 +235,19 @@ async def _seed_leaderboard() -> None:
             streams = kworb_entries.get(spotify_id)
             source = "kworb-list"
 
-            if streams is None:
+            if streams is None and kworb_failures < KWORB_FAILURE_LIMIT:
                 artist_ids = meta.get("artist_ids", [])
                 if artist_ids:
                     streams = await kworb.get_album_streams(artist_ids[0], meta["name"])
                     if streams:
                         source = "kworb-artist"
+                        kworb_failures = 0  # reset on success
+                    else:
+                        kworb_failures += 1
+                        if kworb_failures >= KWORB_FAILURE_LIMIT:
+                            logger.warning("Leaderboard seed: Kworb unreachable — skipping for remaining albums")
+            elif streams is None and kworb_failures >= KWORB_FAILURE_LIMIT:
+                pass  # circuit open — skip Kworb entirely
 
             if streams is None:
                 artists = meta.get("artists", [])

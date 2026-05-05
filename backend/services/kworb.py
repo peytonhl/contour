@@ -31,7 +31,7 @@ async def get_artist_albums_by_id(spotify_artist_id: str) -> Optional[list[dict]
     """
     url = f"{KWORB_BASE}/{spotify_artist_id}_albums.html"
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=4) as client:
             resp = await client.get(url, headers=HEADERS)
             if resp.status_code != 200:
                 return None
