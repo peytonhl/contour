@@ -5,13 +5,12 @@ import logging
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from services.limiter import limiter
 
 from database import init_db, AsyncSessionLocal
 from routers import albums, artists, auth, comparison, discover, featured, feed, leaderboard, lists, notifications, ratings, reviews, saved_comparisons, taste, tracks, users
-from services.limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +20,9 @@ app = FastAPI(
     description="Compare album streaming trajectories normalized against Spotify MAU.",
 )
 
-# Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 app.add_middleware(
     CORSMiddleware,

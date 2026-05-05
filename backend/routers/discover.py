@@ -47,9 +47,9 @@ _FALLBACK_QUERIES = ["pop hits", "hip hop hits", "indie pop", "top songs 2024"]
 
 
 @router.get("/feed")
-@limiter.limit("20/minute")
+@limiter.limit("60/minute")
 async def get_discover_feed(
-    request: Request,  # required by slowapi
+    request: Request,
     genres: Optional[str] = Query(None, description="Comma-separated genre slugs from client prefs"),
     exclude: Optional[str] = Query(None, description="Comma-separated track IDs to skip"),
     liked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs rated 4–5 stars"),
@@ -180,13 +180,10 @@ async def get_discover_feed(
             if len(tracks) >= limit:
                 break
 
-    # If every tier failed (Spotify down / rate-limited), return 503 so the
-    # client can show "Try again" rather than silently rendering an empty feed.
+    # If every tier failed (Spotify down / rate-limited), return an empty list
+    # so the client can show its own "nothing to show" state rather than an error.
     if not tracks:
-        raise HTTPException(
-            status_code=503,
-            detail="Music feed temporarily unavailable — please try again in a moment.",
-        )
+        return []
 
     result = tracks[:limit]
     random.shuffle(result)
