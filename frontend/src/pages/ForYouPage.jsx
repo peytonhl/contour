@@ -731,10 +731,15 @@ export function ForYouPage() {
         </button>
       </div>
 
-      {/* Content */}
+      {/* Content — both components stay mounted so ForYouFeed never loses
+          its track list or scroll position when the user switches tabs. */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        {tab === "foryou" && <ForYouFeed />}
-        {tab === "following" && <FollowingTab />}
+        <div style={{ display: tab === "foryou" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
+          <ForYouFeed />
+        </div>
+        <div style={{ display: tab === "following" ? "block" : "none", height: "100%", overflowY: "auto" }}>
+          <FollowingTab />
+        </div>
       </div>
     </div>
   );
