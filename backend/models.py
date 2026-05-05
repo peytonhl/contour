@@ -180,6 +180,21 @@ class UserListItem(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
+class UserTasteProfile(Base):
+    """
+    Server-side taste profile — genres the user likes + artist IDs they've
+    rated 4–5 stars.  Drives the For You feed for logged-in users.
+    Populated by the onboarding flow and auto-updated on high ratings.
+    """
+    __tablename__ = "user_taste_profiles"
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    liked_artist_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array
+    genres: Mapped[Optional[str]] = mapped_column(Text, nullable=True)            # JSON array
+    onboarding_done: Mapped[bool] = mapped_column(default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AlbumCache(Base):
     __tablename__ = "album_cache"
 

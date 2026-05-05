@@ -79,6 +79,13 @@ def optional_user_id(authorization: Optional[str] = Header(None)) -> Optional[st
         return None
 
 
+def require_user_id(authorization: Optional[str] = Header(None)) -> str:
+    """Dependency — returns user ID from Bearer token, raises 401 if missing/invalid."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return decode_jwt(authorization[7:])  # decode_jwt raises 401 on invalid token
+
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 

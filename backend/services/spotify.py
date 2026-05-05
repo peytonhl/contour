@@ -10,6 +10,8 @@ from typing import Optional
 import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from services import redis_cache
+
 _ENV_FILE = Path(__file__).parent.parent / ".env"
 
 
@@ -178,6 +180,11 @@ async def get_new_releases(limit: int = 10) -> list[dict]:
 
 async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
     """Search for tracks by genre tag using Spotify's genre filter."""
+    cache_key = f"spotify:genre:{genre}:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
@@ -187,11 +194,18 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
         )
         resp.raise_for_status()
         items = resp.json().get("tracks", {}).get("items", [])
-    return [_parse_track(t) for t in items if t.get("id")]
+    result = [_parse_track(t) for t in items if t.get("id")]
+    await redis_cache.set(cache_key, result)
+    return result
 
 
 async def get_global_top_tracks(limit: int = 10) -> list[dict]:
     """Fetch top tracks from Spotify's Global Top 50 playlist."""
+    cache_key = f"spotify:top50:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     GLOBAL_TOP_50 = "37i9dQZEVXbMDoHDwVN2tF"
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
@@ -207,11 +221,17 @@ async def get_global_top_tracks(limit: int = 10) -> list[dict]:
         t = item.get("track")
         if t and t.get("id"):
             tracks.append(_parse_track(t))
+    await redis_cache.set(cache_key, tracks)
     return tracks
 
 
 async def get_artist_top_tracks(artist_id: str, market: str = "US") -> list[dict]:
     """Fetch an artist's top 10 tracks from Spotify."""
+    cache_key = f"spotify:artist_top:{artist_id}:{market}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
@@ -221,11 +241,18 @@ async def get_artist_top_tracks(artist_id: str, market: str = "US") -> list[dict
         )
         resp.raise_for_status()
         tracks = resp.json().get("tracks", [])
-    return [_parse_track(t) for t in tracks[:10]]
+    result = [_parse_track(t) for t in tracks[:10]]
+    await redis_cache.set(cache_key, result)
+    return result
 
 
 async def get_related_artists(artist_id: str) -> list[str]:
     """Return up to 10 artist IDs related to the given artist."""
+    cache_key = f"spotify:related:{artist_id}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
@@ -234,7 +261,9 @@ async def get_related_artists(artist_id: str) -> list[str]:
         )
         resp.raise_for_status()
         artists = resp.json().get("artists", [])
-    return [a["id"] for a in artists[:10]]
+    result = [a["id"] for a in artists[:10]]
+    await redis_cache.set(cache_key, result)
+    return result
 
 
 async def get_artist_albums(artist_id: str) -> list[dict]:

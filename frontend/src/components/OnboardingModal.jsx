@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "../contexts/AuthContext.jsx";
+import { api } from "../services/api.js";
 
 const STORAGE_KEY = "contour_onboarded_v1";
 const GENRES_KEY = "contour_genres_v1";
@@ -159,6 +161,7 @@ function Dots({ total, active }) {
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
 export function OnboardingModal() {
+  const { user } = useAuth();
   const [visible, setVisible] = useState(false);
   const [slide, setSlide] = useState(0);
   const [exiting, setExiting] = useState(false);
@@ -185,9 +188,14 @@ export function OnboardingModal() {
     }, 220);
   }
 
-  function saveGenresAndDismiss() {
+  async function saveGenresAndDismiss() {
     if (selectedGenres.length > 0) {
+      // Always save locally for fast access
       localStorage.setItem(GENRES_KEY, JSON.stringify(selectedGenres));
+      // If logged in, persist to server so preferences follow the user across devices
+      if (user) {
+        api.saveTasteProfile(selectedGenres, [], true).catch(() => {});
+      }
     }
     dismiss();
   }

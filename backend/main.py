@@ -6,8 +6,12 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
 from database import init_db, AsyncSessionLocal
-from routers import albums, artists, auth, comparison, discover, featured, feed, leaderboard, lists, notifications, ratings, reviews, saved_comparisons, tracks, users
+from routers import albums, artists, auth, comparison, discover, featured, feed, leaderboard, lists, notifications, ratings, reviews, saved_comparisons, taste, tracks, users
+from services.limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +20,10 @@ app = FastAPI(
     version="0.1.0",
     description="Compare album streaming trajectories normalized against Spotify MAU.",
 )
+
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +52,7 @@ app.include_router(leaderboard.router)
 app.include_router(notifications.router)
 app.include_router(discover.router)
 app.include_router(lists.router)
+app.include_router(taste.router)
 
 
 async def _seed_leaderboard() -> None:
@@ -57,6 +66,10 @@ async def _seed_leaderboard() -> None:
     """
     from services import spotify, kworb
     from services import album_cache as cache
+
+    # Wait 60 s after startup before hitting Spotify so early user requests
+    # (which also call Spotify) aren't competing for quota at the same moment.
+    await asyncio.sleep(60)
 
     try:
         tracks = await spotify.get_global_top_tracks(limit=50)
@@ -92,10 +105,10 @@ async def _seed_leaderboard() -> None:
                         )
                     else:
                         await cache.save_kworb_streams(db, album_id, None)
-            # Polite delay between Kworb scrapes
-            await asyncio.sleep(2)
         except Exception as exc:
             logger.warning("Leaderboard seed: skipped %s — %s", album_id, exc)
+        # Polite delay between Kworb scrapes — always fires, even on failure
+        await asyncio.sleep(2)
 
     logger.info("Leaderboard seed: complete")
 

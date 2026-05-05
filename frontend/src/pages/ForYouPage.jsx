@@ -603,7 +603,9 @@ function ForYouFeed() {
     recordRating(track.id, track.artist_ids?.[0], value);
     setRatingCount(getRatingCount());
     try {
-      await api.rateEntity("track", track.id, value);
+      // Pass artist_id so the server auto-updates the taste profile on high ratings
+      await api.rateEntity("track", track.id, value, track.artist_ids?.[0] ?? null);
+      // Also update local genre cache for logged-out / cold-start scenarios
       if (value >= 4 && track.artist_ids?.[0]) {
         api.getArtist(track.artist_ids[0]).then((artist) => {
           artist.genres?.slice(0, 2).forEach((g) => {

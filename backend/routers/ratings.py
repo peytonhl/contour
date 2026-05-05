@@ -1,3 +1,5 @@
+import asyncio
+import json
 import re
 from datetime import datetime
 from typing import Optional
@@ -7,8 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
-from models import Rating, Review, ReviewLike, ReviewVote, ReviewReply, User
+from database import get_db, AsyncSessionLocal
+from models import Rating, Review, ReviewLike, ReviewVote, ReviewReply, User, UserTasteProfile
 from routers.auth import optional_user_id
 from routers.notifications import create_notification
 
@@ -29,6 +31,9 @@ def _validate_entity(entity_type: str, entity_id: str):
 
 class RatingIn(BaseModel):
     value: float
+    # Optional: pass the artist's Spotify ID when rating a track so we can
+    # auto-update the server-side taste profile for high ratings.
+    artist_id: Optional[str] = None
 
     @field_validator("value")
     @classmethod
@@ -151,6 +156,29 @@ async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None
     return out
 
 
+# ── Background taste-profile updater ──────────────────────────────────────────
+
+async def _update_taste_from_rating(user_id: str, artist_id: str) -> None:
+    """Prepend artist_id to the user's liked_artist_ids in UserTasteProfile."""
+    async with AsyncSessionLocal() as db:
+        profile = await db.get(UserTasteProfile, user_id)
+        if profile:
+            existing: list[str] = json.loads(profile.liked_artist_ids or "[]")
+            if artist_id not in existing:
+                merged = [artist_id] + existing
+                profile.liked_artist_ids = json.dumps(merged[:20])
+                profile.updated_at = datetime.utcnow()
+        else:
+            profile = UserTasteProfile(
+                user_id=user_id,
+                liked_artist_ids=json.dumps([artist_id]),
+                genres=json.dumps([]),
+                onboarding_done=False,
+            )
+            db.add(profile)
+        await db.commit()
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/{entity_type}/{entity_id}/rate")
@@ -177,6 +205,11 @@ async def rate(
         db.add(Rating(user_id=user_id, entity_type=entity_type,
                       entity_id=entity_id, value=body.value))
     await db.commit()
+
+    # High rating on a track → update taste profile in background (non-blocking)
+    if body.value >= 4 and body.artist_id and entity_type == "track":
+        asyncio.create_task(_update_taste_from_rating(user_id, body.artist_id))
+
     return {"ok": True, "value": body.value}
 
 

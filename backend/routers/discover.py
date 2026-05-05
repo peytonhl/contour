@@ -3,32 +3,43 @@ For You feed — personalized track discovery.
 
 Personalization tiers
 ─────────────────────
-Cold start (< COLD_START_THRESHOLD ratings on the client):
-  The client sends no genres / liked_artists → we serve global top 50 + new
-  releases so the user gets variety while their taste is being learned.
+Logged-in users:
+  Taste profile is read server-side from UserTasteProfile (populated by the
+  onboarding genre picker and auto-updated on 4–5 star track ratings).
 
-Warm / hot (≥ threshold):
+Cold start (logged-out, or logged-in but no server profile yet):
+  Falls back to client-sent genres/liked_artists from localStorage.
+  If neither exist, serves Global Top 50 + new releases so the user gets
+  variety while their taste is being learned.
+
+Warm / hot (genres or liked_artists present):
   1. Related-artist tracks  — top tracks from artists similar to ones the user
                               rated 4–5 stars (most personalized)
   2. Genre-filtered search  — Spotify search filtered to learned genres
   3. Global Top 50 baseline — always provides something even with no prefs
   4. New releases filler    — adds freshness
   5. Keyword fallbacks      — last-resort, always returns something
+
+All hot Spotify calls (Global Top 50, genre search, related artists, artist
+top tracks) are cached in Redis for 24 hours so Spotify API quota is preserved
+and the feed survives brief Spotify outages from cache.
 """
 
 import asyncio
+import json
 import random
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Rating
+from models import Rating, UserTasteProfile
 from routers.auth import optional_user_id
 from services import spotify
 from services.deezer import get_preview as deezer_preview
+from services.limiter import limiter
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
@@ -36,7 +47,9 @@ _FALLBACK_QUERIES = ["pop hits", "hip hop hits", "indie pop", "top songs 2024"]
 
 
 @router.get("/feed")
+@limiter.limit("20/minute")
 async def get_discover_feed(
+    request: Request,  # required by slowapi
     genres: Optional[str] = Query(None, description="Comma-separated genre slugs from client prefs"),
     exclude: Optional[str] = Query(None, description="Comma-separated track IDs to skip"),
     liked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs rated 4–5 stars"),
@@ -46,8 +59,8 @@ async def get_discover_feed(
 ):
     """
     Return a batch of tracks for the For You scroll feed.
-    The client is responsible for cold-start detection; it sends liked_artists
-    only after the threshold is met.
+    For logged-in users the taste profile is read server-side; client params
+    are used as fallback for logged-out users and cold-start scenarios.
     """
     exclude_ids: set[str] = set(filter(None, exclude.split(","))) if exclude else set()
 
@@ -61,8 +74,23 @@ async def get_discover_feed(
         )).scalars().all()
         exclude_ids.update(rated_ids)
 
-    genre_list = [g.strip() for g in genres.split(",")] if genres else []
-    liked_artist_ids = [a.strip() for a in liked_artists.split(",")] if liked_artists else []
+    # ── Resolve genre + artist preferences ───────────────────────────────────
+    # Logged-in users: prefer server-side taste profile so preferences follow
+    # them across devices.  Fall back to client params if profile is empty.
+    genre_list: list[str] = []
+    liked_artist_ids: list[str] = []
+
+    if user_id:
+        profile = await db.get(UserTasteProfile, user_id)
+        if profile:
+            genre_list = json.loads(profile.genres or "[]")
+            liked_artist_ids = json.loads(profile.liked_artist_ids or "[]")
+
+    # Fallback to client-sent values (logged-out users or empty server profile)
+    if not genre_list:
+        genre_list = [g.strip() for g in genres.split(",")] if genres else []
+    if not liked_artist_ids:
+        liked_artist_ids = [a.strip() for a in liked_artists.split(",")] if liked_artists else []
 
     tracks: list[dict] = []
     seen: set[str] = set()
@@ -73,20 +101,18 @@ async def get_discover_feed(
                 seen.add(t["id"])
                 tracks.append(t)
 
-    # ── Tier 1: Related-artist tracks (personalized — only when warm) ─────────
+    # ── Tier 1: Related-artist tracks (personalized) ──────────────────────────
     if liked_artist_ids:
-        # Fetch related artists for up to 3 liked artists concurrently
         related_results = await asyncio.gather(*[
             spotify.get_related_artists(aid)
             for aid in liked_artist_ids[:3]
         ], return_exceptions=True)
 
-        # Flatten, dedupe, shuffle, take up to 6 related artists
         related_ids: list[str] = []
         for r in related_results:
             if isinstance(r, list):
                 related_ids.extend(r[:4])
-        related_ids = list(dict.fromkeys(related_ids))  # dedupe, preserve order
+        related_ids = list(dict.fromkeys(related_ids))
         random.shuffle(related_ids)
         related_ids = related_ids[:6]
 
@@ -97,7 +123,6 @@ async def get_discover_feed(
             ], return_exceptions=True)
             for result in top_track_results:
                 if isinstance(result, list):
-                    # Pick one random track per related artist to keep variety
                     candidates = [t for t in result if t.get("preview_url")]
                     if candidates:
                         _add([random.choice(candidates)])
@@ -116,7 +141,6 @@ async def get_discover_feed(
     if len(tracks) < limit:
         try:
             top = await spotify.get_global_top_tracks(limit=50)
-            # Shuffle so the feed doesn't start with the same chart order every time
             random.shuffle(top)
             _add(top)
         except Exception:
@@ -152,14 +176,18 @@ async def get_discover_feed(
             if len(tracks) >= limit:
                 break
 
-    # Shuffle the final slice lightly so tiers don't feel rigidly ordered
+    # If every tier failed (Spotify down / rate-limited), return 503 so the
+    # client can show "Try again" rather than silently rendering an empty feed.
+    if not tracks:
+        raise HTTPException(
+            status_code=503,
+            detail="Music feed temporarily unavailable — please try again in a moment.",
+        )
+
     result = tracks[:limit]
     random.shuffle(result)
 
     # ── Deezer preview enrichment ─────────────────────────────────────────────
-    # Spotify deprecated preview_url for most tracks in late 2023.
-    # For tracks still missing one, fetch a 30s Deezer preview concurrently.
-    # The frontend's existing custom audio player picks them up automatically.
     no_preview = [t for t in result if not t.get("preview_url")]
     if no_preview:
         deezer_tasks = [

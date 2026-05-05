@@ -29,6 +29,77 @@ function formatDuration(ms) {
   return `${m}:${s}`;
 }
 
+// ── Known For cards (IMDb-style, top 4 by Spotify popularity) ────────────────
+function KnownForSection({ tracks }) {
+  // Spotify returns top tracks already sorted by popularity — take first 4
+  const picks = tracks.slice(0, 4);
+  if (!picks.length) return null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Known For</h2>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+        gap: 12,
+      }}>
+        {picks.map((track) => (
+          <Link
+            key={track.id}
+            to={`/track/${track.id}`}
+            style={{ textDecoration: "none", color: "var(--text)" }}
+          >
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                overflow: "hidden",
+                transition: "border-color 0.15s, transform 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = ACCENT_A;
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--border)";
+                e.currentTarget.style.transform = "none";
+              }}
+            >
+              {/* Square album art */}
+              {track.image_url
+                ? <img src={track.image_url} alt={track.name} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
+                : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>🎵</div>
+              }
+              <div style={{ padding: "10px 12px 12px" }}>
+                <div style={{
+                  fontSize: 13, fontWeight: 700, lineHeight: 1.3,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {track.name}
+                </div>
+                {track.album_name && (
+                  <div style={{
+                    fontSize: 11, color: "var(--text-muted)", marginTop: 2,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {track.album_name}
+                  </div>
+                )}
+                {track.release_date && (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                    {track.release_date.slice(0, 4)}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 function TopTrackRow({ track, rank }) {
   return (
@@ -228,7 +299,10 @@ export function ArtistPage() {
         </div>
       )}
 
-      {/* ── Top Tracks ── */}
+      {/* ── Known For (top 4 by Spotify popularity — no extra API calls) ── */}
+      {topTracks.length > 0 && <KnownForSection tracks={topTracks} />}
+
+      {/* ── Popular Tracks (full ranked list) ── */}
       {topTracks.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Popular Tracks</h2>

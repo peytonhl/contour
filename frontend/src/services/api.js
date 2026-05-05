@@ -93,7 +93,9 @@ export const api = {
 
   // Ratings & reviews
   getRatingSummary: (entityType, entityId) => request(`/ratings/${entityType}/${entityId}/summary`),
-  rateEntity: (entityType, entityId, value) => post(`/ratings/${entityType}/${entityId}/rate`, { value }),
+  // artistId is optional — pass it when rating a track so the server can update the taste profile
+  rateEntity: (entityType, entityId, value, artistId = null) =>
+    post(`/ratings/${entityType}/${entityId}/rate`, { value, ...(artistId ? { artist_id: artistId } : {}) }),
   submitReview: (entityType, entityId, body, value) => post(`/ratings/${entityType}/${entityId}/review`, { body, value }),
   getReviews: (entityType, entityId, sort = "recent") => request(`/ratings/${entityType}/${entityId}/reviews?sort=${sort}`),
   voteReview: (reviewId, value) => post(`/ratings/reviews/${reviewId}/vote`, { value }),
@@ -127,8 +129,12 @@ export const api = {
   updateProfilePhoto: (image_url) => patch(`/auth/profile`, { image_url }),
   updatePinnedAlbums: (ids) => patch(`/auth/profile`, { pinned_album_ids: ids }),
 
-  // Taste profile
+  // Taste profile (public, for profile page)
   getUserTaste: (id) => request(`/users/${id}/taste`),
+  // Server-side personal taste (requires auth)
+  getMyTasteProfile: () => request(`/taste/profile`),
+  saveTasteProfile: (genres, likedArtistIds = [], onboardingDone = false) =>
+    post(`/taste/profile`, { genres, liked_artist_ids: likedArtistIds, onboarding_done: onboardingDone }),
 
   // Suggested users
   getSuggestedUsers: () => request(`/users/suggested`),
