@@ -30,10 +30,18 @@ On top of that, Contour is a place to rate albums and tracks, write reviews, see
 - Reddit-style controversial sort: surfaces divisive takes, not just popular ones
 - Inline reply threads on reviews
 - Follow other users and see their activity in your feed
+- Notifications for new followers and review interactions
 - Share any review as a direct deep link
 
+**Profiles & Taste**
+- Public user profiles with rating history, reviews, and follower counts
+- Taste profile: rating distribution chart, top genres, and pinned albums
+- User-created lists (ranked or unranked) — build your top albums, hidden gems, whatever
+
 **Discovery**
-- Discover tab: public global reviews feed sorted by Recent / Top / Controversial — no account needed
+- For You feed: personalized album recommendations that learn from your ratings
+- Global reviews feed sorted by Recent / Top / Controversial — no account needed
+- Charts page: era-adjusted leaderboard across releases
 - Trending tracks and new releases on the home screen
 - Search across albums, tracks, artists, and users in one bar
 
@@ -53,7 +61,7 @@ On top of that, Contour is a place to rate albums and tracks, write reviews, see
 | Mobile | Capacitor (iOS/Android — in progress) |
 | Backend | Python 3.12 / FastAPI |
 | Database | PostgreSQL (Railway) + SQLAlchemy async |
-| Auth | Spotify OAuth 2.0 + JWT |
+| Auth | Google OAuth 2.0 + JWT |
 | Data | Spotify Web API, Kworb.net stream counts |
 | Hosting | Vercel (frontend) · Railway (backend) |
 
@@ -91,7 +99,8 @@ Day-by-day trajectory is modeled (high early velocity tapering to catalog tail) 
 ### Prerequisites
 - Node.js 18+
 - Python 3.12+
-- A Spotify Developer app ([create one here](https://developer.spotify.com/dashboard))
+- A Spotify Developer app ([create one here](https://developer.spotify.com/dashboard)) — for music metadata
+- A Google Cloud project with OAuth 2.0 credentials ([create one here](https://console.cloud.google.com/)) — for user authentication
 
 ### Backend
 
@@ -101,13 +110,13 @@ python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# Create backend/.env with:
-# SPOTIFY_CLIENT_ID=...
-# SPOTIFY_CLIENT_SECRET=...
-# SPOTIFY_REDIRECT_URI=http://localhost:8000/auth/callback
-# JWT_SECRET=any-random-string
+# Copy the example env file and fill in your values
+cp .env.example .env
+# Edit backend/.env (see Environment Variables below)
 
-alembic upgrade head
+# Database — SQLite is used automatically for local dev, no setup needed.
+# On first run, init_db() creates all tables. Alembic handles incremental
+# migrations; to apply them: alembic upgrade head
 uvicorn main:app --reload --port 8000
 ```
 
@@ -116,6 +125,8 @@ uvicorn main:app --reload --port 8000
 ```bash
 cd frontend
 npm install
+cp .env.example .env
+# VITE_API_URL can stay empty for local dev (Vite proxies to localhost:8000)
 npm run dev
 ```
 
@@ -125,21 +136,27 @@ Runs at `http://localhost:5173`. API calls proxy to `http://localhost:8000`.
 
 ## Environment Variables
 
-**Backend (`backend/.env`)**
+### Backend (`backend/.env`)
 
-| Variable | Description |
-|---|---|
-| `SPOTIFY_CLIENT_ID` | Spotify Developer Dashboard |
-| `SPOTIFY_CLIENT_SECRET` | Spotify Developer Dashboard |
-| `SPOTIFY_REDIRECT_URI` | `https://your-backend.railway.app/auth/callback` |
-| `JWT_SECRET` | Any long random string — never commit this |
-| `DATABASE_URL` | PostgreSQL connection string (Railway provides this) |
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GOOGLE_CLIENT_ID` | ✅ | — | Google Cloud OAuth 2.0 client ID |
+| `GOOGLE_CLIENT_SECRET` | ✅ | — | Google Cloud OAuth 2.0 client secret |
+| `GOOGLE_REDIRECT_URI` | ✅ | `http://localhost:8000/auth/callback` | Must match an authorized redirect URI in Google Cloud Console |
+| `JWT_SECRET` | ✅ | — | Long random string for signing session tokens. Generate: `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `SPOTIFY_CLIENT_ID` | ✅ | — | Spotify Developer Dashboard |
+| `SPOTIFY_CLIENT_SECRET` | ✅ | — | Spotify Developer Dashboard |
+| `FRONTEND_URL` | ✅ | `http://localhost:5173` | Used in OAuth redirect to return the token to the correct origin |
+| `DATABASE_URL` | prod only | SQLite | PostgreSQL connection string. Railway sets this automatically. Format: `postgresql://user:pass@host:5432/db` |
+| `JWT_EXPIRE_DAYS` | ❌ | `30` | How long session tokens stay valid |
 
-**Frontend (`frontend/.env` or Vercel env vars)**
+### Frontend (`frontend/.env`)
 
-| Variable | Description |
-|---|---|
-| `VITE_API_URL` | Your Railway backend URL, e.g. `https://contour-production.up.railway.app` |
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `VITE_API_URL` | prod only | `""` | Your Railway backend URL, e.g. `https://your-app.up.railway.app`. Leave empty locally — Vite proxies automatically. |
+
+See `backend/.env.example` and `frontend/.env.example` for ready-to-copy templates.
 
 ---
 
@@ -149,35 +166,85 @@ Runs at `http://localhost:5173`. API calls proxy to `http://localhost:8000`.
 backend/
   main.py                  FastAPI app, CORS, router registration
   models.py                SQLAlchemy ORM models
-  database.py              Async PostgreSQL connection
+  database.py              Async engine — SQLite locally, Postgres in prod
   routers/
-    albums.py              Album search + stream trajectory
-    tracks.py              Track search + stream trajectory
-    artists.py             Artist metadata, discography, top tracks
-    ratings.py             Ratings, reviews, votes, replies
+    auth.py                Google OAuth 2.0 flow, JWT issuance
+    albums.py              Album search, metadata, stream trajectory
+    tracks.py              Track search, metadata, stream trajectory
+    artists.py             Artist metadata, discography, top tracks, favorites
+    ratings.py             Ratings, reviews, upvote/downvote votes, replies
     reviews.py             Global public reviews feed
     feed.py                Following activity feed
-    featured.py            Trending + new releases (home screen)
-    users.py               Public profiles, follow/unfollow
-    auth.py                Spotify OAuth, JWT
+    featured.py            Trending tracks + new releases (home screen)
+    users.py               Public profiles, follow/unfollow, lists preview
     comparison.py          Side-by-side trajectory comparison
+    saved_comparisons.py   Save and retrieve comparison links
+    lists.py               User-created lists (CRUD + item management)
+    leaderboard.py         Era-adjusted charts
+    notifications.py       Follow and review interaction notifications
+    discover.py            Personalized For You feed
   services/
-    spotify.py             Spotify Web API client
-    normalization.py       MAU interpolation + era-adjustment
-    album_cache.py         DB cache + Kworb stream enrichment
+    spotify.py             Spotify Web API client (search, metadata, top tracks)
+    normalization.py       MAU table, era-adjustment, trajectory modeling
+    album_cache.py         DB-backed cache + async Kworb stream enrichment
+    kworb.py               Kworb.net scraper for real stream counts
+  migrations/
+    versions/              Alembic migration chain
 
 frontend/
   src/
-    pages/                 SearchPage, AlbumPage, TrackPage, ArtistPage,
-                           ComparePage, FeedPage, ProfilePage, UserPage,
-                           PrivacyPage, ...
-    components/            Layout, ReviewSection, TrajectoryChart,
-                           ComparisonWidget, EraCallout, ShareButton, ...
-    services/api.js        All API calls
-    contexts/AuthContext   JWT auth state
-  capacitor.config.json    iOS/Android app config
-  public/manifest.json     PWA manifest
+    pages/
+      ForYouPage.jsx       Home — personalized discovery feed
+      SearchPage.jsx        Albums, tracks, artists, users in one bar
+      AlbumPage.jsx         Album detail — streams, ratings, reviews, tracklist
+      TrackPage.jsx         Track detail — streams, ratings, reviews
+      ArtistPage.jsx        Artist — top tracks, discography, favorites
+      ComparePage.jsx       Side-by-side trajectory comparison
+      FeedPage.jsx          Activity feed from followed users
+      LeaderboardPage.jsx   Era-adjusted charts
+      ProfilePage.jsx       Your profile — ratings, reviews, lists, taste
+      UserPage.jsx          Public profile — same tabs, with follow button
+      ListDetailPage.jsx    View/edit a user-created list
+      NotificationsPage.jsx Notification inbox
+      SavedComparisonPage.jsx Shared comparison permalink
+    components/
+      Layout.jsx            Nav, search bar, auth button, bottom bar (mobile)
+      ReviewSection.jsx     Ratings, reviews, votes, replies (shared widget)
+      TrajectoryChart.jsx   Line chart with RIAA milestone markers
+      ComparisonChart.jsx   Dual-series comparison chart
+      ComparisonWidget.jsx  Inline album-vs-album widget (used on album pages)
+      EditionPicker.jsx     Standard vs. deluxe edition selector
+      EraCallout.jsx        Era-adjustment callout banner
+      TasteSection.jsx      Rating distribution + top genres + pinned albums
+      OnboardingModal.jsx   First-time genre picker
+      UnifiedSearch.jsx     Shared search dropdown (albums + tracks)
+      StarRating.jsx        Interactive half-star rating widget
+      ShareButton.jsx       Copy/share link helper
+      AlbumCard.jsx         Compact album card used in feeds
+    services/api.js         All API calls — single source of truth
+    contexts/AuthContext.jsx JWT auth state (login, logout, current user)
+  public/
+    manifest.json           PWA manifest
+  capacitor.config.json     iOS/Android app config
 ```
+
+---
+
+## Deployment
+
+### Railway (backend)
+
+1. Create a new Railway project and connect this repo.
+2. Add a **PostgreSQL** plugin — Railway sets `DATABASE_URL` automatically.
+3. Set the environment variables listed above under **Backend**.
+4. Railway runs `uvicorn main:app --host 0.0.0.0 --port $PORT` via `Procfile` or start command.
+5. On first deploy `init_db()` creates all tables automatically at startup.
+
+### Vercel (frontend)
+
+1. Import the repo in Vercel, set **Root Directory** to `frontend`.
+2. Set `VITE_API_URL` to your Railway backend URL in Vercel's Environment Variables.
+3. Vercel builds with `npm run build` and serves `dist/`.
 
 ---
 
@@ -185,11 +252,9 @@ frontend/
 
 - [ ] App Store launch (iOS via Codemagic + Capacitor)
 - [ ] Google Play launch (Android via Capacitor)
-- [ ] Push notifications (new follower, review liked)
-- [ ] Onboarding flow for new users
-- [ ] Charts / leaderboard page (top rated this week, most era-adjusted streams)
-- [ ] User-created lists ("My Top 10 Albums")
+- [ ] Push notifications (new follower, review reply)
 - [ ] Pre-2015 era support
+- [ ] Artist and user list support (currently albums and tracks only)
 
 ---
 
