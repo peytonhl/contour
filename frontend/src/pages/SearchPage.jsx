@@ -103,7 +103,7 @@ export function SearchPage() {
           ...albums.slice(0, 4).map(r => ({ ...r, _type: "album" })),
           ...tracks.slice(0, 4).map(r => ({ ...r, _type: "track" })),
           ...artists.slice(0, 3).map(r => ({ ...r, _type: "artist" })),
-          ...users.slice(0, 3).map(r => ({ ...r, _type: "user" })),
+          ...users.slice(0, 3).map(r => ({ ...r, name: r.display_name, _type: "user" })),
         ];
         setResults(tagged);
       } catch {
@@ -155,7 +155,7 @@ export function SearchPage() {
               autoFocus
               value={query}
               onChange={handleInput}
-              placeholder="Search albums, tracks, artists…"
+              placeholder="Search albums, tracks, artists, users…"
               style={{
                 flex: 1, padding: "18px 16px", fontSize: 16,
                 background: "transparent", border: "none", outline: "none",
@@ -184,15 +184,20 @@ export function SearchPage() {
                   onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                 >
                   {item.image_url
-                    ? <img src={item.image_url} alt={item.name} style={{ width: 40, height: 40, borderRadius: item._type === "artist" ? "50%" : 5, objectFit: "cover", flexShrink: 0 }} />
-                    : <div style={{ width: 40, height: 40, borderRadius: item._type === "artist" ? "50%" : 5, background: "var(--surface2)", flexShrink: 0 }} />
+                    ? <img src={item.image_url} alt={item.name} style={{ width: 40, height: 40, borderRadius: (item._type === "artist" || item._type === "user") ? "50%" : 5, objectFit: "cover", flexShrink: 0 }} />
+                    : <div style={{ width: 40, height: 40, borderRadius: (item._type === "artist" || item._type === "user") ? "50%" : 5, background: "var(--surface2)", flexShrink: 0 }} />
                   }
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
                     <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {Array.isArray(item.artists) ? item.artists.join(", ") : item.artists}
-                      {item.release_date && ` · ${item.release_date.slice(0, 4)}`}
-                      {formatStreams(item.streams) && ` · ${formatStreams(item.streams)}`}
+                      {item._type === "user"
+                        ? (item.bio ? item.bio.slice(0, 60) + (item.bio.length > 60 ? "…" : "") : "Contour user")
+                        : <>
+                            {Array.isArray(item.artists) ? item.artists.join(", ") : item.artists}
+                            {item.release_date && ` · ${item.release_date.slice(0, 4)}`}
+                            {formatStreams(item.streams) && ` · ${formatStreams(item.streams)}`}
+                          </>
+                      }
                     </div>
                   </div>
                   <span style={{
