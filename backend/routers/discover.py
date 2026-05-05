@@ -27,10 +27,13 @@ and the feed survives brief Spotify outages from cache.
 
 import asyncio
 import json
+import logging
 import random
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,10 +148,11 @@ async def get_discover_feed(
     if len(tracks) < limit:
         try:
             top = await spotify.get_global_top_tracks(limit=50)
+            logger.info("discover: tier3 got %d top tracks", len(top))
             random.shuffle(top)
             _add(top)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("discover: tier3 failed — %s", exc)
 
     # ── Tier 4: New releases filler ──────────────────────────────────────────
     if len(tracks) < limit:
@@ -165,8 +169,8 @@ async def get_discover_feed(
                         if t.get("preview_url"):
                             _add([t])
                             break
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("discover: tier4 failed — %s", exc)
 
     # ── Tier 5: Keyword fallbacks — always produces results ──────────────────
     if len(tracks) < limit:
@@ -175,14 +179,22 @@ async def get_discover_feed(
             for q in _FALLBACK_QUERIES
         ], return_exceptions=True)
         for res in fallback_results:
-            if isinstance(res, list):
+            if isinstance(res, Exception):
+                logger.warning("discover: tier5 fallback error — %s", res)
+            elif isinstance(res, list):
                 _add(res)
             if len(tracks) >= limit:
                 break
 
+    logger.info(
+        "discover: returning %d tracks (exclude=%d, genres=%s, artists=%s)",
+        len(tracks), len(exclude_ids), genre_list[:2], liked_artist_ids[:2],
+    )
+
     # If every tier failed (Spotify down / rate-limited), return an empty list
     # so the client can show its own "nothing to show" state rather than an error.
     if not tracks:
+        logger.error("discover: all tiers failed — returning empty feed")
         return []
 
     result = tracks[:limit]

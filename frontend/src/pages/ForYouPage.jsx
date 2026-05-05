@@ -521,7 +521,7 @@ function ForYouFeed() {
 
   const isPersonalized = ratingCount >= COLD_START_THRESHOLD;
 
-  async function fetchBatch(append = false) {
+  async function fetchBatch(append = false, attempt = 0) {
     if (append && fetchingMoreRef.current) return;
     if (append) fetchingMoreRef.current = true;
 
@@ -536,6 +536,14 @@ function ForYouFeed() {
         exclude: [...seenRef.current].slice(0, 100),
         limit: 10,
       });
+
+      // If Spotify returned empty, retry once automatically (transient hiccup)
+      if (batch.length === 0 && !append && attempt === 0) {
+        setter(false);
+        await new Promise((r) => setTimeout(r, 2500));
+        return fetchBatch(false, 1);
+      }
+
       saveSeen(batch.map((t) => t.id));
       batch.forEach((t) => seenRef.current.add(t.id));
       setTracks((prev) => append ? [...prev, ...batch] : batch);
