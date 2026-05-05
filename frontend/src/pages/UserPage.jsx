@@ -4,6 +4,19 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 
+function ListCollage({ images }) {
+  const slots = [0, 1, 2, 3];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 56, height: 56, borderRadius: 8, overflow: "hidden", flexShrink: 0 }}>
+      {slots.map((i) =>
+        images[i]
+          ? <img key={i} src={images[i]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          : <div key={i} style={{ background: "var(--surface2)" }} />
+      )}
+    </div>
+  );
+}
+
 const ACCENT = "#a78bfa";
 const ACCENT_B = "#34d399";
 const GOLD = "#f59e0b";
@@ -33,6 +46,7 @@ export function UserPage() {
   const { user: me } = useAuth();
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
+  const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [followLoading, setFollowLoading] = useState(false);
   const [tab, setTab] = useState("taste");
@@ -42,10 +56,12 @@ export function UserPage() {
     Promise.all([
       api.getUser(id),
       api.getUserReviews(id).catch(() => []),
+      api.getUserLists(id).catch(() => []),
     ])
-      .then(([p, rev]) => {
+      .then(([p, rev, userLists]) => {
         setProfile(p);
         setReviews(rev);
+        setLists(userLists);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -129,11 +145,42 @@ export function UserPage() {
         <button style={tabStyle(tab === "reviews")} onClick={() => setTab("reviews")}>
           Reviews {profile.reviews_count > 0 && `(${profile.reviews_count})`}
         </button>
+        <button style={tabStyle(tab === "lists")} onClick={() => setTab("lists")}>
+          Lists {lists.length > 0 && `(${lists.length})`}
+        </button>
       </div>
 
       {/* Taste tab */}
       {tab === "taste" && (
         <TasteSection userId={id} isOwner={false} />
+      )}
+
+      {/* Lists tab */}
+      {tab === "lists" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {lists.length === 0 && (
+            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No lists yet.</p>
+          )}
+          {lists.map((lst) => (
+            <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, transition: "border-color 0.15s" }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+              >
+                <ListCollage images={lst.preview_images ?? []} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lst.title}</div>
+                  {lst.description && <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{lst.description}</div>}
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+                    {lst.is_ranked ? "Ranked" : "Unranked"} · {lst.item_count} item{lst.item_count !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <span style={{ fontSize: 18, color: "var(--text-muted)", flexShrink: 0 }}>›</span>
+              </div>
+            </Link>
+          ))}
+        </div>
       )}
 
       {/* Reviews tab */}

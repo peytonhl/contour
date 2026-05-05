@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import albums, artists, auth, comparison, discover, featured, feed, leaderboard, notifications, ratings, reviews, saved_comparisons, tracks, users
+from routers import albums, artists, auth, comparison, discover, featured, feed, leaderboard, lists, notifications, ratings, reviews, saved_comparisons, tracks, users
 
 app = FastAPI(
     title="Contour — Stream Trajectory Comparison",
@@ -20,7 +20,7 @@ app.add_middleware(
         "https://contour-rosy.vercel.app",
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -38,6 +38,7 @@ app.include_router(users.router)
 app.include_router(leaderboard.router)
 app.include_router(notifications.router)
 app.include_router(discover.router)
+app.include_router(lists.router)
 
 
 @app.on_event("startup")

@@ -16,6 +16,7 @@ import { NotificationsPage } from "./pages/NotificationsPage.jsx";
 import { ForYouPage } from "./pages/ForYouPage.jsx";
 import { Methodology } from "./components/Methodology.jsx";
 import { PrivacyPage } from "./pages/PrivacyPage.jsx";
+import { ListDetailPage } from "./pages/ListDetailPage.jsx";
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="for-you" element={<ForYouPage />} />
         <Route path="auth/success" element={<AuthSuccessPage />} />
         <Route path="privacy" element={<PrivacyPage />} />
+        <Route path="list/:id" element={<ListDetailPage />} />
       </Route>
     </Routes>
     </>

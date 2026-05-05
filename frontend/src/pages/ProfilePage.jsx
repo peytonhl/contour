@@ -4,6 +4,19 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 
+function ListCollage({ images }) {
+  const slots = [0, 1, 2, 3];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 56, height: 56, borderRadius: 8, overflow: "hidden", flexShrink: 0 }}>
+      {slots.map((i) =>
+        images[i]
+          ? <img key={i} src={images[i]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          : <div key={i} style={{ background: "var(--surface2)" }} />
+      )}
+    </div>
+  );
+}
+
 const GOLD = "#f59e0b";
 const ACCENT = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -64,6 +77,12 @@ export function ProfilePage() {
   const [editingBio, setEditingBio] = useState(false);
   const [bioInput, setBioInput] = useState("");
   const [savingBio, setSavingBio] = useState(false);
+  const [lists, setLists] = useState([]);
+  const [showCreateList, setShowCreateList] = useState(false);
+  const [newListTitle, setNewListTitle] = useState("");
+  const [newListDesc, setNewListDesc] = useState("");
+  const [newListRanked, setNewListRanked] = useState(true);
+  const [creatingList, setCreatingList] = useState(false);
 
   useEffect(() => {
     if (!user) { navigate("/"); return; }
@@ -71,11 +90,13 @@ export function ProfilePage() {
       api.getProfile(),
       api.getFollowing(user.id).catch(() => []),
       api.getFollowers(user.id).catch(() => []),
+      api.getUserLists(user.id).catch(() => []),
     ])
-      .then(([p, following, followers]) => {
+      .then(([p, following, followers, userLists]) => {
         setProfile(p);
         setFollowing(following);
         setFollowers(followers);
+        setLists(userLists);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -103,12 +124,24 @@ export function ProfilePage() {
     }
   }
 
+  async function handleCreateList() {
+    if (!newListTitle.trim()) return;
+    setCreatingList(true);
+    try {
+      const created = await api.createList(newListTitle.trim(), newListDesc.trim() || null, newListRanked);
+      navigate(`/list/${created.id}`);
+    } finally {
+      setCreatingList(false);
+    }
+  }
+
   if (!user) return null;
   if (loading) return <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>;
 
   const tabs = [
     { key: "ratings", label: `Ratings (${profile?.ratings?.length ?? 0})` },
     { key: "reviews", label: `Reviews (${profile?.reviews?.length ?? 0})` },
+    { key: "lists", label: `Lists (${lists.length})` },
     { key: "favorites", label: `Artists (${profile?.favorite_artists?.length ?? 0})` },
     { key: "following", label: `Following (${following.length})` },
     { key: "followers", label: `Followers (${followers.length})` },
@@ -227,6 +260,81 @@ export function ProfilePage() {
               <EntityRow item={r} right={null} />
               <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.6, margin: "8px 0 0 52px" }}>{r.body}</p>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Lists */}
+      {tab === "lists" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* Create list button / form */}
+          {!showCreateList ? (
+            <button
+              onClick={() => { setShowCreateList(true); setNewListTitle(""); setNewListDesc(""); setNewListRanked(true); }}
+              style={{
+                alignSelf: "flex-start", padding: "8px 18px", borderRadius: 8, fontWeight: 700, fontSize: 13,
+                background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT_B})`, border: "none", color: "#000", cursor: "pointer",
+              }}
+            >
+              + New list
+            </button>
+          ) : (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <input
+                autoFocus
+                value={newListTitle}
+                onChange={(e) => setNewListTitle(e.target.value.slice(0, 200))}
+                placeholder="List title…"
+                style={{ padding: "8px 12px", background: "var(--surface2)", border: `1px solid ${ACCENT}60`, borderRadius: 8, color: "var(--text)", fontSize: 14, outline: "none" }}
+              />
+              <textarea
+                value={newListDesc}
+                onChange={(e) => setNewListDesc(e.target.value.slice(0, 500))}
+                placeholder="Description (optional)…"
+                rows={2}
+                style={{ padding: "8px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)", fontSize: 13, outline: "none", resize: "vertical" }}
+              />
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
+                <input type="checkbox" checked={newListRanked} onChange={(e) => setNewListRanked(e.target.checked)} />
+                Ranked (numbered)
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={handleCreateList} disabled={creatingList || !newListTitle.trim()}
+                  style={{ padding: "7px 18px", borderRadius: 8, fontWeight: 700, fontSize: 13, background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT_B})`, border: "none", color: "#000", cursor: "pointer", opacity: !newListTitle.trim() ? 0.5 : 1 }}
+                >
+                  {creatingList ? "Creating…" : "Create"}
+                </button>
+                <button onClick={() => setShowCreateList(false)} style={{ padding: "7px 14px", borderRadius: 8, fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {lists.length === 0 && (
+            <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No lists yet. Create one to get started.</p>
+          )}
+
+          {lists.map((lst) => (
+            <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, transition: "border-color 0.15s" }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+              >
+                <ListCollage images={lst.preview_images ?? []} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lst.title}</div>
+                  {lst.description && <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{lst.description}</div>}
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+                    {lst.is_ranked ? "Ranked" : "Unranked"} · {lst.item_count} item{lst.item_count !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <span style={{ fontSize: 18, color: "var(--text-muted)", flexShrink: 0 }}>›</span>
+              </div>
+            </Link>
           ))}
         </div>
       )}

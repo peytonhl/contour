@@ -31,6 +31,33 @@ async function post(path, body) {
   return res.json();
 }
 
+async function patch(path, body) {
+  const token = getToken();
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(BASE + path, { method: "PATCH", headers, body: JSON.stringify(body) });
+  if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail ?? `HTTP ${res.status}`); }
+  return res.json();
+}
+
+async function put(path, body) {
+  const token = getToken();
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(BASE + path, { method: "PUT", headers, body: JSON.stringify(body) });
+  if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail ?? `HTTP ${res.status}`); }
+  return res.json();
+}
+
+async function del(path) {
+  const token = getToken();
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(BASE + path, { method: "DELETE", headers });
+  if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail ?? `HTTP ${res.status}`); }
+  return res.json();
+}
+
 export const api = {
   // Albums
   searchAlbums: (q) => request(`/albums/search?q=${encodeURIComponent(q)}`),
@@ -139,6 +166,15 @@ export const api = {
   getFollowing: (id) => request(`/users/${id}/following`),
   getFollowers: (id) => request(`/users/${id}/followers`),
   getUserReviews: (id) => request(`/users/${id}/reviews`),
+  getUserRatings: (id) => request(`/users/${id}/ratings`),
+  getUserLists: (id) => request(`/users/${id}/lists`),
+
+  // Lists
+  createList: (title, description, isRanked) => post(`/lists/`, { title, description, is_ranked: isRanked }),
+  getList: (id) => request(`/lists/${id}`),
+  updateList: (id, body) => patch(`/lists/${id}`, body),
+  deleteList: (id) => del(`/lists/${id}`),
+  updateListItems: (id, items) => put(`/lists/${id}/items`, { items }),
 
   getMe: (token) => {
     return fetch(`${BASE}/auth/me`, {

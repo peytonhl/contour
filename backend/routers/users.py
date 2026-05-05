@@ -9,7 +9,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import User, UserFollow, Rating, Review, ArtistFavorite
+from models import User, UserFollow, Rating, Review, ArtistFavorite, UserList, UserListItem
 from routers.auth import decode_jwt, optional_user_id
 from routers.notifications import create_notification
 from services import spotify
@@ -215,6 +215,109 @@ async def get_user_taste(user_id: str, db: AsyncSession = Depends(get_db)):
         "top_genres": top_genres,
         "pinned_albums": pinned_albums,
     }
+
+
+@router.get("/{user_id}/ratings")
+async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
+    """Return all ratings for a user, enriched with entity metadata, newest first."""
+    from sqlalchemy import desc as sa_desc
+
+    ratings = (await db.execute(
+        select(Rating)
+        .where(Rating.user_id == user_id)
+        .order_by(sa_desc(Rating.created_at))
+        .limit(200)
+    )).scalars().all()
+
+    if not ratings:
+        return []
+
+    unique_entities = list({(r.entity_type, r.entity_id) for r in ratings})
+
+    async def fetch_meta(entity_type: str, entity_id: str):
+        try:
+            if entity_type == "track":
+                data = await spotify.get_track(entity_id)
+            elif entity_type == "album":
+                data = await spotify.get_album(entity_id)
+            else:
+                data = await spotify.get_artist(entity_id)
+            return (entity_type, entity_id), {
+                "name": data["name"],
+                "image_url": data.get("image_url"),
+                "artists": data.get("artists", []),
+            }
+        except Exception:
+            return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
+
+    enriched = dict(await asyncio.gather(*[fetch_meta(et, eid) for et, eid in unique_entities]))
+
+    return [
+        {
+            "entity_type": r.entity_type,
+            "entity_id": r.entity_id,
+            "entity_name": enriched.get((r.entity_type, r.entity_id), {}).get("name"),
+            "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
+            "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
+            "value": r.value,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in ratings
+    ]
+
+
+@router.get("/{user_id}/lists")
+async def get_user_lists(user_id: str, db: AsyncSession = Depends(get_db)):
+    """Return all lists created by a user, newest first."""
+    from sqlalchemy import desc as sa_desc, func
+
+    lists = (await db.execute(
+        select(UserList)
+        .where(UserList.user_id == user_id)
+        .order_by(sa_desc(UserList.updated_at))
+    )).scalars().all()
+
+    result = []
+    for lst in lists:
+        # Get item count and first 4 item images for the preview collage
+        items = (await db.execute(
+            select(UserListItem)
+            .where(UserListItem.list_id == lst.id)
+            .order_by(UserListItem.position)
+            .limit(4)
+        )).scalars().all()
+
+        # Fetch images for the first 4 items in parallel
+        async def get_image(item: UserListItem):
+            try:
+                if item.entity_type == "track":
+                    d = await spotify.get_track(item.entity_id)
+                elif item.entity_type == "album":
+                    d = await spotify.get_album(item.entity_id)
+                else:
+                    d = await spotify.get_artist(item.entity_id)
+                return d.get("image_url")
+            except Exception:
+                return None
+
+        preview_images = list(await asyncio.gather(*[get_image(i) for i in items]))
+
+        item_count_row = await db.execute(
+            select(func.count()).where(UserListItem.list_id == lst.id)
+        )
+        item_count = item_count_row.scalar()
+
+        result.append({
+            "id": lst.id,
+            "title": lst.title,
+            "description": lst.description,
+            "is_ranked": lst.is_ranked,
+            "item_count": item_count,
+            "preview_images": [img for img in preview_images if img],
+            "updated_at": lst.updated_at.isoformat(),
+        })
+
+    return result
 
 
 @router.get("/{user_id}/reviews")

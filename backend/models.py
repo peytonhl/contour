@@ -155,6 +155,31 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class UserList(Base):
+    """A curated list of albums/tracks/artists created by a user."""
+    __tablename__ = "user_lists"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(256))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_ranked: Mapped[bool] = mapped_column(default=True)  # numbered vs. unranked
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class UserListItem(Base):
+    """An entry in a user list, with a position for ordering."""
+    __tablename__ = "user_list_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    list_id: Mapped[int] = mapped_column(Integer, index=True)
+    position: Mapped[int] = mapped_column(Integer)   # 1-based
+    entity_type: Mapped[str] = mapped_column(String(16))   # "album" | "track" | "artist"
+    entity_id: Mapped[str] = mapped_column(String(64))
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 class AlbumCache(Base):
     __tablename__ = "album_cache"
 
