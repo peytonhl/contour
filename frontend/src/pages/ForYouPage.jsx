@@ -1,18 +1,23 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
-// ── Pulled from FeedPage so Following tab reuses the same logic ───────────────
 import { FollowingTab } from "./FeedPage.jsx";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
 const GOLD = "#f59e0b";
 
+// ── LocalStorage keys ─────────────────────────────────────────────────────────
 const GENRES_KEY = "contour_genres_v1";
 const SEEN_KEY = "contour_seen_v1";
+const HISTORY_KEY = "contour_history_v1";
 
+// How many ratings before we switch from cold-start to personalized mode
+const COLD_START_THRESHOLD = 5;
+
+// ── Genre prefs ───────────────────────────────────────────────────────────────
 function loadGenres() {
   try { return JSON.parse(localStorage.getItem(GENRES_KEY) || "[]"); } catch { return []; }
 }
@@ -22,15 +27,62 @@ function saveGenre(genre) {
     localStorage.setItem(GENRES_KEY, JSON.stringify([genre, ...prev].slice(0, 10)));
   }
 }
+
+// ── Seen-track deduplication ──────────────────────────────────────────────────
 function loadSeen() {
   try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || "[]")); } catch { return new Set(); }
 }
 function saveSeen(ids) {
   const all = [...loadSeen(), ...ids];
-  localStorage.setItem(SEEN_KEY, JSON.stringify(all.slice(-200))); // keep last 200
+  localStorage.setItem(SEEN_KEY, JSON.stringify(all.slice(-200)));
 }
 
-// ── Star rating component ─────────────────────────────────────────────────────
+// ── Listen / rating history ───────────────────────────────────────────────────
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; }
+}
+
+function recordRating(trackId, artistId, rating) {
+  const prev = loadHistory();
+  const idx = prev.findIndex((h) => h.trackId === trackId);
+  if (idx >= 0) {
+    prev[idx] = { ...prev[idx], rating, ts: Date.now() };
+  } else {
+    prev.unshift({ trackId, artistId, rating, ts: Date.now() });
+  }
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(prev.slice(0, 300)));
+}
+
+/** Artist IDs the user has given 4–5 stars, deduped, max 5. */
+function getLikedArtists() {
+  return [...new Set(
+    loadHistory()
+      .filter((h) => h.rating >= 4)
+      .map((h) => h.artistId)
+      .filter(Boolean),
+  )].slice(0, 5);
+}
+
+/** How many tracks the user has rated (used for cold-start gate). */
+function getRatingCount() {
+  return loadHistory().filter((h) => h.rating !== null).length;
+}
+
+// ── Share helper ──────────────────────────────────────────────────────────────
+async function shareTrack(track) {
+  const url = `${window.location.origin}/track/${track.id}`;
+  const title = `${track.name} · ${track.artists?.[0]}`;
+  const text = `Listen to "${track.name}" by ${track.artists?.[0]} on Contour`;
+
+  if (navigator.share) {
+    try { await navigator.share({ title, text, url }); } catch { /* cancelled */ }
+  } else {
+    try { await navigator.clipboard.writeText(url); return true; } catch { }
+  }
+  return false;
+}
+
+// ── Star rating ───────────────────────────────────────────────────────────────
 function StarPicker({ value, onChange, disabled }) {
   const [hover, setHover] = useState(null);
   const display = hover ?? value;
@@ -70,8 +122,18 @@ function AudioBar({ progress }) {
   );
 }
 
+// ── Share icon ────────────────────────────────────────────────────────────────
+function ShareIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+  );
+}
+
 // ── Individual discover card ──────────────────────────────────────────────────
-function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
+function DiscoverCard({ track, isActive, onRate, onReview, userRating, cardIndex, totalCards, onNext, onPrev }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -80,6 +142,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
   const [submitted, setSubmitted] = useState(false);
   const [ratedValue, setRatedValue] = useState(userRating ?? null);
   const [ratingDone, setRatingDone] = useState(!!userRating);
+  const [copied, setCopied] = useState(false);
   const { user } = useAuth();
 
   // Stop audio when card leaves view
@@ -99,6 +162,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
     setSubmitted(false);
     setRatedValue(userRating ?? null);
     setRatingDone(!!userRating);
+    setCopied(false);
   }, [track.id]);
 
   function togglePlay() {
@@ -106,12 +170,17 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
     if (!audioRef.current) {
       audioRef.current = new Audio(track.preview_url);
       audioRef.current.ontimeupdate = () => {
-        setProgress(audioRef.current.currentTime / 30);
+        const cur = audioRef.current?.currentTime ?? 0;
+        // Cap at 30 s in case browser somehow loads more than the preview
+        if (cur >= 30) {
+          audioRef.current.pause();
+          setPlaying(false);
+          setProgress(1);
+          return;
+        }
+        setProgress(cur / 30);
       };
-      audioRef.current.onended = () => {
-        setPlaying(false);
-        setProgress(0);
-      };
+      audioRef.current.onended = () => { setPlaying(false); setProgress(0); };
     }
     if (playing) {
       audioRef.current.pause();
@@ -122,13 +191,10 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
     }
   }
 
-  // Cleanup audio on unmount
+  // Cleanup audio on unmount / track change
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     };
   }, [track.id]);
 
@@ -145,12 +211,19 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
     setReviewOpen(false);
   }
 
+  async function handleShare() {
+    const wasCopied = await shareTrack(track);
+    if (wasCopied) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
   const year = track.release_date?.slice(0, 4);
 
   return (
     <div style={{
-      height: "100%", flexShrink: 0,
-      scrollSnapAlign: "start",
+      height: "100%",
       display: "flex", flexDirection: "column",
       position: "relative", overflow: "hidden",
       background: "#0a0a0a",
@@ -159,14 +232,12 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
       <div style={{ flex: "0 0 52%", position: "relative", overflow: "hidden" }}>
         {track.image_url
           ? <>
-              {/* Blurred background fill */}
               <div style={{
                 position: "absolute", inset: "-20px",
                 backgroundImage: `url(${track.image_url})`,
                 backgroundSize: "cover", backgroundPosition: "center",
                 filter: "blur(20px) brightness(0.4)",
               }} />
-              {/* Crisp centered art */}
               <img
                 src={track.image_url}
                 alt={track.album_name}
@@ -183,23 +254,52 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
           : <div style={{ width: "100%", height: "100%", background: "var(--surface2)" }} />
         }
 
-        {/* Spotify link */}
-        {track.external_url && (
-          <a
-            href={track.external_url}
-            target="_blank"
-            rel="noreferrer"
+        {/* Top-right action row: Share + Spotify */}
+        <div style={{
+          position: "absolute", top: 14, right: 14,
+          display: "flex", gap: 8, alignItems: "center",
+        }}>
+          <button
+            onClick={handleShare}
+            title="Share this track"
             style={{
-              position: "absolute", top: 14, right: 14,
-              fontSize: 11, color: "rgba(255,255,255,0.6)",
-              background: "rgba(0,0,0,0.4)", borderRadius: 20,
-              padding: "4px 10px", textDecoration: "none",
+              fontSize: 11, color: copied ? ACCENT_B : "rgba(255,255,255,0.7)",
+              background: "rgba(0,0,0,0.45)", borderRadius: 20,
+              padding: "4px 10px", border: "none", cursor: "pointer",
               backdropFilter: "blur(4px)",
+              display: "flex", alignItems: "center", gap: 5,
+              fontWeight: copied ? 700 : 400,
+              transition: "color 0.2s",
             }}
           >
-            Open ↗
-          </a>
-        )}
+            <ShareIcon />
+            {copied ? "Copied!" : "Share"}
+          </button>
+          {track.external_url && (
+            <a
+              href={track.external_url}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                fontSize: 11, color: "rgba(255,255,255,0.6)",
+                background: "rgba(0,0,0,0.4)", borderRadius: 20,
+                padding: "4px 10px", textDecoration: "none",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              Open ↗
+            </a>
+          )}
+        </div>
+
+        {/* Card position indicator */}
+        <div style={{
+          position: "absolute", top: 14, left: 14,
+          fontSize: 10, color: "rgba(255,255,255,0.35)",
+          fontWeight: 600, letterSpacing: "0.05em",
+        }}>
+          {cardIndex + 1} / {totalCards}
+        </div>
       </div>
 
       {/* Info + controls — bottom half */}
@@ -207,7 +307,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
         flex: 1, display: "flex", flexDirection: "column",
         padding: "20px 24px 16px",
         background: "linear-gradient(to bottom, #0a0a0a, #111)",
-        gap: 14,
+        gap: 14, overflowY: "auto",
       }}>
 
         {/* Track info */}
@@ -236,7 +336,6 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
 
         {/* Preview player */}
         {track.preview_url ? (
-          // Custom player when Spotify provides a preview URL
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button
               onClick={togglePlay}
@@ -260,16 +359,22 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
             </div>
           </div>
         ) : (
-          // Spotify embed iframe fallback — works without preview_url
-          <iframe
-            src={`https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0`}
-            width="100%"
-            height="80"
-            style={{ borderRadius: 10, border: "none", display: "block" }}
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            loading="lazy"
-            title={`${track.name} preview`}
-          />
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "10px 14px", borderRadius: 10,
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}>
+            <span style={{ fontSize: 16, opacity: 0.4 }}>🎵</span>
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", lineHeight: 1.4 }}>
+              No preview available.{" "}
+              {track.external_url && (
+                <a href={track.external_url} target="_blank" rel="noreferrer" style={{ color: ACCENT_A }}>
+                  Open in Spotify ↗
+                </a>
+              )}
+            </span>
+          </div>
         )}
 
         {/* Rating */}
@@ -328,9 +433,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
                       background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                       border: "none", color: "#000", cursor: "pointer",
                     }}
-                  >
-                    Post
-                  </button>
+                  >Post</button>
                   <button
                     onClick={() => setReviewOpen(false)}
                     style={{
@@ -338,15 +441,50 @@ function DiscoverCard({ track, isActive, onRate, onReview, userRating }) {
                       background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
                       color: "rgba(255,255,255,0.5)", cursor: "pointer",
                     }}
-                  >
-                    Cancel
-                  </button>
+                  >Cancel</button>
                 </div>
               </div>
             )}
           </div>
         )}
+
+        {/* Swipe hint — shown on first card only */}
+        {cardIndex === 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4, opacity: 0.3 }}>
+            <span style={{ fontSize: 11, color: "#fff" }}>Swipe up for next</span>
+            <span style={{ fontSize: 13 }}>↑</span>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ── Cold-start progress banner ────────────────────────────────────────────────
+function ColdStartBanner({ ratingCount }) {
+  if (ratingCount >= COLD_START_THRESHOLD) return null;
+  const remaining = COLD_START_THRESHOLD - ratingCount;
+  const pct = (ratingCount / COLD_START_THRESHOLD) * 100;
+
+  return (
+    <div style={{
+      padding: "8px 16px",
+      background: "rgba(167,139,250,0.08)",
+      borderBottom: "1px solid rgba(167,139,250,0.15)",
+      display: "flex", alignItems: "center", gap: 10,
+      flexShrink: 0,
+    }}>
+      {/* Progress bar */}
+      <div style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.1)", overflow: "hidden" }}>
+        <div style={{
+          height: "100%", borderRadius: 2,
+          background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+          width: `${pct}%`, transition: "width 0.4s ease",
+        }} />
+      </div>
+      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", flexShrink: 0 }}>
+        Rate {remaining} more to personalize
+      </span>
     </div>
   );
 }
@@ -360,10 +498,13 @@ function ForYouFeed() {
   const [fetchError, setFetchError] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [userRatings, setUserRatings] = useState({});
+  const [ratingCount, setRatingCount] = useState(() => getRatingCount());
   const containerRef = useRef(null);
   const seenRef = useRef(loadSeen());
   const genresRef = useRef(loadGenres());
-  const fetchingMoreRef = useRef(false); // guard against concurrent fetches
+  const fetchingMoreRef = useRef(false);
+
+  const isPersonalized = ratingCount >= COLD_START_THRESHOLD;
 
   async function fetchBatch(append = false) {
     if (append && fetchingMoreRef.current) return;
@@ -373,8 +514,10 @@ function ForYouFeed() {
     setter(true);
     setFetchError(false);
     try {
+      const likedArtists = isPersonalized ? getLikedArtists() : [];
       const batch = await api.getDiscoverFeed({
-        genres: genresRef.current.slice(0, 3),
+        genres: isPersonalized ? genresRef.current.slice(0, 3) : [],
+        liked_artists: likedArtists,
         exclude: [...seenRef.current].slice(0, 100),
         limit: 10,
       });
@@ -391,7 +534,7 @@ function ForYouFeed() {
 
   useEffect(() => { fetchBatch(); }, []);
 
-  // IntersectionObserver — track which card is visible
+  // Track which card is in view
   useEffect(() => {
     if (!containerRef.current) return;
     const cards = containerRef.current.querySelectorAll("[data-card]");
@@ -403,25 +546,47 @@ function ForYouFeed() {
           if (entry.isIntersecting) {
             const idx = parseInt(entry.target.dataset.card);
             setActiveIdx(idx);
-            // Load more when 2 cards from end
-            if (idx >= tracks.length - 2) {
-              fetchBatch(true);
-            }
+            if (idx >= tracks.length - 2) fetchBatch(true);
           }
         });
       },
-      { root: containerRef.current, threshold: 0.6 }
+      { root: containerRef.current, threshold: 0.6 },
     );
 
     cards.forEach((c) => observer.observe(c));
     return () => observer.disconnect();
   }, [tracks.length]);
 
+  // Programmatic card navigation
+  const goToCard = useCallback((idx) => {
+    if (idx < 0 || idx >= tracks.length) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const card = container.querySelector(`[data-card="${idx}"]`);
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [tracks.length]);
+
+  // Keyboard arrow navigation
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+        e.preventDefault();
+        goToCard(activeIdx + 1);
+      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        goToCard(activeIdx - 1);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeIdx, goToCard]);
+
   async function handleRate(track, value) {
     setUserRatings((prev) => ({ ...prev, [track.id]: value }));
+    recordRating(track.id, track.artist_ids?.[0], value);
+    setRatingCount(getRatingCount());
     try {
       await api.rateEntity("track", track.id, value);
-      // If 4+ stars, learn the genre from this artist
       if (value >= 4 && track.artist_ids?.[0]) {
         api.getArtist(track.artist_ids[0]).then((artist) => {
           artist.genres?.slice(0, 2).forEach((g) => {
@@ -430,13 +595,11 @@ function ForYouFeed() {
           });
         }).catch(() => {});
       }
-    } catch { /* not logged in or error — rating already shown optimistically */ }
+    } catch { }
   }
 
   async function handleReview(track, body, ratingValue) {
-    try {
-      await api.submitReview("track", track.id, body, ratingValue);
-    } catch { }
+    try { await api.submitReview("track", track.id, body, ratingValue); } catch { }
   }
 
   if (loading) {
@@ -466,44 +629,52 @@ function ForYouFeed() {
             background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
             border: "none", color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer",
           }}
-        >
-          Try again
-        </button>
+        >Try again</button>
       </div>
     );
   }
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        height: "100%",
-        overflowY: "scroll",
-        scrollSnapType: "y mandatory",
-        scrollBehavior: "smooth",
-        WebkitOverflowScrolling: "touch",
-      }}
-    >
-      {tracks.map((track, i) => (
-        <div
-          key={`${track.id}-${i}`}
-          data-card={i}
-          style={{ height: "100%", scrollSnapAlign: "start", flexShrink: 0 }}
-        >
-          <DiscoverCard
-            track={track}
-            isActive={activeIdx === i}
-            onRate={handleRate}
-            onReview={handleReview}
-            userRating={userRatings[track.id] ?? null}
-          />
-        </div>
-      ))}
-      {loadingMore && (
-        <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center", scrollSnapAlign: "start" }}>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>Loading more…</span>
-        </div>
-      )}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      {/* Cold-start progress banner */}
+      <ColdStartBanner ratingCount={ratingCount} />
+
+      {/* Scroll container */}
+      <div
+        ref={containerRef}
+        style={{
+          flex: 1,
+          overflowY: "scroll",
+          scrollSnapType: "y mandatory",
+          scrollBehavior: "smooth",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        {tracks.map((track, i) => (
+          <div
+            key={`${track.id}-${i}`}
+            data-card={i}
+            style={{ height: "100%", scrollSnapAlign: "start", flexShrink: 0 }}
+          >
+            <DiscoverCard
+              track={track}
+              isActive={activeIdx === i}
+              onRate={handleRate}
+              onReview={handleReview}
+              userRating={userRatings[track.id] ?? null}
+              cardIndex={i}
+              totalCards={tracks.length}
+              onNext={() => goToCard(i + 1)}
+              onPrev={() => goToCard(i - 1)}
+            />
+          </div>
+        ))}
+        {loadingMore && (
+          <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center", scrollSnapAlign: "start" }}>
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>Loading more…</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -525,7 +696,7 @@ export function ForYouPage() {
   return (
     <div style={{
       display: "flex", flexDirection: "column",
-      height: "calc(100dvh - 56px)", // minus top nav; bottom nav is fixed
+      height: "calc(100dvh - 56px)",
       background: "#0a0a0a",
       overflow: "hidden",
     }}>

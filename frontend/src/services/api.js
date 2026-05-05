@@ -134,9 +134,10 @@ export const api = {
   getSuggestedUsers: () => request(`/users/suggested`),
 
   // Discover / For You feed
-  getDiscoverFeed: ({ genres = [], exclude = [], limit = 10 } = {}) => {
+  getDiscoverFeed: ({ genres = [], liked_artists = [], exclude = [], limit = 10 } = {}) => {
     const params = new URLSearchParams({ limit });
     if (genres.length) params.set("genres", genres.join(","));
+    if (liked_artists.length) params.set("liked_artists", liked_artists.join(","));
     if (exclude.length) params.set("exclude", exclude.join(","));
     return request(`/discover/feed?${params}`);
   },

@@ -1,6 +1,23 @@
-"""For You feed — personalized track discovery."""
+"""
+For You feed — personalized track discovery.
+
+Personalization tiers
+─────────────────────
+Cold start (< COLD_START_THRESHOLD ratings on the client):
+  The client sends no genres / liked_artists → we serve global top 50 + new
+  releases so the user gets variety while their taste is being learned.
+
+Warm / hot (≥ threshold):
+  1. Related-artist tracks  — top tracks from artists similar to ones the user
+                              rated 4–5 stars (most personalized)
+  2. Genre-filtered search  — Spotify search filtered to learned genres
+  3. Global Top 50 baseline — always provides something even with no prefs
+  4. New releases filler    — adds freshness
+  5. Keyword fallbacks      — last-resort, always returns something
+"""
 
 import asyncio
+import random
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -14,31 +31,26 @@ from services import spotify
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
-# Fallback search queries used when the playlist API is unavailable
 _FALLBACK_QUERIES = ["pop hits", "hip hop hits", "indie pop", "top songs 2024"]
 
 
 @router.get("/feed")
 async def get_discover_feed(
-    genres: Optional[str] = Query(None, description="Comma-separated genre slugs from Spotify"),
+    genres: Optional[str] = Query(None, description="Comma-separated genre slugs from client prefs"),
     exclude: Optional[str] = Query(None, description="Comma-separated track IDs to skip"),
+    liked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs rated 4–5 stars"),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
 ):
     """
     Return a batch of tracks for the For You scroll feed.
-
-    Personalization tiers (best to worst):
-      1. Genre-filtered search (genres param from client's learned prefs)
-      2. Global Top 50 baseline
-      3. Keyword search fallbacks (always returns something)
-
-    Already-rated tracks and client-side seen IDs are excluded.
+    The client is responsible for cold-start detection; it sends liked_artists
+    only after the threshold is met.
     """
-    exclude_ids: set[str] = set(exclude.split(",")) if exclude else set()
+    exclude_ids: set[str] = set(filter(None, exclude.split(","))) if exclude else set()
 
-    # Also server-side exclude tracks this user has rated
+    # Server-side: also exclude tracks this user has already rated
     if user_id:
         rated_ids = (await db.execute(
             select(Rating.entity_id).where(
@@ -49,6 +61,7 @@ async def get_discover_feed(
         exclude_ids.update(rated_ids)
 
     genre_list = [g.strip() for g in genres.split(",")] if genres else []
+    liked_artist_ids = [a.strip() for a in liked_artists.split(",")] if liked_artists else []
 
     tracks: list[dict] = []
     seen: set[str] = set()
@@ -59,25 +72,56 @@ async def get_discover_feed(
                 seen.add(t["id"])
                 tracks.append(t)
 
-    # ── 1. Genre-personalized layer ───────────────────────────────────────────
-    if genre_list:
-        results = await asyncio.gather(*[
+    # ── Tier 1: Related-artist tracks (personalized — only when warm) ─────────
+    if liked_artist_ids:
+        # Fetch related artists for up to 3 liked artists concurrently
+        related_results = await asyncio.gather(*[
+            spotify.get_related_artists(aid)
+            for aid in liked_artist_ids[:3]
+        ], return_exceptions=True)
+
+        # Flatten, dedupe, shuffle, take up to 6 related artists
+        related_ids: list[str] = []
+        for r in related_results:
+            if isinstance(r, list):
+                related_ids.extend(r[:4])
+        related_ids = list(dict.fromkeys(related_ids))  # dedupe, preserve order
+        random.shuffle(related_ids)
+        related_ids = related_ids[:6]
+
+        if related_ids:
+            top_track_results = await asyncio.gather(*[
+                spotify.get_artist_top_tracks(aid)
+                for aid in related_ids
+            ], return_exceptions=True)
+            for result in top_track_results:
+                if isinstance(result, list):
+                    # Pick one random track per related artist to keep variety
+                    candidates = [t for t in result if t.get("preview_url")]
+                    if candidates:
+                        _add([random.choice(candidates)])
+
+    # ── Tier 2: Genre-personalized search ────────────────────────────────────
+    if genre_list and len(tracks) < limit:
+        genre_results = await asyncio.gather(*[
             spotify.search_tracks_by_genre(g, limit=15)
             for g in genre_list[:3]
         ], return_exceptions=True)
-        for res in results:
+        for res in genre_results:
             if isinstance(res, list):
                 _add(res)
 
-    # ── 2. Global Top 50 baseline ─────────────────────────────────────────────
+    # ── Tier 3: Global Top 50 baseline ───────────────────────────────────────
     if len(tracks) < limit:
         try:
             top = await spotify.get_global_top_tracks(limit=50)
+            # Shuffle so the feed doesn't start with the same chart order every time
+            random.shuffle(top)
             _add(top)
         except Exception:
             pass
 
-    # ── 3. New releases as filler ─────────────────────────────────────────────
+    # ── Tier 4: New releases filler ──────────────────────────────────────────
     if len(tracks) < limit:
         try:
             releases = await spotify.get_new_releases(limit=20)
@@ -95,7 +139,7 @@ async def get_discover_feed(
         except Exception:
             pass
 
-    # ── 4. Keyword fallbacks — always produces results ────────────────────────
+    # ── Tier 5: Keyword fallbacks — always produces results ──────────────────
     if len(tracks) < limit:
         fallback_results = await asyncio.gather(*[
             spotify.search_tracks(q, limit=10)
@@ -107,4 +151,7 @@ async def get_discover_feed(
             if len(tracks) >= limit:
                 break
 
-    return tracks[:limit]
+    # Shuffle the final slice lightly so tiers don't feel rigidly ordered
+    result = tracks[:limit]
+    random.shuffle(result)
+    return result
