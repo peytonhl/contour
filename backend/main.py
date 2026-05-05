@@ -61,34 +61,124 @@ async def _seed_leaderboard() -> None:
     """
     Background task: prime the leaderboard with popular albums on startup.
 
-    Two-stage strategy:
-      Stage 1 — Spotify-sourced IDs (reliable):
-        Pull album IDs from the Global Top 50 playlist + new releases.
-        For each, fetch Kworb's individual album page to get total streams.
-        Individual Kworb album pages (same ones used for trajectory data)
-        are more reliably parseable than the global listing page.
+    Three-stage strategy:
+      Stage 1 — Curated catalog albums:
+        A hand-picked list of major releases spanning multiple eras.
+        These are searched by artist+title on Spotify so no IDs need to
+        be hardcoded.  Last.fm has reliable play counts for all of them.
 
-      Stage 2 — Kworb global list (bonus, best-effort):
-        Also try kworb.net/spotify/albums.html for additional historically
-        popular albums.  Falls back silently if the page can't be parsed.
+      Stage 2 — Current Spotify top data:
+        Global Top 50 + new releases.  These are recent so Last.fm may
+        have limited data, but they're included for freshness.
+
+      Stage 3 — Kworb global list (best-effort):
+        Only useful if Railway's IP isn't blocked by Kworb.  Pre-fetches
+        stream counts so we can skip the per-album artist page scrape.
 
     Runs 60 s after startup.  Already-fresh albums are skipped.
     """
     from services import spotify, kworb
     from services import album_cache as cache
 
+    # Curated list — artist/album pairs with strong Last.fm history.
+    # Using search (not hardcoded IDs) so we always get the canonical release.
+    _CATALOG: list[tuple[str, str]] = [
+        ("Ed Sheeran", "÷"),
+        ("Ed Sheeran", "x"),
+        ("Ed Sheeran", "+"),
+        ("Ed Sheeran", "="),
+        ("The Weeknd", "After Hours"),
+        ("The Weeknd", "Starboy"),
+        ("The Weeknd", "Beauty Behind the Madness"),
+        ("Taylor Swift", "1989"),
+        ("Taylor Swift", "folklore"),
+        ("Taylor Swift", "evermore"),
+        ("Taylor Swift", "Midnights"),
+        ("Taylor Swift", "reputation"),
+        ("Taylor Swift", "Lover"),
+        ("Billie Eilish", "When We All Fall Asleep, Where Do We Go?"),
+        ("Billie Eilish", "Happier Than Ever"),
+        ("Dua Lipa", "Future Nostalgia"),
+        ("Harry Styles", "Fine Line"),
+        ("Harry Styles", "Harry's House"),
+        ("Olivia Rodrigo", "SOUR"),
+        ("Ariana Grande", "thank u, next"),
+        ("Ariana Grande", "Positions"),
+        ("Ariana Grande", "Sweetener"),
+        ("Ariana Grande", "Dangerous Woman"),
+        ("Drake", "Views"),
+        ("Drake", "Scorpion"),
+        ("Drake", "Take Care"),
+        ("Kendrick Lamar", "DAMN."),
+        ("Kendrick Lamar", "good kid, m.A.A.d city"),
+        ("Kendrick Lamar", "To Pimp a Butterfly"),
+        ("Post Malone", "Hollywood's Bleeding"),
+        ("Post Malone", "Beerbongs & Bentleys"),
+        ("Post Malone", "Stoney"),
+        ("Bad Bunny", "Un Verano Sin Ti"),
+        ("Bad Bunny", "YHLQMDLG"),
+        ("Justin Bieber", "Justice"),
+        ("Justin Bieber", "Purpose"),
+        ("Adele", "21"),
+        ("Adele", "25"),
+        ("Adele", "30"),
+        ("Beyoncé", "Lemonade"),
+        ("Beyoncé", "Renaissance"),
+        ("Beyoncé", "4"),
+        ("Eminem", "The Marshall Mathers LP"),
+        ("Eminem", "Recovery"),
+        ("Eminem", "The Slim Shady LP"),
+        ("Coldplay", "Music of the Spheres"),
+        ("Coldplay", "A Head Full of Dreams"),
+        ("Coldplay", "Parachutes"),
+        ("Michael Jackson", "Thriller"),
+        ("Michael Jackson", "Bad"),
+        ("The Beatles", "Abbey Road"),
+        ("Rihanna", "Anti"),
+        ("Bruno Mars", "24K Magic"),
+        ("Bruno Mars", "Unorthodox Jukebox"),
+        ("Lana Del Rey", "Norman Fucking Rockwell!"),
+        ("Lana Del Rey", "Born to Die"),
+        ("SZA", "SOS"),
+        ("SZA", "CTRL"),
+        ("Frank Ocean", "Blonde"),
+        ("Kanye West", "My Beautiful Dark Twisted Fantasy"),
+        ("Kanye West", "The College Dropout"),
+        ("Tyler, the Creator", "IGOR"),
+        ("Tyler, the Creator", "Call Me If You Get Lost"),
+    ]
+
     await asyncio.sleep(60)
 
-    # ── Stage 1: collect album IDs from Spotify's own top data ───────────────
     album_ids: list[str] = []
+    kworb_entries: dict[str, int] = {}
 
+    # ── Stage 1: curated catalog — search Spotify for each entry ─────────────
+    logger.info("Leaderboard seed: searching Spotify for %d catalog albums…", len(_CATALOG))
+    for artist_name, album_title in _CATALOG:
+        try:
+            results = await spotify.search_albums(f"{album_title} {artist_name}", limit=3)
+            # Pick the result whose album name most closely matches (case-insensitive)
+            target = album_title.lower()
+            match = next(
+                (r for r in results if r.get("name", "").lower() == target),
+                results[0] if results else None,
+            )
+            if match and match.get("id") and match["id"] not in album_ids:
+                album_ids.append(match["id"])
+        except Exception as exc:
+            logger.debug("Leaderboard seed: catalog search failed for %s / %s — %s", artist_name, album_title, exc)
+        await asyncio.sleep(0.1)
+    logger.info("Leaderboard seed: %d album IDs from catalog search", len(album_ids))
+
+    # ── Stage 2: current Spotify top data ────────────────────────────────────
     try:
         top_tracks = await spotify.get_global_top_tracks(limit=50)
         for t in top_tracks:
             aid = t.get("album_id")
             if aid and aid not in album_ids:
                 album_ids.append(aid)
-        logger.info("Leaderboard seed: %d album IDs from Global Top 50", len(album_ids))
+        logger.info("Leaderboard seed: %d album IDs after Global Top 50", len(album_ids))
     except Exception as exc:
         logger.warning("Leaderboard seed: top tracks fetch failed — %s", exc)
 
@@ -101,8 +191,7 @@ async def _seed_leaderboard() -> None:
     except Exception as exc:
         logger.warning("Leaderboard seed: new releases fetch failed — %s", exc)
 
-    # ── Stage 2: bonus IDs from Kworb global list ─────────────────────────────
-    kworb_entries: dict[str, int] = {}  # spotify_id → streams (pre-fetched)
+    # ── Stage 3: Kworb global list (best-effort, may be blocked) ─────────────
     try:
         top_albums = await kworb.get_top_albums(limit=200)
         for entry in top_albums:
