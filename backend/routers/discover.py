@@ -54,7 +54,6 @@ _FALLBACK_QUERIES = ["pop hits", "hip hop hits", "indie pop", "top songs 2024"]
 async def get_discover_feed(
     request: Request,
     genres: Optional[str] = Query(None, description="Comma-separated genre slugs from client prefs"),
-    exclude: Optional[str] = Query(None, description="Comma-separated track IDs to skip"),
     liked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs rated 4–5 stars"),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
@@ -65,9 +64,8 @@ async def get_discover_feed(
     For logged-in users the taste profile is read server-side; client params
     are used as fallback for logged-out users and cold-start scenarios.
     """
-    exclude_ids: set[str] = set(filter(None, exclude.split(","))) if exclude else set()
-
-    # Server-side: also exclude tracks this user has already rated
+    # Exclude tracks this user has already rated — the only permanent exclusion signal
+    exclude_ids: set[str] = set()
     if user_id:
         rated_ids = (await db.execute(
             select(Rating.entity_id).where(
@@ -186,29 +184,8 @@ async def get_discover_feed(
             if len(tracks) >= limit:
                 break
 
-    # ── Tier 6: Exclude-blind fallback ───────────────────────────────────────
-    # If all tiers returned nothing it's because the user has seen every popular
-    # track we'd normally serve (large exclude list).  Re-run Tier 3 ignoring
-    # the exclude filter so there's always something to show.
-    if not tracks:
-        logger.warning(
-            "discover: all tiers empty after exclude filter (exclude=%d) — retrying without filter",
-            len(exclude_ids),
-        )
-        try:
-            top = await spotify.get_global_top_tracks(limit=50)
-            random.shuffle(top)
-            for t in top:
-                if t.get("id") and t["id"] not in seen:
-                    seen.add(t["id"])
-                    tracks.append(t)
-                    if len(tracks) >= limit:
-                        break
-        except Exception as exc:
-            logger.warning("discover: tier6 failed — %s", exc)
-
     logger.info(
-        "discover: returning %d tracks (exclude=%d, genres=%s, artists=%s)",
+        "discover: returning %d tracks (rated_excluded=%d, genres=%s, artists=%s)",
         len(tracks), len(exclude_ids), genre_list[:2], liked_artist_ids[:2],
     )
 

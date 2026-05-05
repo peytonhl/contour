@@ -11,7 +11,6 @@ const GOLD = "#f59e0b";
 
 // ── LocalStorage keys ─────────────────────────────────────────────────────────
 const GENRES_KEY = "contour_genres_v1";
-const SEEN_KEY = "contour_seen_v1";
 const HISTORY_KEY = "contour_history_v1";
 
 // How many ratings before we switch from cold-start to personalized mode
@@ -28,35 +27,6 @@ function saveGenre(genre) {
   }
 }
 
-// ── Seen-track deduplication ──────────────────────────────────────────────────
-const SEEN_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 2 weeks
-
-function loadSeen() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]");
-    const now = Date.now();
-    // Support both old format (array of id strings) and new format (array of {id, ts})
-    const fresh = raw
-      .map((entry) => typeof entry === "string" ? { id: entry, ts: 0 } : entry)
-      .filter((entry) => now - entry.ts < SEEN_TTL_MS);
-    return new Set(fresh.map((e) => e.id));
-  } catch { return new Set(); }
-}
-
-function saveSeen(ids) {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]");
-    const now = Date.now();
-    const existing = raw
-      .map((entry) => typeof entry === "string" ? { id: entry, ts: 0 } : entry)
-      .filter((entry) => now - entry.ts < SEEN_TTL_MS);
-    const newEntries = ids.map((id) => ({ id, ts: now }));
-    const merged = [...existing, ...newEntries];
-    // Dedupe by id, keeping most recent
-    const byId = new Map(merged.map((e) => [e.id, e]));
-    localStorage.setItem(SEEN_KEY, JSON.stringify([...byId.values()].slice(-150)));
-  } catch {}
-}
 
 // ── Listen / rating history ───────────────────────────────────────────────────
 function loadHistory() {
@@ -536,7 +506,6 @@ function ForYouFeed() {
   const [userRatings, setUserRatings] = useState({});
   const [ratingCount, setRatingCount] = useState(() => getRatingCount());
   const containerRef = useRef(null);
-  const seenRef = useRef(loadSeen());
   const genresRef = useRef(loadGenres());
   const fetchingMoreRef = useRef(false);
 
@@ -554,7 +523,6 @@ function ForYouFeed() {
       const batch = await api.getDiscoverFeed({
         genres: isPersonalized ? genresRef.current.slice(0, 3) : [],
         liked_artists: likedArtists,
-        exclude: [...seenRef.current].slice(0, 100),
         limit: 10,
       });
 
@@ -565,8 +533,6 @@ function ForYouFeed() {
         return fetchBatch(false, 1);
       }
 
-      saveSeen(batch.map((t) => t.id));
-      batch.forEach((t) => seenRef.current.add(t.id));
       setTracks((prev) => append ? [...prev, ...batch] : batch);
     } catch {
       if (!append) setFetchError(true);
