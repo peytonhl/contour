@@ -209,6 +209,7 @@ async def get_discover_feed(
     result = tracks[:limit]
     random.shuffle(result)
 
+
     # ── Deezer preview enrichment ─────────────────────────────────────────────
     no_preview = [t for t in result if not t.get("preview_url")]
     if no_preview:
@@ -225,3 +226,79 @@ async def get_discover_feed(
                     t["preview_url"] = url
 
     return result
+
+
+@router.get("/debug")
+async def discover_debug():
+    """
+    Diagnostic endpoint — tests each feed tier independently and reports
+    how many tracks each produced.  Use this to diagnose empty feed issues
+    without having to read through logs.
+    """
+    import time
+    import httpx
+    from services import spotify as spotify_svc
+
+    results: dict[str, dict] = {}
+
+    # ── Spotify token ─────────────────────────────────────────────────────────
+    try:
+        t0 = time.monotonic()
+        async with httpx.AsyncClient() as client:
+            await spotify_svc._get_token(client)
+        results["spotify_auth"] = {"ok": True, "latency_ms": round((time.monotonic() - t0) * 1000)}
+    except Exception as exc:
+        results["spotify_auth"] = {"ok": False, "error": str(exc)}
+
+    # ── Tier 3: Global Top 50 ─────────────────────────────────────────────────
+    try:
+        t0 = time.monotonic()
+        top = await spotify.get_global_top_tracks(limit=50)
+        results["tier3_global_top50"] = {
+            "ok": True,
+            "track_count": len(top),
+            "with_preview": sum(1 for t in top if t.get("preview_url")),
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+        }
+    except Exception as exc:
+        results["tier3_global_top50"] = {"ok": False, "error": str(exc)}
+
+    # ── Tier 4: New releases ──────────────────────────────────────────────────
+    try:
+        t0 = time.monotonic()
+        releases = await spotify.get_new_releases(limit=10)
+        results["tier4_new_releases"] = {
+            "ok": True,
+            "album_count": len(releases),
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+        }
+    except Exception as exc:
+        results["tier4_new_releases"] = {"ok": False, "error": str(exc)}
+
+    # ── Tier 2: Genre search (sample) ────────────────────────────────────────
+    try:
+        t0 = time.monotonic()
+        genre_tracks = await spotify.search_tracks_by_genre("pop", limit=10)
+        results["tier2_genre_search"] = {
+            "ok": True,
+            "track_count": len(genre_tracks),
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+        }
+    except Exception as exc:
+        results["tier2_genre_search"] = {"ok": False, "error": str(exc)}
+
+    # ── Redis cache ───────────────────────────────────────────────────────────
+    try:
+        from services import redis_cache
+        r = await redis_cache._client()
+        if r is not None:
+            t0 = time.monotonic()
+            await r.ping()
+            results["redis"] = {"ok": True, "latency_ms": round((time.monotonic() - t0) * 1000)}
+        else:
+            results["redis"] = {"ok": False, "note": "not configured — every feed request hits Spotify directly"}
+    except Exception as exc:
+        results["redis"] = {"ok": False, "error": str(exc)}
+
+    all_ok = all(v.get("ok", False) for v in results.values() if "note" not in v)
+    return {"status": "ok" if all_ok else "degraded", "tiers": results}

@@ -241,4 +241,77 @@ async def startup():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    """
+    Dependency health check — Railway monitors this endpoint.
+    Returns 200 only when all critical dependencies are reachable.
+    Returns 503 with a breakdown if anything is down.
+    """
+    import time
+    from sqlalchemy import text
+
+    results: dict[str, dict] = {}
+    healthy = True
+
+    # ── Database ──────────────────────────────────────────────────────────────
+    try:
+        t0 = time.monotonic()
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        results["database"] = {"ok": True, "latency_ms": round((time.monotonic() - t0) * 1000)}
+    except Exception as exc:
+        results["database"] = {"ok": False, "error": str(exc)}
+        healthy = False
+
+    # ── Spotify token ─────────────────────────────────────────────────────────
+    try:
+        from services import spotify as spotify_svc
+        import httpx
+        t0 = time.monotonic()
+        async with httpx.AsyncClient() as client:
+            await spotify_svc._get_token(client)
+        results["spotify"] = {"ok": True, "latency_ms": round((time.monotonic() - t0) * 1000)}
+    except Exception as exc:
+        results["spotify"] = {"ok": False, "error": str(exc)}
+        healthy = False  # Spotify down = feed broken
+
+    # ── Last.fm key ───────────────────────────────────────────────────────────
+    import os
+    lastfm_key_set = bool(os.environ.get("LASTFM_API_KEY"))
+    results["lastfm"] = {"ok": lastfm_key_set, "key_set": lastfm_key_set}
+    # Last.fm missing = leaderboard won't seed, but app still works
+
+    # ── Redis ─────────────────────────────────────────────────────────────────
+    try:
+        from services import redis_cache
+        r = await redis_cache._client()
+        if r is not None:
+            t0 = time.monotonic()
+            await r.ping()
+            results["redis"] = {"ok": True, "latency_ms": round((time.monotonic() - t0) * 1000)}
+        else:
+            results["redis"] = {"ok": False, "note": "not configured (REDIS_URL missing) — caching disabled"}
+    except Exception as exc:
+        results["redis"] = {"ok": False, "error": str(exc)}
+    # Redis missing = slower but not broken
+
+    # ── Leaderboard data ──────────────────────────────────────────────────────
+    try:
+        from sqlalchemy import select, func
+        from models import AlbumCache
+        async with AsyncSessionLocal() as db:
+            count = (await db.execute(
+                select(func.count()).where(
+                    AlbumCache.enrichment_status == "done",
+                    AlbumCache.kworb_streams > 0,
+                )
+            )).scalar()
+        results["leaderboard"] = {"ok": count > 0, "eligible_albums": count}
+    except Exception as exc:
+        results["leaderboard"] = {"ok": False, "error": str(exc)}
+
+    from fastapi.responses import JSONResponse
+    status_code = 200 if healthy else 503
+    return JSONResponse(
+        content={"status": "ok" if healthy else "degraded", "checks": results},
+        status_code=status_code,
+    )
