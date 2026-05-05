@@ -36,7 +36,10 @@ async def get_taste_profile(
     user_id: str = Depends(require_user_id),
 ):
     """Return the authenticated user's taste profile."""
-    profile = await db.get(UserTasteProfile, user_id)
+    try:
+        profile = await db.get(UserTasteProfile, user_id)
+    except Exception:
+        return {"genres": [], "liked_artist_ids": [], "onboarding_done": False}
     if not profile:
         return {"genres": [], "liked_artist_ids": [], "onboarding_done": False}
     return {

@@ -132,10 +132,13 @@ async def startup():
             await asyncio.get_event_loop().run_in_executor(None, _run_migrations)
             logger.info("Alembic migrations applied successfully.")
         except Exception as exc:
-            logger.warning("Alembic migration failed — falling back to create_all: %s", exc)
-            await init_db()
-    else:
-        await init_db()
+            logger.warning("Alembic migration failed: %s", exc)
+
+    # Always run create_all as a safety net for models not yet covered by
+    # Alembic migrations (e.g. UserTasteProfile added without a migration file).
+    # SQLAlchemy create_all is idempotent — it only creates tables that are
+    # missing; it never drops or alters existing ones.
+    await init_db()
 
     # Seed the leaderboard in the background so startup doesn't block.
     # The task self-skips albums that are already enriched and fresh.

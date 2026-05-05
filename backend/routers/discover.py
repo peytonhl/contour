@@ -81,10 +81,14 @@ async def get_discover_feed(
     liked_artist_ids: list[str] = []
 
     if user_id:
-        profile = await db.get(UserTasteProfile, user_id)
-        if profile:
-            genre_list = json.loads(profile.genres or "[]")
-            liked_artist_ids = json.loads(profile.liked_artist_ids or "[]")
+        try:
+            profile = await db.get(UserTasteProfile, user_id)
+            if profile:
+                genre_list = json.loads(profile.genres or "[]")
+                liked_artist_ids = json.loads(profile.liked_artist_ids or "[]")
+        except Exception:
+            # Table may not exist yet on first deploy — degrade gracefully
+            pass
 
     # Fallback to client-sent values (logged-out users or empty server profile)
     if not genre_list:
