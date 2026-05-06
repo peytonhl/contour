@@ -118,16 +118,39 @@ async def search_tracks(q: str = Query(..., min_length=1), db: AsyncSession = De
     ]
 
 
+def _row_to_track_result(row: TrackCache) -> TrackResult:
+    return TrackResult(
+        id=row.spotify_id,
+        name=row.name,
+        artists=[a.strip() for a in row.artist.split(",")],
+        artist_ids=json.loads(row.artist_ids_json or "[]"),
+        album_name=row.album_name or "",
+        album_id=row.album_id,
+        release_date=row.release_date or "",
+        duration_ms=row.duration_ms,
+        popularity=row.popularity,
+        explicit=bool(row.explicit),
+        image_url=row.image_url,
+        external_url=row.external_url,
+    )
+
+
 @router.get("/{track_id}", response_model=TrackResult)
 async def get_track(track_id: str, db: AsyncSession = Depends(get_db)):
+    # Check local cache first
+    cached = (await db.execute(
+        select(TrackCache).where(TrackCache.spotify_id == track_id)
+    )).scalar_one_or_none()
+
     try:
         meta = await spotify.get_track(track_id)
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    # Cache in album_cache (existing behaviour) and track_cache (for search fallback)
-    await cache.upsert_album(db, meta)
-    await _upsert_track(db, meta)
-    return meta
+        await cache.upsert_album(db, meta)
+        await _upsert_track(db, meta)
+        return meta
+    except Exception:
+        if cached:
+            return _row_to_track_result(cached)
+        raise HTTPException(status_code=404, detail=f"Track {track_id} not found")
 
 
 @router.get("/{track_id}/streams", response_model=TrackStreamStatus)
