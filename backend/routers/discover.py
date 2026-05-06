@@ -9,20 +9,20 @@ Logged-in users:
 
 Cold start (logged-out, or logged-in but no server profile yet):
   Falls back to client-sent genres/liked_artists from localStorage.
-  If neither exist, serves Global Top 50 + new releases so the user gets
-  variety while their taste is being learned.
+  If neither exist, serves Deezer chart tracks + new music so the user
+  gets variety while their taste is being learned.
 
 Warm / hot (genres or liked_artists present):
   1. Related-artist tracks  — top tracks from artists similar to ones the user
-                              rated 4–5 stars (most personalized)
+                              rated 4–5 stars (Spotify, most personalized)
   2. Genre-filtered search  — Spotify search filtered to learned genres
-  3. Global Top 50 baseline — always provides something even with no prefs
-  4. New releases filler    — adds freshness
-  5. Keyword fallbacks      — last-resort, always returns something
+  3. Deezer popular baseline — no API key required, always has preview URLs
+  4. Deezer new music       — fresh tracks via Deezer search, no quota issues
+  5. Deezer keyword fallbacks — last-resort, always returns something
 
-All hot Spotify calls (Global Top 50, genre search, related artists, artist
-top tracks) are cached in Redis for 24 hours so Spotify API quota is preserved
-and the feed survives brief Spotify outages from cache.
+Tiers 3–5 use Deezer because Spotify's search/playlist endpoints return
+empty results for apps not enrolled in Extended Access review.
+Deezer's public API requires no authentication and returns 30s previews.
 """
 
 import asyncio
@@ -31,7 +31,7 @@ import logging
 import random
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 logger = logging.getLogger(__name__)
 from sqlalchemy import select
@@ -41,12 +41,33 @@ from database import get_db
 from models import Rating, UserTasteProfile
 from routers.auth import optional_user_id
 from services import spotify
-from services.deezer import get_preview as deezer_preview
+from services import deezer as deezer_svc
 from services.limiter import limiter
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
-_FALLBACK_QUERIES = ["pop hits", "hip hop hits", "indie pop", "top songs 2024"]
+# Deezer queries for the baseline / fallback tiers (no Spotify needed)
+_DEEZER_POPULAR_QUERIES = ["top hits", "global hits", "chart music", "viral songs"]
+_DEEZER_NEW_QUERIES = ["new music 2025", "new songs 2025", "fresh music"]
+_DEEZER_FALLBACK_QUERIES = [
+    "pop hits",
+    "hip hop",
+    "indie pop",
+    "r&b",
+    "alternative rock",
+]
+
+
+def _is_likely_english(text: str) -> bool:
+    """
+    Return True if the text looks like it's primarily Latin/English.
+    Filters out Cyrillic, CJK, Arabic, etc. while allowing French/Spanish
+    accented chars (which are ≤30 % of most Western-language titles).
+    """
+    if not text:
+        return True
+    non_ascii = sum(1 for c in text if ord(c) > 127)
+    return (non_ascii / len(text)) < 0.3
 
 
 @router.get("/feed")
@@ -56,6 +77,7 @@ async def get_discover_feed(
     genres: Optional[str] = Query(None, description="Comma-separated genre slugs from client prefs"),
     liked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs rated 4–5 stars"),
     disliked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs the user has marked 'not interested'"),
+    english_only: bool = Query(True, description="Filter to tracks with Latin/English titles and artist names"),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
@@ -110,6 +132,11 @@ async def get_discover_feed(
     def _add(batch: list[dict]) -> None:
         for t in batch:
             artist_id = (t.get("artist_ids") or [None])[0]
+            if english_only:
+                title_ok = _is_likely_english(t.get("name", ""))
+                artist_ok = _is_likely_english((t.get("artists") or [""])[0])
+                if not (title_ok and artist_ok):
+                    continue
             if (
                 t.get("id")
                 and t["id"] not in exclude_ids
@@ -155,45 +182,54 @@ async def get_discover_feed(
             if isinstance(res, list):
                 _add(res)
 
-    # ── Tier 3: Global Top 50 baseline ───────────────────────────────────────
+    # ── Tier 3: Deezer popular baseline ──────────────────────────────────────
+    # Deezer's public API requires no auth, returns 30s previews, and is
+    # unaffected by Spotify's Extended Access restrictions.
     if len(tracks) < limit:
-        try:
-            top = await spotify.get_global_top_tracks(limit=50)
-            logger.info("discover: tier3 got %d top tracks", len(top))
-            random.shuffle(top)
-            _add(top)
-        except Exception as exc:
-            logger.warning("discover: tier3 failed — %s", exc)
+        popular_results = await asyncio.gather(*[
+            deezer_svc.search_tracks(q, limit=20)
+            for q in _DEEZER_POPULAR_QUERIES
+        ], return_exceptions=True)
+        for res in popular_results:
+            if isinstance(res, list):
+                random.shuffle(res)
+                _add(res)
+            if len(tracks) >= limit:
+                break
+        logger.info("discover: tier3 (deezer popular) → %d tracks", len(tracks))
 
-    # ── Tier 4: New releases filler ──────────────────────────────────────────
+    # ── Tier 4: Deezer new music ──────────────────────────────────────────────
     if len(tracks) < limit:
-        try:
-            releases = await spotify.get_new_releases(limit=20)
-            album_track_tasks = [
-                spotify.get_album_tracks(album["id"])
-                for album in releases[:8]
-            ]
-            album_tracks = await asyncio.gather(*album_track_tasks, return_exceptions=True)
-            for result in album_tracks:
-                if isinstance(result, list) and result:
-                    for t in result:
-                        if t.get("preview_url"):
-                            _add([t])
-                            break
-        except Exception as exc:
-            logger.warning("discover: tier4 failed — %s", exc)
+        new_results = await asyncio.gather(*[
+            deezer_svc.search_tracks(q, limit=15)
+            for q in _DEEZER_NEW_QUERIES
+        ], return_exceptions=True)
+        for res in new_results:
+            if isinstance(res, list):
+                _add(res)
+            if len(tracks) >= limit:
+                break
 
-    # ── Tier 5: Keyword fallbacks — always produces results ──────────────────
+    # ── Tier 5: Deezer keyword fallbacks — always produces results ────────────
     if len(tracks) < limit:
         fallback_results = await asyncio.gather(*[
-            spotify.search_tracks(q, limit=10)
-            for q in _FALLBACK_QUERIES
+            deezer_svc.search_tracks(q, limit=10)
+            for q in _DEEZER_FALLBACK_QUERIES
         ], return_exceptions=True)
         for res in fallback_results:
-            if isinstance(res, Exception):
-                logger.warning("discover: tier5 fallback error — %s", res)
-            elif isinstance(res, list):
+            if isinstance(res, list):
                 _add(res)
+            if len(tracks) >= limit:
+                break
+
+    # ── Tier 5.5: Nuclear fallback — ignore disliked filter ──────────────────
+    if not tracks and disliked_ids:
+        logger.info("discover: nuclear fallback — ignoring disliked filter (%d artists)", len(disliked_ids))
+        nuclear = await deezer_svc.search_tracks("top hits", limit=50)
+        for t in nuclear:
+            if t.get("id") and t["id"] not in exclude_ids and t["id"] not in seen:
+                seen.add(t["id"])
+                tracks.append(t)
             if len(tracks) >= limit:
                 break
 
@@ -209,18 +245,19 @@ async def get_discover_feed(
     result = tracks[:limit]
     random.shuffle(result)
 
-
-    # ── Deezer preview enrichment ─────────────────────────────────────────────
-    no_preview = [t for t in result if not t.get("preview_url")]
+    # ── Deezer preview enrichment (Spotify tracks only) ───────────────────────
+    # Deezer-sourced tracks already carry preview_url from the search response.
+    # Only enrich Spotify tracks that are still missing a preview clip.
+    no_preview = [t for t in result if not t.get("preview_url") and t.get("_source") != "deezer"]
     if no_preview:
         deezer_tasks = [
-            deezer_preview(t.get("name", ""), (t.get("artists") or [""])[0])
+            deezer_svc.get_preview(t.get("name", ""), (t.get("artists") or [""])[0])
             for t in no_preview
         ]
         deezer_urls = await asyncio.gather(*deezer_tasks, return_exceptions=True)
         url_iter = iter(deezer_urls)
         for t in result:
-            if not t.get("preview_url"):
+            if not t.get("preview_url") and t.get("_source") != "deezer":
                 url = next(url_iter)
                 if isinstance(url, str) and url:
                     t["preview_url"] = url
@@ -250,30 +287,30 @@ async def discover_debug():
     except Exception as exc:
         results["spotify_auth"] = {"ok": False, "error": str(exc)}
 
-    # ── Tier 3: Global Top 50 ─────────────────────────────────────────────────
+    # ── Tier 3: Deezer popular search ────────────────────────────────────────
     try:
         t0 = time.monotonic()
-        top = await spotify.get_global_top_tracks(limit=50)
-        results["tier3_global_top50"] = {
+        deezer_pop = await deezer_svc.search_tracks("top hits", limit=10)
+        results["tier3_deezer_popular"] = {
             "ok": True,
-            "track_count": len(top),
-            "with_preview": sum(1 for t in top if t.get("preview_url")),
+            "track_count": len(deezer_pop),
+            "with_preview": sum(1 for t in deezer_pop if t.get("preview_url")),
             "latency_ms": round((time.monotonic() - t0) * 1000),
         }
     except Exception as exc:
-        results["tier3_global_top50"] = {"ok": False, "error": str(exc)}
+        results["tier3_deezer_popular"] = {"ok": False, "error": str(exc)}
 
-    # ── Tier 4: New releases ──────────────────────────────────────────────────
+    # ── Tier 4: Deezer new music ──────────────────────────────────────────────
     try:
         t0 = time.monotonic()
-        releases = await spotify.get_new_releases(limit=10)
-        results["tier4_new_releases"] = {
+        deezer_new = await deezer_svc.search_tracks("new music 2025", limit=10)
+        results["tier4_deezer_new"] = {
             "ok": True,
-            "album_count": len(releases),
+            "track_count": len(deezer_new),
             "latency_ms": round((time.monotonic() - t0) * 1000),
         }
     except Exception as exc:
-        results["tier4_new_releases"] = {"ok": False, "error": str(exc)}
+        results["tier4_deezer_new"] = {"ok": False, "error": str(exc)}
 
     # ── Tier 2: Genre search (sample) ────────────────────────────────────────
     try:

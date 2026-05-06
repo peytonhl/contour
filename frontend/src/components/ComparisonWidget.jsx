@@ -15,7 +15,7 @@ function tagAlbum(album) {
   return album ? { ...album, _type: "album" } : null;
 }
 
-export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null }) {
+export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null, preloadedAlbumAId = null, preloadedAlbumBId = null }) {
   const [selectionA, setSelectionA] = useState(tagAlbum(initialAlbumA));
   const [selectionB, setSelectionB] = useState(tagAlbum(initialAlbumB));
   const [editionsA, setEditionsA] = useState(initialAlbumA ? [initialAlbumA.id] : []);
@@ -29,6 +29,21 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null })
   const [enriching, setEnriching] = useState(false);
 
   const pollRef = useRef(null);
+
+  // Fetch and pre-fill slots from URL query param IDs (from leaderboard Compare button or suggested matchups)
+  useEffect(() => {
+    if (!preloadedAlbumAId) return;
+    api.getAlbum(preloadedAlbumAId).then((meta) => {
+      if (meta) { setSelectionA({ ...meta, _type: "album" }); setEditionsA([meta.id]); }
+    }).catch(() => {});
+  }, [preloadedAlbumAId]);
+
+  useEffect(() => {
+    if (!preloadedAlbumBId) return;
+    api.getAlbum(preloadedAlbumBId).then((meta) => {
+      if (meta) { setSelectionB({ ...meta, _type: "album" }); setEditionsB([meta.id]); }
+    }).catch(() => {});
+  }, [preloadedAlbumBId]);
 
   // Update slots when initialAlbumA/B props change (e.g. artist page pre-fills)
   useEffect(() => {

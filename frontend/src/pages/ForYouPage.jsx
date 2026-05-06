@@ -13,6 +13,17 @@ const GOLD = "#f59e0b";
 const GENRES_KEY = "contour_genres_v1";
 const HISTORY_KEY = "contour_history_v1";
 const DISLIKED_KEY = "contour_disliked_v1";
+const ENGLISH_ONLY_KEY = "contour_english_only_v1";
+
+function loadEnglishOnly() {
+  try {
+    const v = localStorage.getItem(ENGLISH_ONLY_KEY);
+    return v === null ? true : v === "true"; // default ON
+  } catch { return true; }
+}
+function saveEnglishOnly(val) {
+  localStorage.setItem(ENGLISH_ONLY_KEY, String(val));
+}
 
 // How many ratings before we switch from cold-start to personalized mode
 const COLD_START_THRESHOLD = 5;
@@ -341,22 +352,32 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
               overflow: "hidden", display: "-webkit-box",
               WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
             }}>
-              <Link to={`/track/${track.id}`} style={{ color: "#fff", textDecoration: "none" }}>
-                {track.name}
-              </Link>
+              {track._source === "deezer" ? (
+                <a href={track.external_url} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none" }}>
+                  {track.name}
+                </a>
+              ) : (
+                <Link to={`/track/${track.id}`} style={{ color: "#fff", textDecoration: "none" }}>
+                  {track.name}
+                </Link>
+              )}
             </h2>
             {track.explicit && (
               <span style={{ fontSize: 9, background: "rgba(255,255,255,0.15)", borderRadius: 3, padding: "2px 5px", color: "rgba(255,255,255,0.5)", fontWeight: 700, flexShrink: 0, marginTop: 2 }}>E</span>
             )}
           </div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            <Link to={`/artist/${track.artist_ids?.[0]}`} style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, textDecoration: "none" }}>
-              {track.artists?.[0]}
-            </Link>
-            {track.album_name && track.album_id && (
+            {track._source === "deezer" ? (
+              <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600 }}>{track.artists?.[0]}</span>
+            ) : (
+              <Link to={`/artist/${track.artist_ids?.[0]}`} style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, textDecoration: "none" }}>
+                {track.artists?.[0]}
+              </Link>
+            )}
+            {track.album_name && (track._source !== "deezer") && track.album_id && (
               <> · <Link to={`/album/${track.album_id}`} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none" }}>{track.album_name}</Link></>
             )}
-            {track.album_name && !track.album_id && ` · ${track.album_name}`}
+            {track.album_name && (track._source === "deezer" || !track.album_id) && ` · ${track.album_name}`}
             {year && ` · ${year}`}
           </div>
         </div>
@@ -537,9 +558,13 @@ function ForYouFeed() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [fetchError, setFetchError] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [userRatings, setUserRatings] = useState({});
   const [ratingCount, setRatingCount] = useState(() => getRatingCount());
+  const [englishOnly, setEnglishOnly] = useState(loadEnglishOnly);
+  const englishOnlyRef = useRef(loadEnglishOnly());
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const containerRef = useRef(null);
   const genresRef = useRef(loadGenres());
   const fetchingMoreRef = useRef(false);
@@ -555,28 +580,52 @@ function ForYouFeed() {
     setFetchError(false);
     try {
       const likedArtists = isPersonalized ? getLikedArtists() : [];
-      const dislikedArtists = loadDisliked();
+      // On retry (attempt >= 1) skip the disliked filter — the user may have
+      // marked so many artists as "not interested" that nothing is left.
+      const dislikedArtists = attempt === 0 ? loadDisliked() : [];
       const batch = await api.getDiscoverFeed({
         genres: isPersonalized ? genresRef.current.slice(0, 3) : [],
         liked_artists: likedArtists,
         disliked_artists: dislikedArtists,
+        english_only: englishOnlyRef.current,
         limit: 10,
       });
 
-      // If Spotify returned empty, retry once automatically (transient hiccup)
+      // If Spotify returned empty, retry once ignoring disliked filter
       if (batch.length === 0 && !append && attempt === 0) {
         setter(false);
-        await new Promise((r) => setTimeout(r, 2500));
+        await new Promise((r) => setTimeout(r, 1500));
         return fetchBatch(false, 1);
       }
 
+      if (batch.length === 0 && !append) {
+        // Auto-diagnose: fetch debug info to show user what's broken
+        api.getDiscoverDebug().then(setDebugInfo).catch(() => {});
+      }
       setTracks((prev) => append ? [...prev, ...batch] : batch);
     } catch {
-      if (!append) setFetchError(true);
+      if (!append) {
+        setFetchError(true);
+        api.getDiscoverDebug().then(setDebugInfo).catch(() => {});
+      }
     } finally {
       setter(false);
       if (append) fetchingMoreRef.current = false;
     }
+  }
+
+  function clearNotInterested() {
+    localStorage.removeItem(DISLIKED_KEY);
+    fetchBatch();
+  }
+
+  function toggleEnglishOnly(val) {
+    saveEnglishOnly(val);
+    englishOnlyRef.current = val;
+    setEnglishOnly(val);
+    setTracks([]);
+    setActiveIdx(0);
+    fetchBatch();
   }
 
   useEffect(() => { fetchBatch(); }, []);
@@ -669,17 +718,60 @@ function ForYouFeed() {
   }
 
   if (!tracks.length) {
+    const dislikedCount = loadDisliked().length;
+    const spotifyOk = debugInfo?.tiers?.spotify_auth?.ok;
+    const spotifyErr = debugInfo?.tiers?.spotify_auth?.error;
+    // Deezer is now the baseline tier; fall back to old Spotify tier keys for in-flight deploys
+    const tier3 = debugInfo?.tiers?.tier3_deezer_popular ?? debugInfo?.tiers?.tier3_popular_search ?? debugInfo?.tiers?.tier3_global_top50;
+    const tier3Ok = tier3?.ok;
+    const tier3Count = tier3?.track_count;
+    const tier3Err = tier3?.error;
+    const deezerOk = tier3?.ok && (tier3?.track_count ?? 0) > 0;
+
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
         <div style={{ fontSize: 40 }}>🎵</div>
         <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#fff" }}>
-          {fetchError ? "Couldn't load tracks" : "No tracks right now"}
+          {fetchError ? "Couldn't reach server" : "Nothing to show right now"}
         </p>
-        <p style={{ margin: 0, fontSize: 13, maxWidth: 260, lineHeight: 1.6 }}>
-          {fetchError
-            ? "There was a problem reaching the server. Check your connection and try again."
-            : "Nothing new matched your taste at the moment — try again in a bit or rate more tracks to improve suggestions."}
-        </p>
+
+        {/* Spotify-level diagnosis */}
+        {debugInfo && spotifyOk === false && (
+          <div style={{ padding: "10px 16px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, maxWidth: 300 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#f87171", fontWeight: 700 }}>⚠ Spotify API unreachable</p>
+            {spotifyErr && <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{spotifyErr}</p>}
+            <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
+              Check that SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are set in Railway.
+            </p>
+          </div>
+        )}
+
+        {debugInfo && spotifyOk === true && tier3Ok === false && (
+          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, maxWidth: 300 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>⚠ Spotify auth OK but track search failed</p>
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+              {tier3Err}
+            </p>
+          </div>
+        )}
+
+        {debugInfo && spotifyOk === true && tier3Ok === true && tier3Count === 0 && (
+          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, maxWidth: 300 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>Spotify returned 0 tracks</p>
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+              {dislikedCount >= 5 ? `${dislikedCount} artists blocked by your not-interested list.` : "Playlist may be empty or region-restricted."}
+            </p>
+          </div>
+        )}
+
+        {!debugInfo && !fetchError && (
+          <p style={{ margin: 0, fontSize: 13, maxWidth: 280, lineHeight: 1.6 }}>
+            {dislikedCount >= 5
+              ? `You've marked ${dislikedCount} artists as not interested. Try clearing that list to open up more music.`
+              : "Diagnosing…"}
+          </p>
+        )}
+
         <button
           onClick={() => fetchBatch()}
           style={{
@@ -688,6 +780,29 @@ function ForYouFeed() {
             border: "none", color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer",
           }}
         >Try again</button>
+        {dislikedCount >= 5 && (
+          <button
+            onClick={clearNotInterested}
+            style={{
+              padding: "8px 20px", borderRadius: 20, fontSize: 12,
+              background: "rgba(255,255,255,0.07)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              color: "rgba(255,255,255,0.55)", cursor: "pointer",
+            }}
+          >
+            Clear not-interested list ({dislikedCount})
+          </button>
+        )}
+
+        {/* Raw debug dump for dev diagnosis */}
+        {debugInfo && (
+          <details style={{ marginTop: 8, maxWidth: 320, textAlign: "left" }}>
+            <summary style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", cursor: "pointer" }}>Debug info</summary>
+            <pre style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {JSON.stringify(debugInfo?.tiers, null, 2)}
+            </pre>
+          </details>
+        )}
       </div>
     );
   }
@@ -696,6 +811,60 @@ function ForYouFeed() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* Cold-start progress banner */}
       <ColdStartBanner ratingCount={ratingCount} />
+
+      {/* Settings toggle row */}
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 12px", flexShrink: 0 }}>
+        <button
+          onClick={() => setSettingsOpen(o => !o)}
+          title="Feed settings"
+          style={{
+            fontSize: 14, background: "none", border: "none", cursor: "pointer",
+            color: settingsOpen ? ACCENT_A : "rgba(255,255,255,0.3)",
+            padding: "4px 6px", transition: "color 0.15s",
+          }}
+        >⚙</button>
+      </div>
+
+      {/* Settings panel */}
+      {settingsOpen && (
+        <div style={{
+          padding: "12px 20px", background: "rgba(255,255,255,0.05)",
+          borderBottom: "1px solid rgba(255,255,255,0.1)",
+          display: "flex", flexDirection: "column", gap: 10, flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Feed Settings
+            </span>
+            <button onClick={() => setSettingsOpen(false)} style={{ fontSize: 16, background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer" }}>✕</button>
+          </div>
+
+          {/* English-only toggle */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 13, color: "#fff", fontWeight: 600 }}>English / Latin songs only</p>
+              <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+                Filters out Cyrillic, Arabic, CJK, and other non-Latin scripts
+              </p>
+            </div>
+            <button
+              onClick={() => toggleEnglishOnly(!englishOnly)}
+              style={{
+                width: 44, height: 24, borderRadius: 12, flexShrink: 0,
+                background: englishOnly ? ACCENT_A : "rgba(255,255,255,0.15)",
+                border: "none", cursor: "pointer", position: "relative",
+                transition: "background 0.2s",
+              }}
+            >
+              <span style={{
+                position: "absolute", top: 2, width: 20, height: 20, borderRadius: "50%",
+                background: "#fff", transition: "left 0.2s",
+                left: englishOnly ? 22 : 2,
+              }} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Scroll container
           "proximity" snaps when close to a boundary but doesn't trap scroll

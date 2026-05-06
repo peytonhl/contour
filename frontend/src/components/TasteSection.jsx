@@ -105,7 +105,7 @@ function AlbumSlot({ album, isOwner, onClick, onRemove }) {
       <Link to={`/album/${album.id}`}>
         {album.image_url
           ? <img src={album.image_url} alt={album.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          : <div style={{ width: "100%", height: "100%", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>🎵</div>
+          : <div style={{ width: "100%", height: "100%", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
         }
       </Link>
       {/* Hover overlay: album info + optional remove */}
@@ -152,6 +152,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
   const [picks, setPicks] = useState(selected); // array of album objects
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [searchError, setSearchError] = useState(null);
   const timerRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -162,6 +163,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
   function handleInput(e) {
     const val = e.target.value;
     setQuery(val);
+    setSearchError(null);
     clearTimeout(timerRef.current);
     if (val.trim().length < 2) { setResults([]); return; }
     timerRef.current = setTimeout(async () => {
@@ -169,6 +171,9 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
       try {
         const res = await api.searchAlbums(val.trim());
         setResults(res);
+      } catch {
+        setSearchError("Search failed — check your connection and try again.");
+        setResults([]);
       } finally {
         setSearching(false);
       }
@@ -200,90 +205,134 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
       {/* Backdrop */}
       <div
         onClick={onClose}
-        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 300 }}
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 300 }}
       />
 
-      {/* Modal */}
+      {/* Centered dialog */}
       <div style={{
         position: "fixed",
-        bottom: 0, left: 0, right: 0,
+        inset: 0,
         zIndex: 301,
-        padding: "0 16px calc(env(safe-area-inset-bottom, 16px) + 16px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px 16px",
+        pointerEvents: "none",
       }}>
         <div style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "20px 20px 16px 16px",
+          borderRadius: 20,
+          width: "100%",
           maxWidth: 520,
-          margin: "0 auto",
-          overflow: "hidden",
-          boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
-          maxHeight: "80dvh",
+          maxHeight: "85dvh",
           display: "flex",
           flexDirection: "column",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.65)",
+          pointerEvents: "all",
+          overflow: "hidden",
         }}>
           {/* Header */}
-          <div style={{ padding: "20px 20px 14px", flexShrink: 0 }}>
-            <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 18px" }} />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ padding: "22px 24px 18px", flexShrink: 0, borderBottom: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Pick your top albums</h3>
-                <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--text-muted)" }}>
-                  Choose up to 4 albums that define your taste — {picks.length}/4 selected
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>Pick your top albums</h3>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
+                  Choose up to 4 — {picks.length}/4 selected
                 </p>
               </div>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                style={{
-                  padding: "7px 18px", borderRadius: 20, fontSize: 13, fontWeight: 800,
-                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                  border: "none", color: "#000", cursor: saving ? "default" : "pointer",
-                  opacity: saving ? 0.7 : 1, flexShrink: 0,
-                }}
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  onClick={onClose}
+                  style={{
+                    background: "var(--surface2)", border: "1px solid var(--border)",
+                    borderRadius: "50%", width: 32, height: 32,
+                    cursor: "pointer", color: "var(--text-muted)",
+                    fontSize: 18, lineHeight: 1,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >×</button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  style={{
+                    padding: "8px 20px", borderRadius: 20, fontSize: 13, fontWeight: 800,
+                    background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                    border: "none", color: "#000", cursor: saving ? "default" : "pointer",
+                    opacity: saving ? 0.7 : 1, flexShrink: 0,
+                  }}
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+              </div>
             </div>
 
             {/* Selected pills */}
             {picks.length > 0 && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
                 {picks.map((p) => (
                   <div key={p.id} style={{
                     display: "flex", alignItems: "center", gap: 6,
                     background: `${ACCENT_A}18`, border: `1px solid ${ACCENT_A}40`,
-                    borderRadius: 20, padding: "4px 10px 4px 6px",
+                    borderRadius: 20, padding: "5px 10px 5px 6px",
                   }}>
-                    {p.image_url && <img src={p.image_url} alt="" style={{ width: 20, height: 20, borderRadius: 3, objectFit: "cover" }} />}
-                    <span style={{ fontSize: 11, fontWeight: 600, color: ACCENT_A, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                    <button onClick={() => toggle(p)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)", fontSize: 14, lineHeight: 1 }}>×</button>
+                    {p.image_url && (
+                      <img src={p.image_url} alt="" style={{ width: 22, height: 22, borderRadius: 4, objectFit: "cover" }} />
+                    )}
+                    <span style={{ fontSize: 12, fontWeight: 700, color: ACCENT_A, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                    <button onClick={() => toggle(p)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
                   </div>
                 ))}
               </div>
             )}
 
             {/* Search input */}
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={handleInput}
-              placeholder="Search albums…"
-              style={{
-                width: "100%", padding: "10px 14px",
-                background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: 10, color: "var(--text)", fontSize: 14,
-                outline: "none", boxSizing: "border-box",
-              }}
-            />
+            <div style={{ position: "relative" }}>
+              <svg style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={handleInput}
+                placeholder="Search for an album…"
+                style={{
+                  width: "100%", padding: "11px 14px 11px 38px",
+                  background: "var(--surface2)", border: "1px solid var(--border)",
+                  borderRadius: 12, color: "var(--text)", fontSize: 14,
+                  outline: "none", boxSizing: "border-box",
+                }}
+              />
+            </div>
           </div>
 
           {/* Results */}
-          <div style={{ overflowY: "auto", flex: 1, padding: "0 20px 20px" }}>
-            {searching && <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 20, fontSize: 13 }}>Searching…</div>}
-            {!searching && query.length >= 2 && results.length === 0 && (
-              <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 20, fontSize: 13 }}>No results</div>
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {searching && (
+              <div style={{ textAlign: "center", color: "var(--text-muted)", padding: "28px 0", fontSize: 13 }}>
+                Searching…
+              </div>
+            )}
+            {searchError && (
+              <div style={{ textAlign: "center", color: "#f87171", padding: "16px 24px", fontSize: 13 }}>
+                {searchError}
+              </div>
+            )}
+            {!searching && !searchError && query.length >= 2 && results.length === 0 && (
+              <div style={{ textAlign: "center", color: "var(--text-muted)", padding: "28px 0", fontSize: 13 }}>
+                No albums found — try a different title or artist name
+              </div>
+            )}
+            {!searching && results.length === 0 && query.length < 2 && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "40px 24px", color: "var(--text-muted)" }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <p style={{ margin: 0, fontSize: 13, textAlign: "center", lineHeight: 1.5, maxWidth: 260 }}>
+                  Search Spotify's full catalog by album title or artist name
+                </p>
+              </div>
             )}
             {results.map((album) => {
               const isSelected = picks.some((p) => p.id === album.id);
@@ -293,31 +342,34 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                   key={album.id}
                   onClick={() => !isFull && toggle(album)}
                   style={{
-                    display: "flex", alignItems: "center", gap: 12,
-                    padding: "10px 0", borderBottom: "1px solid var(--border)",
+                    display: "flex", alignItems: "center", gap: 14,
+                    padding: "12px 24px",
                     cursor: isFull ? "default" : "pointer",
-                    opacity: isFull ? 0.4 : 1,
+                    opacity: isFull ? 0.35 : 1,
+                    background: isSelected ? `${ACCENT_A}12` : "transparent",
+                    borderLeft: `3px solid ${isSelected ? ACCENT_A : "transparent"}`,
+                    transition: "background 0.12s, border-color 0.12s",
                   }}
                 >
                   {album.image_url
-                    ? <img src={album.image_url} alt={album.name} style={{ width: 44, height: 44, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-                    : <div style={{ width: 44, height: 44, borderRadius: 6, background: "var(--surface2)", flexShrink: 0 }} />
+                    ? <img src={album.image_url} alt={album.name} style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }} />
+                    : <div style={{ width: 60, height: 60, borderRadius: 8, background: "var(--surface2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🎵</div>
                   }
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{album.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{album.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
                       {album.artists?.join(", ")}
-                      {album.release_date && ` · ${album.release_date.slice(0, 4)}`}
+                      {album.release_date && <span style={{ marginLeft: 6, opacity: 0.7 }}>· {album.release_date.slice(0, 4)}</span>}
                     </div>
                   </div>
                   <div style={{
-                    width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                    width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
                     border: `2px solid ${isSelected ? ACCENT_A : "var(--border)"}`,
                     background: isSelected ? ACCENT_A : "transparent",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     transition: "all 0.15s",
                   }}>
-                    {isSelected && <span style={{ fontSize: 12, color: "#000", fontWeight: 800 }}>✓</span>}
+                    {isSelected && <span style={{ fontSize: 13, color: "#000", fontWeight: 900 }}>✓</span>}
                   </div>
                 </div>
               );
@@ -461,8 +513,19 @@ export function TasteSection({ userId, isOwner }) {
       .finally(() => setLoading(false));
   }, [userId]);
 
-  function handleSavePins(newAlbums) {
+  async function handleSavePins(newAlbums) {
     setTaste((prev) => prev ? { ...prev, pinned_albums: newAlbums } : prev);
+    // Extract unique artist IDs from pinned albums and merge into taste profile
+    // so the For You feed's personalization tiers use these artists.
+    const artistIds = [...new Set(newAlbums.flatMap((a) => a.artist_ids ?? []))];
+    if (artistIds.length > 0) {
+      try {
+        // Pass empty genres so the backend only merges artist IDs, leaves genres untouched
+        await api.saveTasteProfile([], artistIds, false);
+      } catch {
+        // Best-effort — don't surface taste profile errors to the user
+      }
+    }
   }
 
   function handleRemove(albumId) {

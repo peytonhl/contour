@@ -118,10 +118,10 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
         resp = await client.get(
             "https://api.spotify.com/v1/search",
             headers={"Authorization": f"Bearer {token}"},
-            params={"q": query, "type": "track", "limit": limit},
+            params={"q": query, "type": "track", "limit": limit, "market": "US"},
         )
         resp.raise_for_status()
-        items = resp.json()["tracks"]["items"]
+        items = resp.json().get("tracks", {}).get("items", [])
     return [_parse_track(t) for t in items]
 
 
@@ -164,18 +164,54 @@ async def get_album(album_id: str) -> dict:
         return _parse_album(resp.json())
 
 
-async def get_new_releases(limit: int = 10) -> list[dict]:
-    """Fetch newly released albums from Spotify."""
+async def get_playlist_tracks(playlist_id: str, limit: int = 20) -> list[dict]:
+    """
+    Fetch tracks from any public Spotify playlist by ID.
+    Use this instead of the deprecated /browse/new-releases endpoint.
+    """
+    cache_key = f"spotify:playlist:{playlist_id}:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached:
+        return cached
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
-            "https://api.spotify.com/v1/browse/new-releases",
+            f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
             headers={"Authorization": f"Bearer {token}"},
-            params={"limit": limit, "country": "US"},
+            params={"limit": limit, "market": "US"},
         )
         resp.raise_for_status()
-        items = resp.json()["albums"]["items"]
-    return [_parse_album(a) for a in items]
+        items = resp.json().get("items", [])
+
+    tracks = []
+    for item in items:
+        t = item.get("track")
+        if t and t.get("id"):
+            tracks.append(_parse_track(t))
+
+    if tracks:
+        await redis_cache.set(cache_key, tracks)
+    return tracks
+
+
+async def get_new_releases(limit: int = 10) -> list[dict]:
+    """
+    Fetch newly released albums.
+    NOTE: Spotify deprecated /browse/new-releases in March 2025.
+    Falls back to the "New Music Friday" editorial playlist.
+    """
+    # New Music Friday US playlist — reliable editorial, updated weekly
+    NEW_MUSIC_FRIDAY = "37i9dQZF1DX4JAvHpjipBk"
+    tracks = await get_playlist_tracks(NEW_MUSIC_FRIDAY, limit=limit * 2)
+    # Return unique album stubs so callers can do album_tracks lookups
+    seen_albums: set[str] = set()
+    albums = []
+    for t in tracks:
+        if t.get("album_id") and t["album_id"] not in seen_albums:
+            seen_albums.add(t["album_id"])
+            albums.append({"id": t["album_id"], "name": t.get("album_name", ""), "image_url": t.get("image_url")})
+    return albums[:limit]
 
 
 async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
@@ -206,30 +242,44 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
 
 
 async def get_global_top_tracks(limit: int = 10) -> list[dict]:
-    """Fetch top tracks from Spotify's Global Top 50 playlist."""
-    cache_key = f"spotify:top50:{limit}"
+    """
+    Fetch popular tracks via search.
+
+    The editorial playlist approach (/v1/playlists/{id}/tracks) returns 403
+    for Spotify apps that haven't been through Extended Access review.
+    The search endpoint works reliably with client credentials.
+    """
+    cache_key = f"spotify:popular_search:{limit}"
     cached = await redis_cache.get(cache_key)
-    if cached:  # guard: don't use an empty cached result
+    if cached:
         return cached
 
-    GLOBAL_TOP_50 = "37i9dQZEVXbMDoHDwVN2tF"
+    # Rotate queries so the feed has variety across cache TTL windows
+    queries = ["top hits", "global chart hits", "viral songs", "popular music 2024 2025"]
+    all_tracks: list[dict] = []
+    seen_ids: set[str] = set()
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            f"https://api.spotify.com/v1/playlists/{GLOBAL_TOP_50}/tracks",
-            headers={"Authorization": f"Bearer {token}"},
-            params={"limit": limit},
-        )
-        resp.raise_for_status()
-        items = resp.json()["items"]
-    tracks = []
-    for item in items:
-        t = item.get("track")
-        if t and t.get("id"):
-            tracks.append(_parse_track(t))
-    if tracks:  # only cache non-empty results
-        await redis_cache.set(cache_key, tracks)
-    return tracks
+        for q in queries:
+            if len(all_tracks) >= limit * 3:
+                break
+            resp = await client.get(
+                "https://api.spotify.com/v1/search",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"q": q, "type": "track", "limit": 20, "market": "US"},
+            )
+            if resp.status_code != 200:
+                continue
+            items = resp.json().get("tracks", {}).get("items", [])
+            for t in items:
+                if t and t.get("id") and t["id"] not in seen_ids:
+                    seen_ids.add(t["id"])
+                    all_tracks.append(_parse_track(t))
+
+    if all_tracks:
+        await redis_cache.set(cache_key, all_tracks)
+    return all_tracks[:limit]
 
 
 async def get_artist_top_tracks(artist_id: str, market: str = "US") -> list[dict]:
