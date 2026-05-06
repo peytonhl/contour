@@ -188,7 +188,7 @@ async def _seed_leaderboard() -> None:
     """
     from services import spotify
 
-    await asyncio.sleep(60)  # initial delay — let the app finish starting
+    await asyncio.sleep(3600)  # wait 1 hour after startup before first seed run
 
     while True:
 
