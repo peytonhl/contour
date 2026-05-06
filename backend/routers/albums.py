@@ -206,8 +206,9 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
     async def artist_search():
         artist_id = _artist_id_for_query(q)
 
-        # Hardcoded map miss — try a live Spotify artist search to resolve the ID
-        if not artist_id:
+        # Only hit Spotify for dynamic lookup if query is meaningful (3+ chars).
+        # Short queries like "f" or "ca" are too ambiguous and waste rate limit quota.
+        if not artist_id and len(q.strip()) >= 3:
             try:
                 artists = await spotify.search_artists(q, limit=1)
                 if artists:
