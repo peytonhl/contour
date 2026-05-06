@@ -199,36 +199,14 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
 
     print(f"[search_albums] q={q!r}", flush=True)
 
-    # Source 1: Spotify /search — blocked for most apps (Extended Access required),
-    # but kept here in case it starts working or credentials are upgraded.
-    async def spotify_search():
-        try:
-            results = await spotify.search_albums(q)
-            print(f"[search_albums] spotify: {len(results)} results for q={q!r}", flush=True)
-            return results
-        except Exception as exc:
-            print(f"[search_albums] spotify FAILED for q={q!r}: {exc}", flush=True)
-            return []
-
-    # Source 2: local AlbumCache — fast, works offline, limited to seeded albums.
-    async def db_search():
-        pattern = f"%{q}%"
-        rows = (await db.execute(
-            select(AlbumCacheModel)
-            .where(AlbumCacheModel.name.ilike(pattern) | AlbumCacheModel.artist.ilike(pattern))
-            .order_by(AlbumCacheModel.popularity.desc().nulls_last())
-            .limit(10)
-        )).scalars().all()
-        print(f"[search_albums] db: {len(rows)} results for q={q!r}", flush=True)
-        return rows
-
-    # Source 3: artist discography via /artists/{id}/albums — works without Extended Access.
-    # Tries hardcoded map first (instant), then falls back to a live Spotify artist search
-    # so any artist can be found without needing to be pre-registered.
+    # Source 1: artist discography via /artists/{id}/albums — primary path.
+    # Spotify /v1/search for albums requires Extended Access (blocked) and causes
+    # 429s on every call. We skip it. Instead we resolve the artist from the query
+    # and fetch their discography directly — works for any artist, no Extended Access needed.
     async def artist_search():
         artist_id = _artist_id_for_query(q)
 
-        # Hardcoded map miss — try a live artist search to resolve the ID dynamically
+        # Hardcoded map miss — try a live Spotify artist search to resolve the ID
         if not artist_id:
             try:
                 artists = await spotify.search_artists(q, limit=1)
@@ -251,19 +229,24 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
             print(f"[search_albums] artist discography FAILED for q={q!r} artist_id={artist_id}: {exc}", flush=True)
             return []
 
-    spotify_results, db_rows, artist_results = await asyncio.gather(
-        spotify_search(), db_search(), artist_search()
-    )
+    # Source 2: local AlbumCache — fast fallback for seeded albums by title.
+    async def db_search():
+        pattern = f"%{q}%"
+        rows = (await db.execute(
+            select(AlbumCacheModel)
+            .where(AlbumCacheModel.name.ilike(pattern) | AlbumCacheModel.artist.ilike(pattern))
+            .order_by(AlbumCacheModel.popularity.desc().nulls_last())
+            .limit(10)
+        )).scalars().all()
+        print(f"[search_albums] db: {len(rows)} results for q={q!r}", flush=True)
+        return rows
 
-    # Merge all three sources, deduplicating by Spotify ID.
-    # Priority: Spotify search > artist discography > DB cache.
+    artist_results, db_rows = await asyncio.gather(artist_search(), db_search())
+
+    # Merge: artist discography first (most relevant when query is an artist name),
+    # then DB cache for any album-title matches not covered by the discography.
     seen_ids: set[str] = set()
     merged: list = []
-
-    for result in spotify_results:
-        if result["id"] not in seen_ids:
-            seen_ids.add(result["id"])
-            merged.append(result)
 
     for result in artist_results:
         if result["id"] not in seen_ids:
