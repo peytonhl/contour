@@ -79,45 +79,6 @@ async def _upsert_track(db: AsyncSession, meta: dict) -> None:
     await db.commit()
 
 
-@router.get("/search", response_model=List[TrackResult])
-async def search_tracks(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
-    # Try Spotify first; fall through to local DB on any failure or empty result
-    try:
-        results = await spotify.search_tracks(q)
-    except Exception:
-        results = []
-
-    if results:
-        return results
-
-    # Spotify unavailable — search TrackCache
-    pattern = f"%{q}%"
-    rows = (await db.execute(
-        select(TrackCache)
-        .where(TrackCache.name.ilike(pattern) | TrackCache.artist.ilike(pattern))
-        .order_by(TrackCache.popularity.desc().nulls_last())
-        .limit(10)
-    )).scalars().all()
-
-    return [
-        TrackResult(
-            id=row.spotify_id,
-            name=row.name,
-            artists=[a.strip() for a in row.artist.split(",")],
-            artist_ids=json.loads(row.artist_ids_json or "[]"),
-            album_name=row.album_name or "",
-            album_id=row.album_id,
-            release_date=row.release_date or "",
-            duration_ms=row.duration_ms,
-            popularity=row.popularity,
-            explicit=bool(row.explicit),
-            image_url=row.image_url,
-            external_url=row.external_url,
-        )
-        for row in rows
-    ]
-
-
 def _row_to_track_result(row: TrackCache) -> TrackResult:
     return TrackResult(
         id=row.spotify_id,
@@ -133,6 +94,34 @@ def _row_to_track_result(row: TrackCache) -> TrackResult:
         image_url=row.image_url,
         external_url=row.external_url,
     )
+
+
+@router.get("/search", response_model=List[TrackResult])
+async def search_tracks(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
+    import asyncio
+
+    async def spotify_search():
+        try:
+            return await spotify.search_tracks(q)
+        except Exception:
+            return []
+
+    async def db_search():
+        pattern = f"%{q}%"
+        rows = (await db.execute(
+            select(TrackCache)
+            .where(TrackCache.name.ilike(pattern) | TrackCache.artist.ilike(pattern))
+            .order_by(TrackCache.popularity.desc().nulls_last())
+            .limit(10)
+        )).scalars().all()
+        return rows
+
+    spotify_results, db_rows = await asyncio.gather(spotify_search(), db_search())
+
+    seen_ids = {r["id"] for r in spotify_results}
+    db_extras = [_row_to_track_result(row) for row in db_rows if row.spotify_id not in seen_ids]
+
+    return (spotify_results + db_extras)[:10]
 
 
 @router.get("/{track_id}", response_model=TrackResult)

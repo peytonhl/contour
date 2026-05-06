@@ -31,24 +31,40 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null, p
   const pollRef = useRef(null);
   const autoRunRef = useRef(false); // prevent double-firing auto-run
 
-  // Fetch and pre-fill slots from URL query param IDs (from leaderboard Compare button or suggested matchups)
+  // Fetch and pre-fill slots from URL query param IDs — sequential to avoid Spotify rate-limiting
   useEffect(() => {
-    // Reset auto-run gate whenever the preloaded pair changes
     autoRunRef.current = false;
     setComparison(null);
     setSavedId(null);
-    if (!preloadedAlbumAId) return;
-    api.getAlbum(preloadedAlbumAId).then((meta) => {
-      if (meta) { setSelectionA({ ...meta, _type: "album" }); setEditionsA([meta.id]); }
-    }).catch(() => {});
-  }, [preloadedAlbumAId]);
 
-  useEffect(() => {
-    if (!preloadedAlbumBId) return;
-    api.getAlbum(preloadedAlbumBId).then((meta) => {
-      if (meta) { setSelectionB({ ...meta, _type: "album" }); setEditionsB([meta.id]); }
-    }).catch(() => {});
-  }, [preloadedAlbumBId]);
+    if (!preloadedAlbumAId) return;
+
+    let cancelled = false;
+
+    async function loadPreloaded() {
+      // Fetch A first, then B — never in parallel so Spotify doesn't rate-limit the second call
+      try {
+        const metaA = await api.getAlbum(preloadedAlbumAId);
+        if (!cancelled && metaA) {
+          setSelectionA({ ...metaA, _type: "album" });
+          setEditionsA([metaA.id]);
+        }
+      } catch { /* silently skip */ }
+
+      if (!preloadedAlbumBId) return;
+
+      try {
+        const metaB = await api.getAlbum(preloadedAlbumBId);
+        if (!cancelled && metaB) {
+          setSelectionB({ ...metaB, _type: "album" });
+          setEditionsB([metaB.id]);
+        }
+      } catch { /* silently skip */ }
+    }
+
+    loadPreloaded();
+    return () => { cancelled = true; };
+  }, [preloadedAlbumAId, preloadedAlbumBId]);
 
   // Update slots when initialAlbumA/B props change (e.g. artist page pre-fills)
   useEffect(() => {
