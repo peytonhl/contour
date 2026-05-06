@@ -321,9 +321,10 @@ async def startup():
     # Running as a task so startup isn't blocked if Spotify is slow.
     asyncio.create_task(_seed_compare_page_albums())
 
-    # Seed the leaderboard in the background so startup doesn't block.
-    # The task self-skips albums that are already enriched and fresh.
-    asyncio.create_task(_seed_leaderboard())
+    # Leaderboard seeder disabled — proactive Spotify calls burn rate limits and
+    # block user searches. Re-enable once Extended Access is approved or a
+    # dedicated cron job is set up outside the app process.
+    # asyncio.create_task(_seed_leaderboard())
 
     logger.info("=== Contour startup complete — app is ready to serve requests ===")
 
