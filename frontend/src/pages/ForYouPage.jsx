@@ -555,7 +555,9 @@ function ForYouFeed() {
     setFetchError(false);
     try {
       const likedArtists = isPersonalized ? getLikedArtists() : [];
-      const dislikedArtists = loadDisliked();
+      // On retry (attempt >= 1) skip the disliked filter — the user may have
+      // marked so many artists as "not interested" that nothing is left.
+      const dislikedArtists = attempt === 0 ? loadDisliked() : [];
       const batch = await api.getDiscoverFeed({
         genres: isPersonalized ? genresRef.current.slice(0, 3) : [],
         liked_artists: likedArtists,
@@ -563,10 +565,10 @@ function ForYouFeed() {
         limit: 10,
       });
 
-      // If Spotify returned empty, retry once automatically (transient hiccup)
+      // If Spotify returned empty, retry once ignoring disliked filter
       if (batch.length === 0 && !append && attempt === 0) {
         setter(false);
-        await new Promise((r) => setTimeout(r, 2500));
+        await new Promise((r) => setTimeout(r, 1500));
         return fetchBatch(false, 1);
       }
 
@@ -577,6 +579,11 @@ function ForYouFeed() {
       setter(false);
       if (append) fetchingMoreRef.current = false;
     }
+  }
+
+  function clearNotInterested() {
+    localStorage.removeItem(DISLIKED_KEY);
+    fetchBatch();
   }
 
   useEffect(() => { fetchBatch(); }, []);
@@ -669,16 +676,19 @@ function ForYouFeed() {
   }
 
   if (!tracks.length) {
+    const dislikedCount = loadDisliked().length;
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
         <div style={{ fontSize: 40 }}>🎵</div>
         <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#fff" }}>
-          {fetchError ? "Couldn't load tracks" : "No tracks right now"}
+          {fetchError ? "Couldn't load tracks" : "Nothing to show right now"}
         </p>
-        <p style={{ margin: 0, fontSize: 13, maxWidth: 260, lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: 13, maxWidth: 280, lineHeight: 1.6 }}>
           {fetchError
             ? "There was a problem reaching the server. Check your connection and try again."
-            : "Nothing new matched your taste at the moment — try again in a bit or rate more tracks to improve suggestions."}
+            : dislikedCount >= 5
+              ? `You've marked ${dislikedCount} artists as not interested. Try clearing that list to open up more music.`
+              : "Rate a few more tracks to personalize your feed, or try refreshing."}
         </p>
         <button
           onClick={() => fetchBatch()}
@@ -688,6 +698,19 @@ function ForYouFeed() {
             border: "none", color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer",
           }}
         >Try again</button>
+        {dislikedCount >= 5 && (
+          <button
+            onClick={clearNotInterested}
+            style={{
+              padding: "8px 20px", borderRadius: 20, fontSize: 12,
+              background: "rgba(255,255,255,0.07)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              color: "rgba(255,255,255,0.55)", cursor: "pointer",
+            }}
+          >
+            Clear not-interested list ({dislikedCount})
+          </button>
+        )}
       </div>
     );
   }

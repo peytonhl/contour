@@ -117,7 +117,7 @@ export const api = {
   getFeatured: () => request(`/featured`),
 
   // Leaderboard
-  getLeaderboard: (sort = "era", limit = 50) => request(`/leaderboard/?sort=${sort}&limit=${limit}`),
+  getLeaderboard: (sort = "era", decade = "all", limit = 50) => request(`/leaderboard/?sort=${sort}&decade=${decade}&limit=${limit}`),
 
   // Notifications
   getNotifications: () => request(`/notifications`),
