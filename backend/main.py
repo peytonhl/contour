@@ -93,7 +93,7 @@ async def _seed_compare_page_albums() -> None:
                 await cache.upsert_album(db, meta)
                 logger.info("Compare seed: cached %s", label)
         except Exception as exc:
-            logger.debug("Compare seed: failed %s — %s", label, exc)
+            logger.warning("Compare seed: FAILED %s — %s", label, exc)
         await asyncio.sleep(0.25)
 
 
@@ -274,9 +274,9 @@ async def startup():
     # missing; it never drops or alters existing ones.
     await init_db()
 
-    # Pre-cache the exact Compare page preset albums by Spotify ID.
-    # Runs immediately so get_album can serve them from DB before any user hits the page.
-    asyncio.create_task(_seed_compare_page_albums())
+    # Pre-cache the exact Compare page preset albums synchronously — must finish
+    # before the app starts serving requests so get_album cache-first always hits.
+    await _seed_compare_page_albums()
 
     # Seed the leaderboard in the background so startup doesn't block.
     # The task self-skips albums that are already enriched and fresh.
