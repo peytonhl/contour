@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import base64
+import logging
 import time
 from pathlib import Path
 from typing import Optional
 
 import httpx
+
+_log = logging.getLogger(__name__)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from services import redis_cache
@@ -146,8 +149,12 @@ async def search_albums(query: str, limit: int = 10) -> list[dict]:
             headers={"Authorization": f"Bearer {token}"},
             params={"q": query, "type": "album", "limit": limit, "market": "US"},
         )
+        _log.info("spotify.search_albums: HTTP %s for q=%r", resp.status_code, query)
+        if resp.status_code != 200:
+            _log.warning("spotify.search_albums: non-200 body: %s", resp.text[:500])
         resp.raise_for_status()
         items = resp.json().get("albums", {}).get("items", [])
+        _log.info("spotify.search_albums: %d raw items for q=%r", len(items), query)
 
     return [_parse_album(a) for a in items if a and a.get("id")]
 
@@ -162,8 +169,12 @@ async def get_artist_albums(artist_id: str, limit: int = 10) -> list[dict]:
             headers={"Authorization": f"Bearer {token}"},
             params={"limit": limit, "include_groups": "album", "market": "US"},
         )
+        _log.info("spotify.get_artist_albums: HTTP %s for artist_id=%s", resp.status_code, artist_id)
+        if resp.status_code != 200:
+            _log.warning("spotify.get_artist_albums: non-200 body: %s", resp.text[:500])
         resp.raise_for_status()
         items = resp.json().get("items", [])
+        _log.info("spotify.get_artist_albums: %d raw items for artist_id=%s", len(items), artist_id)
     return [_parse_album(a) for a in items if a and a.get("id")]
 
 

@@ -1,5 +1,6 @@
 """Album search, metadata, edition discovery, and async enrichment endpoints."""
 
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -16,6 +17,7 @@ from services import album_cache as cache
 from services import stream_anchors as anchors_svc
 from services.normalization import build_trajectory, riaa_milestones, parse_release_date, era_context, data_tier
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/albums", tags=["albums"])
 
 
@@ -197,12 +199,17 @@ def _artist_id_for_query(q: str) -> Optional[str]:
 async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
     import asyncio
 
+    logger.info("search_albums: q=%r", q)
+
     # Source 1: Spotify /search — blocked for most apps (Extended Access required),
     # but kept here in case it starts working or credentials are upgraded.
     async def spotify_search():
         try:
-            return await spotify.search_albums(q)
-        except Exception:
+            results = await spotify.search_albums(q)
+            logger.info("search_albums: spotify returned %d results for q=%r", len(results), q)
+            return results
+        except Exception as exc:
+            logger.warning("search_albums: spotify FAILED for q=%r — %s", q, exc)
             return []
 
     # Source 2: local AlbumCache — fast, works offline, limited to seeded albums.
@@ -214,16 +221,22 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
             .order_by(AlbumCacheModel.popularity.desc().nulls_last())
             .limit(10)
         )).scalars().all()
+        logger.info("search_albums: db returned %d results for q=%r", len(rows), q)
         return rows
 
     # Source 3: artist discography via /artists/{id}/albums — works without Extended Access.
     async def artist_search():
         artist_id = _artist_id_for_query(q)
         if not artist_id:
+            logger.info("search_albums: no artist ID match for q=%r", q)
             return []
+        logger.info("search_albums: artist_id=%s for q=%r", artist_id, q)
         try:
-            return await spotify.get_artist_albums(artist_id, limit=10)
-        except Exception:
+            results = await spotify.get_artist_albums(artist_id, limit=10)
+            logger.info("search_albums: artist discography returned %d results for q=%r", len(results), q)
+            return results
+        except Exception as exc:
+            logger.warning("search_albums: artist discography FAILED for q=%r artist_id=%s — %s", q, artist_id, exc)
             return []
 
     spotify_results, db_rows, artist_results = await asyncio.gather(
@@ -261,6 +274,7 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
                 external_url=f"https://open.spotify.com/album/{row.spotify_id}",
             ))
 
+    logger.info("search_albums: returning %d merged results for q=%r", len(merged[:15]), q)
     return merged[:15]
 
 
@@ -293,14 +307,18 @@ async def get_album(album_id: str, db: AsyncSession = Depends(get_db)):
     )).scalar_one_or_none()
 
     if cached and cached.image_url:
+        logger.info("get_album: cache hit for %s (%s)", album_id, cached.name)
         return _row_to_album_result(cached)
 
+    logger.info("get_album: cache miss for %s — fetching from Spotify", album_id)
     # Not in cache yet — fetch from Spotify and store it
     try:
         meta = await spotify.get_album(album_id)
+        logger.info("get_album: spotify returned %s for %s", meta.get("name"), album_id)
         await cache.upsert_album(db, meta)
         return meta
-    except Exception:
+    except Exception as exc:
+        logger.warning("get_album: spotify FAILED for %s — %s", album_id, exc)
         if cached:
             return _row_to_album_result(cached)
         raise HTTPException(status_code=404, detail=f"Album {album_id} not found")
