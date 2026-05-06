@@ -271,6 +271,7 @@ export function Layout() {
         fontSize: 12, color: "var(--text-muted)",
       }}>
         <span>© {new Date().getFullYear()} Contour</span>
+        <span>Made by Peyton Lindogan</span>
         <Link to="/privacy" style={{ color: "var(--text-muted)" }}>Privacy Policy</Link>
         <Link to="/methodology" style={{ color: "var(--text-muted)" }}>How It Works</Link>
       </footer>
