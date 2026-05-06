@@ -118,10 +118,10 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
         resp = await client.get(
             "https://api.spotify.com/v1/search",
             headers={"Authorization": f"Bearer {token}"},
-            params={"q": query, "type": "track", "limit": limit},
+            params={"q": query, "type": "track", "limit": limit, "market": "US"},
         )
         resp.raise_for_status()
-        items = resp.json()["tracks"]["items"]
+        items = resp.json().get("tracks", {}).get("items", [])
     return [_parse_track(t) for t in items]
 
 
@@ -242,30 +242,44 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
 
 
 async def get_global_top_tracks(limit: int = 10) -> list[dict]:
-    """Fetch top tracks from Spotify's Global Top 50 playlist."""
-    cache_key = f"spotify:top50:{limit}"
+    """
+    Fetch popular tracks via search.
+
+    The editorial playlist approach (/v1/playlists/{id}/tracks) returns 403
+    for Spotify apps that haven't been through Extended Access review.
+    The search endpoint works reliably with client credentials.
+    """
+    cache_key = f"spotify:popular_search:{limit}"
     cached = await redis_cache.get(cache_key)
-    if cached:  # guard: don't use an empty cached result
+    if cached:
         return cached
 
-    GLOBAL_TOP_50 = "37i9dQZEVXbMDoHDwVN2tF"
+    # Rotate queries so the feed has variety across cache TTL windows
+    queries = ["top hits", "global chart hits", "viral songs", "popular music 2024 2025"]
+    all_tracks: list[dict] = []
+    seen_ids: set[str] = set()
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            f"https://api.spotify.com/v1/playlists/{GLOBAL_TOP_50}/tracks",
-            headers={"Authorization": f"Bearer {token}"},
-            params={"limit": limit},
-        )
-        resp.raise_for_status()
-        items = resp.json()["items"]
-    tracks = []
-    for item in items:
-        t = item.get("track")
-        if t and t.get("id"):
-            tracks.append(_parse_track(t))
-    if tracks:  # only cache non-empty results
-        await redis_cache.set(cache_key, tracks)
-    return tracks
+        for q in queries:
+            if len(all_tracks) >= limit * 3:
+                break
+            resp = await client.get(
+                "https://api.spotify.com/v1/search",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"q": q, "type": "track", "limit": 20, "market": "US"},
+            )
+            if resp.status_code != 200:
+                continue
+            items = resp.json().get("tracks", {}).get("items", [])
+            for t in items:
+                if t and t.get("id") and t["id"] not in seen_ids:
+                    seen_ids.add(t["id"])
+                    all_tracks.append(_parse_track(t))
+
+    if all_tracks:
+        await redis_cache.set(cache_key, all_tracks)
+    return all_tracks[:limit]
 
 
 async def get_artist_top_tracks(artist_id: str, market: str = "US") -> list[dict]:

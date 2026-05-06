@@ -687,8 +687,10 @@ function ForYouFeed() {
     const dislikedCount = loadDisliked().length;
     const spotifyOk = debugInfo?.tiers?.spotify_auth?.ok;
     const spotifyErr = debugInfo?.tiers?.spotify_auth?.error;
-    const tier3Ok = debugInfo?.tiers?.tier3_global_top50?.ok;
-    const tier3Count = debugInfo?.tiers?.tier3_global_top50?.track_count;
+    // Check both old and new tier key names across deploys
+    const tier3Ok = (debugInfo?.tiers?.tier3_popular_search ?? debugInfo?.tiers?.tier3_global_top50)?.ok;
+    const tier3Count = (debugInfo?.tiers?.tier3_popular_search ?? debugInfo?.tiers?.tier3_global_top50)?.track_count;
+    const tier3Err = (debugInfo?.tiers?.tier3_popular_search ?? debugInfo?.tiers?.tier3_global_top50)?.error;
 
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
@@ -710,9 +712,9 @@ function ForYouFeed() {
 
         {debugInfo && spotifyOk === true && tier3Ok === false && (
           <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, maxWidth: 300 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>⚠ Spotify auth OK but playlist fetch failed</p>
+            <p style={{ margin: 0, fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>⚠ Spotify auth OK but track search failed</p>
             <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-              {debugInfo?.tiers?.tier3_global_top50?.error}
+              {tier3Err}
             </p>
           </div>
         )}

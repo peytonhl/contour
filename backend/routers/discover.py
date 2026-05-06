@@ -176,11 +176,20 @@ async def get_discover_feed(
         except Exception as exc:
             logger.warning("discover: tier3 failed — %s", exc)
 
-    # ── Tier 4: New Music Friday playlist (replaces deprecated new-releases) ──
+    # ── Tier 4: Recent / new music search ────────────────────────────────────
+    # Use search instead of the editorial playlist endpoint which returns 403
+    # for apps not in Spotify Extended Access.
     if len(tracks) < limit:
         try:
-            nmf_tracks = await spotify.get_playlist_tracks(_NEW_MUSIC_FRIDAY_ID, limit=30)
-            _add(nmf_tracks)
+            new_music_results = await asyncio.gather(*[
+                spotify.search_tracks(q, limit=15)
+                for q in ["new music 2025", "new songs 2025", "fresh hits"]
+            ], return_exceptions=True)
+            for res in new_music_results:
+                if isinstance(res, list):
+                    _add(res)
+                if len(tracks) >= limit:
+                    break
         except Exception as exc:
             logger.warning("discover: tier4 failed — %s", exc)
 
@@ -268,30 +277,29 @@ async def discover_debug():
     except Exception as exc:
         results["spotify_auth"] = {"ok": False, "error": str(exc)}
 
-    # ── Tier 3: Global Top 50 ─────────────────────────────────────────────────
+    # ── Tier 3: Popular search ────────────────────────────────────────────────
     try:
         t0 = time.monotonic()
-        top = await spotify.get_global_top_tracks(limit=50)
-        results["tier3_global_top50"] = {
+        top = await spotify.get_global_top_tracks(limit=20)
+        results["tier3_popular_search"] = {
             "ok": True,
             "track_count": len(top),
-            "with_preview": sum(1 for t in top if t.get("preview_url")),
             "latency_ms": round((time.monotonic() - t0) * 1000),
         }
     except Exception as exc:
-        results["tier3_global_top50"] = {"ok": False, "error": str(exc)}
+        results["tier3_popular_search"] = {"ok": False, "error": str(exc)}
 
-    # ── Tier 4: New Music Friday playlist ────────────────────────────────────
+    # ── Tier 4: New music search ──────────────────────────────────────────────
     try:
         t0 = time.monotonic()
-        nmf = await spotify.get_playlist_tracks(_NEW_MUSIC_FRIDAY_ID, limit=10)
-        results["tier4_new_music_friday"] = {
+        new_tracks = await spotify.search_tracks("new music 2025", limit=10)
+        results["tier4_new_music_search"] = {
             "ok": True,
-            "track_count": len(nmf),
+            "track_count": len(new_tracks),
             "latency_ms": round((time.monotonic() - t0) * 1000),
         }
     except Exception as exc:
-        results["tier4_new_music_friday"] = {"ok": False, "error": str(exc)}
+        results["tier4_new_music_search"] = {"ok": False, "error": str(exc)}
 
     # ── Tier 2: Genre search (sample) ────────────────────────────────────────
     try:
