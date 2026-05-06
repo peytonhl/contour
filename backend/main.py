@@ -4,8 +4,8 @@ import asyncio
 import logging
 import os
 
-# Ensure all application loggers emit at INFO level so Railway shows them.
-logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s: %(message)s")
+# force=True overwrites any handlers uvicorn already installed so our logs actually emit.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s: %(message)s", force=True)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
