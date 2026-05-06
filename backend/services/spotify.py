@@ -164,18 +164,54 @@ async def get_album(album_id: str) -> dict:
         return _parse_album(resp.json())
 
 
-async def get_new_releases(limit: int = 10) -> list[dict]:
-    """Fetch newly released albums from Spotify."""
+async def get_playlist_tracks(playlist_id: str, limit: int = 20) -> list[dict]:
+    """
+    Fetch tracks from any public Spotify playlist by ID.
+    Use this instead of the deprecated /browse/new-releases endpoint.
+    """
+    cache_key = f"spotify:playlist:{playlist_id}:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached:
+        return cached
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
-            "https://api.spotify.com/v1/browse/new-releases",
+            f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
             headers={"Authorization": f"Bearer {token}"},
-            params={"limit": limit, "country": "US"},
+            params={"limit": limit, "market": "US"},
         )
         resp.raise_for_status()
-        items = resp.json()["albums"]["items"]
-    return [_parse_album(a) for a in items]
+        items = resp.json().get("items", [])
+
+    tracks = []
+    for item in items:
+        t = item.get("track")
+        if t and t.get("id"):
+            tracks.append(_parse_track(t))
+
+    if tracks:
+        await redis_cache.set(cache_key, tracks)
+    return tracks
+
+
+async def get_new_releases(limit: int = 10) -> list[dict]:
+    """
+    Fetch newly released albums.
+    NOTE: Spotify deprecated /browse/new-releases in March 2025.
+    Falls back to the "New Music Friday" editorial playlist.
+    """
+    # New Music Friday US playlist — reliable editorial, updated weekly
+    NEW_MUSIC_FRIDAY = "37i9dQZF1DX4JAvHpjipBk"
+    tracks = await get_playlist_tracks(NEW_MUSIC_FRIDAY, limit=limit * 2)
+    # Return unique album stubs so callers can do album_tracks lookups
+    seen_albums: set[str] = set()
+    albums = []
+    for t in tracks:
+        if t.get("album_id") and t["album_id"] not in seen_albums:
+            seen_albums.add(t["album_id"])
+            albums.append({"id": t["album_id"], "name": t.get("album_name", ""), "image_url": t.get("image_url")})
+    return albums[:limit]
 
 
 async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:

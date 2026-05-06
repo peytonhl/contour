@@ -46,7 +46,18 @@ from services.limiter import limiter
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
-_FALLBACK_QUERIES = ["pop hits", "hip hop hits", "indie pop", "top songs 2024"]
+_FALLBACK_QUERIES = [
+    "pop hits",
+    "hip hop hits",
+    "indie pop",
+    "r&b hits",
+    "alternative rock",
+    "top songs",
+]
+
+# Well-known, reliably updated public playlists used as Tier 4 source
+# New Music Friday US — updated every Friday by Spotify editorial
+_NEW_MUSIC_FRIDAY_ID = "37i9dQZF1DX4JAvHpjipBk"
 
 
 @router.get("/feed")
@@ -165,21 +176,11 @@ async def get_discover_feed(
         except Exception as exc:
             logger.warning("discover: tier3 failed — %s", exc)
 
-    # ── Tier 4: New releases filler ──────────────────────────────────────────
+    # ── Tier 4: New Music Friday playlist (replaces deprecated new-releases) ──
     if len(tracks) < limit:
         try:
-            releases = await spotify.get_new_releases(limit=20)
-            album_track_tasks = [
-                spotify.get_album_tracks(album["id"])
-                for album in releases[:8]
-            ]
-            album_tracks = await asyncio.gather(*album_track_tasks, return_exceptions=True)
-            for result in album_tracks:
-                if isinstance(result, list) and result:
-                    for t in result:
-                        if t.get("preview_url"):
-                            _add([t])
-                            break
+            nmf_tracks = await spotify.get_playlist_tracks(_NEW_MUSIC_FRIDAY_ID, limit=30)
+            _add(nmf_tracks)
         except Exception as exc:
             logger.warning("discover: tier4 failed — %s", exc)
 
@@ -196,6 +197,23 @@ async def get_discover_feed(
                 _add(res)
             if len(tracks) >= limit:
                 break
+
+    # ── Tier 5.5: Nuclear fallback — ignore disliked filter ──────────────────
+    # If we still have nothing, the user has disliked so many popular artists
+    # that every mainstream track is filtered out.  Serve tracks ignoring the
+    # disliked-artist filter so the feed is never blank.
+    if not tracks and disliked_ids:
+        logger.info("discover: nuclear fallback — ignoring disliked filter (%d artists)", len(disliked_ids))
+        try:
+            top = await spotify.get_global_top_tracks(limit=50)
+            for t in top:
+                if t.get("id") and t["id"] not in exclude_ids and t["id"] not in seen:
+                    seen.add(t["id"])
+                    tracks.append(t)
+                if len(tracks) >= limit:
+                    break
+        except Exception as exc:
+            logger.warning("discover: nuclear fallback failed — %s", exc)
 
     logger.info(
         "discover: returning %d tracks (rated_excluded=%d, genres=%s, artists=%s)",
@@ -263,17 +281,17 @@ async def discover_debug():
     except Exception as exc:
         results["tier3_global_top50"] = {"ok": False, "error": str(exc)}
 
-    # ── Tier 4: New releases ──────────────────────────────────────────────────
+    # ── Tier 4: New Music Friday playlist ────────────────────────────────────
     try:
         t0 = time.monotonic()
-        releases = await spotify.get_new_releases(limit=10)
-        results["tier4_new_releases"] = {
+        nmf = await spotify.get_playlist_tracks(_NEW_MUSIC_FRIDAY_ID, limit=10)
+        results["tier4_new_music_friday"] = {
             "ok": True,
-            "album_count": len(releases),
+            "track_count": len(nmf),
             "latency_ms": round((time.monotonic() - t0) * 1000),
         }
     except Exception as exc:
-        results["tier4_new_releases"] = {"ok": False, "error": str(exc)}
+        results["tier4_new_music_friday"] = {"ok": False, "error": str(exc)}
 
     # ── Tier 2: Genre search (sample) ────────────────────────────────────────
     try:
