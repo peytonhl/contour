@@ -116,11 +116,17 @@ def _row_to_album_result(row: AlbumCacheModel) -> AlbumResult:
 
 @router.get("/{album_id}", response_model=AlbumResult)
 async def get_album(album_id: str, db: AsyncSession = Depends(get_db)):
-    # Check local cache first — avoids a Spotify round-trip and works when rate-limited
+    # Cache-first: seeded/visited albums are served instantly from DB without touching Spotify.
+    # This prevents rate-limiting when multiple albums are fetched in quick succession
+    # (e.g. Compare page loading Side A and Side B).
     cached = (await db.execute(
         select(AlbumCacheModel).where(AlbumCacheModel.spotify_id == album_id)
     )).scalar_one_or_none()
 
+    if cached and cached.image_url:
+        return _row_to_album_result(cached)
+
+    # Not in cache yet — fetch from Spotify and store it
     try:
         meta = await spotify.get_album(album_id)
         await cache.upsert_album(db, meta)

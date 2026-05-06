@@ -36,6 +36,10 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null, p
     autoRunRef.current = false;
     setComparison(null);
     setSavedId(null);
+    // Clear both slots immediately so stale selections don't trigger the auto-run
+    // before the new albums finish loading
+    setSelectionA(null);
+    setSelectionB(null);
 
     if (!preloadedAlbumAId) return;
 
