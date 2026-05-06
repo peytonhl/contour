@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from services.limiter import limiter
 
 from database import init_db, AsyncSessionLocal
-from routers import albums, artists, auth, comparison, discover, featured, feed, leaderboard, lists, notifications, ratings, reviews, saved_comparisons, taste, tracks, users
+from routers import albums, artists, auth, comparison, discover, featured, feed, leaderboard, lists, notifications, ratings, reviews, saved_comparisons, search, taste, tracks, users
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(search.router)
 app.include_router(albums.router)
 app.include_router(tracks.router)
 app.include_router(artists.router)
