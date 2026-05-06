@@ -96,7 +96,29 @@ jobs:
             PRBODY
             )"
 
-            3. Comment on the issue with what was built and a link to the PR.
+            3. Comment on the issue with a detailed summary using this exact format:
+
+            ✅ **Done — PR opened for review**
+
+            **What I built:**
+            <!-- One paragraph describing what was implemented and where -->
+
+            **Files changed:**
+            <!-- Bullet list of every file modified and one line explaining what changed in each -->
+
+            **What it looks like now:**
+            <!-- Describe the UI or behavior change as specifically as possible —
+                 e.g. "Footer now shows 'Built by Peyton Lindogan' in small gray text,
+                 centered, below the nav links" -->
+
+            **How to verify:**
+            <!-- Numbered steps to check it works — be specific enough that Peyton
+                 can follow them on the live site after merging -->
+
+            **Anything you should know before merging:**
+            <!-- Edge cases, caveats, or follow-up suggestions -->
+
+            PR: [link]
 
             4. Add the label `needs-review` to issue #${{ github.event.issue.number }}:
                  gh issue edit ${{ github.event.issue.number }} --add-label "needs-review" --remove-label "approved"
