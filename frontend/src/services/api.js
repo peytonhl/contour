@@ -116,6 +116,10 @@ export const api = {
   // Featured
   getFeatured: () => request(`/featured`),
 
+  // Diagnostics
+  getDiscoverDebug: () => request(`/discover/debug`),
+  getHealth: () => request(`/health`),
+
   // Leaderboard
   getLeaderboard: (sort = "era", decade = "all", limit = 50) => request(`/leaderboard/?sort=${sort}&decade=${decade}&limit=${limit}`),
 
