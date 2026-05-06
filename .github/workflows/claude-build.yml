@@ -1,0 +1,154 @@
+name: Claude Code — Build Approved Issues
+
+# Triggers when you label any issue "approved" from GitHub mobile or web.
+# Claude reads the issue, builds on the develop branch, commits frequently,
+# and opens a PR to master when done. You review and merge.
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  build:
+    if: github.event.label.name == 'approved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6-hour hard cap — anything committed before this is safe
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout develop branch
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "Claude Code"
+          git config user.email "claude-code@anthropic.com"
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are working autonomously on Contour — a music ratings and era-adjusted
+            streaming analytics platform. Read CLAUDE.md in the repo root for full
+            architecture details before doing anything else.
+
+            YOUR TASK (from GitHub Issue #${{ github.event.issue.number }}):
+            Title: ${{ github.event.issue.title }}
+
+            ${{ github.event.issue.body }}
+
+            Issue URL: ${{ github.event.issue.html_url }}
+
+            ── BRANCH RULES ────────────────────────────────────────────────────────
+            You are on the `develop` branch. All work stays on this branch.
+            Never push directly to `master`.
+
+            ── COMMIT DISCIPLINE (CRITICAL) ────────────────────────────────────────
+            Commit after every logical unit of work — completing a function, finishing
+            a component, fixing a distinct bug. Do NOT accumulate everything and commit
+            once at the end. The job can be killed at any time; only committed work
+            survives. Use this pattern throughout:
+
+              git add -A && git commit -m "descriptive message"
+
+            Push to the remote periodically (every few commits) so work is safe even
+            if the runner itself dies:
+
+              git push origin develop
+
+            ── WHEN YOU FINISH ──────────────────────────────────────────────────────
+            1. Push all remaining commits:
+                 git push origin develop
+
+            2. Open a PR to master:
+                 gh pr create \
+                   --base master \
+                   --head develop \
+                   --title "Brief title describing what was built" \
+                   --body "$(cat <<'PRBODY'
+            ## What this does
+            <!-- one sentence -->
+
+            ## Closes
+            Closes #${{ github.event.issue.number }}
+
+            ## Changes
+            <!-- bullet list -->
+
+            ## How to verify
+            <!-- what to check before merging -->
+
+            ## Safe to merge?
+            - [ ] No breaking changes to existing features
+            - [ ] Health check still passes after deploy
+            - [ ] No new environment variables required (or documented if so)
+            PRBODY
+            )"
+
+            3. Comment on the issue with what was built and a link to the PR.
+
+            4. Add the label `needs-review` to issue #${{ github.event.issue.number }}:
+                 gh issue edit ${{ github.event.issue.number }} --add-label "needs-review" --remove-label "approved"
+
+            ── IF YOU CANNOT FINISH ─────────────────────────────────────────────────
+            Commit and push everything completed so far, then open a DRAFT PR:
+
+              gh pr create --draft \
+                --base master --head develop \
+                --title "WIP: ${{ github.event.issue.title }}" \
+                --body "Partial implementation — see issue for what remains."
+
+            Comment on the issue explaining exactly what was completed and what is left.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Failure / cancellation handler ─────────────────────────────────────────
+      # Fires if the job errors out or hits the 6-hour timeout.
+      # Committed work on develop is already safe — this just tells you what happened.
+      - name: Notify on failure or timeout
+        if: failure() || cancelled()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const issueNumber = context.payload.issue.number;
+
+            // Comment on the issue with what happened and where to find committed work
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: [
+                '⚠️ **Build job failed or was cancelled before completing.**',
+                '',
+                'Any work that was committed before the failure is safe on the `develop` branch — nothing is lost.',
+                '',
+                `**[View the Actions log](${runUrl})** to see exactly where it stopped.`,
+                '',
+                'To retry: re-label this issue `approved`. To continue manually: open a new Claude session and reference this issue.'
+              ].join('\n')
+            });
+
+            // Swap labels: remove approved, add blocked so you can see it needs attention
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              name: 'approved'
+            }).catch(() => {});  // ignore if label was already removed
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['blocked']
+            });
