@@ -199,17 +199,17 @@ def _artist_id_for_query(q: str) -> Optional[str]:
 async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
     import asyncio
 
-    logger.info("search_albums: q=%r", q)
+    print(f"[search_albums] q={q!r}", flush=True)
 
     # Source 1: Spotify /search — blocked for most apps (Extended Access required),
     # but kept here in case it starts working or credentials are upgraded.
     async def spotify_search():
         try:
             results = await spotify.search_albums(q)
-            logger.info("search_albums: spotify returned %d results for q=%r", len(results), q)
+            print(f"[search_albums] spotify: {len(results)} results for q={q!r}", flush=True)
             return results
         except Exception as exc:
-            logger.warning("search_albums: spotify FAILED for q=%r — %s", q, exc)
+            print(f"[search_albums] spotify FAILED for q={q!r}: {exc}", flush=True)
             return []
 
     # Source 2: local AlbumCache — fast, works offline, limited to seeded albums.
@@ -221,22 +221,22 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
             .order_by(AlbumCacheModel.popularity.desc().nulls_last())
             .limit(10)
         )).scalars().all()
-        logger.info("search_albums: db returned %d results for q=%r", len(rows), q)
+        print(f"[search_albums] db: {len(rows)} results for q={q!r}", flush=True)
         return rows
 
     # Source 3: artist discography via /artists/{id}/albums — works without Extended Access.
     async def artist_search():
         artist_id = _artist_id_for_query(q)
         if not artist_id:
-            logger.info("search_albums: no artist ID match for q=%r", q)
+            print(f"[search_albums] no artist ID match for q={q!r}", flush=True)
             return []
-        logger.info("search_albums: artist_id=%s for q=%r", artist_id, q)
+        print(f"[search_albums] artist_id={artist_id} for q={q!r}", flush=True)
         try:
             results = await spotify.get_artist_albums(artist_id, limit=10)
-            logger.info("search_albums: artist discography returned %d results for q=%r", len(results), q)
+            print(f"[search_albums] artist discography: {len(results)} results for q={q!r}", flush=True)
             return results
         except Exception as exc:
-            logger.warning("search_albums: artist discography FAILED for q=%r artist_id=%s — %s", q, artist_id, exc)
+            print(f"[search_albums] artist discography FAILED for q={q!r} artist_id={artist_id}: {exc}", flush=True)
             return []
 
     spotify_results, db_rows, artist_results = await asyncio.gather(
@@ -274,7 +274,7 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
                 external_url=f"https://open.spotify.com/album/{row.spotify_id}",
             ))
 
-    logger.info("search_albums: returning %d merged results for q=%r", len(merged[:15]), q)
+    print(f"[search_albums] returning {len(merged[:15])} merged results for q={q!r}", flush=True)
     return merged[:15]
 
 
@@ -307,18 +307,18 @@ async def get_album(album_id: str, db: AsyncSession = Depends(get_db)):
     )).scalar_one_or_none()
 
     if cached and cached.image_url:
-        logger.info("get_album: cache hit for %s (%s)", album_id, cached.name)
+        print(f"[get_album] cache hit: {album_id} ({cached.name})", flush=True)
         return _row_to_album_result(cached)
 
-    logger.info("get_album: cache miss for %s — fetching from Spotify", album_id)
+    print(f"[get_album] cache miss: {album_id} — fetching from Spotify", flush=True)
     # Not in cache yet — fetch from Spotify and store it
     try:
         meta = await spotify.get_album(album_id)
-        logger.info("get_album: spotify returned %s for %s", meta.get("name"), album_id)
+        print(f"[get_album] spotify returned: {meta.get('name')} for {album_id}", flush=True)
         await cache.upsert_album(db, meta)
         return meta
     except Exception as exc:
-        logger.warning("get_album: spotify FAILED for %s — %s", album_id, exc)
+        print(f"[get_album] spotify FAILED for {album_id}: {exc}", flush=True)
         if cached:
             return _row_to_album_result(cached)
         raise HTTPException(status_code=404, detail=f"Album {album_id} not found")
