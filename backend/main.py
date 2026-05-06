@@ -274,13 +274,15 @@ async def startup():
     # missing; it never drops or alters existing ones.
     await init_db()
 
-    # Pre-cache the exact Compare page preset albums synchronously — must finish
-    # before the app starts serving requests so get_album cache-first always hits.
-    await _seed_compare_page_albums()
+    # Pre-cache the exact Compare page preset albums in the background.
+    # Running as a task so startup isn't blocked if Spotify is slow.
+    asyncio.create_task(_seed_compare_page_albums())
 
     # Seed the leaderboard in the background so startup doesn't block.
     # The task self-skips albums that are already enriched and fresh.
     asyncio.create_task(_seed_leaderboard())
+
+    logger.info("=== Contour startup complete — app is ready to serve requests ===")
 
 
 @app.get("/health")
