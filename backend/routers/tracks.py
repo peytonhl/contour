@@ -121,7 +121,7 @@ async def search_tracks(q: str = Query(..., min_length=1), db: AsyncSession = De
     seen_ids = {r["id"] for r in spotify_results}
     db_extras = [_row_to_track_result(row) for row in db_rows if row.spotify_id not in seen_ids]
 
-    return (spotify_results + db_extras)[:10]
+    return (spotify_results + db_extras)[:15]
 
 
 @router.get("/{track_id}", response_model=TrackResult)
