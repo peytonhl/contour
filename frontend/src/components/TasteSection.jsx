@@ -169,8 +169,8 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
     timerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await api.searchAlbums(val.trim());
-        setResults(res);
+        const res = await api.search(val.trim());
+        setResults(res.albums || []);
       } catch {
         setSearchError("Search failed — check your connection and try again.");
         setResults([]);
