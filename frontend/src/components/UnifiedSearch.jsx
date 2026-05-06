@@ -73,19 +73,15 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
       return;
     }
     debounceRef.current = setTimeout(async () => {
-      // Stamp this request so we can discard responses from earlier queries
       currentQueryRef.current = val;
       setLoading(true);
       try {
-        const [a, t] = await Promise.all([
-          api.searchAlbums(val).catch(() => []),
-          api.searchTracks(val).catch(() => []),
-        ]);
-        // Only apply if this is still the latest query — drops stale in-flight responses
+        const results = await api.search(val).catch(() => ({ users: [], albums: [], tracks: [] }));
         if (currentQueryRef.current !== val) return;
-        setAlbums(a.slice(0, 8));
-        setTracks(t.slice(0, 5));
-        // Close dropdown on empty results so old results never ghost
+        const a = (results.albums || []).slice(0, 8);
+        const t = (results.tracks || []).slice(0, 5);
+        setAlbums(a);
+        setTracks(t);
         setOpen(a.length > 0 || t.length > 0);
       } finally {
         if (currentQueryRef.current === val) setLoading(false);

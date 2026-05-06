@@ -59,6 +59,9 @@ async function del(path) {
 }
 
 export const api = {
+  // Unified search — returns { users, albums, tracks } in one request with smart triage
+  search: (q) => request(`/search?q=${encodeURIComponent(q)}`),
+
   // Albums
   searchAlbums: (q) => request(`/albums/search?q=${encodeURIComponent(q)}`),
   getAlbum: (id) => request(`/albums/${id}`),
