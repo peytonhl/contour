@@ -20,7 +20,7 @@ On top of the analytics, Contour is a place to rate albums and tracks, write rev
 
 **Music Data**
 - Era-adjusted stream trajectories for any album or track
-- Era Score leaderboard — seeded from Kworb's global top albums chart
+- Era Score leaderboard — seeded from Global Top 50 + curated catalog, refreshed every 24 hours
 - RIAA milestone markers (Gold, Platinum, Diamond) on trajectory charts
 - Artist pages with "Known For" (top hits by popularity), top tracks, full discography
 - Early streaming era banners for releases before 2013 with context about sparse data
@@ -74,7 +74,7 @@ On top of the analytics, Contour is a place to rate albums and tracks, write rev
 | Cache | Redis (Railway) — 24h TTL on hot Spotify API calls |
 | Rate limiting | slowapi — per-IP, Railway proxy-aware via `X-Forwarded-For` |
 | Auth | Google OAuth 2.0 + JWT |
-| Data | Spotify Web API, Kworb.net, Deezer (preview fallback) |
+| Data | Spotify Web API, Last.fm, Kworb.net (artist pages), Wayback Machine, Deezer (preview fallback) |
 | Hosting | Vercel (frontend) · Railway (backend + Redis) |
 
 ---
@@ -101,7 +101,7 @@ Values between years are linearly interpolated. The Era Score formula:
 era_adjusted = total_streams × (current_mau / release_era_mau)
 ```
 
-Day-by-day trajectory is modeled (high early velocity tapering to catalog tail) calibrated to the known total stream count from Kworb. A disclaimer is shown when modeled data is used instead of Kworb actuals.
+Day-by-day trajectory is modeled (high early velocity tapering to catalog tail) calibrated to the known total stream count. When real historical data points exist (Wayback Machine snapshots), the curve is interpolated through them. A disclaimer is always shown to make clear when modeled data is used.
 
 ---
 
@@ -200,7 +200,10 @@ backend/
     spotify.py             Spotify Web API client; hot calls Redis-cached for 24h
     normalization.py       MAU table, era-adjustment, trajectory modeling
     album_cache.py         DB-backed cache + Kworb stream enrichment state machine
-    kworb.py               Kworb.net scraper — artist streams, top albums list
+    kworb.py               Kworb.net scraper — artist album/track stream totals (artist pages only; entity pages blocked from Railway)
+    lastfm.py              Last.fm API client — lifetime scrobble counts used for leaderboard seeding
+    stream_anchors.py      Anchor point store — loads/saves Wayback historical snapshots used to calibrate trajectory curves
+    wayback.py             Wayback Machine client — fetches archived stream count snapshots for real trajectory anchors
     redis_cache.py         Async Redis helper (get/set with graceful no-op when REDIS_URL absent)
     limiter.py             slowapi Limiter using X-Forwarded-For for real IP behind Railway proxy
     deezer.py              Deezer preview fallback for tracks missing Spotify preview URL
@@ -279,7 +282,8 @@ frontend/
 
 ## Data Notes
 
-- Stream trajectory is **modeled**, not actual historical data. True day-by-day counts require Luminate licensing.
+- Stream trajectory is **modeled**, not actual historical data. True day-by-day counts require Luminate licensing. When Wayback Machine snapshots exist for an album, the curve is interpolated through them; otherwise the decay model runs solo.
 - Normalization is **Spotify-only**. Apple Music, Tidal, YouTube are not factored in.
-- Kworb stream counts are scraped on demand and cached in Redis for 24 hours. Scrape failures set `enrichment_status = "failed"` and the album is excluded from the leaderboard.
+- **Leaderboard stream counts** come from Last.fm's `album.getInfo` API (lifetime scrobbles), seeded on startup and refreshed every 24 hours. Kworb artist pages are used as a secondary source when an album is first opened; enrichment failures set `enrichment_status = "failed"` and exclude the album from the leaderboard.
+- **Kworb entity pages** (`kworb.net/spotify/track/{id}.html`) are blocked from Railway's IP range. Trajectory anchors from Kworb daily chart data are not available; Wayback Machine is the only live anchor source.
 - The For You feed rate limit is **60 requests/minute per real client IP**. Railway's reverse proxy is handled via `X-Forwarded-For`.

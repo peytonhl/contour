@@ -199,13 +199,10 @@ async def get_album_trajectory(
     if release > today:
         release = today
 
-    # Load stored anchor points; schedule background fetches if stale/missing
+    # Load stored anchor points; schedule Wayback fetch if never attempted.
+    # Kworb entity pages are blocked from Railway IPs so we skip that fetch.
     stored_anchors = await anchors_svc.load_anchors(db, album_id, "album")
 
-    if await anchors_svc.needs_kworb_daily_refresh(db, album_id, "album"):
-        background_tasks.add_task(
-            anchors_svc.fetch_and_store_kworb_daily, db, album_id, "album"
-        )
     if await anchors_svc.needs_wayback_fetch(db, album_id, "album"):
         background_tasks.add_task(
             anchors_svc.fetch_and_store_wayback, db, album_id, "album"

@@ -114,13 +114,10 @@ async def get_track_trajectory(
     if release > today:
         release = today
 
-    # Load stored anchor points; trigger background fetches if needed
+    # Load stored anchor points; schedule Wayback fetch if never attempted.
+    # Kworb entity pages are blocked from Railway IPs so we skip that fetch.
     stored_anchors = await anchors_svc.load_anchors(db, track_id, "track")
 
-    if await anchors_svc.needs_kworb_daily_refresh(db, track_id, "track"):
-        background_tasks.add_task(
-            anchors_svc.fetch_and_store_kworb_daily, db, track_id, "track"
-        )
     if await anchors_svc.needs_wayback_fetch(db, track_id, "track"):
         background_tasks.add_task(
             anchors_svc.fetch_and_store_wayback, db, track_id, "track"

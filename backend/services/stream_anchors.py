@@ -1,24 +1,24 @@
 """
 Stream anchor service — load, store, and refresh real stream data points.
 
-Coordinates between kworb (daily chart data), wayback (historical snapshots),
-and the stream_anchors / anchor_fetch_status DB tables.
+Coordinates between wayback (historical snapshots) and the stream_anchors /
+anchor_fetch_status DB tables.
+
+Note: Kworb entity pages (daily chart data) are blocked from Railway IPs,
+so fetch_and_store_kworb_daily is not used. Wayback is the only live anchor
+source; it runs once per entity since historical data is immutable.
 """
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import AnchorFetchStatus, StreamAnchor
-from services import kworb, wayback
-
-# Re-fetch live Kworb daily data after this many days (it updates as songs chart)
-KWORB_DAILY_TTL_DAYS = 3
+from services import wayback
 
 # Never re-fetch Wayback — historical data is immutable
 # We do a one-time fetch and that's it.
@@ -50,24 +50,6 @@ async def load_anchors(
     ]
 
 
-async def needs_kworb_daily_refresh(
-    db: AsyncSession,
-    entity_id: str,
-    entity_type: str,
-) -> bool:
-    """True if the Kworb daily data is stale or has never been fetched."""
-    result = await db.execute(
-        select(AnchorFetchStatus)
-        .where(AnchorFetchStatus.entity_id == entity_id)
-        .where(AnchorFetchStatus.entity_type == entity_type)
-    )
-    status = result.scalar_one_or_none()
-    if status is None or status.kworb_daily_fetched_at is None:
-        return True
-    age = datetime.utcnow() - status.kworb_daily_fetched_at
-    return age > timedelta(days=KWORB_DAILY_TTL_DAYS)
-
-
 async def needs_wayback_fetch(
     db: AsyncSession,
     entity_id: str,
@@ -81,40 +63,6 @@ async def needs_wayback_fetch(
     )
     status = result.scalar_one_or_none()
     return status is None or status.wayback_fetched_at is None
-
-
-async def fetch_and_store_kworb_daily(
-    db: AsyncSession,
-    entity_id: str,
-    entity_type: str,
-) -> int:
-    """
-    Fetch the live Kworb entity page, store all charting days as anchor points.
-    Replaces existing kworb_daily anchors (data may have been corrected).
-    Returns number of anchor points stored.
-    """
-    daily_data = await kworb.get_entity_daily_data(entity_id, entity_type)
-
-    if daily_data:
-        # Replace existing kworb_daily anchors for this entity
-        await db.execute(
-            delete(StreamAnchor)
-            .where(StreamAnchor.entity_id == entity_id)
-            .where(StreamAnchor.entity_type == entity_type)
-            .where(StreamAnchor.source == "kworb_daily")
-        )
-        for point in daily_data:
-            db.add(StreamAnchor(
-                entity_id=entity_id,
-                entity_type=entity_type,
-                snapshot_date=point["date"],
-                stream_count=point["streams_cumulative"],
-                source="kworb_daily",
-            ))
-
-    await _mark_kworb_daily_fetched(db, entity_id, entity_type)
-    await db.commit()
-    return len(daily_data)
 
 
 async def fetch_and_store_wayback(
@@ -151,25 +99,6 @@ async def fetch_and_store_wayback(
     await _mark_wayback_fetched(db, entity_id, entity_type)
     await db.commit()
     return len(anchors)
-
-
-async def _mark_kworb_daily_fetched(
-    db: AsyncSession, entity_id: str, entity_type: str
-) -> None:
-    result = await db.execute(
-        select(AnchorFetchStatus)
-        .where(AnchorFetchStatus.entity_id == entity_id)
-        .where(AnchorFetchStatus.entity_type == entity_type)
-    )
-    status = result.scalar_one_or_none()
-    if status is None:
-        db.add(AnchorFetchStatus(
-            entity_id=entity_id,
-            entity_type=entity_type,
-            kworb_daily_fetched_at=datetime.utcnow(),
-        ))
-    else:
-        status.kworb_daily_fetched_at = datetime.utcnow()
 
 
 async def _mark_wayback_fetched(
