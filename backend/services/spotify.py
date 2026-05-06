@@ -83,7 +83,7 @@ async def search_artists(query: str, limit: int = 10) -> list[dict]:
 
     result = [_parse_artist(a) for a in items]
     if result:
-        await redis_cache.set(cache_key, result, ttl=1800)  # 30 min
+        await redis_cache.set(cache_key, result, ttl=43200)  # 12 hours
     return result
 
 
@@ -152,7 +152,7 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
 
     result = [_parse_track(t) for t in items if t and t.get("id")]
     if result:
-        await redis_cache.set(cache_key, result, ttl=1800)  # 30 min
+        await redis_cache.set(cache_key, result, ttl=43200)  # 12 hours
     return result
 
 
@@ -213,7 +213,7 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 10) -> list[dic
 
     result = [_parse_album(a) for a in items if a and a.get("id")]
     if result:
-        await redis_cache.set(cache_key, result, ttl=3600)  # 1 hour
+        await redis_cache.set(cache_key, result, ttl=43200)  # 12 hours
     return result
 
 

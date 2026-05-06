@@ -92,6 +92,8 @@ async def unified_search(
     )
 
     # ── Step 2: Triage — decide which Spotify calls to make ───────────────────
+    # Rule: only hit Spotify if DB results are thin AND query is long enough.
+    # On 429, silently fall back to DB results — never surface an error to the user.
 
     spotify_albums: list = []
     spotify_tracks: list = []
@@ -110,23 +112,21 @@ async def unified_search(
                     if artists:
                         artist_id = artists[0]["id"]
                         print(f"[search] dynamic artist: {artists[0]['name']} → {artist_id}", flush=True)
-                except Exception as exc:
-                    print(f"[search] artist lookup failed for q={q_stripped!r}: {exc}", flush=True)
+                except Exception:
+                    # 429 or network error — fall through to DB-only results silently
+                    pass
 
             if artist_id and need_albums:
-                # Query is an artist name → fetch their discography
                 try:
                     spotify_albums = await spotify.get_artist_albums_limited(artist_id, limit=10)
-                except Exception as exc:
-                    print(f"[search] discography failed for artist_id={artist_id}: {exc}", flush=True)
+                except Exception:
+                    pass  # rate limited — DB results will be returned as-is
 
             elif not artist_id and need_tracks:
-                # Query doesn't resolve to an artist → probably a song/album title
-                # Only call track search; skip album search entirely
                 try:
                     spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
-                except Exception as exc:
-                    print(f"[search] track search failed for q={q_stripped!r}: {exc}", flush=True)
+                except Exception:
+                    pass  # rate limited — DB results will be returned as-is
 
     # ── Step 3: Merge, deduplicate, return ────────────────────────────────────
 
