@@ -152,6 +152,21 @@ async def search_albums(query: str, limit: int = 10) -> list[dict]:
     return [_parse_album(a) for a in items if a and a.get("id")]
 
 
+async def get_artist_albums(artist_id: str, limit: int = 10) -> list[dict]:
+    """Fetch an artist's albums by Spotify artist ID.
+    Uses /artists/{id}/albums which works without Extended Access — unlike /search."""
+    async with httpx.AsyncClient() as client:
+        token = await _get_token(client)
+        resp = await client.get(
+            f"https://api.spotify.com/v1/artists/{artist_id}/albums",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"limit": limit, "include_groups": "album", "market": "US"},
+        )
+        resp.raise_for_status()
+        items = resp.json().get("items", [])
+    return [_parse_album(a) for a in items if a and a.get("id")]
+
+
 async def get_album(album_id: str) -> dict:
     """Fetch full album metadata by Spotify album ID."""
     async with httpx.AsyncClient() as client:

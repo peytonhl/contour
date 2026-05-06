@@ -48,18 +48,164 @@ class EditionResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Artist name → Spotify artist ID lookup
+# Spotify /v1/search requires Extended Access (blocked for most apps).
+# /v1/artists/{id}/albums works without it — so we resolve artist names here
+# and fetch their discography directly.  Aliases and common misspellings included.
+# ---------------------------------------------------------------------------
+_ARTIST_IDS: dict[str, str] = {
+    # Pop / mainstream
+    "taylor swift": "06HL4z0CvFAxyc27GXpf02",
+    "ed sheeran": "6eUKZXaKkcviH0Ku9w2n3V",
+    "ariana grande": "66CXWjxzNUsdJxJ2JdwvnR",
+    "dua lipa": "6M2wZ9GZgrQXHCFfjv46we",
+    "harry styles": "6KImCVD70vtIoJWnq6nGn3",
+    "shawn mendes": "7n2wHs1TKAczGzO7Dd2rGr",
+    "olivia rodrigo": "1McMsnEElThX1knmY4oliG",
+    "billie eilish": "6qqNVTkY8uBg9cP3Jd7DAH",
+    "selena gomez": "0C8ZW7ezQVs4URX5aX7Kqx",
+    "miley cyrus": "5YGY8feqx7naU7z4HiWAdv",
+    "charlie puth": "6VuMaDnrHyPam3QtqXPOg0",
+    "sam smith": "2wY79sveU1sp5g7SokKOiI",
+    "lewis capaldi": "4GNC7GD6oZMSxPGyXy4MMB",
+    "niall horan": "1Hsdzj7Dlq2I7tHP7501T4",
+    "zayn": "5ZsFI1h6hIdQRw2ti0hz81",
+    "one direction": "4AK6F7OLvEQ5QYCBNiQWHq",
+    "lizzo": "56oDRnqbIiwx4mymNEv7dS",
+    "halsey": "26VFTg2z8NyhhzSbeys3Wz",
+    "troye sivan": "3sSl11j0lmTd3G7cUcMECR",
+    "camila cabello": "4nDoRrQiYLoBzwC5BhVJzF",
+    # Pop rock / alternative / emo
+    "5 seconds of summer": "5Rl15oVamLq7FbSX0XiRYa",
+    "5sos": "5Rl15oVamLq7FbSX0XiRYa",
+    "five seconds of summer": "5Rl15oVamLq7FbSX0XiRYa",
+    "imagine dragons": "53XhwfbYqKCa1cC15pYq2q",
+    "twenty one pilots": "3YQKmKGau1PzlVlkL1iAx3",
+    "21 pilots": "3YQKmKGau1PzlVlkL1iAx3",
+    "fall out boy": "4UXqAaa6dQYAk18Ol481n9",
+    "panic at the disco": "20JZFwl6HVl6yg8a4H3ZqK",
+    "panic! at the disco": "20JZFwl6HVl6yg8a4H3ZqK",
+    "paramore": "74XFHRwlV6OrjEM0A2NCMF",
+    "the 1975": "3mIj9lX2MWuHmhNQjed1gY",
+    "green day": "7oPftvlwr6VrsViSDV7fJY",
+    "blink-182": "6FBDaR13swtiWwGhX1WQsP",
+    "blink 182": "6FBDaR13swtiWwGhX1WQsP",
+    "my chemical romance": "1cRXChOBBSfF6x8oVrBL3c",
+    "mcr": "1cRXChOBBSfF6x8oVrBL3c",
+    "arctic monkeys": "7Ln80lUS6He07XvHI8qqHH",
+    "the strokes": "0epOFNiUfyON9EYx7Tpr6V",
+    "vampire weekend": "5BvJzeQpmsdsFp4HGUYUEx",
+    "tame impala": "5INjqkS1o8h1imAzPqGZng",
+    "mac demarco": "5eTHHmAuFevmYfUF63XPPP",
+    "rex orange county": "4sRoKGSMQJlxXVPRhTGX8X",
+    "wallows": "3dz0NnIZhtKKeXZxLOxedj",
+    "the neighbourhood": "77SW9BnxLY8rJ0RciFqkHh",
+    "the neighborhood": "77SW9BnxLY8rJ0RciFqkHh",
+    # R&B / Soul
+    "the weeknd": "1Xyo4u8uXC1ZmMpatF05PJ",
+    "sza": "7tYKF4w9nC0nq9CsPZTHyP",
+    "frank ocean": "2h93pZq0e7k5yf4dywlkpM",
+    "beyonce": "6vWDO969PvNqNYHIOW5v0m",
+    "beyoncé": "6vWDO969PvNqNYHIOW5v0m",
+    "rihanna": "5pKCCKE2ajJHZ9KAiaK11H",
+    "adele": "4dpARuHxo51G3z768sgnrY",
+    "h.e.r": "0wVXWdpGRYDhd99tUVBHBL",
+    "summer walker": "7rZSdBfNNQlMCFBPJgZJkh",
+    "jhene aiko": "1l7ZsJRRS8wlW3WfJfpiUA",
+    "kehlani": "3l0CmX0FuQjFxr8SK7Vqag",
+    "daniel caesar": "20wkVLutqVOYrc0kxFs7rA",
+    # Hip-hop / Rap
+    "drake": "3TVXtAsR1Inumwj472S9r4",
+    "kendrick lamar": "2YZyLoL8N0Wb9xBt1NhZWg",
+    "kanye west": "5K4W6rqBFWDnAN6FQUkS6x",
+    "ye": "5K4W6rqBFWDnAN6FQUkS6x",
+    "j cole": "6l3HvQ5sa6mXTsMTB19rO5",
+    "j. cole": "6l3HvQ5sa6mXTsMTB19rO5",
+    "eminem": "7dGJo4pcD2V6oG8kP0tJRR",
+    "post malone": "246dkjvS1zLTtiykXe5h60",
+    "travis scott": "0Y5tJX1MQlPlqiwlOH1tJY",
+    "tyler the creator": "4V8LLVI7d68svsXW0y8y9L",
+    "tyler, the creator": "4V8LLVI7d68svsXW0y8y9L",
+    "bad bunny": "4q3ewBCX7sLwd24euuV69X",
+    "juice wrld": "4MCBfE4596Uoi2O4DtmEMz",
+    "juice world": "4MCBfE4596Uoi2O4DtmEMz",
+    "lil uzi vert": "4O15NlyKLIASxsJ0PrXPfg",
+    "lil baby": "6vDGVr652ztNWKZzHHRKlQ",
+    "future": "1RyvyyTE3xzB2ZywiAwp0i",
+    "young thug": "50co4Is1HCEo8bhOyUWKpn",
+    "gunna": "4r63FhuTkUYEs4YQnmcV5H",
+    "21 savage": "1URnnhqYAYcrqrcwql10ft",
+    "nicki minaj": "0rmVVUnFR9FRBaJ2i7K8hy",
+    "cardi b": "4kYSro6naA4h99UJvo89HB",
+    "lana del rey": "00FQb4jTyendYWaN8pK0wa",
+    "xxxtentacion": "15UsOTVnJzReFVN1VCnxy4",
+    "xxx": "15UsOTVnJzReFVN1VCnxy4",
+    # Rock / Classic
+    "coldplay": "4gzpq5DPGxSnKTe4SA8HAU",
+    "radiohead": "4Z8W4fkeB5StFk8rqc7eGF",
+    "the beatles": "3WrFJ7ztbogyGnTHbHJFl2",
+    "beatles": "3WrFJ7ztbogyGnTHbHJFl2",
+    "pink floyd": "0k17h0D3J5VfsdmQ1iZtE9",
+    "queen": "1dfeR4HaWDbWqFHLkxsg1d",
+    "led zeppelin": "36QJpDe2go2KgaRleHCDTp",
+    "david bowie": "0oSGxfWSnnOXhD2fKuz2Gy",
+    "fleetwood mac": "08GQAI4eElDnROBrJRGE0X",
+    "the rolling stones": "22bE4uQ6baNwSHPVcDxLCe",
+    "rolling stones": "22bE4uQ6baNwSHPVcDxLCe",
+    "nirvana": "6olE6TJLqED3rqDCT0FyPh",
+    "bruce springsteen": "3eqjTLE0HfPfh78zjh6TqT",
+    "u2": "51Blml2LZPmy7TTiAg47vQ",
+    # K-Pop / Global
+    "bts": "3Nrfpe0tUJi4K4DXYWgMUX",
+    "blackpink": "41MozSoPIsD1dJM0CLPjZF",
+    "stray kids": "2p1fiYHgMpOd5rBk3ELsvk",
+    "exo": "1evhSExS2RhQMaexOO1Byt",
+    "nct 127": "7f4ignuCJhLXfZ9giMiyNt",
+    "twice": "0JTP4RPKBXRS9aiFLAeKFH",
+    "got7": "06WYLSAClbu4mYVTR3BNKL",
+    "monsta x": "4LRIM9PYxJPBHEMCY7eHyX",
+    # Misc popular
+    "bruno mars": "0du5cEVh5yTK9QJze8zA0C",
+    "justin bieber": "1uNFoZAHBGtllmzznpCI3s",
+    "bieber": "1uNFoZAHBGtllmzznpCI3s",
+    "lady gaga": "1HY2Jd0NmPuamShAr6KMms",
+    "katy perry": "6jJ0s89eD6GaHleKKya26X",
+    "p!nk": "1KCSPY1glIKqW2TotWuXOR",
+    "pink": "1KCSPY1glIKqW2TotWuXOR",
+    "maroon 5": "04gDigrS5kc9YWfZHwBETP",
+}
+
+
+def _artist_id_for_query(q: str) -> Optional[str]:
+    """Return a Spotify artist ID if the query closely matches a known artist name."""
+    normalized = q.lower().strip()
+    # Exact match
+    if normalized in _ARTIST_IDS:
+        return _ARTIST_IDS[normalized]
+    # Query is contained in an artist name or vice-versa (handles partial typing)
+    for name, aid in _ARTIST_IDS.items():
+        if normalized in name or name in normalized:
+            return aid
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Search
 # ---------------------------------------------------------------------------
 
 @router.get("/search", response_model=List[AlbumResult])
 async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
-    # Run Spotify search and DB search concurrently
+    import asyncio
+
+    # Source 1: Spotify /search — blocked for most apps (Extended Access required),
+    # but kept here in case it starts working or credentials are upgraded.
     async def spotify_search():
         try:
             return await spotify.search_albums(q)
         except Exception:
             return []
 
+    # Source 2: local AlbumCache — fast, works offline, limited to seeded albums.
     async def db_search():
         pattern = f"%{q}%"
         rows = (await db.execute(
@@ -70,29 +216,52 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
         )).scalars().all()
         return rows
 
-    import asyncio
-    spotify_results, db_rows = await asyncio.gather(spotify_search(), db_search())
+    # Source 3: artist discography via /artists/{id}/albums — works without Extended Access.
+    async def artist_search():
+        artist_id = _artist_id_for_query(q)
+        if not artist_id:
+            return []
+        try:
+            return await spotify.get_artist_albums(artist_id, limit=10)
+        except Exception:
+            return []
 
-    # Merge: Spotify results first (richer metadata), then DB-only albums not already in results
-    seen_ids = {r["id"] for r in spotify_results}
-    db_extras = [
-        AlbumResult(
-            id=row.spotify_id,
-            name=row.name,
-            artists=[a.strip() for a in row.artist.split(",")],
-            artist_ids=[],
-            release_date=row.release_date or "",
-            release_date_precision=row.release_date_precision or "year",
-            label=row.label,
-            popularity=row.popularity,
-            image_url=row.image_url,
-            external_url=f"https://open.spotify.com/album/{row.spotify_id}",
-        )
-        for row in db_rows
-        if row.spotify_id not in seen_ids
-    ]
+    spotify_results, db_rows, artist_results = await asyncio.gather(
+        spotify_search(), db_search(), artist_search()
+    )
 
-    return (spotify_results + db_extras)[:15]
+    # Merge all three sources, deduplicating by Spotify ID.
+    # Priority: Spotify search > artist discography > DB cache.
+    seen_ids: set[str] = set()
+    merged: list = []
+
+    for result in spotify_results:
+        if result["id"] not in seen_ids:
+            seen_ids.add(result["id"])
+            merged.append(result)
+
+    for result in artist_results:
+        if result["id"] not in seen_ids:
+            seen_ids.add(result["id"])
+            merged.append(result)
+
+    for row in db_rows:
+        if row.spotify_id not in seen_ids:
+            seen_ids.add(row.spotify_id)
+            merged.append(AlbumResult(
+                id=row.spotify_id,
+                name=row.name,
+                artists=[a.strip() for a in row.artist.split(",")],
+                artist_ids=[],
+                release_date=row.release_date or "",
+                release_date_precision=row.release_date_precision or "year",
+                label=row.label,
+                popularity=row.popularity,
+                image_url=row.image_url,
+                external_url=f"https://open.spotify.com/album/{row.spotify_id}",
+            ))
+
+    return merged[:15]
 
 
 # ---------------------------------------------------------------------------
