@@ -149,12 +149,12 @@ async def search_albums(query: str, limit: int = 10) -> list[dict]:
             headers={"Authorization": f"Bearer {token}"},
             params={"q": query, "type": "album", "limit": limit, "market": "US"},
         )
-        _log.info("spotify.search_albums: HTTP %s for q=%r", resp.status_code, query)
+        print(f"[spotify.search_albums] HTTP {resp.status_code} for q={query!r}", flush=True)
         if resp.status_code != 200:
-            _log.warning("spotify.search_albums: non-200 body: %s", resp.text[:500])
+            print(f"[spotify.search_albums] non-200 body: {resp.text[:500]}", flush=True)
         resp.raise_for_status()
         items = resp.json().get("albums", {}).get("items", [])
-        _log.info("spotify.search_albums: %d raw items for q=%r", len(items), query)
+        print(f"[spotify.search_albums] {len(items)} raw items for q={query!r}", flush=True)
 
     return [_parse_album(a) for a in items if a and a.get("id")]
 
@@ -169,12 +169,12 @@ async def get_artist_albums(artist_id: str, limit: int = 10) -> list[dict]:
             headers={"Authorization": f"Bearer {token}"},
             params={"limit": limit, "include_groups": "album", "market": "US"},
         )
-        _log.info("spotify.get_artist_albums: HTTP %s for artist_id=%s", resp.status_code, artist_id)
+        print(f"[spotify.get_artist_albums] HTTP {resp.status_code} for artist_id={artist_id}", flush=True)
         if resp.status_code != 200:
-            _log.warning("spotify.get_artist_albums: non-200 body: %s", resp.text[:500])
+            print(f"[spotify.get_artist_albums] non-200 body: {resp.text[:500]}", flush=True)
         resp.raise_for_status()
         items = resp.json().get("items", [])
-        _log.info("spotify.get_artist_albums: %d raw items for artist_id=%s", len(items), artist_id)
+        print(f"[spotify.get_artist_albums] {len(items)} raw items for artist_id={artist_id}", flush=True)
     return [_parse_album(a) for a in items if a and a.get("id")]
 
 
