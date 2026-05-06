@@ -40,12 +40,9 @@ function AddItemSearch({ onAdd, existingIds }) {
     timerRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const [a, t] = await Promise.all([
-          api.searchAlbums(val).catch(() => []),
-          api.searchTracks(val).catch(() => []),
-        ]);
-        setAlbums(a.slice(0, 4));
-        setTracks(t.slice(0, 4));
+        const res = await api.search(val).catch(() => ({ albums: [], tracks: [] }));
+        setAlbums((res.albums || []).slice(0, 4));
+        setTracks((res.tracks || []).slice(0, 4));
         setOpen(true);
       } finally { setLoading(false); }
     }, 300);

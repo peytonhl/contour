@@ -93,17 +93,15 @@ export function SearchPage() {
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const [albums, tracks, artists, users] = await Promise.all([
-          api.searchAlbums(q).catch(() => []),
-          api.searchTracks(q).catch(() => []),
+        const [searchRes, artists] = await Promise.all([
+          api.search(q).catch(() => ({ users: [], albums: [], tracks: [] })),
           api.searchArtists(q).catch(() => []),
-          api.searchUsers(q).catch(() => []),
         ]);
         const tagged = [
-          ...albums.slice(0, 4).map(r => ({ ...r, _type: "album" })),
-          ...tracks.slice(0, 4).map(r => ({ ...r, _type: "track" })),
+          ...(searchRes.albums || []).slice(0, 4).map(r => ({ ...r, _type: "album" })),
+          ...(searchRes.tracks || []).slice(0, 4).map(r => ({ ...r, _type: "track" })),
           ...artists.slice(0, 3).map(r => ({ ...r, _type: "artist" })),
-          ...users.slice(0, 3).map(r => ({ ...r, name: r.display_name, _type: "user" })),
+          ...(searchRes.users || []).slice(0, 3).map(r => ({ ...r, name: r.display_name, _type: "user" })),
         ];
         setResults(tagged);
       } catch {
