@@ -92,7 +92,7 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
         if row.spotify_id not in seen_ids
     ]
 
-    return (spotify_results + db_extras)[:10]
+    return (spotify_results + db_extras)[:15]
 
 
 # ---------------------------------------------------------------------------

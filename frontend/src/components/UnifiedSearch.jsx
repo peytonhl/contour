@@ -74,7 +74,7 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
           api.searchAlbums(val).catch(() => []),
           api.searchTracks(val).catch(() => []),
         ]);
-        setAlbums(a.slice(0, 5));
+        setAlbums(a.slice(0, 8));
         setTracks(t.slice(0, 5));
         setOpen(true);
       } finally {

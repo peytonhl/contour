@@ -111,7 +111,7 @@ async def get_album_tracks(album_id: str) -> list[dict]:
     ]
 
 
-async def search_tracks(query: str, limit: int = 20) -> list[dict]:
+async def search_tracks(query: str, limit: int = 10) -> list[dict]:
     """Search Spotify for tracks matching the query string."""
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
@@ -137,7 +137,7 @@ async def get_track(track_id: str) -> dict:
         return _parse_track(resp.json())
 
 
-async def search_albums(query: str, limit: int = 20) -> list[dict]:
+async def search_albums(query: str, limit: int = 10) -> list[dict]:
     """Search Spotify for albums matching the query string."""
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
