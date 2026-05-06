@@ -588,45 +588,77 @@ export function TasteSection({ userId, isOwner }) {
           )}
         </div>
 
-        {/* 2×2 album grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {slots.map((album, i) => (
-            <AlbumSlot
-              key={album?.id ?? `empty-${i}`}
-              album={album}
-              isOwner={isOwner}
-              onClick={() => setPickerOpen(true)}
-              onRemove={handleRemove}
-            />
-          ))}
-        </div>
+        {/* Album grid — only rendered when at least one album is pinned */}
+        {taste?.pinned_albums?.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {slots.map((album, i) => (
+              <AlbumSlot
+                key={album?.id ?? `empty-${i}`}
+                album={album}
+                isOwner={isOwner}
+                onClick={() => setPickerOpen(true)}
+                onRemove={handleRemove}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Empty album prompt — compact, shown only to owner when no albums pinned */}
+        {isOwner && !taste?.pinned_albums?.length && (
+          <button
+            onClick={() => setPickerOpen(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "14px 16px", borderRadius: 10,
+              border: "1px dashed var(--border)",
+              background: "transparent", cursor: "pointer",
+              textAlign: "left", width: "100%",
+              transition: "border-color 0.15s, background 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT_A; e.currentTarget.style.background = `${ACCENT_A}08`; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "transparent"; }}
+          >
+            <div style={{
+              width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+              border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Pin your top albums</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Choose up to 4 albums that define your taste</div>
+            </div>
+          </button>
+        )}
 
         {/* Genre badges */}
         {taste?.top_genres?.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
               Favorite Genres
             </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {taste.top_genres.map((g) => <GenreBadge key={g} genre={g} />)}
             </div>
           </div>
         )}
 
         {/* Rating distribution */}
-        {taste?.rating_distribution && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+        {taste?.rating_distribution && Object.values(taste.rating_distribution).some((v) => v > 0) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
               Rating Distribution
             </p>
             <RatingDistribution distribution={taste.rating_distribution} />
           </div>
         )}
 
-        {/* Empty state nudge for owner with nothing yet */}
+        {/* Empty state — owner has no content at all */}
         {isOwner && !hasAnyContent && (
-          <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
-            Rate some music to build your taste profile — your genres and rating stats will appear here.
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            Rate music to build your taste profile — your genres and rating history will appear here.
           </p>
         )}
       </div>

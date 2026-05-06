@@ -104,10 +104,18 @@ frontend/
 - No external UI libraries (no MUI, no Chakra) — plain CSS-in-JS style objects
 
 ### Branch rules
-- Work on `develop` only
-- Open PRs to `master` — never push directly to `master`
-- Bugs: fix on `develop`, open PR immediately
-- Features: build on `develop`, open PR when complete
+
+Two workflows depending on context:
+
+**Active Claude session (Claude + Peyton working together)**
+- Commit to `develop`, push, then merge `develop` → `master` directly and push
+- No PR needed — merge to master is the deploy, do it immediately when work is complete
+- Command: `git checkout master && git merge develop && git push && git checkout develop`
+
+**Peyton submitting work via GitHub mobile**
+- Work on `develop`, open a PR to `master`
+- Peyton reviews and merges via the GitHub app on his own schedule
+- Claude should open the PR but not merge it
 
 ---
 
