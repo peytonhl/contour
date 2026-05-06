@@ -60,7 +60,13 @@ async def _get_token(client: httpx.AsyncClient) -> str:
 
 
 async def search_artists(query: str, limit: int = 10) -> list[dict]:
-    """Search Spotify for artists matching the query string."""
+    """Search Spotify for artists matching the query string. Results cached 30 min."""
+    cache_key = f"spotify:artist_search:{query.lower().strip()}:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        print(f"[spotify.search_artists] cache hit for q={query!r}", flush=True)
+        return cached
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
@@ -74,7 +80,11 @@ async def search_artists(query: str, limit: int = 10) -> list[dict]:
         resp.raise_for_status()
         items = resp.json()["artists"]["items"]
         print(f"[spotify.search_artists] {len(items)} artists for q={query!r}", flush=True)
-    return [_parse_artist(a) for a in items]
+
+    result = [_parse_artist(a) for a in items]
+    if result:
+        await redis_cache.set(cache_key, result, ttl=1800)  # 30 min
+    return result
 
 
 async def get_artist(artist_id: str) -> dict:
@@ -119,7 +129,13 @@ async def get_album_tracks(album_id: str) -> list[dict]:
 
 
 async def search_tracks(query: str, limit: int = 10) -> list[dict]:
-    """Search Spotify for tracks matching the query string."""
+    """Search Spotify for tracks matching the query string. Results cached 30 min."""
+    cache_key = f"spotify:track_search:{query.lower().strip()}:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        print(f"[spotify.search_tracks] cache hit for q={query!r}", flush=True)
+        return cached
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
@@ -127,9 +143,17 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
             headers={"Authorization": f"Bearer {token}"},
             params={"q": query, "type": "track", "limit": limit, "market": "US"},
         )
+        print(f"[spotify.search_tracks] HTTP {resp.status_code} for q={query!r}", flush=True)
+        if resp.status_code != 200:
+            print(f"[spotify.search_tracks] non-200 body: {resp.text[:300]}", flush=True)
         resp.raise_for_status()
         items = resp.json().get("tracks", {}).get("items", [])
-    return [_parse_track(t) for t in items if t and t.get("id")]
+        print(f"[spotify.search_tracks] {len(items)} tracks for q={query!r}", flush=True)
+
+    result = [_parse_track(t) for t in items if t and t.get("id")]
+    if result:
+        await redis_cache.set(cache_key, result, ttl=1800)  # 30 min
+    return result
 
 
 async def get_track(track_id: str) -> dict:
@@ -165,7 +189,14 @@ async def search_albums(query: str, limit: int = 10) -> list[dict]:
 
 async def get_artist_albums_limited(artist_id: str, limit: int = 10) -> list[dict]:
     """Fetch up to `limit` albums for an artist by Spotify artist ID.
-    Uses /artists/{id}/albums which works without Extended Access — unlike /search."""
+    Uses /artists/{id}/albums which works without Extended Access — unlike /search.
+    Results cached 1 hour since album lists rarely change."""
+    cache_key = f"spotify:artist_albums:{artist_id}:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        print(f"[spotify.get_artist_albums] cache hit for artist_id={artist_id}", flush=True)
+        return cached
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
@@ -179,7 +210,11 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 10) -> list[dic
         resp.raise_for_status()
         items = resp.json().get("items", [])
         print(f"[spotify.get_artist_albums] {len(items)} raw items for artist_id={artist_id}", flush=True)
-    return [_parse_album(a) for a in items if a and a.get("id")]
+
+    result = [_parse_album(a) for a in items if a and a.get("id")]
+    if result:
+        await redis_cache.set(cache_key, result, ttl=3600)  # 1 hour
+    return result
 
 
 async def get_album(album_id: str) -> dict:
