@@ -14,11 +14,13 @@ GET https://contour-production.up.railway.app/health
 {
   "status": "ok",
   "checks": {
-    "database":    { "ok": true,  "latency_ms": 4 },
-    "spotify":     { "ok": true,  "latency_ms": 180 },
-    "lastfm":      { "ok": true,  "key_set": true },
-    "redis":       { "ok": false, "note": "not configured — caching disabled" },
-    "leaderboard": { "ok": true,  "eligible_albums": 50 }
+    "database":      { "ok": true,  "latency_ms": 4 },
+    "spotify":       { "ok": true,  "latency_ms": 180 },
+    "lastfm":        { "ok": true,  "key_set": true },
+    "redis":         { "ok": false, "note": "not configured — caching disabled" },
+    "kworb_artist":  { "ok": true,  "latency_ms": 720, "albums_returned": 57 },
+    "kworb_entity":  { "ok": true,  "latency_ms": 340, "data_points": 180 },
+    "leaderboard":   { "ok": true,  "eligible_albums": 50 }
   }
 }
 ```
@@ -29,10 +31,11 @@ GET https://contour-production.up.railway.app/health
 | `spotify` | ✅ Yes | Search, For You feed, album pages |
 | `lastfm` | No | Leaderboard won't seed new data |
 | `redis` | No | Feed is slower (live Spotify calls every request) |
-| `kworb` | No | Comparison/trajectory charts show no data |
+| `kworb_artist` | No | Leaderboard stream totals may go stale |
+| `kworb_entity` | No | Album detail trajectories fall back to decay model only (no real daily anchors) |
 | `leaderboard` | No | Charts page shows empty |
 
-> **Note on `kworb`:** Kworb is the only source for daily streaming trajectory data (the comparison feature). If `ok: false`, it means either Kworb's IP is blocked on this server, the scraper is broken, or Kworb is down. There is no fallback source for this data.
+> **Note on Kworb:** Two separate checks because the URL patterns are different and may be blocked independently. `kworb_artist` tests `kworb.net/spotify/artist/{ID}_albums.html` (used for total stream counts). `kworb_entity` tests `kworb.net/spotify/track/{ID}.html` using "Blinding Lights" as a probe — if that returns empty, real daily anchor data won't populate for album detail pages, and trajectories will be purely modeled curves.
 
 **Railway monitoring:** Railway → your backend service → Settings → Health Check Path → set to `/health`. Railway will alert you if it returns non-200.
 

@@ -295,25 +295,52 @@ async def health():
     # Redis missing = slower but not broken
 
     # ── Kworb reachability ────────────────────────────────────────────────────
-    # Kworb powers the comparison/trajectory feature. Tests with a known
-    # artist ID (Ed Sheeran) — if empty, Kworb is unreachable from this IP
-    # and trajectory data will be empty for all comparison charts.
+    # Two separate checks because artist pages and entity pages hit different
+    # URL patterns and may be blocked independently.
+    #
+    # Artist pages  → kworb.net/spotify/artist/{ID}_albums.html
+    #   Powers: leaderboard stream totals (via get_album_streams)
+    #
+    # Entity pages  → kworb.net/spotify/track/{ID}.html
+    #   Powers: album detail page trajectory anchors (via get_entity_daily_data)
     try:
         import time as _time
         from services import kworb as kworb_svc
+
+        # Artist page — Ed Sheeran
         t0 = _time.monotonic()
-        albums = await kworb_svc.get_artist_albums_by_id("6eUKZXaKkcviH0Ku9w2n3V")  # Ed Sheeran
+        albums = await kworb_svc.get_artist_albums_by_id("6eUKZXaKkcviH0Ku9w2n3V")
         latency = round((_time.monotonic() - t0) * 1000)
         if albums:
-            results["kworb"] = {"ok": True, "latency_ms": latency, "albums_returned": len(albums)}
+            results["kworb_artist"] = {"ok": True, "latency_ms": latency, "albums_returned": len(albums)}
         else:
-            results["kworb"] = {
+            results["kworb_artist"] = {
                 "ok": False, "latency_ms": latency,
-                "note": "returned empty — likely IP-blocked. Trajectory comparison will show no data.",
+                "note": "returned empty — artist pages may be IP-blocked.",
             }
     except Exception as exc:
-        results["kworb"] = {"ok": False, "error": str(exc)}
-    # Kworb down = comparison charts empty, but rest of app still works
+        results["kworb_artist"] = {"ok": False, "error": str(exc)}
+
+    try:
+        # Entity page — "Blinding Lights" by The Weeknd (one of the most-charted
+        # songs ever; guaranteed to have a Kworb entity page with daily data)
+        t0 = _time.monotonic()
+        daily = await kworb_svc.get_entity_daily_data("0VjIjW4GlUZAMYd2vXMi3b", "track")
+        latency = round((_time.monotonic() - t0) * 1000)
+        if daily:
+            results["kworb_entity"] = {
+                "ok": True, "latency_ms": latency,
+                "data_points": len(daily),
+                "note": "Blinding Lights daily chart data — album detail trajectories will use real anchors.",
+            }
+        else:
+            results["kworb_entity"] = {
+                "ok": False, "latency_ms": latency,
+                "note": "entity pages returned empty — album detail trajectories will fall back to decay model only.",
+            }
+    except Exception as exc:
+        results["kworb_entity"] = {"ok": False, "error": str(exc)}
+    # Kworb down = album detail trajectories degrade to decay model; rest of app still works
 
     # ── Leaderboard data ──────────────────────────────────────────────────────
     try:
