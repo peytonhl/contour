@@ -179,12 +179,10 @@ _ARTIST_IDS: dict[str, str] = {
 
 
 def _artist_id_for_query(q: str) -> Optional[str]:
-    """Return a Spotify artist ID if the query closely matches a known artist name."""
+    """Return a Spotify artist ID from the hardcoded map if the query closely matches."""
     normalized = q.lower().strip()
-    # Exact match
     if normalized in _ARTIST_IDS:
         return _ARTIST_IDS[normalized]
-    # Query is contained in an artist name or vice-versa (handles partial typing)
     for name, aid in _ARTIST_IDS.items():
         if normalized in name or name in normalized:
             return aid
@@ -225,11 +223,25 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
         return rows
 
     # Source 3: artist discography via /artists/{id}/albums — works without Extended Access.
+    # Tries hardcoded map first (instant), then falls back to a live Spotify artist search
+    # so any artist can be found without needing to be pre-registered.
     async def artist_search():
         artist_id = _artist_id_for_query(q)
+
+        # Hardcoded map miss — try a live artist search to resolve the ID dynamically
         if not artist_id:
-            print(f"[search_albums] no artist ID match for q={q!r}", flush=True)
+            try:
+                artists = await spotify.search_artists(q, limit=1)
+                if artists:
+                    artist_id = artists[0]["id"]
+                    print(f"[search_albums] dynamic artist lookup: {artists[0]['name']} → {artist_id}", flush=True)
+            except Exception as exc:
+                print(f"[search_albums] dynamic artist lookup FAILED for q={q!r}: {exc}", flush=True)
+
+        if not artist_id:
+            print(f"[search_albums] no artist ID found for q={q!r}", flush=True)
             return []
+
         print(f"[search_albums] artist_id={artist_id} for q={q!r}", flush=True)
         try:
             results = await spotify.get_artist_albums_limited(artist_id, limit=10)
