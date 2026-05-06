@@ -195,6 +195,24 @@ class UserTasteProfile(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class TrackCache(Base):
+    __tablename__ = "track_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    spotify_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(256))
+    artist: Mapped[str] = mapped_column(String(256))
+    album_name: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    album_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    release_date: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    explicit: Mapped[bool] = mapped_column(Integer, default=False)
+    popularity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    external_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    artist_ids_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
+
+
 class AlbumCache(Base):
     __tablename__ = "album_cache"
 

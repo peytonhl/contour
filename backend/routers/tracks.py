@@ -2,13 +2,17 @@
 
 from typing import List, Optional
 
+import json
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import date
 
 from database import get_db
+from models import TrackCache
 from services import kworb, spotify
 from services import album_cache as cache
 from services import stream_anchors as anchors_svc
@@ -39,13 +43,79 @@ class TrackStreamStatus(BaseModel):
     source: str
 
 
+async def _upsert_track(db: AsyncSession, meta: dict) -> None:
+    """Cache track metadata in the local DB for search fallback."""
+    existing = (await db.execute(
+        select(TrackCache).where(TrackCache.spotify_id == meta["id"])
+    )).scalar_one_or_none()
+    artist_ids_json = json.dumps(meta.get("artist_ids", []))
+    if existing:
+        existing.name = meta["name"]
+        existing.artist = ", ".join(meta.get("artists", []))
+        existing.album_name = meta.get("album_name")
+        existing.album_id = meta.get("album_id")
+        existing.release_date = meta.get("release_date")
+        existing.duration_ms = meta.get("duration_ms")
+        existing.explicit = meta.get("explicit", False)
+        existing.popularity = meta.get("popularity")
+        existing.image_url = meta.get("image_url")
+        existing.external_url = meta.get("external_url")
+        existing.artist_ids_json = artist_ids_json
+    else:
+        db.add(TrackCache(
+            spotify_id=meta["id"],
+            name=meta["name"],
+            artist=", ".join(meta.get("artists", [])),
+            album_name=meta.get("album_name"),
+            album_id=meta.get("album_id"),
+            release_date=meta.get("release_date"),
+            duration_ms=meta.get("duration_ms"),
+            explicit=meta.get("explicit", False),
+            popularity=meta.get("popularity"),
+            image_url=meta.get("image_url"),
+            external_url=meta.get("external_url"),
+            artist_ids_json=artist_ids_json,
+        ))
+    await db.commit()
+
+
 @router.get("/search", response_model=List[TrackResult])
-async def search_tracks(q: str = Query(..., min_length=1)):
+async def search_tracks(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
+    # Try Spotify first; fall through to local DB on any failure or empty result
     try:
         results = await spotify.search_tracks(q)
-        return results or []
     except Exception:
-        return []
+        results = []
+
+    if results:
+        return results
+
+    # Spotify unavailable — search TrackCache
+    pattern = f"%{q}%"
+    rows = (await db.execute(
+        select(TrackCache)
+        .where(TrackCache.name.ilike(pattern) | TrackCache.artist.ilike(pattern))
+        .order_by(TrackCache.popularity.desc().nulls_last())
+        .limit(10)
+    )).scalars().all()
+
+    return [
+        TrackResult(
+            id=row.spotify_id,
+            name=row.name,
+            artists=[a.strip() for a in row.artist.split(",")],
+            artist_ids=json.loads(row.artist_ids_json or "[]"),
+            album_name=row.album_name or "",
+            album_id=row.album_id,
+            release_date=row.release_date or "",
+            duration_ms=row.duration_ms,
+            popularity=row.popularity,
+            explicit=bool(row.explicit),
+            image_url=row.image_url,
+            external_url=row.external_url,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/{track_id}", response_model=TrackResult)
@@ -54,7 +124,9 @@ async def get_track(track_id: str, db: AsyncSession = Depends(get_db)):
         meta = await spotify.get_track(track_id)
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
+    # Cache in album_cache (existing behaviour) and track_cache (for search fallback)
     await cache.upsert_album(db, meta)
+    await _upsert_track(db, meta)
     return meta
 
 
