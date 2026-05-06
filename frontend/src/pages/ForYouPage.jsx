@@ -341,22 +341,32 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
               overflow: "hidden", display: "-webkit-box",
               WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
             }}>
-              <Link to={`/track/${track.id}`} style={{ color: "#fff", textDecoration: "none" }}>
-                {track.name}
-              </Link>
+              {track._source === "deezer" ? (
+                <a href={track.external_url} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none" }}>
+                  {track.name}
+                </a>
+              ) : (
+                <Link to={`/track/${track.id}`} style={{ color: "#fff", textDecoration: "none" }}>
+                  {track.name}
+                </Link>
+              )}
             </h2>
             {track.explicit && (
               <span style={{ fontSize: 9, background: "rgba(255,255,255,0.15)", borderRadius: 3, padding: "2px 5px", color: "rgba(255,255,255,0.5)", fontWeight: 700, flexShrink: 0, marginTop: 2 }}>E</span>
             )}
           </div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            <Link to={`/artist/${track.artist_ids?.[0]}`} style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, textDecoration: "none" }}>
-              {track.artists?.[0]}
-            </Link>
-            {track.album_name && track.album_id && (
+            {track._source === "deezer" ? (
+              <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600 }}>{track.artists?.[0]}</span>
+            ) : (
+              <Link to={`/artist/${track.artist_ids?.[0]}`} style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, textDecoration: "none" }}>
+                {track.artists?.[0]}
+              </Link>
+            )}
+            {track.album_name && (track._source !== "deezer") && track.album_id && (
               <> · <Link to={`/album/${track.album_id}`} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none" }}>{track.album_name}</Link></>
             )}
-            {track.album_name && !track.album_id && ` · ${track.album_name}`}
+            {track.album_name && (track._source === "deezer" || !track.album_id) && ` · ${track.album_name}`}
             {year && ` · ${year}`}
           </div>
         </div>
@@ -687,10 +697,12 @@ function ForYouFeed() {
     const dislikedCount = loadDisliked().length;
     const spotifyOk = debugInfo?.tiers?.spotify_auth?.ok;
     const spotifyErr = debugInfo?.tiers?.spotify_auth?.error;
-    // Check both old and new tier key names across deploys
-    const tier3Ok = (debugInfo?.tiers?.tier3_popular_search ?? debugInfo?.tiers?.tier3_global_top50)?.ok;
-    const tier3Count = (debugInfo?.tiers?.tier3_popular_search ?? debugInfo?.tiers?.tier3_global_top50)?.track_count;
-    const tier3Err = (debugInfo?.tiers?.tier3_popular_search ?? debugInfo?.tiers?.tier3_global_top50)?.error;
+    // Deezer is now the baseline tier; fall back to old Spotify tier keys for in-flight deploys
+    const tier3 = debugInfo?.tiers?.tier3_deezer_popular ?? debugInfo?.tiers?.tier3_popular_search ?? debugInfo?.tiers?.tier3_global_top50;
+    const tier3Ok = tier3?.ok;
+    const tier3Count = tier3?.track_count;
+    const tier3Err = tier3?.error;
+    const deezerOk = tier3?.ok && (tier3?.track_count ?? 0) > 0;
 
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
