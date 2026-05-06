@@ -68,8 +68,12 @@ async def search_artists(query: str, limit: int = 10) -> list[dict]:
             headers={"Authorization": f"Bearer {token}"},
             params={"q": query, "type": "artist", "limit": limit},
         )
+        print(f"[spotify.search_artists] HTTP {resp.status_code} for q={query!r}", flush=True)
+        if resp.status_code != 200:
+            print(f"[spotify.search_artists] non-200 body: {resp.text[:300]}", flush=True)
         resp.raise_for_status()
         items = resp.json()["artists"]["items"]
+        print(f"[spotify.search_artists] {len(items)} artists for q={query!r}", flush=True)
     return [_parse_artist(a) for a in items]
 
 
