@@ -52,6 +52,7 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const debounceRef = useRef(null);
+  const currentQueryRef = useRef(""); // tracks the latest debounced query to discard stale responses
   const wrapperRef = useRef(null);
 
   useEffect(() => {
@@ -66,24 +67,28 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
     const val = e.target.value;
     setQuery(val);
     clearTimeout(debounceRef.current);
-    if (!val.trim()) { setAlbums([]); setTracks([]); setOpen(false); return; }
+    if (!val.trim()) {
+      currentQueryRef.current = "";
+      setAlbums([]); setTracks([]); setOpen(false);
+      return;
+    }
     debounceRef.current = setTimeout(async () => {
+      // Stamp this request so we can discard responses from earlier queries
+      currentQueryRef.current = val;
       setLoading(true);
-      // Keep previous results visible while the new request is in flight —
-      // avoids a blank dropdown flash when the user is mid-correction
       try {
         const [a, t] = await Promise.all([
           api.searchAlbums(val).catch(() => []),
           api.searchTracks(val).catch(() => []),
         ]);
-        // Only update if we got something back; stale results are better than nothing
-        if (a.length > 0 || t.length > 0) {
-          setAlbums(a.slice(0, 8));
-          setTracks(t.slice(0, 5));
-        }
-        setOpen(true);
+        // Only apply if this is still the latest query — drops stale in-flight responses
+        if (currentQueryRef.current !== val) return;
+        setAlbums(a.slice(0, 8));
+        setTracks(t.slice(0, 5));
+        // Close dropdown on empty results so old results never ghost
+        setOpen(a.length > 0 || t.length > 0);
       } finally {
-        setLoading(false);
+        if (currentQueryRef.current === val) setLoading(false);
       }
     }, 300);
   }
