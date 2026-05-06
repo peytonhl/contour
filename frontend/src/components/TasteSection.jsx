@@ -105,7 +105,7 @@ function AlbumSlot({ album, isOwner, onClick, onRemove }) {
       <Link to={`/album/${album.id}`}>
         {album.image_url
           ? <img src={album.image_url} alt={album.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          : <div style={{ width: "100%", height: "100%", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>🎵</div>
+          : <div style={{ width: "100%", height: "100%", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
         }
       </Link>
       {/* Hover overlay: album info + optional remove */}
@@ -288,10 +288,9 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
 
             {/* Search input */}
             <div style={{ position: "relative" }}>
-              <span style={{
-                position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)",
-                fontSize: 15, color: "var(--text-muted)", pointerEvents: "none",
-              }}>🔍</span>
+              <svg style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
               <input
                 ref={inputRef}
                 type="text"
@@ -326,10 +325,12 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
               </div>
             )}
             {!searching && results.length === 0 && query.length < 2 && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "36px 24px", color: "var(--text-muted)" }}>
-                <span style={{ fontSize: 32 }}>🎧</span>
-                <p style={{ margin: 0, fontSize: 13, textAlign: "center" }}>
-                  Search Spotify's full catalog — type an album title or artist name
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "40px 24px", color: "var(--text-muted)" }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <p style={{ margin: 0, fontSize: 13, textAlign: "center", lineHeight: 1.5, maxWidth: 260 }}>
+                  Search Spotify's full catalog by album title or artist name
                 </p>
               </div>
             )}
