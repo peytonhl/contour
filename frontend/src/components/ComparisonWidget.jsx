@@ -29,9 +29,14 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null, p
   const [enriching, setEnriching] = useState(false);
 
   const pollRef = useRef(null);
+  const autoRunRef = useRef(false); // prevent double-firing auto-run
 
   // Fetch and pre-fill slots from URL query param IDs (from leaderboard Compare button or suggested matchups)
   useEffect(() => {
+    // Reset auto-run gate whenever the preloaded pair changes
+    autoRunRef.current = false;
+    setComparison(null);
+    setSavedId(null);
     if (!preloadedAlbumAId) return;
     api.getAlbum(preloadedAlbumAId).then((meta) => {
       if (meta) { setSelectionA({ ...meta, _type: "album" }); setEditionsA([meta.id]); }
@@ -52,6 +57,23 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null, p
   useEffect(() => {
     if (initialAlbumB) { setSelectionB(tagAlbum(initialAlbumB)); setEditionsB([initialAlbumB.id]); }
   }, [initialAlbumB?.id]);
+
+  // Auto-run comparison when both slots are filled from URL params
+  useEffect(() => {
+    if (!preloadedAlbumAId || !preloadedAlbumBId) return; // only auto-run for full preloads
+    if (!selectionA || !selectionB) return;               // wait until both loaded
+    if (autoRunRef.current) return;                       // don't re-run on subsequent changes
+    autoRunRef.current = true;
+    setLoading(true);
+    setError(null);
+    api.compare(selectionA.id, selectionB.id, {
+      editionIdsA: [selectionA.id],
+      editionIdsB: [selectionB.id],
+    })
+      .then(setComparison)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [selectionA?.id, selectionB?.id]);
 
   // Reset editions when selection changes type or identity
   function handleSelectA(item) {

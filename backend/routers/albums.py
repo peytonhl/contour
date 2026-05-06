@@ -53,17 +53,23 @@ class EditionResult(BaseModel):
 
 @router.get("/search", response_model=List[AlbumResult])
 async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
-    results = await spotify.search_albums(q)
+    # Try Spotify first; fall through to DB on any failure or empty result
+    try:
+        results = await spotify.search_albums(q)
+    except Exception:
+        results = []
+
     if results:
         return results
 
-    # Spotify returned nothing (rate-limited or restricted) — fall back to local DB
+    # Spotify returned nothing (rate-limited, restricted, or error) — fall back to local DB
     pattern = f"%{q}%"
     rows = (await db.execute(
         select(AlbumCacheModel)
         .where(
             AlbumCacheModel.name.ilike(pattern) | AlbumCacheModel.artist.ilike(pattern)
         )
+        .order_by(AlbumCacheModel.popularity.desc().nulls_last())
         .limit(10)
     )).scalars().all()
 

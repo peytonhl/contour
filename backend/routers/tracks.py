@@ -41,8 +41,11 @@ class TrackStreamStatus(BaseModel):
 
 @router.get("/search", response_model=List[TrackResult])
 async def search_tracks(q: str = Query(..., min_length=1)):
-    results = await spotify.search_tracks(q)
-    return results or []
+    try:
+        results = await spotify.search_tracks(q)
+        return results or []
+    except Exception:
+        return []
 
 
 @router.get("/{track_id}", response_model=TrackResult)

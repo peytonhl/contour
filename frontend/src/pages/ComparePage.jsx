@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { ComparisonWidget } from "../components/ComparisonWidget.jsx";
 
 const ACCENT_A = "#a78bfa";
@@ -47,9 +47,9 @@ export function ComparePage() {
           </span>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {SUGGESTED.map((s) => (
-              <a
+              <Link
                 key={s.label}
-                href={`/compare?album_a_id=${s.a}&album_b_id=${s.b}`}
+                to={`/compare?album_a_id=${s.a}&album_b_id=${s.b}`}
                 style={{
                   fontSize: 13, fontWeight: 600, padding: "7px 16px",
                   borderRadius: 20, textDecoration: "none",
@@ -68,7 +68,7 @@ export function ComparePage() {
                 }}
               >
                 {s.label}
-              </a>
+              </Link>
             ))}
           </div>
         </div>
