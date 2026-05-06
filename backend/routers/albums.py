@@ -53,27 +53,29 @@ class EditionResult(BaseModel):
 
 @router.get("/search", response_model=List[AlbumResult])
 async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
-    # Try Spotify first; fall through to DB on any failure or empty result
-    try:
-        results = await spotify.search_albums(q)
-    except Exception:
-        results = []
+    # Run Spotify search and DB search concurrently
+    async def spotify_search():
+        try:
+            return await spotify.search_albums(q)
+        except Exception:
+            return []
 
-    if results:
-        return results
+    async def db_search():
+        pattern = f"%{q}%"
+        rows = (await db.execute(
+            select(AlbumCacheModel)
+            .where(AlbumCacheModel.name.ilike(pattern) | AlbumCacheModel.artist.ilike(pattern))
+            .order_by(AlbumCacheModel.popularity.desc().nulls_last())
+            .limit(10)
+        )).scalars().all()
+        return rows
 
-    # Spotify returned nothing (rate-limited, restricted, or error) — fall back to local DB
-    pattern = f"%{q}%"
-    rows = (await db.execute(
-        select(AlbumCacheModel)
-        .where(
-            AlbumCacheModel.name.ilike(pattern) | AlbumCacheModel.artist.ilike(pattern)
-        )
-        .order_by(AlbumCacheModel.popularity.desc().nulls_last())
-        .limit(10)
-    )).scalars().all()
+    import asyncio
+    spotify_results, db_rows = await asyncio.gather(spotify_search(), db_search())
 
-    return [
+    # Merge: Spotify results first (richer metadata), then DB-only albums not already in results
+    seen_ids = {r["id"] for r in spotify_results}
+    db_extras = [
         AlbumResult(
             id=row.spotify_id,
             name=row.name,
@@ -86,8 +88,11 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
             image_url=row.image_url,
             external_url=f"https://open.spotify.com/album/{row.spotify_id}",
         )
-        for row in rows
+        for row in db_rows
+        if row.spotify_id not in seen_ids
     ]
+
+    return (spotify_results + db_extras)[:10]
 
 
 # ---------------------------------------------------------------------------
