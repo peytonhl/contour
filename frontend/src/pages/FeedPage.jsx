@@ -26,13 +26,16 @@ function timeAgo(iso) {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-function Stars({ value }) {
+function RatingBadge({ value }) {
+  const high = value >= 4;
+  const mid = value >= 3;
   return (
-    <span style={{ display: "inline-flex", gap: 1 }}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <span key={n} style={{ fontSize: 12, color: value >= n - 0.5 ? GOLD : "var(--border)", opacity: value >= n - 0.5 ? 1 : 0.3 }}>★</span>
-      ))}
-    </span>
+    <div style={{
+      padding: "3px 9px", borderRadius: 4, fontSize: 12, fontWeight: 700, flexShrink: 0,
+      background: high ? `${GOLD}18` : mid ? `${GOLD}0a` : "var(--surface2)",
+      border: `1px solid ${high ? `${GOLD}50` : "var(--border)"}`,
+      color: high ? GOLD : mid ? `${GOLD}99` : "var(--text-muted)",
+    }}>{value}★</div>
   );
 }
 
@@ -84,7 +87,7 @@ function DiscoverCard({ item, user, onVote }) {
           }
         </Link>
         <Link to={`/user/${item.user?.id}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>{item.user?.display_name}</Link>
-        {item.rating && <Stars value={item.rating} />}
+        {item.rating && <RatingBadge value={item.rating} />}
         <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>{timeAgo(item.created_at)}</span>
       </div>
 
@@ -94,14 +97,16 @@ function DiscoverCard({ item, user, onVote }) {
       </p>
 
       {/* Votes + share */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <button onClick={() => user && onVote(item.id, 1)} disabled={!user}
-          style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 0, fontSize: 13, cursor: user ? "pointer" : "default", color: item.user_vote === 1 ? ACCENT_A : "var(--text-muted)", fontWeight: item.user_vote === 1 ? 700 : 400 }}>
-          ▲ {item.upvotes > 0 ? item.upvotes : ""}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: "2px 4px", fontSize: 12, cursor: user ? "pointer" : "default", color: item.user_vote === 1 ? ACCENT_A : "var(--text-muted)", fontWeight: item.user_vote === 1 ? 700 : 400 }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill={item.user_vote === 1 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+          {item.upvotes > 0 ? item.upvotes : ""}
         </button>
         <button onClick={() => user && onVote(item.id, -1)} disabled={!user}
-          style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: 0, fontSize: 13, cursor: user ? "pointer" : "default", color: item.user_vote === -1 ? DANGER : "var(--text-muted)", fontWeight: item.user_vote === -1 ? 700 : 400 }}>
-          ▼ {item.downvotes > 0 ? item.downvotes : ""}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: "2px 4px", fontSize: 12, cursor: user ? "pointer" : "default", color: item.user_vote === -1 ? DANGER : "var(--text-muted)", fontWeight: item.user_vote === -1 ? 700 : 400 }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill={item.user_vote === -1 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          {item.downvotes > 0 ? item.downvotes : ""}
         </button>
         {item.replies_count > 0 && (
           <Link to={entityPath} style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none" }}>
@@ -238,18 +243,20 @@ export function FollowingTab() {
   return (
     <div style={{ maxWidth: 600, margin: "0 auto", padding: "0 20px", overflowY: "auto", height: "100%" }}>
       {!user && (
-        <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 32 }}>🔒</div>
-          <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Sign in to see your feed</p>
-          <p style={{ fontSize: 13 }}>Follow other users to see their activity here.</p>
+        <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }}>
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", margin: 0 }}>Sign in to see your feed</p>
+          <p style={{ fontSize: 13, margin: 0 }}>Follow other users to see their activity here.</p>
         </div>
       )}
       {user && loadingFollowing && <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>}
       {user && !loadingFollowing && following.length === 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "24px 0" }}>
-          <div style={{ textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
             <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", margin: 0 }}>Nothing here yet</p>
-            <p style={{ fontSize: 13, margin: 0 }}>Follow people to see their activity in your feed.</p>
+            <p style={{ fontSize: 13, margin: 0 }}>Follow people to see their ratings and reviews here.</p>
           </div>
           {suggested.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -296,23 +303,27 @@ export function FeedPage() {
     });
   }
 
-  const tabStyle = (active) => ({
-    padding: "10px 20px", fontSize: 14, fontWeight: active ? 700 : 400,
-    background: "none", border: "none", cursor: "pointer",
-    borderBottom: active ? `2px solid ${ACCENT_A}` : "2px solid transparent",
-    color: active ? "var(--text)" : "var(--text-muted)",
-    marginBottom: -1,
-  });
-
   return (
     <div style={{ maxWidth: 600, margin: "0 auto", padding: "24px 20px" }}>
 
       {/* Tabs */}
-      <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: 0 }}>
-        <button style={tabStyle(tab === "discover")} onClick={() => setTab("discover")}>Discover</button>
-        <button style={tabStyle(tab === "following")} onClick={() => setTab("following")}>
-          Following {!user && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>(sign in)</span>}
-        </button>
+      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+        {[
+          { key: "discover", label: "Discover" },
+          { key: "following", label: user ? "Following" : "Following (sign in)" },
+        ].map(({ key, label }) => {
+          const active = tab === key;
+          return (
+            <button key={key} onClick={() => setTab(key)} style={{
+              padding: "7px 16px", fontSize: 13, fontWeight: active ? 700 : 500,
+              borderRadius: 6, border: "none", cursor: "pointer", whiteSpace: "nowrap",
+              background: active ? "var(--surface2)" : "transparent",
+              color: active ? "var(--text)" : "var(--text-muted)",
+              outline: active ? "1px solid var(--border)" : "none",
+              transition: "color 0.12s, background 0.12s",
+            }}>{label}</button>
+          );
+        })}
       </div>
 
       {/* Discover tab */}
@@ -336,9 +347,12 @@ export function FeedPage() {
 
           {loadingDiscover && <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>}
           {!loadingDiscover && discover.length === 0 && (
-            <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60 }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>✍️</div>
-              <p>No reviews yet. Be the first to write one!</p>
+            <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60, display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }}>
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              <p style={{ margin: 0, fontSize: 14 }}>No reviews yet — be the first to write one.</p>
             </div>
           )}
           {!loadingDiscover && discover.map((item) => (

@@ -14,7 +14,8 @@ const CLASSIFICATION_STYLES = {
   acclaimed:  { label: "Acclaimed",  bg: "#f59e0b18", border: "#f59e0b40", color: "#f59e0b" },
 };
 
-const DECADES = ["all", "2020s", "2010s", "2000s", "1990s", "1980s"];
+// Only streaming-era decades are included — pre-2010 albums lack Kworb data
+const DECADES = ["all", "2020s", "2010s"];
 
 function formatStreams(n) {
   if (!n && n !== 0) return "—";
