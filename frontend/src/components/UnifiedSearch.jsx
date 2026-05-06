@@ -69,13 +69,18 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
     if (!val.trim()) { setAlbums([]); setTracks([]); setOpen(false); return; }
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
+      // Keep previous results visible while the new request is in flight —
+      // avoids a blank dropdown flash when the user is mid-correction
       try {
         const [a, t] = await Promise.all([
           api.searchAlbums(val).catch(() => []),
           api.searchTracks(val).catch(() => []),
         ]);
-        setAlbums(a.slice(0, 8));
-        setTracks(t.slice(0, 5));
+        // Only update if we got something back; stale results are better than nothing
+        if (a.length > 0 || t.length > 0) {
+          setAlbums(a.slice(0, 8));
+          setTracks(t.slice(0, 5));
+        }
         setOpen(true);
       } finally {
         setLoading(false);
