@@ -78,9 +78,9 @@ _ARTIST_IDS: dict[str, str] = {
     "troye sivan": "3sSl11j0lmTd3G7cUcMECR",
     "camila cabello": "4nDoRrQiYLoBzwC5BhVJzF",
     # Pop rock / alternative / emo
-    "5 seconds of summer": "5Rl15oVamLq7FbSX0XiRYa",
-    "5sos": "5Rl15oVamLq7FbSX0XiRYa",
-    "five seconds of summer": "5Rl15oVamLq7FbSX0XiRYa",
+    "5 seconds of summer": "5Rl15oVamLq7FbSb0NNBNy",
+    "5sos": "5Rl15oVamLq7FbSb0NNBNy",
+    "five seconds of summer": "5Rl15oVamLq7FbSb0NNBNy",
     "imagine dragons": "53XhwfbYqKCa1cC15pYq2q",
     "twenty one pilots": "3YQKmKGau1PzlVlkL1iAx3",
     "21 pilots": "3YQKmKGau1PzlVlkL1iAx3",
