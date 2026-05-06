@@ -58,6 +58,18 @@ _DEEZER_FALLBACK_QUERIES = [
 ]
 
 
+def _is_likely_english(text: str) -> bool:
+    """
+    Return True if the text looks like it's primarily Latin/English.
+    Filters out Cyrillic, CJK, Arabic, etc. while allowing French/Spanish
+    accented chars (which are ≤30 % of most Western-language titles).
+    """
+    if not text:
+        return True
+    non_ascii = sum(1 for c in text if ord(c) > 127)
+    return (non_ascii / len(text)) < 0.3
+
+
 @router.get("/feed")
 @limiter.limit("60/minute")
 async def get_discover_feed(
@@ -65,6 +77,7 @@ async def get_discover_feed(
     genres: Optional[str] = Query(None, description="Comma-separated genre slugs from client prefs"),
     liked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs rated 4–5 stars"),
     disliked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs the user has marked 'not interested'"),
+    english_only: bool = Query(True, description="Filter to tracks with Latin/English titles and artist names"),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
@@ -119,6 +132,11 @@ async def get_discover_feed(
     def _add(batch: list[dict]) -> None:
         for t in batch:
             artist_id = (t.get("artist_ids") or [None])[0]
+            if english_only:
+                title_ok = _is_likely_english(t.get("name", ""))
+                artist_ok = _is_likely_english((t.get("artists") or [""])[0])
+                if not (title_ok and artist_ok):
+                    continue
             if (
                 t.get("id")
                 and t["id"] not in exclude_ids
