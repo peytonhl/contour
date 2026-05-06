@@ -192,7 +192,8 @@ export function ProfilePage() {
 
   async function handleSavePhoto() {
     const url = photoInput.trim();
-    if (url && !url.startsWith("http://") && !url.startsWith("https://")) {
+    // Allow data URLs (from file upload) or https URLs or empty (reset to Google)
+    if (url && !url.startsWith("https://") && !url.startsWith("http://") && !url.startsWith("data:")) {
       setPhotoError("URL must start with https://");
       return;
     }
@@ -207,6 +208,35 @@ export function ProfilePage() {
     } finally {
       setSavingPhoto(false);
     }
+  }
+
+  function handleFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setPhotoError("Please select an image file.");
+      return;
+    }
+    setPhotoError("");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        // Resize to max 256×256 to keep DB storage reasonable
+        const MAX = 256;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setPhotoInput(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    // Reset the input so the same file can be re-selected
+    e.target.value = "";
   }
 
   async function handleCreateList() {
@@ -376,14 +406,50 @@ export function ProfilePage() {
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
           onClick={(e) => e.target === e.currentTarget && setEditingPhoto(false)}
         >
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "26px 24px", width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "26px 24px", width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", gap: 16 }}>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Change profile photo</h3>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
-              Paste a direct image URL ending in .jpg or .png. Leave blank to use your Google photo.
-            </p>
+
+            {/* Preview */}
+            {photoInput.trim() && (
+              <img
+                src={photoInput.trim()}
+                alt="Preview"
+                onError={(e) => { e.currentTarget.style.display = "none"; setPhotoError("Could not load that URL."); }}
+                style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", alignSelf: "center", border: "3px solid var(--border)" }}
+              />
+            )}
+
+            {/* Upload from device */}
+            <label style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "10px 16px", borderRadius: 8, border: "1px dashed var(--border)",
+              cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--text-muted)",
+              transition: "border-color 0.15s",
+            }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Upload from device
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleFileUpload}
+              />
+            </label>
+
+            {/* Divider */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>or paste a URL</span>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            </div>
+
+            {/* URL input */}
             <input
-              autoFocus
-              value={photoInput}
+              value={photoInput.startsWith("data:") ? "" : photoInput}
               onChange={(e) => { setPhotoInput(e.target.value); setPhotoError(""); }}
               placeholder="https://i.imgur.com/…"
               style={{
@@ -393,15 +459,12 @@ export function ProfilePage() {
                 fontFamily: "inherit",
               }}
             />
+            <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>
+              Leave blank to reset to your Google photo.
+            </p>
+
             {photoError && <p style={{ margin: 0, fontSize: 12, color: "#f87171" }}>{photoError}</p>}
-            {photoInput.trim() && (
-              <img
-                src={photoInput.trim()}
-                alt="Preview"
-                onError={(e) => { e.currentTarget.style.display = "none"; setPhotoError("Could not load that URL."); }}
-                style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", alignSelf: "center", border: "2px solid var(--border)" }}
-              />
-            )}
+
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={handleSavePhoto} disabled={savingPhoto}
@@ -410,7 +473,7 @@ export function ProfilePage() {
                 {savingPhoto ? "Saving…" : "Save"}
               </button>
               <button
-                onClick={() => setEditingPhoto(false)}
+                onClick={() => { setEditingPhoto(false); setPhotoInput(""); setPhotoError(""); }}
                 style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}
               >
                 Cancel

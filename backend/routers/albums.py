@@ -4,11 +4,13 @@ from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import date
 
 from database import get_db
+from models import AlbumCache as AlbumCacheModel
 from services import kworb, spotify
 from services import album_cache as cache
 from services import stream_anchors as anchors_svc
@@ -50,9 +52,36 @@ class EditionResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/search", response_model=List[AlbumResult])
-async def search_albums(q: str = Query(..., min_length=1)):
+async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
     results = await spotify.search_albums(q)
-    return results or []
+    if results:
+        return results
+
+    # Spotify returned nothing (rate-limited or restricted) — fall back to local DB
+    pattern = f"%{q}%"
+    rows = (await db.execute(
+        select(AlbumCacheModel)
+        .where(
+            AlbumCacheModel.name.ilike(pattern) | AlbumCacheModel.artist.ilike(pattern)
+        )
+        .limit(10)
+    )).scalars().all()
+
+    return [
+        AlbumResult(
+            id=row.spotify_id,
+            name=row.name,
+            artists=[a.strip() for a in row.artist.split(",")],
+            artist_ids=[],
+            release_date=row.release_date or "",
+            release_date_precision=row.release_date_precision or "year",
+            label=row.label,
+            popularity=row.popularity,
+            image_url=row.image_url,
+            external_url=f"https://open.spotify.com/album/{row.spotify_id}",
+        )
+        for row in rows
+    ]
 
 
 # ---------------------------------------------------------------------------

@@ -403,7 +403,10 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
               onMouseDown={(e) => { e.currentTarget.style.transform = "scale(0.92)"; }}
               onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
             >
-              {playing ? "⏸" : "▶"}
+              {playing
+                ? <svg width="16" height="16" viewBox="0 0 24 24" fill="#000" stroke="none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                : <svg width="16" height="16" viewBox="0 0 24 24" fill="#000" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>
+              }
             </button>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
               <AudioBar progress={progress} />
@@ -445,10 +448,11 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
                 style={{
                   alignSelf: "flex-start", fontSize: 12, color: "rgba(255,255,255,0.45)",
                   background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 20, padding: "5px 14px", cursor: "pointer",
+                  borderRadius: 6, padding: "5px 14px", cursor: "pointer",
+                  letterSpacing: "0.01em",
                 }}
               >
-                ✎ Write a review
+                Write a review
               </button>
             )}
             {submitted && (
@@ -500,21 +504,21 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
             style={{
               fontSize: 11, color: "rgba(255,255,255,0.3)",
               background: "none", border: "none", cursor: "pointer",
-              padding: "4px 10px", borderRadius: 20,
-              transition: "color 0.15s",
+              padding: "4px 10px", borderRadius: 6,
+              transition: "color 0.15s", letterSpacing: "0.01em",
             }}
-            onMouseEnter={(e) => e.currentTarget.style.color = "rgba(255,255,255,0.6)"}
+            onMouseEnter={(e) => e.currentTarget.style.color = "rgba(255,255,255,0.55)"}
             onMouseLeave={(e) => e.currentTarget.style.color = "rgba(255,255,255,0.3)"}
           >
-            ✕ Not interested in {track.artists?.[0]}
+            Not interested in {track.artists?.[0]}
           </button>
         </div>
 
         {/* Swipe hint — shown on first card only */}
         {cardIndex === 0 && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4, opacity: 0.3 }}>
-            <span style={{ fontSize: 11, color: "#fff" }}>Swipe up for next</span>
-            <span style={{ fontSize: 13 }}>↑</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 4, opacity: 0.28 }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            <span style={{ fontSize: 11, color: "#fff", letterSpacing: "0.03em" }}>Swipe up for next</span>
           </div>
         )}
       </div>
