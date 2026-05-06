@@ -94,14 +94,36 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
 # Single album metadata + cache upsert
 # ---------------------------------------------------------------------------
 
+def _row_to_album_result(row: AlbumCacheModel) -> AlbumResult:
+    return AlbumResult(
+        id=row.spotify_id,
+        name=row.name,
+        artists=[a.strip() for a in row.artist.split(",")],
+        artist_ids=[],
+        release_date=row.release_date or "",
+        release_date_precision=row.release_date_precision or "year",
+        label=row.label,
+        popularity=row.popularity,
+        image_url=row.image_url,
+        external_url=f"https://open.spotify.com/album/{row.spotify_id}",
+    )
+
+
 @router.get("/{album_id}", response_model=AlbumResult)
 async def get_album(album_id: str, db: AsyncSession = Depends(get_db)):
+    # Check local cache first — avoids a Spotify round-trip and works when rate-limited
+    cached = (await db.execute(
+        select(AlbumCacheModel).where(AlbumCacheModel.spotify_id == album_id)
+    )).scalar_one_or_none()
+
     try:
         meta = await spotify.get_album(album_id)
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    await cache.upsert_album(db, meta)
-    return meta
+        await cache.upsert_album(db, meta)
+        return meta
+    except Exception:
+        if cached:
+            return _row_to_album_result(cached)
+        raise HTTPException(status_code=404, detail=f"Album {album_id} not found")
 
 
 # ---------------------------------------------------------------------------
