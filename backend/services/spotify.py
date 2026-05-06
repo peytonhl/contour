@@ -111,7 +111,7 @@ async def get_album_tracks(album_id: str) -> list[dict]:
     ]
 
 
-async def search_tracks(query: str, limit: int = 10) -> list[dict]:
+async def search_tracks(query: str, limit: int = 20) -> list[dict]:
     """Search Spotify for tracks matching the query string."""
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
@@ -122,7 +122,7 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
         )
         resp.raise_for_status()
         items = resp.json().get("tracks", {}).get("items", [])
-    return [_parse_track(t) for t in items]
+    return [_parse_track(t) for t in items if t and t.get("id")]
 
 
 async def get_track(track_id: str) -> dict:
@@ -137,19 +137,19 @@ async def get_track(track_id: str) -> dict:
         return _parse_track(resp.json())
 
 
-async def search_albums(query: str, limit: int = 10) -> list[dict]:
+async def search_albums(query: str, limit: int = 20) -> list[dict]:
     """Search Spotify for albums matching the query string."""
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
             "https://api.spotify.com/v1/search",
             headers={"Authorization": f"Bearer {token}"},
-            params={"q": query, "type": "album", "limit": limit},
+            params={"q": query, "type": "album", "limit": limit, "market": "US"},
         )
         resp.raise_for_status()
-        items = resp.json()["albums"]["items"]
+        items = resp.json().get("albums", {}).get("items", [])
 
-    return [_parse_album(a) for a in items]
+    return [_parse_album(a) for a in items if a and a.get("id")]
 
 
 async def get_album(album_id: str) -> dict:
