@@ -219,23 +219,66 @@ async def _seed_leaderboard() -> None:
             logger.info("Seed phase1: complete — %d/%d with play data", seeded, len(album_ids))
 
         # ── Phase 2: curated catalog ──────────────────────────────────────
-        # 0.4 s between searches keeps us under Spotify's rate limit.
-        # Already-fresh albums are skipped, so daily refreshes are fast.
-        logger.info("Seed phase2: searching catalog (%d entries)…", len(_CATALOG))
-        catalog_ids: list[str] = []
+        # Uses /artists/{id}/albums (no Extended Access required) instead of
+        # /search (blocked + causes 429s that break user searches).
+        # Group by artist so we make one API call per artist, not per album.
+        _CATALOG_ARTIST_IDS: dict[str, str] = {
+            "Ed Sheeran": "6eUKZXaKkcviH0Ku9w2n3V",
+            "The Weeknd": "1Xyo4u8uXC1ZmMpatF05PJ",
+            "Taylor Swift": "06HL4z0CvFAxyc27GXpf02",
+            "Billie Eilish": "6qqNVTkY8uBg9cP3Jd7DAH",
+            "Dua Lipa": "6M2wZ9GZgrQXHCFfjv46we",
+            "Harry Styles": "6KImCVD70vtIoJWnq6nGn3",
+            "Olivia Rodrigo": "1McMsnEElThX1knmY4oliG",
+            "Ariana Grande": "66CXWjxzNUsdJxJ2JdwvnR",
+            "Drake": "3TVXtAsR1Inumwj472S9r4",
+            "Kendrick Lamar": "2YZyLoL8N0Wb9xBt1NhZWg",
+            "Post Malone": "246dkjvS1zLTtiykXe5h60",
+            "Bad Bunny": "4q3ewBCX7sLwd24euuV69X",
+            "Justin Bieber": "1uNFoZAHBGtllmzznpCI3s",
+            "Adele": "4dpARuHxo51G3z768sgnrY",
+            "Beyoncé": "6vWDO969PvNqNYHIOW5v0m",
+            "Eminem": "7dGJo4pcD2V6oG8kP0tJRR",
+            "Coldplay": "4gzpq5DPGxSnKTe4SA8HAU",
+            "Michael Jackson": "3fMbdgg4jU18AjLCKBhRSm",
+            "The Beatles": "3WrFJ7ztbogyGnTHbHJFl2",
+            "Rihanna": "5pKCCKE2ajJHZ9KAiaK11H",
+            "Bruno Mars": "0du5cEVh5yTK9QJze8zA0C",
+            "Lana Del Rey": "00FQb4jTyendYWaN8pK0wa",
+            "SZA": "7tYKF4w9nC0nq9CsPZTHyP",
+            "Frank Ocean": "2h93pZq0e7k5yf4dywlkpM",
+            "Kanye West": "5K4W6rqBFWDnAN6FQUkS6x",
+            "Tyler, the Creator": "4V8LLVI7d68svsXW0y8y9L",
+        }
+
+        # Group catalog entries by artist to minimise API calls
+        from collections import defaultdict
+        by_artist: dict[str, list[str]] = defaultdict(list)
         for artist_name, album_title in _CATALOG:
+            by_artist[artist_name].append(album_title)
+
+        logger.info("Seed phase2: fetching discographies for %d artists…", len(by_artist))
+        catalog_ids: list[str] = []
+        for artist_name, titles in by_artist.items():
+            artist_id = _CATALOG_ARTIST_IDS.get(artist_name)
+            if not artist_id:
+                logger.warning("Seed phase2: no artist ID for %r — skipping", artist_name)
+                continue
             try:
-                results = await spotify.search_albums(f"{album_title} {artist_name}", limit=3)
-                target = album_title.lower()
-                match = next(
-                    (r for r in results if r.get("name", "").lower() == target),
-                    results[0] if results else None,
-                )
-                if match and match.get("id") and match["id"] not in catalog_ids:
-                    catalog_ids.append(match["id"])
+                albums = await spotify.get_artist_albums_limited(artist_id, limit=50)
+                for title in titles:
+                    target = title.lower()
+                    match = next(
+                        (a for a in albums if a.get("name", "").lower() == target), None
+                    )
+                    if match and match.get("id") and match["id"] not in catalog_ids:
+                        catalog_ids.append(match["id"])
+                        logger.info("Seed phase2: matched %s / %s → %s", artist_name, title, match["id"])
+                    else:
+                        logger.info("Seed phase2: no exact match for %s / %s", artist_name, title)
             except Exception as exc:
-                logger.debug("Seed phase2: search failed %s/%s — %s", artist_name, album_title, exc)
-            await asyncio.sleep(0.4)
+                logger.warning("Seed phase2: discography failed for %s — %s", artist_name, exc)
+            await asyncio.sleep(0.5)
 
         logger.info("Seed phase2: %d catalog album IDs found", len(catalog_ids))
         if catalog_ids:
