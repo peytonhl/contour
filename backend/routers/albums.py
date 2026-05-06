@@ -232,7 +232,7 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
             return []
         print(f"[search_albums] artist_id={artist_id} for q={q!r}", flush=True)
         try:
-            results = await spotify.get_artist_albums(artist_id, limit=10)
+            results = await spotify.get_artist_albums_limited(artist_id, limit=10)
             print(f"[search_albums] artist discography: {len(results)} results for q={q!r}", flush=True)
             return results
         except Exception as exc:

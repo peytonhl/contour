@@ -159,8 +159,8 @@ async def search_albums(query: str, limit: int = 10) -> list[dict]:
     return [_parse_album(a) for a in items if a and a.get("id")]
 
 
-async def get_artist_albums(artist_id: str, limit: int = 10) -> list[dict]:
-    """Fetch an artist's albums by Spotify artist ID.
+async def get_artist_albums_limited(artist_id: str, limit: int = 10) -> list[dict]:
+    """Fetch up to `limit` albums for an artist by Spotify artist ID.
     Uses /artists/{id}/albums which works without Extended Access — unlike /search."""
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
