@@ -7,11 +7,11 @@ const ACCENT_B = "#34d399";
 // Curated matchups that are interesting era-adjusted
 // IDs are Spotify album IDs for albums in the seeded catalog
 const SUGGESTED = [
-  { label: "folklore vs. Midnights", a: "2fenSS68JI1h4Fo1HkVPNi", b: "151w1FgRZfnKZA9FEcg9Z3" },
-  { label: "After Hours vs. Starboy", a: "2jX1778bE1RXvVSIbA5ySh", b: "2ODvWsOgouMbaA5xf0RkJe" },
-  { label: "DAMN. vs. good kid m.A.A.d city", a: "4eLPsYPBmXABThSJ821sqY", b: "3scAn2BRULWR9GxMEkQ40S" },
-  { label: "÷ vs. x (Ed Sheeran)", a: "1HNkqx9Ahdgi1Ixy2xkKkZ", b: "0QaYcvrXxP0bkJXhAzGKuq" },
-  { label: "SOS vs. CTRL (SZA)", a: "6KEstFm8vBIHHWiJ9fgPJg", b: "5fy0X0JmZRZnVa2UEicIOc" },
+  { label: "folklore vs. Midnights", artist: "Taylor Swift", a: "2fenSS68JI1h4Fo1HkVPNi", b: "151w1FgRZfnKZA9FEcg9Z3" },
+  { label: "After Hours vs. Starboy", artist: "The Weeknd", a: "2jX1778bE1RXvVSIbA5ySh", b: "2ODvWsOgouMbaA5xf0RkJe" },
+  { label: "DAMN. vs. good kid m.A.A.d city", artist: "Kendrick Lamar", a: "4eLPsYPBmXABThSJ821sqY", b: "3scAn2BRULWR9GxMEkQ40S" },
+  { label: "÷ vs. x", artist: "Ed Sheeran", a: "1HNkqx9Ahdgi1Ixy2xkKkZ", b: "0QaYcvrXxP0bkJXhAzGKuq" },
+  { label: "SOS vs. CTRL", artist: "SZA", a: "6KEstFm8vBIHHWiJ9fgPJg", b: "5fy0X0JmZRZnVa2UEicIOc" },
 ];
 
 export function ComparePage() {
@@ -67,7 +67,7 @@ export function ComparePage() {
                   e.currentTarget.style.color = "var(--text)";
                 }}
               >
-                {s.label}
+                {s.label} <span style={{ opacity: 0.6, fontWeight: 500 }}>({s.artist})</span>
               </Link>
             ))}
           </div>

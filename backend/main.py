@@ -57,6 +57,46 @@ app.include_router(lists.router)
 app.include_router(taste.router)
 
 
+# Exact Spotify IDs used on the Compare page "Try these" section.
+# Seeded by ID (not name search) so the cache-first get_album always hits.
+_COMPARE_PAGE_ALBUMS: list[tuple[str, str]] = [
+    ("2fenSS68JI1h4Fo1HkVPNi", "folklore — Taylor Swift"),
+    ("151w1FgRZfnKZA9FEcg9Z3", "Midnights — Taylor Swift"),
+    ("2jX1778bE1RXvVSIbA5ySh", "After Hours — The Weeknd"),
+    ("2ODvWsOgouMbaA5xf0RkJe", "Starboy — The Weeknd"),
+    ("4eLPsYPBmXABThSJ821sqY", "DAMN. — Kendrick Lamar"),
+    ("3scAn2BRULWR9GxMEkQ40S", "good kid m.A.A.d city — Kendrick Lamar"),
+    ("1HNkqx9Ahdgi1Ixy2xkKkZ", "÷ — Ed Sheeran"),
+    ("0QaYcvrXxP0bkJXhAzGKuq", "x — Ed Sheeran"),
+    ("6KEstFm8vBIHHWiJ9fgPJg", "SOS — SZA"),
+    ("5fy0X0JmZRZnVa2UEicIOc", "CTRL — SZA"),
+]
+
+
+async def _seed_compare_page_albums() -> None:
+    """Cache the exact Compare page preset albums by Spotify ID at startup.
+
+    The leaderboard seeder finds albums by name search, which can resolve to a
+    different edition/ID than what's hardcoded in the frontend SUGGESTED list.
+    This function fetches the exact IDs so cache-first get_album always hits.
+    """
+    from services import spotify
+    from services import album_cache as cache
+
+    for spotify_id, label in _COMPARE_PAGE_ALBUMS:
+        try:
+            async with AsyncSessionLocal() as db:
+                existing = await cache.get_cached_album(db, spotify_id)
+                if existing and existing.image_url:
+                    continue  # already cached with full metadata
+                meta = await spotify.get_album(spotify_id)
+                await cache.upsert_album(db, meta)
+                logger.info("Compare seed: cached %s", label)
+        except Exception as exc:
+            logger.debug("Compare seed: failed %s — %s", label, exc)
+        await asyncio.sleep(0.25)
+
+
 # Curated catalog — used by both the startup seeder and the /leaderboard/seed-catalog endpoint.
 # Artist/album name pairs that Last.fm reliably has play counts for.
 _CATALOG: list[tuple[str, str]] = [
@@ -233,6 +273,10 @@ async def startup():
     # SQLAlchemy create_all is idempotent — it only creates tables that are
     # missing; it never drops or alters existing ones.
     await init_db()
+
+    # Pre-cache the exact Compare page preset albums by Spotify ID.
+    # Runs immediately so get_album can serve them from DB before any user hits the page.
+    asyncio.create_task(_seed_compare_page_albums())
 
     # Seed the leaderboard in the background so startup doesn't block.
     # The task self-skips albums that are already enriched and fresh.
