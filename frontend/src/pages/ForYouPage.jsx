@@ -13,6 +13,17 @@ const GOLD = "#f59e0b";
 const GENRES_KEY = "contour_genres_v1";
 const HISTORY_KEY = "contour_history_v1";
 const DISLIKED_KEY = "contour_disliked_v1";
+const ENGLISH_ONLY_KEY = "contour_english_only_v1";
+
+function loadEnglishOnly() {
+  try {
+    const v = localStorage.getItem(ENGLISH_ONLY_KEY);
+    return v === null ? true : v === "true"; // default ON
+  } catch { return true; }
+}
+function saveEnglishOnly(val) {
+  localStorage.setItem(ENGLISH_ONLY_KEY, String(val));
+}
 
 // How many ratings before we switch from cold-start to personalized mode
 const COLD_START_THRESHOLD = 5;
@@ -551,6 +562,9 @@ function ForYouFeed() {
   const [activeIdx, setActiveIdx] = useState(0);
   const [userRatings, setUserRatings] = useState({});
   const [ratingCount, setRatingCount] = useState(() => getRatingCount());
+  const [englishOnly, setEnglishOnly] = useState(loadEnglishOnly);
+  const englishOnlyRef = useRef(loadEnglishOnly());
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const containerRef = useRef(null);
   const genresRef = useRef(loadGenres());
   const fetchingMoreRef = useRef(false);
@@ -573,6 +587,7 @@ function ForYouFeed() {
         genres: isPersonalized ? genresRef.current.slice(0, 3) : [],
         liked_artists: likedArtists,
         disliked_artists: dislikedArtists,
+        english_only: englishOnlyRef.current,
         limit: 10,
       });
 
@@ -601,6 +616,15 @@ function ForYouFeed() {
 
   function clearNotInterested() {
     localStorage.removeItem(DISLIKED_KEY);
+    fetchBatch();
+  }
+
+  function toggleEnglishOnly(val) {
+    saveEnglishOnly(val);
+    englishOnlyRef.current = val;
+    setEnglishOnly(val);
+    setTracks([]);
+    setActiveIdx(0);
     fetchBatch();
   }
 
@@ -787,6 +811,60 @@ function ForYouFeed() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* Cold-start progress banner */}
       <ColdStartBanner ratingCount={ratingCount} />
+
+      {/* Settings toggle row */}
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 12px", flexShrink: 0 }}>
+        <button
+          onClick={() => setSettingsOpen(o => !o)}
+          title="Feed settings"
+          style={{
+            fontSize: 14, background: "none", border: "none", cursor: "pointer",
+            color: settingsOpen ? ACCENT_A : "rgba(255,255,255,0.3)",
+            padding: "4px 6px", transition: "color 0.15s",
+          }}
+        >⚙</button>
+      </div>
+
+      {/* Settings panel */}
+      {settingsOpen && (
+        <div style={{
+          padding: "12px 20px", background: "rgba(255,255,255,0.05)",
+          borderBottom: "1px solid rgba(255,255,255,0.1)",
+          display: "flex", flexDirection: "column", gap: 10, flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Feed Settings
+            </span>
+            <button onClick={() => setSettingsOpen(false)} style={{ fontSize: 16, background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer" }}>✕</button>
+          </div>
+
+          {/* English-only toggle */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 13, color: "#fff", fontWeight: 600 }}>English / Latin songs only</p>
+              <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+                Filters out Cyrillic, Arabic, CJK, and other non-Latin scripts
+              </p>
+            </div>
+            <button
+              onClick={() => toggleEnglishOnly(!englishOnly)}
+              style={{
+                width: 44, height: 24, borderRadius: 12, flexShrink: 0,
+                background: englishOnly ? ACCENT_A : "rgba(255,255,255,0.15)",
+                border: "none", cursor: "pointer", position: "relative",
+                transition: "background 0.2s",
+              }}
+            >
+              <span style={{
+                position: "absolute", top: 2, width: 20, height: 20, borderRadius: "50%",
+                background: "#fff", transition: "left 0.2s",
+                left: englishOnly ? 22 : 2,
+              }} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Scroll container
           "proximity" snaps when close to a boundary but doesn't trap scroll

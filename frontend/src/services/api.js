@@ -144,8 +144,8 @@ export const api = {
   getSuggestedUsers: () => request(`/users/suggested`),
 
   // Discover / For You feed
-  getDiscoverFeed: ({ genres = [], liked_artists = [], disliked_artists = [], exclude = [], limit = 10 } = {}) => {
-    const params = new URLSearchParams({ limit });
+  getDiscoverFeed: ({ genres = [], liked_artists = [], disliked_artists = [], exclude = [], english_only = true, limit = 10 } = {}) => {
+    const params = new URLSearchParams({ limit, english_only });
     if (genres.length) params.set("genres", genres.join(","));
     if (liked_artists.length) params.set("liked_artists", liked_artists.join(","));
     if (disliked_artists.length) params.set("disliked_artists", disliked_artists.join(","));
