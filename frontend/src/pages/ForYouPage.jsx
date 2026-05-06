@@ -537,6 +537,7 @@ function ForYouFeed() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [fetchError, setFetchError] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [userRatings, setUserRatings] = useState({});
   const [ratingCount, setRatingCount] = useState(() => getRatingCount());
@@ -572,9 +573,16 @@ function ForYouFeed() {
         return fetchBatch(false, 1);
       }
 
+      if (batch.length === 0 && !append) {
+        // Auto-diagnose: fetch debug info to show user what's broken
+        api.getDiscoverDebug().then(setDebugInfo).catch(() => {});
+      }
       setTracks((prev) => append ? [...prev, ...batch] : batch);
     } catch {
-      if (!append) setFetchError(true);
+      if (!append) {
+        setFetchError(true);
+        api.getDiscoverDebug().then(setDebugInfo).catch(() => {});
+      }
     } finally {
       setter(false);
       if (append) fetchingMoreRef.current = false;
@@ -677,19 +685,55 @@ function ForYouFeed() {
 
   if (!tracks.length) {
     const dislikedCount = loadDisliked().length;
+    const spotifyOk = debugInfo?.tiers?.spotify_auth?.ok;
+    const spotifyErr = debugInfo?.tiers?.spotify_auth?.error;
+    const tier3Ok = debugInfo?.tiers?.tier3_global_top50?.ok;
+    const tier3Count = debugInfo?.tiers?.tier3_global_top50?.track_count;
+
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
         <div style={{ fontSize: 40 }}>🎵</div>
         <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#fff" }}>
-          {fetchError ? "Couldn't load tracks" : "Nothing to show right now"}
+          {fetchError ? "Couldn't reach server" : "Nothing to show right now"}
         </p>
-        <p style={{ margin: 0, fontSize: 13, maxWidth: 280, lineHeight: 1.6 }}>
-          {fetchError
-            ? "There was a problem reaching the server. Check your connection and try again."
-            : dislikedCount >= 5
+
+        {/* Spotify-level diagnosis */}
+        {debugInfo && spotifyOk === false && (
+          <div style={{ padding: "10px 16px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, maxWidth: 300 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#f87171", fontWeight: 700 }}>⚠ Spotify API unreachable</p>
+            {spotifyErr && <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{spotifyErr}</p>}
+            <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
+              Check that SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are set in Railway.
+            </p>
+          </div>
+        )}
+
+        {debugInfo && spotifyOk === true && tier3Ok === false && (
+          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, maxWidth: 300 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>⚠ Spotify auth OK but playlist fetch failed</p>
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+              {debugInfo?.tiers?.tier3_global_top50?.error}
+            </p>
+          </div>
+        )}
+
+        {debugInfo && spotifyOk === true && tier3Ok === true && tier3Count === 0 && (
+          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, maxWidth: 300 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>Spotify returned 0 tracks</p>
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+              {dislikedCount >= 5 ? `${dislikedCount} artists blocked by your not-interested list.` : "Playlist may be empty or region-restricted."}
+            </p>
+          </div>
+        )}
+
+        {!debugInfo && !fetchError && (
+          <p style={{ margin: 0, fontSize: 13, maxWidth: 280, lineHeight: 1.6 }}>
+            {dislikedCount >= 5
               ? `You've marked ${dislikedCount} artists as not interested. Try clearing that list to open up more music.`
-              : "Rate a few more tracks to personalize your feed, or try refreshing."}
-        </p>
+              : "Diagnosing…"}
+          </p>
+        )}
+
         <button
           onClick={() => fetchBatch()}
           style={{
@@ -710,6 +754,16 @@ function ForYouFeed() {
           >
             Clear not-interested list ({dislikedCount})
           </button>
+        )}
+
+        {/* Raw debug dump for dev diagnosis */}
+        {debugInfo && (
+          <details style={{ marginTop: 8, maxWidth: 320, textAlign: "left" }}>
+            <summary style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", cursor: "pointer" }}>Debug info</summary>
+            <pre style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {JSON.stringify(debugInfo?.tiers, null, 2)}
+            </pre>
+          </details>
         )}
       </div>
     );
