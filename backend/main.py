@@ -292,11 +292,33 @@ async def _seed_leaderboard() -> None:
 
 
 async def _run_artist_seeder() -> None:
-    """Wrapper that imports and runs the top-artist seed script as a background task."""
+    """Wrapper that imports and runs the top-artist seed script as a background task.
+
+    Auto-disables once the DB has enough seeded artists — subsequent deploys
+    skip immediately with no Spotify calls.
+    """
     await asyncio.sleep(90)  # let the app warm up first
     try:
+        from sqlalchemy import func, select as sa_select
+        from models import ArtistCache
+        from datetime import datetime, timedelta
+
+        # Check how many artists are already freshly seeded (within 7 days)
+        freshness_cutoff = datetime.utcnow() - timedelta(days=7)
+        async with AsyncSessionLocal() as db:
+            fresh_count = (await db.execute(
+                sa_select(func.count()).select_from(ArtistCache)
+                .where(ArtistCache.discography_fetched_at > freshness_cutoff)
+            )).scalar() or 0
+
+        # If the bulk seed already completed, skip — nothing left to do.
+        # Threshold is 800: covers the ~900-artist list minus expected mismatches/404s.
+        if fresh_count >= 800:
+            print(f"[startup] artist seeder skipped — {fresh_count} artists already fresh in DB", flush=True)
+            return
+
+        print(f"[startup] artist seeder starting ({fresh_count} fresh so far)…", flush=True)
         from scripts.seed_top_artists import seed
-        print("[startup] artist seeder starting…", flush=True)
         await seed()
         print("[startup] artist seeder complete", flush=True)
     except Exception as exc:
@@ -467,6 +489,36 @@ async def health():
         results["leaderboard"] = {"ok": count > 0, "eligible_albums": count}
     except Exception as exc:
         results["leaderboard"] = {"ok": False, "error": str(exc)}
+
+    # ── DB cache stats + duplicate check ─────────────────────────────────────
+    try:
+        from sqlalchemy import select, func, text
+        from models import AlbumCache, TrackCache, ArtistCache
+        from datetime import datetime, timedelta
+        async with AsyncSessionLocal() as db:
+            album_total = (await db.execute(select(func.count()).select_from(AlbumCache))).scalar()
+            track_total = (await db.execute(select(func.count()).select_from(TrackCache))).scalar()
+            artist_seeded = (await db.execute(
+                select(func.count()).select_from(ArtistCache)
+                .where(ArtistCache.discography_fetched_at > datetime.utcnow() - timedelta(days=7))
+            )).scalar()
+            # Check for duplicates — should always be 0 due to unique constraints
+            dup_albums = (await db.execute(
+                text("SELECT COUNT(*) FROM (SELECT spotify_id FROM album_cache GROUP BY spotify_id HAVING COUNT(*) > 1) x")
+            )).scalar()
+            dup_tracks = (await db.execute(
+                text("SELECT COUNT(*) FROM (SELECT spotify_id FROM track_cache GROUP BY spotify_id HAVING COUNT(*) > 1) x")
+            )).scalar()
+        results["db_cache"] = {
+            "ok": True,
+            "albums": album_total,
+            "tracks": track_total,
+            "artists_seeded_7d": artist_seeded,
+            "duplicate_album_ids": dup_albums,
+            "duplicate_track_ids": dup_tracks,
+        }
+    except Exception as exc:
+        results["db_cache"] = {"ok": False, "error": str(exc)}
 
     from fastapi.responses import JSONResponse
     status_code = 200 if healthy else 503
