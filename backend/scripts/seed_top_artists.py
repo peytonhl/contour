@@ -459,27 +459,40 @@ for n in ARTIST_NAMES:
         ARTISTS.append(n)
 
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Spotify returns 429 when rate limited, but also 400 when heavily blocked.
+    Both mean 'back off' in the context of the discography endpoint."""
+    msg = str(exc)
+    return "429" in msg or "400" in msg
+
+
 async def _fetch_with_backoff(artist_id: str) -> list[dict]:
-    """Fetch discography, backing off on 429."""
-    for attempt in range(3):
-        try:
-            result = await spotify_svc.get_artist_albums_limited(artist_id, limit=50)
-            return result or []
-        except Exception as exc:
-            msg = str(exc)
-            if "429" in msg and attempt < 2:
-                wait = 30 * (attempt + 1)
-                print(f"  [429] backing off {wait}s…", flush=True)
-                await asyncio.sleep(wait)
-            else:
-                raise
-    return []
+    """Fetch discography with one short backoff on rate limit errors.
+
+    Does NOT retry multiple times — repeated hammering while rate-limited
+    makes the block longer. One attempt, one sleep, one final try.
+    """
+    try:
+        return await spotify_svc.get_artist_albums_limited(artist_id, limit=50) or []
+    except Exception as exc:
+        if _is_rate_limit_error(exc):
+            print(f"  [rate limit] backing off 60s before retry…", flush=True)
+            await asyncio.sleep(60)
+            # One retry — if this also fails, let the exception propagate
+            return await spotify_svc.get_artist_albums_limited(artist_id, limit=50) or []
+        raise
+
+
+# If this many consecutive artists fail, the endpoint is clearly blocked —
+# abort this run and let the next deploy try once the bucket has recovered.
+CIRCUIT_BREAKER_THRESHOLD = 8
 
 
 async def seed():
     skipped = 0
     fetched = 0
     failed = 0
+    consecutive_failures = 0
     total = len(ARTISTS)
     freshness_cutoff = datetime.utcnow() - timedelta(days=7)
 
@@ -535,14 +548,31 @@ async def seed():
         except Exception as exc:
             print(f"[{i}/{total}] ERROR fetching '{name}': {exc}", flush=True)
             failed += 1
+            consecutive_failures += 1
+            if consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD:
+                print(
+                    f"\n[seed] Circuit breaker: {consecutive_failures} consecutive failures — "
+                    f"endpoint is blocked. Aborting this run; next deploy will retry.",
+                    flush=True
+                )
+                break
             await asyncio.sleep(5)
             continue
 
         if not albums:
             print(f"[{i}/{total}] EMPTY: {name}", flush=True)
             failed += 1
+            consecutive_failures += 1
+            if consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD:
+                print(
+                    f"\n[seed] Circuit breaker triggered on empty responses. Aborting.",
+                    flush=True
+                )
+                break
             await asyncio.sleep(1.5)
             continue
+
+        consecutive_failures = 0  # reset on any success
 
         # ── Step 4: Persist ────────────────────────────────────────────────────
         async with AsyncSessionLocal() as session:
