@@ -231,3 +231,16 @@ class AlbumCache(Base):
     # "pending" | "done" | "failed"
     enrichment_status: Mapped[str] = mapped_column(String(16), default="pending")
     enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class ArtistCache(Base):
+    """Tracks when we last fetched a full discography for each artist.
+
+    Used by the search router to decide whether to refresh album data from
+    Spotify (daily cadence) so users see new releases on drop day.
+    """
+    __tablename__ = "artist_cache"
+
+    spotify_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256))
+    discography_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

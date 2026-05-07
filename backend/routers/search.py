@@ -8,19 +8,23 @@ Triage strategy (minimises Spotify API calls):
      resolution. Multi-word strings are almost never pure artist names, and attempting
      artist lookup would risk a discography fetch (429-heavy endpoint).
   5. Single-word queries → try to resolve to an artist ID first.
-       - Artist found (name validated against query) → fetch discography.
-       - Artist not found / rejected → track search instead.
+       - Artist found → check ArtistCache freshness (24-hour window).
+       - If stale or never fetched → re-fetch discography from Spotify synchronously
+         so the user sees new releases immediately, then persist in background.
+       - If fresh → serve DB results with no Spotify call.
+       - Artist not found → track search instead.
   6. Users are always DB-only — never touch Spotify.
   7. On any 429 / network error → silently return whatever DB has.
 
 Permanent enrichment:
-  Every successful Spotify response (albums or tracks) is written to the DB as a
-  background task. Future searches find those results in DB for free — no Spotify
-  call needed, no Redis TTL to worry about.
+  Every successful Spotify response is written to AlbumCache / TrackCache as a
+  background task. ArtistCache records when each artist's discography was last
+  fetched so we refresh at most once per day.
 """
 
 import asyncio
 import json
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
@@ -29,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, AsyncSessionLocal
-from models import AlbumCache as AlbumCacheModel, TrackCache, User
+from models import AlbumCache as AlbumCacheModel, ArtistCache, TrackCache, User
 from services import spotify
 from routers.albums import _artist_id_for_query, _row_to_album_result, AlbumResult
 from routers.tracks import _row_to_track_result, TrackResult
@@ -40,6 +44,8 @@ router = APIRouter(prefix="/search", tags=["search"])
 MIN_CHARS = 3
 # If DB returns at least this many results for a type, skip Spotify for that type
 DB_SUFFICIENT = 3
+# Re-fetch an artist's discography if it hasn't been refreshed within this window
+DISCOGRAPHY_TTL = timedelta(hours=24)
 
 
 class UserResult(BaseModel):
@@ -56,15 +62,16 @@ class SearchResponse(BaseModel):
 
 
 # ── Background DB persistence ─────────────────────────────────────────────────
-# Called after the response is sent — never blocks the user.
-# Uses its own session (the request session is already closed by then).
+# Always called after the response is sent — never blocks the user.
+# Uses its own session (the request session is closed by then).
 
 async def _persist_albums(albums: list[dict]) -> None:
-    """Upsert Spotify album results into AlbumCache for permanent DB enrichment."""
+    """Upsert Spotify album results into AlbumCache (insert only — no overwrite)."""
     if not albums:
         return
     try:
         async with AsyncSessionLocal() as session:
+            new_count = 0
             for a in albums:
                 existing = (await session.execute(
                     select(AlbumCacheModel).where(AlbumCacheModel.spotify_id == a["id"])
@@ -81,18 +88,21 @@ async def _persist_albums(albums: list[dict]) -> None:
                         image_url=a.get("image_url"),
                         enrichment_status="pending",
                     ))
+                    new_count += 1
             await session.commit()
-            print(f"[search] persisted {len(albums)} albums to DB cache", flush=True)
+            if new_count:
+                print(f"[search] persisted {new_count} new albums to DB", flush=True)
     except Exception as exc:
         print(f"[search] album persist failed: {exc}", flush=True)
 
 
 async def _persist_tracks(tracks: list[dict]) -> None:
-    """Upsert Spotify track results into TrackCache for permanent DB enrichment."""
+    """Upsert Spotify track results into TrackCache (insert only — no overwrite)."""
     if not tracks:
         return
     try:
         async with AsyncSessionLocal() as session:
+            new_count = 0
             for t in tracks:
                 existing = (await session.execute(
                     select(TrackCache).where(TrackCache.spotify_id == t["id"])
@@ -113,10 +123,36 @@ async def _persist_tracks(tracks: list[dict]) -> None:
                         external_url=t.get("external_url"),
                         artist_ids_json=json.dumps(t.get("artist_ids", [])),
                     ))
+                    new_count += 1
             await session.commit()
-            print(f"[search] persisted {len(tracks)} tracks to DB cache", flush=True)
+            if new_count:
+                print(f"[search] persisted {new_count} new tracks to DB", flush=True)
     except Exception as exc:
         print(f"[search] track persist failed: {exc}", flush=True)
+
+
+async def _persist_discography(artist_id: str, artist_name: str, albums: list[dict]) -> None:
+    """Persist discography albums and stamp ArtistCache with current timestamp."""
+    await _persist_albums(albums)
+    try:
+        async with AsyncSessionLocal() as session:
+            row = (await session.execute(
+                select(ArtistCache).where(ArtistCache.spotify_id == artist_id)
+            )).scalar_one_or_none()
+            if row:
+                row.discography_fetched_at = datetime.utcnow()
+                if artist_name:
+                    row.name = artist_name
+            else:
+                session.add(ArtistCache(
+                    spotify_id=artist_id,
+                    name=artist_name or artist_id,
+                    discography_fetched_at=datetime.utcnow(),
+                ))
+            await session.commit()
+            print(f"[search] artist_cache updated: {artist_name or artist_id}", flush=True)
+    except Exception as exc:
+        print(f"[search] artist_cache update failed: {exc}", flush=True)
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
@@ -167,8 +203,6 @@ async def unified_search(
     )
 
     # ── Step 2: Triage — decide which Spotify calls to make ───────────────────
-    # Rule: only hit Spotify if DB results are thin AND query is long enough.
-    # On 429, silently fall back to DB results — never surface an error to the user.
 
     spotify_albums: list = []
     spotify_tracks: list = []
@@ -182,19 +216,16 @@ async def unified_search(
             query_is_multiword = len(words) > 1
 
             if query_is_multiword:
-                # Multi-word query (e.g. "cardigan don toliver", "love sick") —
-                # skip artist lookup entirely. These are almost never pure artist
-                # names; treating them as song/album searches avoids wasting a
-                # Spotify call on artist resolution that then triggers a discography
-                # fetch (the 429-heavy endpoint).
+                # Multi-word → straight to track search, no artist resolution.
                 if need_tracks:
                     try:
                         spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
                     except Exception:
                         pass
             else:
-                # Single-word query — try to resolve to an artist for discography.
+                # Single-word → try to resolve to an artist for discography.
                 artist_id = _artist_id_for_query(q_stripped)
+                artist_name_hint = ""
 
                 if not artist_id:
                     try:
@@ -203,32 +234,47 @@ async def unified_search(
                             matched_name = artists[0]["name"].lower()
                             name_words = matched_name.split()
                             q_lower = q_stripped.lower()
-                            # Validate: at least one meaningful word from the matched
-                            # artist name must appear in the query to avoid false matches.
                             if any(w in q_lower for w in name_words if len(w) > 3):
                                 artist_id = artists[0]["id"]
+                                artist_name_hint = artists[0]["name"]
                                 print(f"[search] dynamic artist: {artists[0]['name']} → {artist_id}", flush=True)
                             else:
                                 print(f"[search] dynamic artist rejected: '{artists[0]['name']}' not in '{q_stripped}'", flush=True)
                     except Exception:
-                        # 429 or network error — fall through to DB-only results silently
                         pass
 
-                if artist_id and need_albums:
-                    try:
-                        spotify_albums = await spotify.get_artist_albums_limited(artist_id, limit=10)
-                    except Exception:
-                        pass
+                if artist_id:
+                    # Check freshness — re-fetch if not refreshed within 24 hours
+                    artist_row = (await db.execute(
+                        select(ArtistCache).where(ArtistCache.spotify_id == artist_id)
+                    )).scalar_one_or_none()
+
+                    data_is_stale = (
+                        artist_row is None
+                        or artist_row.discography_fetched_at is None
+                        or (datetime.utcnow() - artist_row.discography_fetched_at) > DISCOGRAPHY_TTL
+                    )
+
+                    if data_is_stale or need_albums:
+                        # Fetch synchronously so user sees new releases immediately.
+                        # Falls back to DB silently if Spotify 429s.
+                        try:
+                            fresh = await spotify.get_artist_albums_limited(artist_id, limit=50)
+                            if fresh:
+                                spotify_albums = fresh
+                                name = artist_name_hint or (artist_row.name if artist_row else "")
+                                background_tasks.add_task(_persist_discography, artist_id, name, fresh)
+                        except Exception:
+                            pass
+
                 elif need_tracks:
-                    # No artist match on single-word query → treat as track/album title
+                    # No artist match → treat as track/album title
                     try:
                         spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
                     except Exception:
                         pass
 
-    # ── Step 2b: Persist new Spotify results to DB (background, non-blocking) ──
-    if spotify_albums:
-        background_tasks.add_task(_persist_albums, spotify_albums)
+    # ── Step 2b: Persist track search results to DB (background) ──────────────
     if spotify_tracks:
         background_tasks.add_task(_persist_tracks, spotify_tracks)
 
