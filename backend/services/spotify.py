@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import time
@@ -14,6 +15,22 @@ _log = logging.getLogger(__name__)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from services import redis_cache
+
+
+async def _spotify_get(client: httpx.AsyncClient, url: str, token: str, params: dict | None = None) -> httpx.Response:
+    """GET wrapper with one automatic retry on 429 (waits 8 seconds before retrying).
+
+    Spotify's rate limit bucket typically refills within 30–60 seconds of a deploy.
+    A single short wait handles the cold-start window without hammering the API.
+    """
+    resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
+    if resp.status_code == 429:
+        retry_after = int(resp.headers.get("Retry-After", 8))
+        wait = min(retry_after, 10)  # cap at 10s so we don't hang too long
+        print(f"[spotify] 429 on {url} — waiting {wait}s then retrying", flush=True)
+        await asyncio.sleep(wait)
+        resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
+    return resp
 
 _ENV_FILE = Path(__file__).parent.parent / ".env"
 
@@ -60,26 +77,21 @@ async def _get_token(client: httpx.AsyncClient) -> str:
 
 
 async def search_artists(query: str, limit: int = 10) -> list[dict]:
-    """Search Spotify for artists matching the query string. Results cached 30 min."""
+    """Search Spotify for artists matching the query string. Results cached 12 hours."""
     cache_key = f"spotify:artist_search:{query.lower().strip()}:{limit}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
-        print(f"[spotify.search_artists] cache hit for q={query!r}", flush=True)
         return cached
 
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            "https://api.spotify.com/v1/search",
-            headers={"Authorization": f"Bearer {token}"},
+        resp = await _spotify_get(
+            client, "https://api.spotify.com/v1/search", token,
             params={"q": query, "type": "artist", "limit": limit},
         )
         print(f"[spotify.search_artists] HTTP {resp.status_code} for q={query!r}", flush=True)
-        if resp.status_code != 200:
-            print(f"[spotify.search_artists] non-200 body: {resp.text[:300]}", flush=True)
         resp.raise_for_status()
         items = resp.json()["artists"]["items"]
-        print(f"[spotify.search_artists] {len(items)} artists for q={query!r}", flush=True)
 
     result = [_parse_artist(a) for a in items]
     if result:
@@ -129,26 +141,21 @@ async def get_album_tracks(album_id: str) -> list[dict]:
 
 
 async def search_tracks(query: str, limit: int = 10) -> list[dict]:
-    """Search Spotify for tracks matching the query string. Results cached 30 min."""
+    """Search Spotify for tracks matching the query string. Results cached 12 hours."""
     cache_key = f"spotify:track_search:{query.lower().strip()}:{limit}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
-        print(f"[spotify.search_tracks] cache hit for q={query!r}", flush=True)
         return cached
 
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            "https://api.spotify.com/v1/search",
-            headers={"Authorization": f"Bearer {token}"},
+        resp = await _spotify_get(
+            client, "https://api.spotify.com/v1/search", token,
             params={"q": query, "type": "track", "limit": limit, "market": "US"},
         )
         print(f"[spotify.search_tracks] HTTP {resp.status_code} for q={query!r}", flush=True)
-        if resp.status_code != 200:
-            print(f"[spotify.search_tracks] non-200 body: {resp.text[:300]}", flush=True)
         resp.raise_for_status()
         items = resp.json().get("tracks", {}).get("items", [])
-        print(f"[spotify.search_tracks] {len(items)} tracks for q={query!r}", flush=True)
 
     result = [_parse_track(t) for t in items if t and t.get("id")]
     if result:
@@ -199,17 +206,13 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 10) -> list[dic
 
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            f"https://api.spotify.com/v1/artists/{artist_id}/albums",
-            headers={"Authorization": f"Bearer {token}"},
+        resp = await _spotify_get(
+            client, f"https://api.spotify.com/v1/artists/{artist_id}/albums", token,
             params={"limit": limit, "include_groups": "album", "market": "US"},
         )
         print(f"[spotify.get_artist_albums] HTTP {resp.status_code} for artist_id={artist_id}", flush=True)
-        if resp.status_code != 200:
-            print(f"[spotify.get_artist_albums] non-200 body: {resp.text[:500]}", flush=True)
         resp.raise_for_status()
         items = resp.json().get("items", [])
-        print(f"[spotify.get_artist_albums] {len(items)} raw items for artist_id={artist_id}", flush=True)
 
     result = [_parse_album(a) for a in items if a and a.get("id")]
     if result:
