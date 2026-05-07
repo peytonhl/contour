@@ -4,12 +4,14 @@ Triage strategy (minimises Spotify API calls):
   1. Always search the local DB first (free, instant).
   2. If DB returns enough results (≥ DB_SUFFICIENT) for a type → skip Spotify.
   3. Queries shorter than MIN_CHARS → DB only, no Spotify.
-  4. For albums: try to resolve the query to an artist ID.
-       - Artist found → fetch their discography (/artists/{id}/albums, no Extended Access needed).
-       - Artist not found → skip album Spotify call (query is probably a song title).
-  5. For tracks: only call Spotify if no artist was resolved AND DB track results are thin.
-       - This avoids burning rate limits on artist queries.
+  4. Multi-word queries (e.g. "cardigan don toliver") → track search only, no artist
+     resolution. Multi-word strings are almost never pure artist names, and attempting
+     artist lookup would risk a discography fetch (429-heavy endpoint).
+  5. Single-word queries → try to resolve to an artist ID first.
+       - Artist found (name validated against query) → fetch discography.
+       - Artist not found / rejected → track search instead.
   6. Users are always DB-only — never touch Spotify.
+  7. On any 429 / network error → silently return whatever DB has.
 """
 
 import asyncio
@@ -103,38 +105,53 @@ async def unified_search(
         need_tracks = len(db_track_rows) < DB_SUFFICIENT
 
         if need_albums or need_tracks:
-            # Try to resolve query to an artist ID (hardcoded map first, then live lookup)
-            artist_id = _artist_id_for_query(q_stripped)
-
-            if not artist_id:
-                try:
-                    artists = await spotify.search_artists(q_stripped, limit=1)
-                    if artists:
-                        artist_id = artists[0]["id"]
-                        print(f"[search] dynamic artist: {artists[0]['name']} → {artist_id}", flush=True)
-                except Exception:
-                    # 429 or network error — fall through to DB-only results silently
-                    pass
-
-            # Detect mixed queries like "cardigan don toliver" — contains both a
-            # track/album title and an artist name. Single-word or pure artist
-            # queries go discography-only; mixed queries also search tracks.
             words = q_stripped.split()
-            query_is_mixed = artist_id and len(words) > 1
+            query_is_multiword = len(words) > 1
 
-            if artist_id and need_albums:
-                try:
-                    spotify_albums = await spotify.get_artist_albums_limited(artist_id, limit=10)
-                except Exception:
-                    pass
+            if query_is_multiword:
+                # Multi-word query (e.g. "cardigan don toliver", "love sick") —
+                # skip artist lookup entirely. These are almost never pure artist
+                # names; treating them as song/album searches avoids wasting a
+                # Spotify call on artist resolution that then triggers a discography
+                # fetch (the 429-heavy endpoint).
+                if need_tracks:
+                    try:
+                        spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
+                    except Exception:
+                        pass
+            else:
+                # Single-word query — try to resolve to an artist for discography.
+                artist_id = _artist_id_for_query(q_stripped)
 
-            if (not artist_id or query_is_mixed) and need_tracks:
-                # No artist match → probably a song/album title
-                # Mixed match → "track title + artist name", search tracks too
-                try:
-                    spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
-                except Exception:
-                    pass
+                if not artist_id:
+                    try:
+                        artists = await spotify.search_artists(q_stripped, limit=1)
+                        if artists:
+                            matched_name = artists[0]["name"].lower()
+                            name_words = matched_name.split()
+                            q_lower = q_stripped.lower()
+                            # Validate: at least one meaningful word from the matched
+                            # artist name must appear in the query to avoid false matches.
+                            if any(w in q_lower for w in name_words if len(w) > 3):
+                                artist_id = artists[0]["id"]
+                                print(f"[search] dynamic artist: {artists[0]['name']} → {artist_id}", flush=True)
+                            else:
+                                print(f"[search] dynamic artist rejected: '{artists[0]['name']}' not in '{q_stripped}'", flush=True)
+                    except Exception:
+                        # 429 or network error — fall through to DB-only results silently
+                        pass
+
+                if artist_id and need_albums:
+                    try:
+                        spotify_albums = await spotify.get_artist_albums_limited(artist_id, limit=10)
+                    except Exception:
+                        pass
+                elif need_tracks:
+                    # No artist match on single-word query → treat as track/album title
+                    try:
+                        spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
+                    except Exception:
+                        pass
 
     # ── Step 3: Merge, deduplicate, return ────────────────────────────────────
 
