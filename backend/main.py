@@ -291,6 +291,18 @@ async def _seed_leaderboard() -> None:
         await asyncio.sleep(24 * 60 * 60)
 
 
+async def _run_artist_seeder() -> None:
+    """Wrapper that imports and runs the top-artist seed script as a background task."""
+    await asyncio.sleep(90)  # let the app warm up first
+    try:
+        from scripts.seed_top_artists import seed
+        print("[startup] artist seeder starting…", flush=True)
+        await seed()
+        print("[startup] artist seeder complete", flush=True)
+    except Exception as exc:
+        print(f"[startup] artist seeder failed: {exc}", flush=True)
+
+
 @app.on_event("startup")
 async def startup():
     # Run pending Alembic migrations so every deploy is schema-current.
@@ -321,6 +333,14 @@ async def startup():
     # Pre-cache the exact Compare page preset albums in the background.
     # Running as a task so startup isn't blocked if Spotify is slow.
     asyncio.create_task(_seed_compare_page_albums())
+
+    # Top-artist discography seeder — runs 90s after startup so the app is
+    # fully ready before any Spotify calls are made.
+    # SAFE to run on every deploy because:
+    #   - Skips artists already fetched within 7 days (idempotent after first run)
+    #   - After first run completes, subsequent deploys exit in ~seconds
+    #   - 1.5s delay between Spotify calls (~40/min, well within rate limits)
+    asyncio.create_task(_run_artist_seeder())
 
     # Leaderboard seeder disabled — proactive Spotify calls burn rate limits and
     # block user searches. Re-enable once Extended Access is approved or a
