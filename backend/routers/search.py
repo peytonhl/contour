@@ -12,17 +12,23 @@ Triage strategy (minimises Spotify API calls):
        - Artist not found / rejected → track search instead.
   6. Users are always DB-only — never touch Spotify.
   7. On any 429 / network error → silently return whatever DB has.
+
+Permanent enrichment:
+  Every successful Spotify response (albums or tracks) is written to the DB as a
+  background task. Future searches find those results in DB for free — no Spotify
+  call needed, no Redis TTL to worry about.
 """
 
 import asyncio
+import json
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import get_db, AsyncSessionLocal
 from models import AlbumCache as AlbumCacheModel, TrackCache, User
 from services import spotify
 from routers.albums import _artist_id_for_query, _row_to_album_result, AlbumResult
@@ -49,9 +55,76 @@ class SearchResponse(BaseModel):
     tracks: List[TrackResult]
 
 
+# ── Background DB persistence ─────────────────────────────────────────────────
+# Called after the response is sent — never blocks the user.
+# Uses its own session (the request session is already closed by then).
+
+async def _persist_albums(albums: list[dict]) -> None:
+    """Upsert Spotify album results into AlbumCache for permanent DB enrichment."""
+    if not albums:
+        return
+    try:
+        async with AsyncSessionLocal() as session:
+            for a in albums:
+                existing = (await session.execute(
+                    select(AlbumCacheModel).where(AlbumCacheModel.spotify_id == a["id"])
+                )).scalar_one_or_none()
+                if existing is None:
+                    primary_artist = a.get("artists", [""])[0] if a.get("artists") else ""
+                    session.add(AlbumCacheModel(
+                        spotify_id=a["id"],
+                        name=a["name"],
+                        artist=primary_artist,
+                        release_date=a.get("release_date"),
+                        release_date_precision=a.get("release_date_precision"),
+                        popularity=a.get("popularity"),
+                        image_url=a.get("image_url"),
+                        enrichment_status="pending",
+                    ))
+            await session.commit()
+            print(f"[search] persisted {len(albums)} albums to DB cache", flush=True)
+    except Exception as exc:
+        print(f"[search] album persist failed: {exc}", flush=True)
+
+
+async def _persist_tracks(tracks: list[dict]) -> None:
+    """Upsert Spotify track results into TrackCache for permanent DB enrichment."""
+    if not tracks:
+        return
+    try:
+        async with AsyncSessionLocal() as session:
+            for t in tracks:
+                existing = (await session.execute(
+                    select(TrackCache).where(TrackCache.spotify_id == t["id"])
+                )).scalar_one_or_none()
+                if existing is None:
+                    primary_artist = t.get("artists", [""])[0] if t.get("artists") else ""
+                    session.add(TrackCache(
+                        spotify_id=t["id"],
+                        name=t["name"],
+                        artist=primary_artist,
+                        album_name=t.get("album_name"),
+                        album_id=t.get("album_id"),
+                        release_date=t.get("release_date"),
+                        duration_ms=t.get("duration_ms"),
+                        explicit=t.get("explicit", False),
+                        popularity=t.get("popularity"),
+                        image_url=t.get("image_url"),
+                        external_url=t.get("external_url"),
+                        artist_ids_json=json.dumps(t.get("artist_ids", [])),
+                    ))
+            await session.commit()
+            print(f"[search] persisted {len(tracks)} tracks to DB cache", flush=True)
+    except Exception as exc:
+        print(f"[search] track persist failed: {exc}", flush=True)
+
+
+# ── Endpoint ──────────────────────────────────────────────────────────────────
+
 @router.get("", response_model=SearchResponse)
 async def unified_search(
     q: str = Query(..., min_length=1),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
 ):
     q_stripped = q.strip()
@@ -152,6 +225,12 @@ async def unified_search(
                         spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
                     except Exception:
                         pass
+
+    # ── Step 2b: Persist new Spotify results to DB (background, non-blocking) ──
+    if spotify_albums:
+        background_tasks.add_task(_persist_albums, spotify_albums)
+    if spotify_tracks:
+        background_tasks.add_task(_persist_tracks, spotify_tracks)
 
     # ── Step 3: Merge, deduplicate, return ────────────────────────────────────
 
