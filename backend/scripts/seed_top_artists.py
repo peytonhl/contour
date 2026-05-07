@@ -473,13 +473,13 @@ async def _fetch_with_backoff(artist_id: str) -> list[dict]:
     makes the block longer. One attempt, one sleep, one final try.
     """
     try:
-        return await spotify_svc.get_artist_albums_limited(artist_id, limit=50) or []
+        return await spotify_svc.get_artist_albums_limited(artist_id, limit=20) or []
     except Exception as exc:
         if _is_rate_limit_error(exc):
             print(f"  [rate limit] backing off 60s before retry…", flush=True)
             await asyncio.sleep(60)
             # One retry — if this also fails, let the exception propagate
-            return await spotify_svc.get_artist_albums_limited(artist_id, limit=50) or []
+            return await spotify_svc.get_artist_albums_limited(artist_id, limit=20) or []
         raise
 
 
