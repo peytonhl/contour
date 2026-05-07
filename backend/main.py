@@ -266,7 +266,7 @@ async def _seed_leaderboard() -> None:
                 logger.warning("Seed phase2: no artist ID for %r — skipping", artist_name)
                 continue
             try:
-                albums = await spotify.get_artist_albums_limited(artist_id, limit=50)
+                albums = await spotify.get_artist_albums_limited(artist_id, limit=20)
                 for title in titles:
                     target = title.lower()
                     match = next(

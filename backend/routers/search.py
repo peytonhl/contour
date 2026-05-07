@@ -259,7 +259,7 @@ async def unified_search(
                         # Fetch synchronously so user sees new releases immediately.
                         # Falls back to DB silently if Spotify 429s.
                         try:
-                            fresh = await spotify.get_artist_albums_limited(artist_id, limit=50)
+                            fresh = await spotify.get_artist_albums_limited(artist_id, limit=20)
                             if fresh:
                                 spotify_albums = fresh
                                 name = artist_name_hint or (artist_row.name if artist_row else "")

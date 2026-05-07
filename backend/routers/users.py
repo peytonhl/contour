@@ -13,8 +13,52 @@ from models import User, UserFollow, Rating, Review, ArtistFavorite, UserList, U
 from routers.auth import decode_jwt, optional_user_id
 from routers.notifications import create_notification
 from services import spotify
+from services import deezer as deezer_svc
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+async def _fetch_entity_meta(entity_type: str, entity_id: str) -> tuple:
+    """Resolve name/image/artists for a rated entity.
+
+    Handles three cases:
+    - Pure numeric IDs → old Deezer ratings; look up via Deezer track API.
+    - 22-char Spotify IDs → call Spotify.
+    - Any failure → return null metadata so the UI can degrade gracefully.
+    """
+    if entity_id.isdigit():
+        # Deezer numeric ID stored from an old For You feed rating.
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"https://api.deezer.com/track/{entity_id}")
+                if resp.status_code == 200:
+                    t = resp.json()
+                    artist_name = (t.get("artist") or {}).get("name", "")
+                    album = t.get("album") or {}
+                    return (entity_type, entity_id), {
+                        "name": t.get("title") or t.get("name"),
+                        "image_url": album.get("cover_medium") or album.get("cover"),
+                        "artists": [artist_name] if artist_name else [],
+                    }
+        except Exception:
+            pass
+        return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
+
+    try:
+        if entity_type == "track":
+            data = await spotify.get_track(entity_id)
+        elif entity_type == "album":
+            data = await spotify.get_album(entity_id)
+        else:
+            data = await spotify.get_artist(entity_id)
+        return (entity_type, entity_id), {
+            "name": data["name"],
+            "image_url": data.get("image_url"),
+            "artists": data.get("artists", []),
+        }
+    except Exception:
+        return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
 
 
 @router.get("/suggested")
@@ -232,23 +276,7 @@ async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
 
     unique_entities = list({(r.entity_type, r.entity_id) for r in ratings})
 
-    async def fetch_meta(entity_type: str, entity_id: str):
-        try:
-            if entity_type == "track":
-                data = await spotify.get_track(entity_id)
-            elif entity_type == "album":
-                data = await spotify.get_album(entity_id)
-            else:
-                data = await spotify.get_artist(entity_id)
-            return (entity_type, entity_id), {
-                "name": data["name"],
-                "image_url": data.get("image_url"),
-                "artists": data.get("artists", []),
-            }
-        except Exception:
-            return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
-
-    enriched = dict(await asyncio.gather(*[fetch_meta(et, eid) for et, eid in unique_entities]))
+    enriched = dict(await asyncio.gather(*[_fetch_entity_meta(et, eid) for et, eid in unique_entities]))
 
     return [
         {
@@ -332,23 +360,7 @@ async def get_user_reviews(user_id: str, db: AsyncSession = Depends(get_db)):
     # Enrich with Spotify metadata + ratings
     unique_entities = list({(r.entity_type, r.entity_id) for r in reviews})
 
-    async def fetch_meta(entity_type: str, entity_id: str):
-        try:
-            if entity_type == "track":
-                data = await spotify.get_track(entity_id)
-            elif entity_type == "album":
-                data = await spotify.get_album(entity_id)
-            else:
-                data = await spotify.get_artist(entity_id)
-            return (entity_type, entity_id), {
-                "name": data["name"],
-                "image_url": data.get("image_url"),
-                "artists": data.get("artists", []),
-            }
-        except Exception:
-            return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
-
-    enriched = dict(await asyncio.gather(*[fetch_meta(et, eid) for et, eid in unique_entities]))
+    enriched = dict(await asyncio.gather(*[_fetch_entity_meta(et, eid) for et, eid in unique_entities]))
 
     # Look up each review's rating value
     rating_map: dict[tuple, float] = {}
