@@ -494,7 +494,7 @@ async def seed():
     failed = 0
     consecutive_failures = 0
     total = len(ARTISTS)
-    freshness_cutoff = datetime.utcnow() - timedelta(days=7)
+    freshness_cutoff = datetime.utcnow() - timedelta(days=30)
 
     print(f"[seed] Starting: {total} unique artists", flush=True)
     print(f"[seed] Estimated time: ~{total * 3 // 60} min at 1.5s/call\n", flush=True)
