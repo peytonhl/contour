@@ -317,6 +317,20 @@ async def _run_artist_seeder() -> None:
             print(f"[startup] artist seeder skipped — {fresh_count} artists already fresh in DB", flush=True)
             return
 
+        # Probe the discography endpoint before committing to a full run.
+        # If it's blocked (400/429), abort immediately rather than burning
+        # 8 attempts × 2 calls before the circuit breaker kicks in.
+        print(f"[startup] artist seeder: probing endpoint before full run…", flush=True)
+        try:
+            from services import spotify as _sp
+            probe = await _sp.get_artist_albums_limited("3TVXtAsR1Inumwj472S9r4", limit=1)  # Drake
+            if not probe:
+                print("[startup] artist seeder: probe returned empty — skipping run", flush=True)
+                return
+        except Exception as probe_exc:
+            print(f"[startup] artist seeder: probe failed ({probe_exc}) — endpoint still blocked, skipping run", flush=True)
+            return
+
         print(f"[startup] artist seeder starting ({fresh_count} fresh so far)…", flush=True)
         from scripts.seed_top_artists import seed
         await seed()
