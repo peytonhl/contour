@@ -26,8 +26,8 @@ async def _spotify_get(client: httpx.AsyncClient, url: str, token: str, params: 
     resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
     if resp.status_code == 429:
         retry_after = int(resp.headers.get("Retry-After", 8))
-        wait = min(retry_after, 10)  # cap at 10s so we don't hang too long
-        print(f"[spotify] 429 on {url} — waiting {wait}s then retrying", flush=True)
+        wait = min(retry_after, 60)  # respect Retry-After, cap at 60s max
+        print(f"[spotify] 429 on {url} — Retry-After={retry_after}s, waiting {wait}s then retrying", flush=True)
         await asyncio.sleep(wait)
         resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
     return resp
