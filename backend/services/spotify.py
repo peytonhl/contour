@@ -85,7 +85,7 @@ async def _get_token(client: httpx.AsyncClient) -> str:
 
 
 async def search_artists(query: str, limit: int = 10) -> list[dict]:
-    """Search Spotify for artists matching the query string. Results cached 12 hours."""
+    """Search Spotify for artists matching the query string. Results cached 7 days in Redis; also persisted permanently to DB by the search router."""
     cache_key = f"spotify:artist_search:{query.lower().strip()}:{limit}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
@@ -103,7 +103,7 @@ async def search_artists(query: str, limit: int = 10) -> list[dict]:
 
     result = [_parse_artist(a) for a in items]
     if result:
-        await redis_cache.set(cache_key, result, ttl=43200)  # 12 hours
+        await redis_cache.set(cache_key, result, ttl=604800)  # 7 days
     return result
 
 
@@ -149,7 +149,7 @@ async def get_album_tracks(album_id: str) -> list[dict]:
 
 
 async def search_tracks(query: str, limit: int = 10) -> list[dict]:
-    """Search Spotify for tracks matching the query string. Results cached 12 hours."""
+    """Search Spotify for tracks matching the query string. Results cached 7 days in Redis; also persisted permanently to DB by the search router."""
     cache_key = f"spotify:track_search:{query.lower().strip()}:{limit}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
@@ -167,7 +167,7 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
 
     result = [_parse_track(t) for t in items if t and t.get("id")]
     if result:
-        await redis_cache.set(cache_key, result, ttl=43200)  # 12 hours
+        await redis_cache.set(cache_key, result, ttl=604800)  # 7 days
     return result
 
 
@@ -224,7 +224,7 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 10) -> list[dic
 
     result = [_parse_album(a) for a in items if a and a.get("id")]
     if result:
-        await redis_cache.set(cache_key, result, ttl=43200)  # 12 hours
+        await redis_cache.set(cache_key, result, ttl=604800)  # 7 days
     return result
 
 
