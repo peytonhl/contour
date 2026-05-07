@@ -304,7 +304,7 @@ async def _run_artist_seeder() -> None:
         from datetime import datetime, timedelta
 
         # Check how many artists are already freshly seeded (within 7 days)
-        freshness_cutoff = datetime.utcnow() - timedelta(days=7)
+        freshness_cutoff = datetime.utcnow() - timedelta(days=30)
         async with AsyncSessionLocal() as db:
             fresh_count = (await db.execute(
                 sa_select(func.count()).select_from(ArtistCache)
