@@ -79,24 +79,46 @@ async def get_artist_albums(
     try:
         albums = await spotify.get_artist_albums(artist_id)
     except Exception as e:
-        print(f"[artists] Spotify failed for {artist_id}: {e} — falling back to DB cache", flush=True)
-        # Fall back to whatever we have cached in AlbumCache rather than crashing the page
-        from sqlalchemy import select as sa_select
-        from models import AlbumCache as AlbumCacheModel
-        db_rows = (await db.execute(
-            sa_select(AlbumCacheModel)
-            .where(AlbumCacheModel.artist.ilike(f"%{artist_id}%"))
-            .limit(50)
-        )).scalars().all()
-        if not db_rows:
-            # Nothing cached — return empty list, don't crash
+        print(f"[artists] Spotify full fetch failed for {artist_id}: {e}", flush=True)
+
+        # Fallback 1: try the search-tier limited fetch (may be Redis-cached from a
+        # recent search, or will make a quick single-page Spotify call).
+        albums = []
+        try:
+            albums = await spotify.get_artist_albums_limited(artist_id, limit=20)
+            if albums:
+                print(f"[artists] limited fallback OK: {len(albums)} albums for {artist_id}", flush=True)
+        except Exception as e2:
+            print(f"[artists] limited fallback also failed: {e2}", flush=True)
+
+        # Fallback 2: query AlbumCache in the DB.
+        # The artist column stores names, not IDs — look the name up from ArtistCache first.
+        if not albums:
+            from sqlalchemy import select as sa_select
+            from models import AlbumCache as AlbumCacheModel, ArtistCache
+            artist_row = (await db.execute(
+                sa_select(ArtistCache).where(ArtistCache.spotify_id == artist_id)
+            )).scalar_one_or_none()
+
+            if artist_row:
+                db_rows = (await db.execute(
+                    sa_select(AlbumCacheModel)
+                    .where(AlbumCacheModel.artist.ilike(f"%{artist_row.name}%"))
+                    .order_by(AlbumCacheModel.popularity.desc().nulls_last())
+                    .limit(50)
+                )).scalars().all()
+                if db_rows:
+                    print(f"[artists] DB fallback: {len(db_rows)} albums for {artist_row.name}", flush=True)
+                    albums = [
+                        {"id": r.spotify_id, "name": r.name, "artists": [r.artist], "artist_ids": [],
+                         "release_date": r.release_date or "", "release_date_precision": r.release_date_precision or "year",
+                         "image_url": r.image_url, "popularity": r.popularity, "total_tracks": None}
+                        for r in db_rows
+                    ]
+
+        if not albums:
+            print(f"[artists] all fallbacks exhausted for {artist_id} — returning []", flush=True)
             return []
-        albums = [
-            {"id": r.spotify_id, "name": r.name, "artists": [r.artist], "artist_ids": [],
-             "release_date": r.release_date or "", "release_date_precision": r.release_date_precision or "year",
-             "image_url": r.image_url, "popularity": r.popularity, "total_tracks": None}
-            for r in db_rows
-        ]
 
     current_mau = get_mau_for_date(date.today())
 
