@@ -116,17 +116,25 @@ async def unified_search(
                     # 429 or network error — fall through to DB-only results silently
                     pass
 
+            # Detect mixed queries like "cardigan don toliver" — contains both a
+            # track/album title and an artist name. Single-word or pure artist
+            # queries go discography-only; mixed queries also search tracks.
+            words = q_stripped.split()
+            query_is_mixed = artist_id and len(words) > 1
+
             if artist_id and need_albums:
                 try:
                     spotify_albums = await spotify.get_artist_albums_limited(artist_id, limit=10)
                 except Exception:
-                    pass  # rate limited — DB results will be returned as-is
+                    pass
 
-            elif not artist_id and need_tracks:
+            if (not artist_id or query_is_mixed) and need_tracks:
+                # No artist match → probably a song/album title
+                # Mixed match → "track title + artist name", search tracks too
                 try:
                     spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
                 except Exception:
-                    pass  # rate limited — DB results will be returned as-is
+                    pass
 
     # ── Step 3: Merge, deduplicate, return ────────────────────────────────────
 
