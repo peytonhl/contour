@@ -17,18 +17,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from services import redis_cache
 
 
-async def _spotify_get(client: httpx.AsyncClient, url: str, token: str, params: dict | None = None) -> httpx.Response:
-    """GET wrapper with one automatic retry on 429 (waits 8 seconds before retrying).
+# If Retry-After exceeds this, don't bother waiting — just bail and let the
+# caller fall back to DB/cache.  Waiting 49 minutes in a request handler is
+# pointless; we'd rather return DB results immediately.
+_MAX_RETRY_WAIT = 15  # seconds
 
-    Spotify's rate limit bucket typically refills within 30–60 seconds of a deploy.
-    A single short wait handles the cold-start window without hammering the API.
+
+async def _spotify_get(client: httpx.AsyncClient, url: str, token: str, params: dict | None = None) -> httpx.Response:
+    """GET wrapper with one automatic retry on 429 — only if the wait is short.
+
+    If Retry-After > _MAX_RETRY_WAIT, returns the 429 response immediately so
+    callers can fall back to DB/Redis without making the user wait.
     """
     resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
     if resp.status_code == 429:
         retry_after = int(resp.headers.get("Retry-After", 8))
-        wait = min(retry_after, 60)  # respect Retry-After, cap at 60s max
-        print(f"[spotify] 429 on {url} — Retry-After={retry_after}s, waiting {wait}s then retrying", flush=True)
-        await asyncio.sleep(wait)
+        if retry_after > _MAX_RETRY_WAIT:
+            print(f"[spotify] 429 on {url} — Retry-After={retry_after}s (>{_MAX_RETRY_WAIT}s threshold), bailing immediately", flush=True)
+            return resp  # caller will treat non-200 as failure and use DB
+        print(f"[spotify] 429 on {url} — Retry-After={retry_after}s, waiting then retrying", flush=True)
+        await asyncio.sleep(retry_after)
         resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
     return resp
 
