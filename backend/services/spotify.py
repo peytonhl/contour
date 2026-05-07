@@ -202,7 +202,7 @@ async def search_albums(query: str, limit: int = 10) -> list[dict]:
     return [_parse_album(a) for a in items if a and a.get("id")]
 
 
-async def get_artist_albums_limited(artist_id: str, limit: int = 10) -> list[dict]:
+async def get_artist_albums_limited(artist_id: str, limit: int = 20) -> list[dict]:
     """Fetch up to `limit` albums for an artist by Spotify artist ID.
     Uses /artists/{id}/albums which works without Extended Access — unlike /search.
     Results cached 1 hour since album lists rarely change."""
