@@ -216,7 +216,7 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 10) -> list[dic
         token = await _get_token(client)
         resp = await _spotify_get(
             client, f"https://api.spotify.com/v1/artists/{artist_id}/albums", token,
-            params={"limit": limit, "include_groups": "album,single,compilation"},
+            params={"limit": limit},
         )
         print(f"[spotify.get_artist_albums] HTTP {resp.status_code} for artist_id={artist_id}", flush=True)
         if resp.status_code != 200:
