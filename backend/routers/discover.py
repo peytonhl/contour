@@ -46,8 +46,8 @@ from services.limiter import limiter
 
 router = APIRouter(prefix="/discover", tags=["discover"])
 
-# Deezer queries for the baseline / fallback tiers (no Spotify needed)
-_DEEZER_POPULAR_QUERIES = ["top hits", "global hits", "chart music", "viral songs"]
+# Deezer queries for the new-music and fallback tiers (no Spotify needed).
+# Tier 3 now uses the chart API directly (no text search → no "Top Hits band" problem).
 _DEEZER_NEW_QUERIES = ["new music 2025", "new songs 2025", "fresh music"]
 _DEEZER_FALLBACK_QUERIES = [
     "pop hits",
@@ -182,21 +182,16 @@ async def get_discover_feed(
             if isinstance(res, list):
                 _add(res)
 
-    # ── Tier 3: Deezer popular baseline ──────────────────────────────────────
-    # Deezer's public API requires no auth, returns 30s previews, and is
-    # unaffected by Spotify's Extended Access restrictions.
+    # ── Tier 3: Deezer chart baseline ────────────────────────────────────────
+    # Uses Deezer's /chart/0/tracks endpoint (actual chart data) instead of
+    # searching text like "top hits" which was matching a karaoke artist of
+    # the same name and flooding the feed with cover tracks.
     if len(tracks) < limit:
-        popular_results = await asyncio.gather(*[
-            deezer_svc.search_tracks(q, limit=20)
-            for q in _DEEZER_POPULAR_QUERIES
-        ], return_exceptions=True)
-        for res in popular_results:
-            if isinstance(res, list):
-                random.shuffle(res)
-                _add(res)
-            if len(tracks) >= limit:
-                break
-        logger.info("discover: tier3 (deezer popular) → %d tracks", len(tracks))
+        chart_tracks = await deezer_svc.get_chart_tracks(limit=50)
+        if isinstance(chart_tracks, list):
+            random.shuffle(chart_tracks)
+            _add(chart_tracks)
+        logger.info("discover: tier3 (deezer chart) → %d tracks", len(tracks))
 
     # ── Tier 4: Deezer new music ──────────────────────────────────────────────
     if len(tracks) < limit:
@@ -225,7 +220,7 @@ async def get_discover_feed(
     # ── Tier 5.5: Nuclear fallback — ignore disliked filter ──────────────────
     if not tracks and disliked_ids:
         logger.info("discover: nuclear fallback — ignoring disliked filter (%d artists)", len(disliked_ids))
-        nuclear = await deezer_svc.search_tracks("top hits", limit=50)
+        nuclear = await deezer_svc.get_chart_tracks(limit=50)
         for t in nuclear:
             if t.get("id") and t["id"] not in exclude_ids and t["id"] not in seen:
                 seen.add(t["id"])

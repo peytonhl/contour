@@ -18,7 +18,14 @@ import httpx
 from services import redis_cache
 
 _BASE = "https://api.deezer.com/search"
+_CHART_URL = "https://api.deezer.com/chart/0/tracks"
 _TIMEOUT = 6.0  # seconds
+
+# Artist names that indicate compilation / karaoke / cover releases — skip them.
+_JUNK_ARTISTS = {
+    "top hits", "various artists", "karaoke", "tribute", "cover nation",
+    "hits", "chart hits", "billboard hits", "now hits", "pop hits",
+}
 
 
 def _parse_deezer_track(t: dict) -> dict:
@@ -58,7 +65,39 @@ async def search_tracks(query: str, limit: int = 20) -> list[dict]:
             resp = await client.get(_BASE, params={"q": query, "limit": limit})
             resp.raise_for_status()
             items = resp.json().get("data", [])
-        result = [_parse_deezer_track(t) for t in items if t.get("id") and t.get("preview")]
+        result = [
+            _parse_deezer_track(t) for t in items
+            if t.get("id") and t.get("preview")
+            and (t.get("artist") or {}).get("name", "").lower() not in _JUNK_ARTISTS
+        ]
+        if result:
+            await redis_cache.set(cache_key, result, ttl=21_600)  # 6 h
+        return result
+    except Exception:
+        return []
+
+
+async def get_chart_tracks(limit: int = 50) -> list[dict]:
+    """
+    Return Deezer's global chart tracks (real chart data, not a text search).
+    Avoids the "Top Hits band" problem caused by searching the string "top hits".
+    Cached for 6 hours.
+    """
+    cache_key = f"deezer:chart:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.get(_CHART_URL, params={"limit": limit})
+            resp.raise_for_status()
+            items = resp.json().get("data", [])
+        result = [
+            _parse_deezer_track(t) for t in items
+            if t.get("id") and t.get("preview")
+            and (t.get("artist") or {}).get("name", "").lower() not in _JUNK_ARTISTS
+        ]
         if result:
             await redis_cache.set(cache_key, result, ttl=21_600)  # 6 h
         return result
