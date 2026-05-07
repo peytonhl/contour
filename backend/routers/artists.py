@@ -79,7 +79,24 @@ async def get_artist_albums(
     try:
         albums = await spotify.get_artist_albums(artist_id)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        print(f"[artists] Spotify failed for {artist_id}: {e} — falling back to DB cache", flush=True)
+        # Fall back to whatever we have cached in AlbumCache rather than crashing the page
+        from sqlalchemy import select as sa_select
+        from models import AlbumCache as AlbumCacheModel
+        db_rows = (await db.execute(
+            sa_select(AlbumCacheModel)
+            .where(AlbumCacheModel.artist.ilike(f"%{artist_id}%"))
+            .limit(50)
+        )).scalars().all()
+        if not db_rows:
+            # Nothing cached — return empty list, don't crash
+            return []
+        albums = [
+            {"id": r.spotify_id, "name": r.name, "artists": [r.artist], "artist_ids": [],
+             "release_date": r.release_date or "", "release_date_precision": r.release_date_precision or "year",
+             "image_url": r.image_url, "popularity": r.popularity, "total_tracks": None}
+            for r in db_rows
+        ]
 
     current_mau = get_mau_for_date(date.today())
 

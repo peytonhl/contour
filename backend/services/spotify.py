@@ -406,21 +406,33 @@ async def get_related_artists(artist_id: str) -> list[str]:
 async def get_artist_albums(artist_id: str) -> list[dict]:
     """
     Fetch all albums for an artist by their Spotify artist ID.
-    Returns all album types (album, single, compilation).
+    Paginates through results using limit=20 per page.
+    Uses _spotify_get for 429 handling; raises on persistent failure.
     """
+    cache_key = f"spotify:artist_albums_full:{artist_id}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     results = []
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         url = f"https://api.spotify.com/v1/artists/{artist_id}/albums"
-        params = {"include_groups": "album,compilation", "limit": 50}
+        params: dict = {"limit": 20}
         while url:
-            resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
+            resp = await _spotify_get(client, url, token, params=params)
+            if resp.status_code != 200:
+                print(f"[spotify.get_artist_albums] HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
             resp.raise_for_status()
             data = resp.json()
             results.extend(data.get("items", []))
             url = data.get("next")
-            params = {}  # next URL already includes params
-    return [_parse_album(a) for a in results]
+            params = {}  # next URL already includes pagination params
+
+    parsed = [_parse_album(a) for a in results]
+    if parsed:
+        await redis_cache.set(cache_key, parsed, ttl=604800)  # 7 days
+    return parsed
 
 
 async def find_editions(album_id: str) -> list[dict]:
