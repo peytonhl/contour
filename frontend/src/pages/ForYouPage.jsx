@@ -228,7 +228,11 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
       setSubmitted(true);
       setReviewOpen(false);
     } else {
-      setReviewError("Couldn't save — try again.");
+      setReviewError(
+        track._source === "deezer"
+          ? "Reviews require a Spotify track — rate a few tracks and your feed will personalise to Spotify results."
+          : "Couldn't save — try again."
+      );
     }
   }
 
@@ -445,8 +449,8 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
           )}
         </div>
 
-        {/* Review — only shown for tracks with valid Spotify IDs */}
-        {user && /^[A-Za-z0-9]{22}$/.test(track.id) && (
+        {/* Review */}
+        {user && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {!reviewOpen && !submitted && (
               <button
