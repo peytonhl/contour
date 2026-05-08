@@ -155,6 +155,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [reviewError, setReviewError] = useState("");
   const [ratedValue, setRatedValue] = useState(userRating ?? null);
   const [ratingDone, setRatingDone] = useState(!!userRating);
   const [copied, setCopied] = useState(false);
@@ -175,6 +176,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
     setReviewOpen(false);
     setReviewText("");
     setSubmitted(false);
+    setReviewError("");
     setRatedValue(userRating ?? null);
     setRatingDone(!!userRating);
     setCopied(false);
@@ -221,9 +223,13 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
 
   async function handleSubmitReview() {
     if (!reviewText.trim()) return;
-    await onReview(track, reviewText.trim(), ratedValue);
-    setSubmitted(true);
-    setReviewOpen(false);
+    const ok = await onReview(track, reviewText.trim(), ratedValue);
+    if (ok) {
+      setSubmitted(true);
+      setReviewOpen(false);
+    } else {
+      setReviewError("Couldn't save — try again.");
+    }
   }
 
   async function handleShare() {
@@ -439,12 +445,12 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
           )}
         </div>
 
-        {/* Review */}
-        {user && (
+        {/* Review — only shown for tracks with valid Spotify IDs */}
+        {user && /^[A-Za-z0-9]{22}$/.test(track.id) && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {!reviewOpen && !submitted && (
               <button
-                onClick={() => setReviewOpen(true)}
+                onClick={() => { setReviewOpen(true); setReviewError(""); }}
                 style={{
                   alignSelf: "flex-start", fontSize: 12, color: "rgba(255,255,255,0.45)",
                   background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
@@ -463,17 +469,20 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
                 <textarea
                   autoFocus
                   value={reviewText}
-                  onChange={(e) => setReviewText(e.target.value.slice(0, 2000))}
+                  onChange={(e) => { setReviewText(e.target.value.slice(0, 2000)); setReviewError(""); }}
                   placeholder="What did you think?"
                   rows={3}
                   style={{
                     width: "100%", padding: "10px 12px", fontSize: 13,
                     background: "rgba(255,255,255,0.07)",
-                    border: "1px solid rgba(255,255,255,0.15)",
+                    border: `1px solid ${reviewError ? "rgba(248,113,113,0.5)" : "rgba(255,255,255,0.15)"}`,
                     borderRadius: 10, color: "#fff", resize: "none",
                     outline: "none", boxSizing: "border-box",
                   }}
                 />
+                {reviewError && (
+                  <span style={{ fontSize: 11, color: "#f87171" }}>{reviewError}</span>
+                )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={handleSubmitReview}
@@ -484,7 +493,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
                     }}
                   >Post</button>
                   <button
-                    onClick={() => setReviewOpen(false)}
+                    onClick={() => { setReviewOpen(false); setReviewError(""); }}
                     style={{
                       padding: "7px 14px", borderRadius: 20, fontSize: 13,
                       background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
@@ -703,7 +712,12 @@ function ForYouFeed() {
   }
 
   async function handleReview(track, body, ratingValue) {
-    try { await api.submitReview("track", track.id, body, ratingValue); } catch { }
+    try {
+      await api.submitReview("track", track.id, body, ratingValue);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function handleDislike(track) {
