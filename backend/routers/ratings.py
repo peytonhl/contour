@@ -259,8 +259,7 @@ async def upsert_review(
 ):
     if not user_id:
         raise HTTPException(status_code=401, detail="Sign in to leave a review")
-    if entity_type not in ("album", "track", "artist"):
-        raise HTTPException(status_code=400, detail="Invalid entity_type")
+    _validate_entity(entity_type, entity_id)
     if not body.body.strip():
         raise HTTPException(status_code=400, detail="Review cannot be empty")
 
