@@ -91,30 +91,54 @@ async def get_artist_albums(
         except Exception as e2:
             print(f"[artists] limited fallback also failed: {e2}", flush=True)
 
-        # Fallback 2: query AlbumCache in the DB.
-        # The artist column stores names, not IDs — look the name up from ArtistCache first.
-        if not albums:
-            from sqlalchemy import select as sa_select
-            from models import AlbumCache as AlbumCacheModel, ArtistCache
-            artist_row = (await db.execute(
-                sa_select(ArtistCache).where(ArtistCache.spotify_id == artist_id)
-            )).scalar_one_or_none()
+        # Resolve artist name — needed for fallbacks 2 and 3.
+        # Try ArtistCache first (free), then get_artist() which is Redis-cached.
+        from sqlalchemy import select as sa_select
+        from models import AlbumCache as AlbumCacheModel, ArtistCache
+        artist_name = None
+        artist_row = (await db.execute(
+            sa_select(ArtistCache).where(ArtistCache.spotify_id == artist_id)
+        )).scalar_one_or_none()
+        if artist_row:
+            artist_name = artist_row.name
+        else:
+            try:
+                artist_data = await spotify.get_artist(artist_id)
+                artist_name = artist_data.get("name")
+            except Exception:
+                pass
 
-            if artist_row:
-                db_rows = (await db.execute(
-                    sa_select(AlbumCacheModel)
-                    .where(AlbumCacheModel.artist.ilike(f"%{artist_row.name}%"))
-                    .order_by(AlbumCacheModel.popularity.desc().nulls_last())
-                    .limit(50)
-                )).scalars().all()
-                if db_rows:
-                    print(f"[artists] DB fallback: {len(db_rows)} albums for {artist_row.name}", flush=True)
-                    albums = [
-                        {"id": r.spotify_id, "name": r.name, "artists": [r.artist], "artist_ids": [],
-                         "release_date": r.release_date or "", "release_date_precision": r.release_date_precision or "year",
-                         "image_url": r.image_url, "popularity": r.popularity, "total_tracks": None}
-                        for r in db_rows
-                    ]
+        # Fallback 2: Spotify album search — different endpoint, not subject to the
+        # same selective block as /artists/{id}/albums.
+        if not albums and artist_name:
+            try:
+                search_results = await spotify.search_albums(artist_name, limit=10)
+                # Only keep albums where this artist is actually the primary artist.
+                albums = [
+                    a for a in search_results
+                    if artist_name.lower() in [art.lower() for art in a.get("artists", [])]
+                ]
+                if albums:
+                    print(f"[artists] search fallback OK: {len(albums)} albums for {artist_name}", flush=True)
+            except Exception as e3:
+                print(f"[artists] search fallback failed: {e3}", flush=True)
+
+        # Fallback 3: query AlbumCache in the DB by artist name.
+        if not albums and artist_name:
+            db_rows = (await db.execute(
+                sa_select(AlbumCacheModel)
+                .where(AlbumCacheModel.artist.ilike(f"%{artist_name}%"))
+                .order_by(AlbumCacheModel.popularity.desc().nulls_last())
+                .limit(50)
+            )).scalars().all()
+            if db_rows:
+                print(f"[artists] DB fallback: {len(db_rows)} albums for {artist_name}", flush=True)
+                albums = [
+                    {"id": r.spotify_id, "name": r.name, "artists": [r.artist], "artist_ids": [],
+                     "release_date": r.release_date or "", "release_date_precision": r.release_date_precision or "year",
+                     "image_url": r.image_url, "popularity": r.popularity, "total_tracks": None}
+                    for r in db_rows
+                ]
 
         if not albums:
             print(f"[artists] all fallbacks exhausted for {artist_id} — returning []", flush=True)
