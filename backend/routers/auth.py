@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pydantic import BaseModel
 from database import get_db
-from models import ArtistFavorite, Rating, Review, User
+from models import ArtistFavorite, Rating, Review, User, AlbumCache, TrackCache
 from services import spotify
 
 _ENV_FILE = Path(__file__).parent.parent / ".env"
@@ -231,6 +231,33 @@ async def get_profile(
     )
 
     async def fetch_entity_meta(entity_type: str, entity_id: str):
+        """DB-first entity lookup — only hits Spotify as a last resort."""
+        # 1. DB cache — instant, no rate-limit risk
+        try:
+            if entity_type == "album":
+                row = (await db.execute(
+                    select(AlbumCache).where(AlbumCache.spotify_id == entity_id)
+                )).scalar_one_or_none()
+                if row:
+                    return (entity_type, entity_id), {
+                        "name": row.name,
+                        "image_url": row.image_url,
+                        "artists": [row.artist] if row.artist else [],
+                    }
+            elif entity_type == "track":
+                row = (await db.execute(
+                    select(TrackCache).where(TrackCache.spotify_id == entity_id)
+                )).scalar_one_or_none()
+                if row:
+                    return (entity_type, entity_id), {
+                        "name": row.name,
+                        "image_url": row.image_url,
+                        "artists": [row.artist] if row.artist else [],
+                    }
+        except Exception:
+            pass
+
+        # 2. Spotify — last resort
         try:
             if entity_type == "album":
                 data = await spotify.get_album(entity_id)
@@ -239,7 +266,7 @@ async def get_profile(
             else:
                 data = await spotify.get_artist(entity_id)
             return (entity_type, entity_id), {
-                "name": data["name"],
+                "name": data.get("name"),
                 "image_url": data.get("image_url"),
                 "artists": data.get("artists", []),
             }
