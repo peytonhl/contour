@@ -72,8 +72,8 @@ const VALUE_PROPS = [
   {
     icon: "🎵",
     color: ACCENT_C,
-    title: "Discover with context",
-    body: "A personalized feed of tracks to rate, plus your friends' reviews — so recommendations come with reasons.",
+    title: "Find music made for you",
+    body: "Rate 10 tracks in the feed and Contour learns your taste — genre, era, vibe. Every rating sharpens what comes next.",
   },
 ];
 
