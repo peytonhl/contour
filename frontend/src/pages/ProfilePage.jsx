@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
+import { BadgeChips } from "./FeedPage.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#a78bfa";
@@ -143,12 +144,17 @@ export function ProfilePage() {
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState("");
 
+  const [badges, setBadges] = useState(null);
   const [lists, setLists] = useState([]);
   const [showCreateList, setShowCreateList] = useState(false);
   const [newListTitle, setNewListTitle] = useState("");
   const [newListDesc, setNewListDesc] = useState("");
   const [newListRanked, setNewListRanked] = useState(true);
   const [creatingList, setCreatingList] = useState(false);
+
+  useEffect(() => {
+    api.getBadges().then(setBadges).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!user) { navigate("/"); return; }
@@ -307,9 +313,12 @@ export function ProfilePage() {
           {/* Name + bio + stats */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 8 }}>
-              <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.025em", margin: 0, lineHeight: 1.1 }}>
-                {user.display_name}
-              </h1>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.025em", margin: 0, lineHeight: 1.1 }}>
+                  {user.display_name}
+                </h1>
+                <BadgeChips badges={badges} userId={user?.id} size="md" />
+              </div>
               <button
                 onClick={logout}
                 style={{

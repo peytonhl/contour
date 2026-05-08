@@ -49,6 +49,14 @@ function FeedIcon() {
   );
 }
 
+function CommunityIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
 function PersonIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -131,6 +139,7 @@ export function Layout() {
 
   const desktopNavLinks = [
     { to: "/", label: "For You", end: true },
+    { to: "/feed", label: "Community" },
     { to: "/search", label: "Search" },
     { to: "/compare", label: "Compare" },
     { to: "/charts", label: "Charts" },
@@ -289,8 +298,8 @@ export function Layout() {
       >
         <div style={{ display: "flex", alignItems: "stretch", height: 56 }}>
           <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
+          <BottomTab to="/feed" label="Community" icon={<CommunityIcon />} />
           <BottomTab to="/search" label="Search" icon={<SearchIcon />} />
-          <BottomTab to="/compare" label="Compare" icon={<CompareIcon />} />
           <BottomTab to="/charts" label="Charts" icon={<ChartsIcon />} />
 
           {user ? (

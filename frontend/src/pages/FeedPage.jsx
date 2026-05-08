@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -14,6 +14,51 @@ const SORT_LABELS = [
   { key: "top", label: "Top" },
   { key: "controversial", label: "Controversial" },
 ];
+
+// ── Badge definitions ─────────────────────────────────────────────────────────
+export const BADGE_DEFS = [
+  { key: "critics",      emoji: "✍️",  label: "Top Critic",     color: "#a78bfa", title: "Top 5 most reviews written" },
+  { key: "influencers",  emoji: "⬆️",  label: "Influential",    color: "#34d399", title: "Top 5 most upvotes received" },
+  { key: "connectors",   emoji: "👥",  label: "Most Followed",  color: "#fb923c", title: "Top 5 most followers" },
+];
+
+/**
+ * Given the badges object from the API, return which badge keys this userId holds.
+ * badges = { critics: [{id,...}], influencers: [...], connectors: [...] }
+ */
+export function getBadgesForUser(badges, userId) {
+  if (!badges || !userId) return [];
+  return BADGE_DEFS.filter((def) =>
+    (badges[def.key] ?? []).some((u) => u.id === userId)
+  );
+}
+
+export function BadgeChips({ badges, userId, size = "sm" }) {
+  const held = getBadgesForUser(badges, userId);
+  if (!held.length) return null;
+  const fs = size === "sm" ? 10 : 12;
+  const pad = size === "sm" ? "2px 7px" : "3px 10px";
+  return (
+    <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+      {held.map((b) => (
+        <span
+          key={b.key}
+          title={b.title}
+          style={{
+            fontSize: fs, fontWeight: 700, padding: pad,
+            borderRadius: 20,
+            background: `${b.color}18`,
+            border: `1px solid ${b.color}50`,
+            color: b.color,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {b.emoji} {b.label}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 function timeAgo(iso) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -40,7 +85,7 @@ function RatingBadge({ value }) {
 }
 
 // ── Review card for the Discover feed ────────────────────────────────────────
-function DiscoverCard({ item, user, onVote }) {
+function DiscoverCard({ item, user, onVote, badges }) {
   const [copiedShare, setCopiedShare] = useState(false);
   const entityPath = `/${item.entity_type}/${item.entity_id}#review-${item.id}`;
 
@@ -86,9 +131,14 @@ function DiscoverCard({ item, user, onVote }) {
             : <div style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--surface2)" }} />
           }
         </Link>
-        <Link to={`/user/${item.user?.id}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>{item.user?.display_name}</Link>
-        {item.rating && <RatingBadge value={item.rating} />}
-        <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>{timeAgo(item.created_at)}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <Link to={`/user/${item.user?.id}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>{item.user?.display_name}</Link>
+            {item.rating && <RatingBadge value={item.rating} />}
+            <BadgeChips badges={badges} userId={item.user?.id} />
+          </div>
+        </div>
+        <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{timeAgo(item.created_at)}</span>
       </div>
 
       {/* Review body */}
@@ -277,22 +327,75 @@ export function FollowingTab() {
   );
 }
 
+// ── Badge leaderboard sidebar section ────────────────────────────────────────
+function BadgeLeaderboard({ badges }) {
+  if (!badges) return null;
+  return (
+    <div style={{
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: 12,
+      padding: "16px 18px",
+      marginBottom: 20,
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 14 }}>
+        Community Top 5
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {BADGE_DEFS.map((def) => {
+          const list = badges[def.key] ?? [];
+          if (!list.length) return null;
+          return (
+            <div key={def.key}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 13 }}>{def.emoji}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: def.color, letterSpacing: "0.04em", textTransform: "uppercase" }}>{def.label}</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {list.map((u, i) => (
+                  <Link key={u.id} to={`/user/${u.id}`} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 14, flexShrink: 0 }}>#{i + 1}</span>
+                    {u.image_url
+                      ? <img src={u.image_url} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                      : <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
+                    }
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{u.score}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export function FeedPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState("discover"); // "following" | "discover"
+  const [tab, setTab] = useState("community"); // "community" | "following"
   const [sort, setSort] = useState("recent");
   const [discover, setDiscover] = useState([]);
   const [loadingDiscover, setLoadingDiscover] = useState(true);
+  const [badges, setBadges] = useState(null);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
-  // Discover always loads
+  // Load badge leaderboard once
   useEffect(() => {
+    api.getBadges().then(setBadges).catch(() => {});
+  }, []);
+
+  // Community reviews — reload when sort changes
+  useEffect(() => {
+    if (tab !== "community") return;
     setLoadingDiscover(true);
     api.getGlobalReviews(sort)
       .then(setDiscover)
       .catch(() => setDiscover([]))
       .finally(() => setLoadingDiscover(false));
-  }, [sort]);
+  }, [sort, tab]);
 
   function handleVote(reviewId, value) {
     if (!user) return;
@@ -304,13 +407,35 @@ export function FeedPage() {
   }
 
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: "24px 20px" }}>
+    <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 20px" }}>
+
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Community</h1>
+        <button
+          onClick={() => setShowLeaderboard((v) => !v)}
+          title="Top 5 leaderboard"
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 20,
+            background: showLeaderboard ? "var(--surface2)" : "transparent",
+            border: `1px solid ${showLeaderboard ? "var(--border)" : "transparent"}`,
+            color: showLeaderboard ? "var(--text)" : "var(--text-muted)",
+            cursor: "pointer",
+          }}
+        >
+          🏆 Top 5
+        </button>
+      </div>
+
+      {/* Collapsible badge leaderboard */}
+      {showLeaderboard && <BadgeLeaderboard badges={badges} />}
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
         {[
-          { key: "discover", label: "Discover" },
-          { key: "following", label: user ? "Following" : "Following (sign in)" },
+          { key: "community", label: "All Reviews" },
+          { key: "following", label: user ? "Following" : "Following" },
         ].map(({ key, label }) => {
           const active = tab === key;
           return (
@@ -326,11 +451,11 @@ export function FeedPage() {
         })}
       </div>
 
-      {/* Discover tab */}
-      {tab === "discover" && (
+      {/* Community tab */}
+      {tab === "community" && (
         <>
           {/* Sort controls */}
-          <div style={{ display: "flex", gap: 0, padding: "12px 0 4px", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", gap: 0, padding: "8px 0 4px", borderBottom: "1px solid var(--border)" }}>
             {SORT_LABELS.map(({ key, label }) => (
               <button key={key} onClick={() => setSort(key)}
                 style={{
@@ -356,7 +481,7 @@ export function FeedPage() {
             </div>
           )}
           {!loadingDiscover && discover.map((item) => (
-            <DiscoverCard key={item.id} item={item} user={user} onVote={handleVote} />
+            <DiscoverCard key={item.id} item={item} user={user} onVote={handleVote} badges={badges} />
           ))}
         </>
       )}

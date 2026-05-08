@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
+import { BadgeChips } from "./FeedPage.jsx";
 
 const ACCENT = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -66,6 +67,11 @@ export function UserPage() {
   const [loading, setLoading] = useState(true);
   const [followLoading, setFollowLoading] = useState(false);
   const [tab, setTab] = useState("taste");
+  const [badges, setBadges] = useState(null);
+
+  useEffect(() => {
+    api.getBadges().then(setBadges).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -133,10 +139,11 @@ export function UserPage() {
         </div>
 
         {/* Name + bio */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
           <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.025em", margin: 0, lineHeight: 1.1 }}>
             {profile.display_name}
           </h1>
+          <BadgeChips badges={badges} userId={id} size="md" />
           {profile.bio && (
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.65, maxWidth: 400 }}>
               {profile.bio}

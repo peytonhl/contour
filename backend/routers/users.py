@@ -9,7 +9,7 @@ from sqlalchemy import select, func, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import User, UserFollow, Rating, Review, ArtistFavorite, UserList, UserListItem, AlbumCache, TrackCache
+from models import User, UserFollow, Rating, Review, ReviewVote, ArtistFavorite, UserList, UserListItem, AlbumCache, TrackCache
 from routers.auth import decode_jwt, optional_user_id
 from routers.notifications import create_notification
 from services import spotify
@@ -82,6 +82,68 @@ async def _fetch_entity_meta(entity_type: str, entity_id: str, db: AsyncSession)
         }
     except Exception:
         return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
+
+
+@router.get("/badges")
+async def get_badges(db: AsyncSession = Depends(get_db)):
+    """
+    Return the top-5 users in three badge categories:
+      - critics:     most reviews written
+      - influencers: most upvotes received across all their reviews
+      - connectors:  most followers
+    Each category returns a list of {id, display_name, image_url, score}.
+    """
+    # ── Critics: top 5 by review count ───────────────────────────────────────
+    critic_rows = (await db.execute(
+        select(Review.user_id, func.count(Review.id).label("score"))
+        .group_by(Review.user_id)
+        .order_by(func.count(Review.id).desc())
+        .limit(5)
+    )).all()
+
+    # ── Influencers: top 5 by total upvotes received ──────────────────────────
+    influencer_rows = (await db.execute(
+        select(Review.user_id, func.count(ReviewVote.id).label("score"))
+        .join(ReviewVote, (ReviewVote.review_id == Review.id) & (ReviewVote.value == 1))
+        .group_by(Review.user_id)
+        .order_by(func.count(ReviewVote.id).desc())
+        .limit(5)
+    )).all()
+
+    # ── Connectors: top 5 by follower count ──────────────────────────────────
+    connector_rows = (await db.execute(
+        select(UserFollow.following_id, func.count(UserFollow.id).label("score"))
+        .group_by(UserFollow.following_id)
+        .order_by(func.count(UserFollow.id).desc())
+        .limit(5)
+    )).all()
+
+    # Batch-fetch all user objects we need
+    all_ids = list({r.user_id for r in critic_rows}
+                  | {r.user_id for r in influencer_rows}
+                  | {r.following_id for r in connector_rows})
+    if not all_ids:
+        return {"critics": [], "influencers": [], "connectors": []}
+
+    user_objs = (await db.execute(
+        select(User).where(User.id.in_(all_ids))
+    )).scalars().all()
+    user_map = {u.id: u for u in user_objs}
+
+    def _serialize(uid: str, score: int) -> dict:
+        u = user_map.get(uid)
+        return {
+            "id": uid,
+            "display_name": u.display_name if u else "Unknown",
+            "image_url": u.image_url if u else None,
+            "score": score,
+        }
+
+    return {
+        "critics":      [_serialize(r.user_id,    r.score) for r in critic_rows],
+        "influencers":  [_serialize(r.user_id,    r.score) for r in influencer_rows],
+        "connectors":   [_serialize(r.following_id, r.score) for r in connector_rows],
+    }
 
 
 @router.get("/suggested")
