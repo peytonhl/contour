@@ -694,17 +694,38 @@ function ForYouFeed() {
 
   /**
    * For Deezer-sourced tracks (numeric IDs), look up the real Spotify track ID
-   * before saving anything. Returns null if not found.
+   * before saving anything. Returns null only if the track genuinely can't be
+   * found on Spotify after multiple search strategies.
    */
   async function _resolveSpotifyId(track) {
     if (track._source !== "deezer") return track.id;
+
+    // Strip special characters from artist name (slashes, parens, etc. break search)
+    const cleanArtist = (track.artists?.[0] ?? "").replace(/[/\\()|&]/g, " ").replace(/\s+/g, " ").trim();
+    const trackName = track.name ?? "";
+
+    // Strategy 1: track name + cleaned artist
     try {
-      const q = `${track.name} ${track.artists?.[0] ?? ""}`.trim();
-      const results = await api.searchTracks(q);
-      return results?.[0]?.id ?? null;
-    } catch {
-      return null;
-    }
+      const q1 = `${trackName} ${cleanArtist}`.trim();
+      const r1 = await api.searchTracks(q1);
+      // Verify the result loosely matches — avoid swapping "Golden" for Jungkook's album etc.
+      const match1 = r1?.find((t) =>
+        t.name?.toLowerCase().includes(trackName.toLowerCase()) ||
+        trackName.toLowerCase().includes(t.name?.toLowerCase())
+      );
+      if (match1?.id) return match1.id;
+    } catch { /* fall through */ }
+
+    // Strategy 2: track name only (catches when artist name is exotic / new)
+    try {
+      const r2 = await api.searchTracks(trackName);
+      const match2 = r2?.find((t) =>
+        t.name?.toLowerCase() === trackName.toLowerCase()
+      );
+      if (match2?.id) return match2.id;
+    } catch { /* fall through */ }
+
+    return null;
   }
 
   async function handleRate(track, value) {
