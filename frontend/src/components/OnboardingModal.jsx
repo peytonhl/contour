@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
 
-const STORAGE_KEY = "contour_onboarded_v1";
+const STORAGE_KEY = "contour_onboarded_v2";
 const GENRES_KEY = "contour_genres_v1";
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -55,25 +55,25 @@ export function GenreChip({ genre, selected, onToggle }) {
   );
 }
 
-// ── Quick tips for the second screen ─────────────────────────────────────────
-const TIPS = [
+// ── Value prop cards ──────────────────────────────────────────────────────────
+const VALUE_PROPS = [
   {
     icon: "★",
-    color: ACCENT_B,
-    title: "Rate tracks on your feed",
-    body: "Stars on the For You cards tune your feed. 5 ratings is all it takes to personalize it.",
-  },
-  {
-    icon: "↗",
     color: ACCENT_A,
-    title: "Search any album or artist",
-    body: "Look up anything to see its streaming history, community ratings, and compare it to something else.",
+    title: "Rate & review anything",
+    body: "Half-star ratings and reviews for albums, tracks, and artists — like Letterboxd, but for music.",
   },
   {
-    icon: "⟺",
+    icon: "📊",
+    color: ACCENT_B,
+    title: "See what actually streamed",
+    body: "Era-adjusted scores level the playing field. A 2012 album that was massive gets the credit it deserves, even next to a 2024 release.",
+  },
+  {
+    icon: "🎵",
     color: ACCENT_C,
-    title: "Compare releases head-to-head",
-    body: "Head to Compare to put any two albums or tracks side-by-side — across any era.",
+    title: "Discover with context",
+    body: "A personalized feed of tracks to rate, plus your friends' reviews — so recommendations come with reasons.",
   },
 ];
 
@@ -98,7 +98,7 @@ function Dots({ total, active }) {
 export function OnboardingModal() {
   const { user } = useAuth();
   const [visible, setVisible] = useState(false);
-  const [step, setStep] = useState(0); // 0 = genres, 1 = tips
+  const [step, setStep] = useState(0); // 0 = value prop, 1 = genres, 2 = done
   const [exiting, setExiting] = useState(false);
   const [selectedGenres, setSelectedGenres] = useState([]);
 
@@ -118,14 +118,14 @@ export function OnboardingModal() {
     }, 220);
   }
 
-  async function saveGenresAndNext() {
+  async function saveGenresAndFinish() {
     if (selectedGenres.length > 0) {
       localStorage.setItem(GENRES_KEY, JSON.stringify(selectedGenres));
       if (user) {
         api.saveTasteProfile(selectedGenres, [], true).catch(() => {});
       }
     }
-    setStep(1);
+    dismiss();
   }
 
   function toggleGenre(slug) {
@@ -171,8 +171,64 @@ export function OnboardingModal() {
           {/* Drag handle */}
           <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 22px" }} />
 
-          {/* ── Step 0: Genre picker ── */}
+          {/* ── Step 0: Value prop ── */}
           {step === 0 && (
+            <>
+              <div style={{ textAlign: "center", marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
+                  Welcome to Contour
+                </div>
+                <h2 style={{
+                  fontSize: 24, fontWeight: 800, margin: "0 0 8px", lineHeight: 1.2,
+                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+                }}>
+                  Music opinions,<br />backed by data.
+                </h2>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
+                  The only music app that combines ratings and reviews with real streaming analytics — so you can finally settle the debate.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
+                {VALUE_PROPS.map((vp) => (
+                  <div key={vp.title} style={{
+                    display: "flex", alignItems: "flex-start", gap: 13,
+                    background: "var(--surface2)", borderRadius: 12, padding: "13px 15px",
+                    border: "1px solid var(--border)",
+                  }}>
+                    <span style={{
+                      fontSize: 16, width: 32, height: 32, flexShrink: 0,
+                      borderRadius: 8, background: `${vp.color}18`,
+                      border: `1px solid ${vp.color}35`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {vp.icon}
+                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{vp.title}</span>
+                      <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55 }}>{vp.body}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <Dots total={2} active={0} />
+              </div>
+
+              <button onClick={() => setStep(1)} style={{
+                width: "100%", padding: "13px 0", borderRadius: 12,
+                background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
+              }}>
+                Get started →
+              </button>
+            </>
+          )}
+
+          {/* ── Step 1: Genre picker ── */}
+          {step === 1 && (
             <>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h2 style={{
@@ -180,10 +236,10 @@ export function OnboardingModal() {
                   background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                   WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
                 }}>
-                  What do you love listening to?
+                  What do you listen to?
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                  Pick your genres to get a personalized feed from day one.
+                  Pick your genres to personalize your For You feed from day one.
                   {selectedGenres.length > 0 && (
                     <span style={{ color: ACCENT_A, fontWeight: 700 }}> {selectedGenres.length} selected</span>
                   )}
@@ -201,7 +257,7 @@ export function OnboardingModal() {
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={2} active={0} />
+                <Dots total={2} active={1} />
               </div>
 
               <div style={{ display: "flex", gap: 10 }}>
@@ -212,65 +268,14 @@ export function OnboardingModal() {
                 }}>
                   Skip
                 </button>
-                <button onClick={saveGenresAndNext} style={{
+                <button onClick={saveGenresAndFinish} style={{
                   flex: 2, padding: "12px 0", borderRadius: 12,
                   background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                   border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
                 }}>
-                  {selectedGenres.length > 0 ? "Continue →" : "Skip for now →"}
+                  {selectedGenres.length > 0 ? "Let's go →" : "Skip for now →"}
                 </button>
               </div>
-            </>
-          )}
-
-          {/* ── Step 1: Quick tips ── */}
-          {step === 1 && (
-            <>
-              <div style={{ textAlign: "center", marginBottom: 22 }}>
-                <h2 style={{
-                  fontSize: 22, fontWeight: 800, margin: "0 0 6px",
-                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-                }}>
-                  You're in. Here's what to try:
-                </h2>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 22 }}>
-                {TIPS.map((tip) => (
-                  <div key={tip.title} style={{
-                    display: "flex", alignItems: "flex-start", gap: 14,
-                    background: "var(--surface2)", borderRadius: 12, padding: "13px 15px",
-                    border: "1px solid var(--border)",
-                  }}>
-                    <span style={{
-                      fontSize: 18, width: 32, height: 32, flexShrink: 0,
-                      borderRadius: 8, background: `${tip.color}18`,
-                      border: `1px solid ${tip.color}35`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      color: tip.color, fontWeight: 800,
-                    }}>
-                      {tip.icon}
-                    </span>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{tip.title}</span>
-                      <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55 }}>{tip.body}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ marginBottom: 18 }}>
-                <Dots total={2} active={1} />
-              </div>
-
-              <button onClick={dismiss} style={{
-                width: "100%", padding: "13px 0", borderRadius: 12,
-                background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
-              }}>
-                Start exploring →
-              </button>
             </>
           )}
         </div>
