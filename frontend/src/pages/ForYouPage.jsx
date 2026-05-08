@@ -228,11 +228,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
       setSubmitted(true);
       setReviewOpen(false);
     } else {
-      setReviewError(
-        track._source === "deezer"
-          ? "Reviews require a Spotify track — rate a few tracks and your feed will personalise to Spotify results."
-          : "Couldn't save — try again."
-      );
+      setReviewError("Couldn't save — try again.");
     }
   }
 
@@ -696,13 +692,31 @@ function ForYouFeed() {
     return () => window.removeEventListener("keydown", onKey);
   }, [activeIdx, goToCard]);
 
+  /**
+   * For Deezer-sourced tracks (numeric IDs), look up the real Spotify track ID
+   * before saving anything. Returns null if not found.
+   */
+  async function _resolveSpotifyId(track) {
+    if (track._source !== "deezer") return track.id;
+    try {
+      const q = `${track.name} ${track.artists?.[0] ?? ""}`.trim();
+      const results = await api.searchTracks(q);
+      return results?.[0]?.id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async function handleRate(track, value) {
     setUserRatings((prev) => ({ ...prev, [track.id]: value }));
     recordRating(track.id, track.artist_ids?.[0], value);
     setRatingCount(getRatingCount());
     try {
+      const spotifyId = await _resolveSpotifyId(track);
+      if (!spotifyId) return; // Deezer-only track not on Spotify — skip silently
+
       // Pass artist_id so the server auto-updates the taste profile on high ratings
-      await api.rateEntity("track", track.id, value, track.artist_ids?.[0] ?? null);
+      await api.rateEntity("track", spotifyId, value, track.artist_ids?.[0] ?? null);
       // Also update local genre cache for logged-out / cold-start scenarios
       if (value >= 4 && track.artist_ids?.[0]) {
         api.getArtist(track.artist_ids[0]).then((artist) => {
@@ -717,7 +731,9 @@ function ForYouFeed() {
 
   async function handleReview(track, body, ratingValue) {
     try {
-      await api.submitReview("track", track.id, body, ratingValue);
+      const spotifyId = await _resolveSpotifyId(track);
+      if (!spotifyId) return false;
+      await api.submitReview("track", spotifyId, body, ratingValue);
       return true;
     } catch {
       return false;
