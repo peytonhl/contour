@@ -9,7 +9,7 @@ from sqlalchemy import select, func, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import User, UserFollow, Rating, Review, ArtistFavorite, UserList, UserListItem
+from models import User, UserFollow, Rating, Review, ArtistFavorite, UserList, UserListItem, AlbumCache, TrackCache
 from routers.auth import decode_jwt, optional_user_id
 from routers.notifications import create_notification
 from services import spotify
@@ -18,16 +18,38 @@ from services import deezer as deezer_svc
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-async def _fetch_entity_meta(entity_type: str, entity_id: str) -> tuple:
+async def _fetch_entity_meta(entity_type: str, entity_id: str, db: AsyncSession) -> tuple:
     """Resolve name/image/artists for a rated entity.
 
-    Handles three cases:
-    - Pure numeric IDs → old Deezer ratings; look up via Deezer track API.
-    - 22-char Spotify IDs → call Spotify.
-    - Any failure → return null metadata so the UI can degrade gracefully.
+    Resolution order:
+    1. DB cache (AlbumCache / TrackCache) — free, instant, no rate-limit risk.
+    2. Deezer API — for old numeric IDs from the For You feed pre-validation.
+    3. Spotify API — last resort; skipped entirely if DB already has the data.
     """
+    # ── 1. DB cache first ─────────────────────────────────────────────────────
+    if entity_type == "album":
+        row = (await db.execute(
+            select(AlbumCache).where(AlbumCache.spotify_id == entity_id)
+        )).scalar_one_or_none()
+        if row:
+            return (entity_type, entity_id), {
+                "name": row.name,
+                "image_url": row.image_url,
+                "artists": [row.artist] if row.artist else [],
+            }
+    elif entity_type == "track":
+        row = (await db.execute(
+            select(TrackCache).where(TrackCache.spotify_id == entity_id)
+        )).scalar_one_or_none()
+        if row:
+            return (entity_type, entity_id), {
+                "name": row.name,
+                "image_url": row.image_url,
+                "artists": [row.artist] if row.artist else [],
+            }
+
+    # ── 2. Deezer — numeric IDs from old For You feed ratings ────────────────
     if entity_id.isdigit():
-        # Deezer numeric ID stored from an old For You feed rating.
         try:
             import httpx
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -45,6 +67,7 @@ async def _fetch_entity_meta(entity_type: str, entity_id: str) -> tuple:
             pass
         return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
 
+    # ── 3. Spotify ────────────────────────────────────────────────────────────
     try:
         if entity_type == "track":
             data = await spotify.get_track(entity_id)
@@ -276,7 +299,7 @@ async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
 
     unique_entities = list({(r.entity_type, r.entity_id) for r in ratings})
 
-    enriched = dict(await asyncio.gather(*[_fetch_entity_meta(et, eid) for et, eid in unique_entities]))
+    enriched = dict(await asyncio.gather(*[_fetch_entity_meta(et, eid, db) for et, eid in unique_entities]))
 
     return [
         {
@@ -360,7 +383,7 @@ async def get_user_reviews(user_id: str, db: AsyncSession = Depends(get_db)):
     # Enrich with Spotify metadata + ratings
     unique_entities = list({(r.entity_type, r.entity_id) for r in reviews})
 
-    enriched = dict(await asyncio.gather(*[_fetch_entity_meta(et, eid) for et, eid in unique_entities]))
+    enriched = dict(await asyncio.gather(*[_fetch_entity_meta(et, eid, db) for et, eid in unique_entities]))
 
     # Look up each review's rating value
     rating_map: dict[tuple, float] = {}
