@@ -253,8 +253,8 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
       position: "relative", overflow: "hidden",
       background: "#0a0a0a",
     }}>
-      {/* Album art — top half */}
-      <div style={{ flex: "0 0 52%", position: "relative", overflow: "hidden" }}>
+      {/* Album art — top portion (44% leaves room for all controls below) */}
+      <div style={{ flex: "0 0 44%", position: "relative", overflow: "hidden" }}>
         {track.image_url
           ? <>
               <div style={{
@@ -345,12 +345,12 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
         </div>
       </div>
 
-      {/* Info + controls — bottom half */}
+      {/* Info + controls — bottom section */}
       <div style={{
         flex: 1, display: "flex", flexDirection: "column",
-        padding: "20px 24px 16px",
+        padding: "14px 24px 12px",
         background: "linear-gradient(to bottom, #0a0a0a, #111)",
-        gap: 14, overflowY: "auto",
+        gap: 10, overflowY: "auto",
       }}>
 
         {/* Track info */}
@@ -427,7 +427,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
           <iframe
             src={`https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0`}
             width="100%"
-            height="80"
+            height="70"
             style={{ borderRadius: 10, border: "none", display: "block" }}
             allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
             loading="lazy"
