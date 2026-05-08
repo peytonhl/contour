@@ -383,6 +383,29 @@ async def startup():
     # dedicated cron job is set up outside the app process.
     # asyncio.create_task(_seed_leaderboard())
 
+    # One-time cleanup: delete ratings/reviews whose entity_id is a pure numeric
+    # string (Deezer IDs that leaked in via the /review endpoint before validation
+    # was added).  Idempotent — safe to run on every startup until rows are gone.
+    try:
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as _db:
+            result = await _db.execute(
+                text("DELETE FROM ratings WHERE entity_id ~ '^[0-9]+$'")
+            )
+            deleted_ratings = result.rowcount
+            result2 = await _db.execute(
+                text("DELETE FROM reviews WHERE entity_id ~ '^[0-9]+$'")
+            )
+            deleted_reviews = result2.rowcount
+            await _db.commit()
+            if deleted_ratings or deleted_reviews:
+                logger.info(
+                    "Startup cleanup: removed %d numeric-ID ratings and %d numeric-ID reviews",
+                    deleted_ratings, deleted_reviews,
+                )
+    except Exception as exc:
+        logger.warning("Startup cleanup failed (non-fatal): %s", exc)
+
     logger.info("=== Contour startup complete — app is ready to serve requests ===")
 
 
