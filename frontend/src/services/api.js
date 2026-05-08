@@ -143,6 +143,9 @@ export const api = {
   saveTasteProfile: (genres, likedArtistIds = [], onboardingDone = false) =>
     post(`/taste/profile`, { genres, liked_artist_ids: likedArtistIds, onboarding_done: onboardingDone }),
 
+  // Badge leaderboard (top-5 critics, influencers, connectors)
+  getBadges: () => request(`/users/badges`),
+
   // Suggested users
   getSuggestedUsers: () => request(`/users/suggested`),
 
