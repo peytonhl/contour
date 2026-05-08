@@ -370,13 +370,13 @@ async def startup():
     # Running as a task so startup isn't blocked if Spotify is slow.
     asyncio.create_task(_seed_compare_page_albums())
 
-    # Top-artist discography seeder — runs 90s after startup so the app is
-    # fully ready before any Spotify calls are made.
-    # SAFE to run on every deploy because:
-    #   - Skips artists already fetched within 7 days (idempotent after first run)
-    #   - After first run completes, subsequent deploys exit in ~seconds
-    #   - 1.5s delay between Spotify calls (~40/min, well within rate limits)
-    asyncio.create_task(_run_artist_seeder())
+    # Top-artist discography seeder — DISABLED.
+    # The seeder never completed because Spotify rate-limited it mid-run on every
+    # deploy, causing the whole app credential to be blocked for hours.  The
+    # app now populates AlbumCache / Redis organically as users browse, which is
+    # gentler on the API.  Re-enable only when running as a dedicated one-time
+    # job outside the app process (e.g. a Railway cron job or manual run).
+    # asyncio.create_task(_run_artist_seeder())
 
     # Leaderboard seeder disabled — proactive Spotify calls burn rate limits and
     # block user searches. Re-enable once Extended Access is approved or a

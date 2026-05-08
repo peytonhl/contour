@@ -108,15 +108,18 @@ async def search_artists(query: str, limit: int = 10) -> list[dict]:
 
 
 async def get_artist(artist_id: str) -> dict:
-    """Fetch artist metadata by Spotify artist ID."""
+    """Fetch artist metadata by Spotify artist ID. Cached 24 h in Redis."""
+    cache_key = f"spotify:artist:{artist_id}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            f"https://api.spotify.com/v1/artists/{artist_id}",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        resp = await _spotify_get(client, f"https://api.spotify.com/v1/artists/{artist_id}", token)
         resp.raise_for_status()
-        return _parse_artist(resp.json())
+        result = _parse_artist(resp.json())
+    await redis_cache.set(cache_key, result, ttl=86400)  # 24 h
+    return result
 
 
 async def get_album_tracks(album_id: str) -> list[dict]:
