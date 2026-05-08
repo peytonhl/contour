@@ -162,6 +162,7 @@ export function ArtistPage() {
   const [error, setError] = useState(null);
   const [albumsLoading, setAlbumsLoading] = useState(true);
   const [albumsEmpty, setAlbumsEmpty] = useState(false);
+  const [showAllAlbums, setShowAllAlbums] = useState(false);
 
   async function loadAlbums() {
     setAlbumsLoading(true);
@@ -342,13 +343,23 @@ export function ArtistPage() {
           <h2 style={{ fontSize: 16, fontWeight: 700 }}>Discography</h2>
           {!albumsLoading && !albumsEmpty && (
             <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 7, overflow: "hidden", border: "1px solid var(--border)", flexShrink: 0 }}>
-              {[["date", "Latest"], ["streams", "Streams"], ["era", "Era Score"]].map(([val, lbl]) => (
-                <button key={val} onClick={() => setSort(val)} style={{
-                  padding: "5px 14px", fontSize: 12, fontWeight: sort === val ? 700 : 400,
-                  background: sort === val ? ACCENT_A : "transparent",
-                  color: sort === val ? "#000" : "var(--text-muted)",
-                  border: "none", cursor: "pointer", transition: "all 0.15s",
-                }}>{lbl}</button>
+              {[
+                ["date",    "Latest",  "Sorted by release date, newest first"],
+                ["streams", "Streams", "Raw stream count from Spotify (or Last.fm scrobbles). Favors newer releases since Spotify's audience was much smaller before 2018."],
+                ["era",     "Era Score", "Stream count adjusted for when the album came out. Older albums are multiplied up to account for Spotify having fewer users at the time — lets you compare a 2012 album to a 2024 album fairly."],
+              ].map(([val, lbl, tip]) => (
+                <div key={val} style={{ position: "relative" }} className={`sort-btn-wrap sort-btn-wrap-${val}`}>
+                  <button
+                    onClick={() => { setSort(val); setShowAllAlbums(false); }}
+                    style={{
+                      padding: "5px 14px", fontSize: 12, fontWeight: sort === val ? 700 : 400,
+                      background: sort === val ? ACCENT_A : "transparent",
+                      color: sort === val ? "#000" : "var(--text-muted)",
+                      border: "none", cursor: "pointer", transition: "all 0.15s",
+                    }}
+                    title={tip}
+                  >{lbl}</button>
+                </div>
               ))}
             </div>
           )}
@@ -385,49 +396,63 @@ export function ArtistPage() {
             </button>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 14 }}>
-            {sorted.map((album) => (
-              <Link key={album.id} to={`/album/${album.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
-                <div style={{
-                  background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10,
-                  overflow: "hidden", transition: "border-color 0.15s, transform 0.15s",
-                }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT_A; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; }}
-                >
-                  {album.image_url
-                    ? <img src={album.image_url} alt={album.name} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
-                    : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)" }} />
-                  }
-                  <div style={{ padding: "10px 12px 12px" }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {album.name}
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{album.release_date?.slice(0, 4)}</div>
-                    <div style={{ fontSize: 12, color: ACCENT_A, marginTop: 4, fontWeight: 600 }}>
-                      {album.streams ? (
-                        sort === "era" && album.era_adjusted_streams
-                          ? formatStreams(album.era_adjusted_streams)
-                          : formatStreams(album.streams)
-                      ) : (
-                        <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
-                          {album.enrichment_status === "pending" ? "loading…" : "—"}
-                        </span>
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 14 }}>
+              {(showAllAlbums ? sorted : sorted.slice(0, 5)).map((album) => (
+                <Link key={album.id} to={`/album/${album.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
+                  <div style={{
+                    background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10,
+                    overflow: "hidden", transition: "border-color 0.15s, transform 0.15s",
+                  }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT_A; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; }}
+                  >
+                    {album.image_url
+                      ? <img src={album.image_url} alt={album.name} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
+                      : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)" }} />
+                    }
+                    <div style={{ padding: "10px 12px 12px" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {album.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{album.release_date?.slice(0, 4)}</div>
+                      <div style={{ fontSize: 12, color: ACCENT_A, marginTop: 4, fontWeight: 600 }}>
+                        {album.streams ? (
+                          sort === "era" && album.era_adjusted_streams
+                            ? formatStreams(album.era_adjusted_streams)
+                            : formatStreams(album.streams)
+                        ) : (
+                          <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
+                            {album.enrichment_status === "pending" ? "loading…" : "—"}
+                          </span>
+                        )}
+                      </div>
+                      {sort === "era" && album.multiplier > 1.1 && (
+                        <div style={{ fontSize: 10, fontWeight: 700, marginTop: 3, color: ACCENT_A, opacity: 0.75 }}>
+                          ×{album.multiplier.toFixed(1)} era adj.
+                        </div>
                       )}
                     </div>
-                    {sort === "era" && album.multiplier > 1.1 && (
-                      <div style={{
-                        fontSize: 10, fontWeight: 700, marginTop: 3,
-                        color: ACCENT_A, opacity: 0.75,
-                      }}>
-                        ×{album.multiplier.toFixed(1)} era adj.
-                      </div>
-                    )}
                   </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+                </Link>
+              ))}
+            </div>
+            {sorted.length > 5 && (
+              <button
+                onClick={() => setShowAllAlbums(v => !v)}
+                style={{
+                  marginTop: 4, width: "100%", padding: "10px", borderRadius: 8,
+                  background: "var(--surface)", border: "1px solid var(--border)",
+                  color: "var(--text-muted)", fontSize: 13, fontWeight: 600,
+                  cursor: "pointer", transition: "border-color 0.15s, color 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT_A; e.currentTarget.style.color = "var(--text)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-muted)"; }}
+              >
+                {showAllAlbums ? "Show less" : `See all ${sorted.length} releases`}
+              </button>
+            )}
+          </>
         )}
       </div>
 
