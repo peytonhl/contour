@@ -46,10 +46,11 @@ On top of the analytics, Contour is a place to rate albums and tracks, write rev
 - For You feed: TikTok-style track preview scroll, personalized by your ratings and genre picks
   - Tier 1: related-artist tracks from artists you've rated 4–5 stars
   - Tier 2: genre-filtered search from your learned genre profile
-  - Tier 3: Global Top 50 baseline
-  - Tier 4: new releases
-  - Tier 5: keyword fallbacks — always returns something
-- Onboarding genre picker on first visit — seeds your taste profile immediately
+  - Tier 3: Deezer chart tracks baseline (real chart data, no API key required)
+  - Tier 4: Deezer new music search
+  - Tier 5: genre keyword fallbacks — always returns something
+  - Rate ~10 tracks and the feed actively adapts — genre, era, vibe
+- Onboarding for new users: value prop explanation → genre picker → taste profile seeded immediately
 - Global reviews feed sorted by Recent / Top / Controversial — no account needed
 - Charts page: era-adjusted leaderboard ranked by Era Score or raw streams
 - Trending tracks and new releases on the home screen
@@ -195,6 +196,7 @@ backend/
     leaderboard.py         Era-adjusted charts
     notifications.py       Follow and review interaction notifications
     discover.py            Personalized For You feed (rate-limited 60/min per IP)
+    search.py              Unified search — users, albums, tracks in one request with DB-first triage
     taste.py               Server-side taste profile (GET + POST)
   services/
     spotify.py             Spotify Web API client; hot calls Redis-cached for 24h
@@ -206,7 +208,7 @@ backend/
     wayback.py             Wayback Machine client — fetches archived stream count snapshots for real trajectory anchors
     redis_cache.py         Async Redis helper (get/set with graceful no-op when REDIS_URL absent)
     limiter.py             slowapi Limiter using X-Forwarded-For for real IP behind Railway proxy
-    deezer.py              Deezer preview fallback for tracks missing Spotify preview URL
+    deezer.py              Deezer — chart tracks (get_chart_tracks), track search, preview fallback
   migrations/
     versions/              Alembic migration chain
 
@@ -237,7 +239,7 @@ frontend/
       PreStreamingBanner.jsx Pre-streaming / early streaming era context banner
       Methodology.jsx        How It Works page content
       TasteSection.jsx       Rating distribution + top genres + pinned albums
-      OnboardingModal.jsx    First-time genre picker (saves to server taste profile)
+      OnboardingModal.jsx    New-user onboarding: value prop → genre picker → taste profile saved
       UnifiedSearch.jsx      Shared search dropdown (albums + tracks)
       StarRating.jsx         Interactive half-star rating widget
       ShareButton.jsx        Copy/share link helper
@@ -260,7 +262,7 @@ frontend/
 3. Add a **Redis** plugin — Railway sets `REDIS_URL` automatically. Without it the app still works; hot Spotify calls just won't be cached.
 4. Set the environment variables listed above under **Backend**.
 5. Railway runs `uvicorn main:app --host 0.0.0.0 --port $PORT` via `Procfile` or start command.
-6. On startup: Alembic migrations run, then `create_all` as a safety net, then the leaderboard seed task fires after 60 seconds in the background.
+6. On startup: Alembic migrations run, then `create_all` as a safety net. The DB populates organically as users browse — the bulk artist seeder is disabled to prevent Spotify credential-wide rate limit blocks.
 
 ### Vercel (frontend)
 
