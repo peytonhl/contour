@@ -7,15 +7,22 @@ and rules that apply to every task.
 
 ## What this app is
 
-Contour is a music ratings and streaming analytics platform. Core ideas:
-- Users rate albums/tracks (half-star, 0.5–5.0), write reviews, follow each other
-- Era-adjusted streaming: a 2012 album's streams are normalized against Spotify's
-  MAU at the time, so old and new releases can be compared fairly
-- Charts page: albums ranked by Era Score (era-adjusted stream count)
-- For You feed: TikTok-style personalized track discovery
-- Comparison: side-by-side streaming trajectory charts for any two albums/tracks
+Contour is a music ratings, reviews, and streaming analytics platform.
+Tagline: **"Music opinions, backed by data."**
 
-Live at: https://contour-rosy.vercel.app
+Core features:
+- **Rate & review** albums, tracks, and artists (half-star, 0.5–5.0) — think Letterboxd for music
+- **Era-adjusted streaming**: a 2012 album's streams are normalized against Spotify's MAU
+  at release time, so old and new releases can be compared fairly
+- **Charts**: albums ranked by Era Score (era-adjusted stream count)
+- **For You feed**: TikTok-style personalized track discovery that learns from ratings —
+  rate ~10 tracks and the feed adapts to your taste in real time
+- **Comparison**: side-by-side streaming trajectory charts for any two albums/tracks
+- **Social**: follow users, see their ratings and reviews in a feed
+
+Live at: https://contour-rosy.vercel.app  
+Backend: https://contour-production.up.railway.app  
+Health check: https://contour-production.up.railway.app/health
 
 ---
 
@@ -37,42 +44,44 @@ Live at: https://contour-rosy.vercel.app
 
 ```
 backend/
-  main.py                  FastAPI app entry point, startup seeder, /health endpoint
+  main.py                  FastAPI app entry point, startup tasks, /health endpoint
   models.py                SQLAlchemy ORM models
   database.py              Async engine (SQLite locally, Postgres in prod)
   routers/
     auth.py                Google OAuth + JWT
     albums.py              Album metadata, stream trajectory, enrichment
     tracks.py              Track metadata, stream trajectory
-    artists.py             Artist pages
+    artists.py             Artist pages — discography with stream counts
     ratings.py             Ratings, reviews, votes, replies
     reviews.py             Global reviews feed
     feed.py                Following activity feed
     featured.py            Trending + new releases
-    users.py               Public profiles, follow/unfollow
+    users.py               Public profiles, follow/unfollow, ratings/reviews tab
     comparison.py          Side-by-side trajectory comparison
     saved_comparisons.py   Shareable comparison links
     lists.py               User-created ranked/unranked lists
     leaderboard.py         Era-adjusted charts + /leaderboard/debug
     notifications.py       Follow/review notifications
     discover.py            Personalized For You feed + /discover/debug
+    search.py              Unified search — users, albums, tracks in one request
     taste.py               Server-side taste profile
   services/
-    spotify.py             Spotify API client (hot calls Redis-cached 24h)
-    lastfm.py              Last.fm API — lifetime scrobbles for leaderboard seeding
+    spotify.py             Spotify API client — all hot calls Redis-cached 24h
+    lastfm.py              Last.fm API — lifetime scrobbles for enrichment
     kworb.py               Kworb scraper — ARTIST PAGES ONLY (entity pages blocked on Railway)
     stream_anchors.py      Wayback anchor store for trajectory calibration
     wayback.py             Wayback Machine client
     normalization.py       MAU table, era-adjustment, trajectory decay model
     album_cache.py         DB-backed enrichment state machine
     redis_cache.py         Async Redis helper (no-op when REDIS_URL absent)
-    deezer.py              Deezer preview fallback
+    deezer.py              Deezer — chart tracks, track search, preview fallback
     limiter.py             slowapi rate limiter
 
 frontend/
   src/
     pages/                 One file per route
     components/            Shared UI components
+      OnboardingModal.jsx  New-user onboarding (value prop → genre picker)
     services/api.js        ALL API calls — single source of truth, always edit this for new endpoints
     contexts/AuthContext.jsx  JWT auth state
 ```
@@ -94,8 +103,49 @@ frontend/
 ### Data source rules
 - Kworb artist pages (`get_artist_albums_by_id`) → OK, works from Railway
 - Kworb entity pages (`get_entity_daily_data`) → BLOCKED on Railway, do not use
-- Last.fm → primary source for leaderboard stream counts
+- Last.fm → primary fallback for album stream counts when Kworb is blocked
 - Wayback Machine → trajectory anchor points (one-time fetch per entity)
+- Deezer → For You feed baseline tiers (no API key, always has preview URLs);
+  use `get_chart_tracks()` for popular tracks, NOT `search_tracks("top hits")`
+
+### Spotify API rules — read carefully
+Spotify rate limits are the #1 source of production incidents. Follow these:
+
+- **Never call the startup seeder** — `_run_artist_seeder()` in `main.py` is disabled.
+  Do not re-enable it. It caused credential-wide rate limit blocks on every deploy
+  because it fires 1,000+ requests in a burst. The DB populates organically as users browse.
+- **`limit=20` on `/artists/{id}/albums`** — Spotify selectively blocks higher limits
+  and sometimes returns `400 "Invalid limit"` as a disguised rate limit. Do not use `limit=50`.
+- **No `include_groups` param** — httpx URL-encodes commas in multi-value params, turning
+  `album,single` into `album%2Csingle` which Spotify rejects. Omit the param entirely.
+- **`_spotify_get` wrapper** — always use this instead of raw `client.get()` for Spotify
+  calls. It handles 429 retry with `_MAX_RETRY_WAIT=15s` bailout.
+- **`400 "Invalid limit"` = disguised 429** — Spotify returns this fake error when
+  selectively rate-limiting `/artists/{id}/albums`. Treat it as a rate limit, not a bug.
+- **All hot Spotify functions are Redis-cached 24h**: `get_artist`, `get_album`,
+  `get_track`, `get_artist_top_tracks`, `get_artist_albums`, `get_artist_albums_limited`.
+  If Redis is not configured, these degrade gracefully to live calls.
+
+### Artist discography fallback cascade
+`GET /artists/{id}/albums` tries these in order:
+1. `spotify.get_artist_albums()` — full paginated fetch, Redis-cached 7 days
+2. `spotify.get_artist_albums_limited()` — single page, Redis-cached 7 days
+3. `spotify.search_albums(artist_name)` — different endpoint, not subject to same blocks
+4. AlbumCache in DB — queried by artist name (looked up from ArtistCache by spotify_id)
+
+### Profile page entity lookup
+`_fetch_entity_meta()` in `users.py` resolves name/image/artists for rated entities:
+1. AlbumCache / TrackCache in DB — covers anything ever viewed or searched
+2. Deezer API — for old numeric IDs (pre-validation For You feed ratings)
+3. Spotify API — last resort
+
+### For You feed tiers (discover.py)
+1. Related-artist tracks (Spotify, most personalized)
+2. Genre-filtered search (Spotify)
+3. Deezer chart tracks — `get_chart_tracks()`, NOT text search
+4. Deezer new music search
+5. Deezer keyword fallbacks
+6. Nuclear fallback — chart tracks ignoring disliked filter
 
 ### Frontend conventions
 - React functional components only, no class components
@@ -152,3 +202,20 @@ Railway auto-deploys when `master` gets a new commit. Frontend (Vercel) auto-dep
 when `master` gets a new commit. Merging a PR to `master` = production deploy.
 
 Alembic migrations run automatically on startup — no manual migration step needed.
+
+---
+
+## Known Spotify rate limit behaviour
+
+Spotify's basic (non-Extended Access) tier is aggressive about rate limiting.
+Key patterns observed in production:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `400 "Invalid limit"` on `/artists/{id}/albums` | Disguised 429 — selective endpoint block | Fall back to `/search`, then DB |
+| `429 Retry-After: 2921` | Credential-wide block from burst traffic | Wait it out; do not retry in a loop |
+| All artists returning 400 after one 429 | Credential still blocked | Same — wait |
+| Empty discography on artist page | Endpoint blocked AND artist not in DB yet | "Try again" button; resolves within hours |
+
+The startup artist seeder was the primary cause of credential-wide blocks. It is
+permanently disabled. Do not re-enable it without a dedicated rate-limit budget.
