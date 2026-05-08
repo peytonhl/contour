@@ -172,15 +172,18 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
 
 
 async def get_track(track_id: str) -> dict:
-    """Fetch full track metadata by Spotify track ID."""
+    """Fetch full track metadata by Spotify track ID. Cached 24 h in Redis."""
+    cache_key = f"spotify:track:{track_id}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            f"https://api.spotify.com/v1/tracks/{track_id}",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        resp = await _spotify_get(client, f"https://api.spotify.com/v1/tracks/{track_id}", token)
         resp.raise_for_status()
-        return _parse_track(resp.json())
+        result = _parse_track(resp.json())
+    await redis_cache.set(cache_key, result, ttl=86400)  # 24 h
+    return result
 
 
 async def search_albums(query: str, limit: int = 10) -> list[dict]:
@@ -231,15 +234,18 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 20) -> list[dic
 
 
 async def get_album(album_id: str) -> dict:
-    """Fetch full album metadata by Spotify album ID."""
+    """Fetch full album metadata by Spotify album ID. Cached 24 h in Redis."""
+    cache_key = f"spotify:album:{album_id}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            f"https://api.spotify.com/v1/albums/{album_id}",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        resp = await _spotify_get(client, f"https://api.spotify.com/v1/albums/{album_id}", token)
         resp.raise_for_status()
-        return _parse_album(resp.json())
+        result = _parse_album(resp.json())
+    await redis_cache.set(cache_key, result, ttl=86400)  # 24 h
+    return result
 
 
 async def get_playlist_tracks(playlist_id: str, limit: int = 20) -> list[dict]:
