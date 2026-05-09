@@ -273,9 +273,11 @@ async def get_profile(
         except Exception:
             return (entity_type, entity_id), {"name": None, "image_url": None, "artists": []}
 
-    enriched = dict(await asyncio.gather(*[
-        fetch_entity_meta(et, eid) for et, eid in unique_entities
-    ]))
+    raw = await asyncio.gather(
+        *[fetch_entity_meta(et, eid) for et, eid in unique_entities],
+        return_exceptions=True,
+    )
+    enriched = {k: v for k, v in raw if isinstance(v, dict)}
 
     return {
         "user": {

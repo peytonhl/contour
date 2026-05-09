@@ -7,7 +7,7 @@ const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
 const ACCENT_C = "#fb923c";
 
-const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? "https://cylinder-jurist-oozy.ngrok-free.dev"}/auth/login`;
+const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? ""}/auth/login`;
 const RECENT_KEY = "contour_recent_v1";
 const RECENT_MAX = 8;
 

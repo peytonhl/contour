@@ -3,7 +3,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -77,11 +77,11 @@ async def unread_count(
 ):
     """Lightweight endpoint — just returns the unread notification count."""
     user_id = _require_user(authorization)
-    rows = (await db.execute(
-        select(Notification)
+    count = (await db.execute(
+        select(func.count()).select_from(Notification)
         .where(Notification.user_id == user_id, Notification.read == False)  # noqa: E712
-    )).scalars().all()
-    return {"count": len(rows)}
+    )).scalar()
+    return {"count": count}
 
 
 @router.post("/read-all")

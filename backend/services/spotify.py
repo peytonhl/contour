@@ -33,9 +33,9 @@ async def _spotify_get(client: httpx.AsyncClient, url: str, token: str, params: 
     if resp.status_code == 429:
         retry_after = int(resp.headers.get("Retry-After", 8))
         if retry_after > _MAX_RETRY_WAIT:
-            print(f"[spotify] 429 on {url} — Retry-After={retry_after}s (>{_MAX_RETRY_WAIT}s threshold), bailing immediately", flush=True)
+            _log.warning("[spotify] 429 on %s — Retry-After=%ds (>%ds threshold), bailing immediately", url, retry_after, _MAX_RETRY_WAIT)
             return resp  # caller will treat non-200 as failure and use DB
-        print(f"[spotify] 429 on {url} — Retry-After={retry_after}s, waiting then retrying", flush=True)
+        _log.warning("[spotify] 429 on %s — Retry-After=%ds, waiting then retrying", url, retry_after)
         await asyncio.sleep(retry_after)
         resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
     return resp
@@ -97,7 +97,7 @@ async def search_artists(query: str, limit: int = 10) -> list[dict]:
             client, "https://api.spotify.com/v1/search", token,
             params={"q": query, "type": "artist", "limit": limit},
         )
-        print(f"[spotify.search_artists] HTTP {resp.status_code} for q={query!r}", flush=True)
+        _log.debug("[spotify.search_artists] HTTP %d for q=%r", resp.status_code, query)
         resp.raise_for_status()
         items = resp.json()["artists"]["items"]
 
@@ -164,7 +164,7 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
             client, "https://api.spotify.com/v1/search", token,
             params={"q": query, "type": "track", "limit": limit, "market": "US"},
         )
-        print(f"[spotify.search_tracks] HTTP {resp.status_code} for q={query!r}", flush=True)
+        _log.debug("[spotify.search_tracks] HTTP %d for q=%r", resp.status_code, query)
         resp.raise_for_status()
         items = resp.json().get("tracks", {}).get("items", [])
 
@@ -198,12 +198,12 @@ async def search_albums(query: str, limit: int = 10) -> list[dict]:
             headers={"Authorization": f"Bearer {token}"},
             params={"q": query, "type": "album", "limit": limit, "market": "US"},
         )
-        print(f"[spotify.search_albums] HTTP {resp.status_code} for q={query!r}", flush=True)
+        _log.debug("[spotify.search_albums] HTTP %d for q=%r", resp.status_code, query)
         if resp.status_code != 200:
-            print(f"[spotify.search_albums] non-200 body: {resp.text[:500]}", flush=True)
+            _log.warning("[spotify.search_albums] non-200 body: %s", resp.text[:500])
         resp.raise_for_status()
         items = resp.json().get("albums", {}).get("items", [])
-        print(f"[spotify.search_albums] {len(items)} raw items for q={query!r}", flush=True)
+        _log.debug("[spotify.search_albums] %d raw items for q=%r", len(items), query)
 
     return [_parse_album(a) for a in items if a and a.get("id")]
 
@@ -215,7 +215,7 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 20) -> list[dic
     cache_key = f"spotify:artist_albums:{artist_id}:{limit}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
-        print(f"[spotify.get_artist_albums] cache hit for artist_id={artist_id}", flush=True)
+        _log.debug("[spotify.get_artist_albums] cache hit for artist_id=%s", artist_id)
         return cached
 
     async with httpx.AsyncClient() as client:
@@ -224,9 +224,9 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 20) -> list[dic
             client, f"https://api.spotify.com/v1/artists/{artist_id}/albums", token,
             params={"limit": limit},
         )
-        print(f"[spotify.get_artist_albums] HTTP {resp.status_code} for artist_id={artist_id}", flush=True)
+        _log.debug("[spotify.get_artist_albums] HTTP %d for artist_id=%s", resp.status_code, artist_id)
         if resp.status_code != 200:
-            print(f"[spotify.get_artist_albums] error body: {resp.text[:300]}", flush=True)
+            _log.warning("[spotify.get_artist_albums] error body: %s", resp.text[:300])
         resp.raise_for_status()
         items = resp.json().get("items", [])
 
@@ -431,7 +431,7 @@ async def get_artist_albums(artist_id: str) -> list[dict]:
         while url:
             resp = await _spotify_get(client, url, token, params=params)
             if resp.status_code != 200:
-                print(f"[spotify.get_artist_albums] HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
+                _log.warning("[spotify.get_artist_albums] HTTP %d: %s", resp.status_code, resp.text[:200])
             resp.raise_for_status()
             data = resp.json()
             results.extend(data.get("items", []))

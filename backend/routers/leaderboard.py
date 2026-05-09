@@ -50,8 +50,8 @@ def _classify(streams_pct: float, avg_rating: float | None, rating_count: int) -
 @router.get("/")
 async def get_leaderboard(
     limit: int = Query(50, le=200),
-    sort: str = Query("era", regex="^(era|streams)$"),
-    decade: str = Query("all", regex="^(all|2020s|2010s|2000s|1990s|1980s)$"),
+    sort: str = Query("era", pattern="^(era|streams)$"),
+    decade: str = Query("all", pattern="^(all|2020s|2010s|2000s|1990s|1980s)$"),
     db: AsyncSession = Depends(get_db),
 ):
     """

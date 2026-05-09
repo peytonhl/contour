@@ -126,7 +126,7 @@ export function Layout() {
   const location = useLocation();
   const [unread, setUnread] = useState(0);
 
-  const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? "https://cylinder-jurist-oozy.ngrok-free.dev"}/auth/login`;
+  const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? ""}/auth/login`;
 
   // Poll unread notification count every 60s when logged in
   useEffect(() => {
