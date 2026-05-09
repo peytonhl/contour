@@ -24,8 +24,11 @@ Permanent enrichment:
 
 import asyncio
 import json
+import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
@@ -91,9 +94,9 @@ async def _persist_albums(albums: list[dict]) -> None:
                     new_count += 1
             await session.commit()
             if new_count:
-                print(f"[search] persisted {new_count} new albums to DB", flush=True)
+                logger.info("[search] persisted %d new albums to DB", new_count)
     except Exception as exc:
-        print(f"[search] album persist failed: {exc}", flush=True)
+        logger.warning("[search] album persist failed: %s", exc)
 
 
 async def _persist_tracks(tracks: list[dict]) -> None:
@@ -126,9 +129,9 @@ async def _persist_tracks(tracks: list[dict]) -> None:
                     new_count += 1
             await session.commit()
             if new_count:
-                print(f"[search] persisted {new_count} new tracks to DB", flush=True)
+                logger.info("[search] persisted %d new tracks to DB", new_count)
     except Exception as exc:
-        print(f"[search] track persist failed: {exc}", flush=True)
+        logger.warning("[search] track persist failed: %s", exc)
 
 
 async def _persist_discography(artist_id: str, artist_name: str, albums: list[dict]) -> None:
@@ -150,9 +153,9 @@ async def _persist_discography(artist_id: str, artist_name: str, albums: list[di
                     discography_fetched_at=datetime.utcnow(),
                 ))
             await session.commit()
-            print(f"[search] artist_cache updated: {artist_name or artist_id}", flush=True)
+            logger.info("[search] artist_cache updated: %s", artist_name or artist_id)
     except Exception as exc:
-        print(f"[search] artist_cache update failed: {exc}", flush=True)
+        logger.warning("[search] artist_cache update failed: %s", exc)
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
@@ -237,9 +240,9 @@ async def unified_search(
                             if any(w in q_lower for w in name_words if len(w) > 3):
                                 artist_id = artists[0]["id"]
                                 artist_name_hint = artists[0]["name"]
-                                print(f"[search] dynamic artist: {artists[0]['name']} → {artist_id}", flush=True)
+                                logger.info("[search] dynamic artist: %s → %s", artists[0]['name'], artist_id)
                             else:
-                                print(f"[search] dynamic artist rejected: '{artists[0]['name']}' not in '{q_stripped}'", flush=True)
+                                logger.debug("[search] dynamic artist rejected: '%s' not in '%s'", artists[0]['name'], q_stripped)
                     except Exception:
                         pass
 

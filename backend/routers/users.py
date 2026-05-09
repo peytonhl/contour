@@ -361,7 +361,11 @@ async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
 
     unique_entities = list({(r.entity_type, r.entity_id) for r in ratings})
 
-    enriched = dict(await asyncio.gather(*[_fetch_entity_meta(et, eid, db) for et, eid in unique_entities]))
+    raw = await asyncio.gather(
+        *[_fetch_entity_meta(et, eid, db) for et, eid in unique_entities],
+        return_exceptions=True,
+    )
+    enriched = {k: v for k, v in raw if isinstance(v, dict)}
 
     return [
         {
@@ -409,7 +413,8 @@ async def get_user_lists(user_id: str, db: AsyncSession = Depends(get_db)):
             except Exception:
                 return None
 
-        preview_images = list(await asyncio.gather(*[get_image(i) for i in items]))
+        raw_images = await asyncio.gather(*[get_image(i) for i in items], return_exceptions=True)
+        preview_images = [img if isinstance(img, str) else None for img in raw_images]
 
         item_count_row = await db.execute(
             select(func.count()).where(UserListItem.list_id == lst.id)
@@ -445,20 +450,21 @@ async def get_user_reviews(user_id: str, db: AsyncSession = Depends(get_db)):
     # Enrich with Spotify metadata + ratings
     unique_entities = list({(r.entity_type, r.entity_id) for r in reviews})
 
-    enriched = dict(await asyncio.gather(*[_fetch_entity_meta(et, eid, db) for et, eid in unique_entities]))
+    raw = await asyncio.gather(
+        *[_fetch_entity_meta(et, eid, db) for et, eid in unique_entities],
+        return_exceptions=True,
+    )
+    enriched = {k: v for k, v in raw if isinstance(v, dict)}
 
-    # Look up each review's rating value
-    rating_map: dict[tuple, float] = {}
-    for et, eid in unique_entities:
-        row = (await db.execute(
-            select(Rating).where(
-                Rating.user_id == user_id,
-                Rating.entity_type == et,
-                Rating.entity_id == eid,
-            )
-        )).scalar_one_or_none()
-        if row:
-            rating_map[(et, eid)] = row.value
+    # Batch-fetch all ratings for this user's reviewed entities in one query
+    entity_ids = [eid for _, eid in unique_entities]
+    rating_rows = (await db.execute(
+        select(Rating).where(
+            Rating.user_id == user_id,
+            Rating.entity_id.in_(entity_ids),
+        )
+    )).scalars().all()
+    rating_map: dict[tuple, float] = {(r.entity_type, r.entity_id): r.value for r in rating_rows}
 
     return [
         {
@@ -520,13 +526,15 @@ async def get_following(user_id: str, db: AsyncSession = Depends(get_db)):
         select(UserFollow).where(UserFollow.follower_id == user_id)
     )).scalars().all()
     user_ids = [r.following_id for r in rows]
+    if not user_ids:
+        return []
 
-    users = []
-    for uid in user_ids:
-        u = (await db.execute(select(User).where(User.id == uid))).scalar_one_or_none()
-        if u:
-            users.append({"id": u.id, "display_name": u.display_name, "image_url": u.image_url})
-    return users
+    user_objs = (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()
+    user_map = {u.id: u for u in user_objs}
+    return [
+        {"id": uid, "display_name": user_map[uid].display_name, "image_url": user_map[uid].image_url}
+        for uid in user_ids if uid in user_map
+    ]
 
 
 @router.get("/{user_id}/followers")
@@ -536,10 +544,12 @@ async def get_followers(user_id: str, db: AsyncSession = Depends(get_db)):
         select(UserFollow).where(UserFollow.following_id == user_id)
     )).scalars().all()
     user_ids = [r.follower_id for r in rows]
+    if not user_ids:
+        return []
 
-    users = []
-    for uid in user_ids:
-        u = (await db.execute(select(User).where(User.id == uid))).scalar_one_or_none()
-        if u:
-            users.append({"id": u.id, "display_name": u.display_name, "image_url": u.image_url})
-    return users
+    user_objs = (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()
+    user_map = {u.id: u for u in user_objs}
+    return [
+        {"id": uid, "display_name": user_map[uid].display_name, "image_url": user_map[uid].image_url}
+        for uid in user_ids if uid in user_map
+    ]

@@ -1,7 +1,10 @@
 """Artist search, metadata, and discography endpoints."""
 
+import logging
 from datetime import date
 from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -79,7 +82,7 @@ async def get_artist_albums(
     try:
         albums = await spotify.get_artist_albums(artist_id)
     except Exception as e:
-        print(f"[artists] Spotify full fetch failed for {artist_id}: {e}", flush=True)
+        logger.warning("[artists] Spotify full fetch failed for %s: %s", artist_id, e)
 
         # Fallback 1: try the search-tier limited fetch (may be Redis-cached from a
         # recent search, or will make a quick single-page Spotify call).
@@ -87,9 +90,9 @@ async def get_artist_albums(
         try:
             albums = await spotify.get_artist_albums_limited(artist_id, limit=20)
             if albums:
-                print(f"[artists] limited fallback OK: {len(albums)} albums for {artist_id}", flush=True)
+                logger.info("[artists] limited fallback OK: %d albums for %s", len(albums), artist_id)
         except Exception as e2:
-            print(f"[artists] limited fallback also failed: {e2}", flush=True)
+            logger.warning("[artists] limited fallback also failed: %s", e2)
 
         # Resolve artist name — needed for fallbacks 2 and 3.
         # Try ArtistCache first (free), then get_artist() which is Redis-cached.
@@ -119,9 +122,9 @@ async def get_artist_albums(
                     if artist_name.lower() in [art.lower() for art in a.get("artists", [])]
                 ]
                 if albums:
-                    print(f"[artists] search fallback OK: {len(albums)} albums for {artist_name}", flush=True)
+                    logger.info("[artists] search fallback OK: %d albums for %s", len(albums), artist_name)
             except Exception as e3:
-                print(f"[artists] search fallback failed: {e3}", flush=True)
+                logger.warning("[artists] search fallback failed: %s", e3)
 
         # Fallback 3: query AlbumCache in the DB by artist name.
         if not albums and artist_name:
@@ -132,7 +135,7 @@ async def get_artist_albums(
                 .limit(50)
             )).scalars().all()
             if db_rows:
-                print(f"[artists] DB fallback: {len(db_rows)} albums for {artist_name}", flush=True)
+                logger.info("[artists] DB fallback: %d albums for %s", len(db_rows), artist_name)
                 albums = [
                     {"id": r.spotify_id, "name": r.name, "artists": [r.artist], "artist_ids": [],
                      "release_date": r.release_date or "", "release_date_precision": r.release_date_precision or "year",
@@ -141,7 +144,7 @@ async def get_artist_albums(
                 ]
 
         if not albums:
-            print(f"[artists] all fallbacks exhausted for {artist_id} — returning []", flush=True)
+            logger.warning("[artists] all fallbacks exhausted for %s — returning []", artist_id)
             return []
 
     current_mau = get_mau_for_date(date.today())

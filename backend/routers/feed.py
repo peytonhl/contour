@@ -8,14 +8,31 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Rating, Review, User, UserFollow
+from models import Rating, Review, User, UserFollow, AlbumCache, TrackCache
 from routers.auth import decode_jwt
 from services import spotify
 
 router = APIRouter(prefix="/feed", tags=["feed"])
 
 
-async def _enrich(entity_type: str, entity_id: str) -> dict:
+async def _enrich(entity_type: str, entity_id: str, db: AsyncSession) -> dict:
+    """Resolve entity name/image — DB cache first, Spotify as last resort."""
+    try:
+        if entity_type == "album":
+            row = (await db.execute(
+                select(AlbumCache).where(AlbumCache.spotify_id == entity_id)
+            )).scalar_one_or_none()
+            if row:
+                return {"name": row.name, "image_url": row.image_url, "artists": [row.artist] if row.artist else []}
+        elif entity_type == "track":
+            row = (await db.execute(
+                select(TrackCache).where(TrackCache.spotify_id == entity_id)
+            )).scalar_one_or_none()
+            if row:
+                return {"name": row.name, "image_url": row.image_url, "artists": [row.artist] if row.artist else []}
+    except Exception:
+        pass
+
     try:
         if entity_type == "album":
             d = await spotify.get_album(entity_id)
@@ -68,10 +85,13 @@ async def get_feed(
     )).scalars().all()
     user_map = {u.id: {"id": u.id, "display_name": u.display_name, "image_url": u.image_url} for u in user_rows}
 
-    # Enrich entity metadata from Spotify (deduplicated)
+    # Enrich entity metadata — DB-first (free), Spotify last resort (deduplicated)
     unique = list({(r.entity_type, r.entity_id) for r in ratings} | {(r.entity_type, r.entity_id) for r in reviews})
-    enriched_list = await asyncio.gather(*[_enrich(et, eid) for et, eid in unique])
-    entity_map = {(et, eid): data for (et, eid), data in zip(unique, enriched_list)}
+    enriched_list = await asyncio.gather(*[_enrich(et, eid, db) for et, eid in unique], return_exceptions=True)
+    entity_map = {
+        (et, eid): (data if isinstance(data, dict) else {"name": None, "image_url": None, "artists": []})
+        for (et, eid), data in zip(unique, enriched_list)
+    }
 
     # Build feed items
     items = []

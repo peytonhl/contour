@@ -255,18 +255,18 @@ async def get_album(album_id: str, db: AsyncSession = Depends(get_db)):
     )).scalar_one_or_none()
 
     if cached and cached.image_url:
-        print(f"[get_album] cache hit: {album_id} ({cached.name})", flush=True)
+        logger.debug("[get_album] cache hit: %s (%s)", album_id, cached.name)
         return _row_to_album_result(cached)
 
-    print(f"[get_album] cache miss: {album_id} — fetching from Spotify", flush=True)
+    logger.info("[get_album] cache miss: %s — fetching from Spotify", album_id)
     # Not in cache yet — fetch from Spotify and store it
     try:
         meta = await spotify.get_album(album_id)
-        print(f"[get_album] spotify returned: {meta.get('name')} for {album_id}", flush=True)
+        logger.info("[get_album] spotify returned: %s for %s", meta.get('name'), album_id)
         await cache.upsert_album(db, meta)
         return meta
     except Exception as exc:
-        print(f"[get_album] spotify FAILED for {album_id}: {exc}", flush=True)
+        logger.warning("[get_album] spotify FAILED for %s: %s", album_id, exc)
         if cached:
             return _row_to_album_result(cached)
         raise HTTPException(status_code=404, detail=f"Album {album_id} not found")
