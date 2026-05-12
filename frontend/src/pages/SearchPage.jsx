@@ -139,7 +139,7 @@ export function SearchPage() {
           fontSize: 13, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
           color: "var(--text-muted)", margin: 0,
         }}>
-          Contour · Music history, in context
+          Contour · Rate. Review. Discover.
         </p>
         <div style={{ position: "relative" }}>
           <div style={{

@@ -183,7 +183,7 @@ export function OnboardingModal() {
                   background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                   WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
                 }}>
-                  Music opinions,<br />backed by data.
+                  Rate. Review.<br />Discover.
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
                   The only music app that combines ratings and reviews with real streaming analytics — so you can finally settle the debate.

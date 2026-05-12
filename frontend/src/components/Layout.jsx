@@ -165,7 +165,7 @@ export function Layout() {
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
           }}>Contour</span>
-          <span className="hide-mobile" style={{ fontSize: 12, color: "var(--text-muted)" }}>Music history, in context</span>
+          <span className="hide-mobile" style={{ fontSize: 12, color: "var(--text-muted)" }}>Rate. Review. Discover.</span>
         </NavLink>
 
         {/* Desktop nav links */}
