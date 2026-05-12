@@ -85,6 +85,48 @@ next to "Spotify ↗" whenever a match exists.
 
 ---
 
+## 🟠 Blocking everything visual (icon + screenshots)
+
+One 1024×1024 PNG master icon serves five destinations — produce once,
+downsample everywhere. **Same goes for screenshots:** capture once at the
+largest iOS phone size (6.7" / 1290×2796), and both Apple and Google
+accept downsampled variants.
+
+- [ ] **App icon master** — 1024 × 1024 PNG, no alpha channel for iOS
+      (Apple rejects transparent PNGs). See the image-generation prompt
+      Claude drafted in this conversation for the design brief; iterate
+      with whichever AI image tool you prefer until happy.
+
+      Downsamples needed (do once, automated):
+      - 1024×1024 → App Store listing + Apple iOS app icon master
+      - 512×512 → Play Store listing + Android adaptive icon master
+      - 192×192 + 512×512 (PNG, with alpha OK) → PWA `manifest.json` icons
+      - 180×180 → `apple-touch-icon.png` for iOS "Add to Home Screen"
+      - 32×32 + 16×16 → favicon for the website
+
+      Easiest one-stop tool: https://realfavicongenerator.net/ takes the
+      1024 master and spits out every variant + the HTML snippet for
+      `index.html`. Free, no signup.
+
+- [ ] **Feature graphic** — 1024 × 500 PNG, Play Console banner shown
+      atop the listing. Can be the icon enlarged with the wordmark
+      "Contour" + tagline "Rate. Review. Discover." beside it.
+
+- [ ] **Phone screenshots** — capture on a real iPhone (or simulator)
+      at 6.7" (iPhone 15 Pro Max viewport, 1290 × 2796). Recommended set
+      of 4–8 from these pages:
+      1. **For You feed** (audio swipe — most visually striking shot)
+      2. **Album page** with rating + review row (the core action)
+      3. **Compare** with 3 sides (signature feature, looks unique)
+      4. **Profile** showing rating distribution + recent activity
+      5. **Friends timeline** (proves the social angle)
+
+      iOS App Store accepts the 6.7" set and auto-downsamples for 6.5"
+      and 5.5" displays — don't waste time taking three separate sets.
+      Play Console accepts the same files (just relabel as "phone").
+
+---
+
 ## 🟠 Blocking Play Store launch
 
 - [x] **Android Studio + JDK 17** installed locally.
@@ -121,12 +163,8 @@ the upgrade-cadence implications.
       (route exists — content needs writing). Required for Play Store, App
       Store, and Apple Music API ToS.
 - [ ] **Terms of Service page.** Required for Play Store + App Store.
-- [ ] **Graphics:**
-  - [ ] App icon: 512 × 512 PNG (master). Android Studio's Image Asset
-        wizard generates the per-density variants.
-  - [ ] Feature graphic: 1024 × 500 PNG (Play Console banner).
-  - [ ] Screenshots: ≥2 phone screenshots, recommend 4–8 (Friends timeline,
-        For You audio swipe, Album page, Compare with 3 sides).
+- [ ] **Graphics** — covered in the "Blocking everything visual" section
+      above (one icon master serves Play Store + App Store + PWA).
 - [ ] **Google Play Console account** ($25 one-time).
 - [ ] Build the AAB and upload to internal testing track — full sequence in
       [PLAY_STORE.md](PLAY_STORE.md).
@@ -135,12 +173,17 @@ the upgrade-cadence implications.
 
 ## 🟠 Blocking App Store launch
 
-- [ ] All Apple Developer items above (Sign in with Apple key + Apple Music key + Team ID).
-- [ ] **Xcode 15+** on a Mac. CocoaPods (`sudo gem install cocoapods`).
-- [ ] Run once on your Mac: `cd frontend && npx cap add ios`.
-- [ ] **Graphics for iOS:**
-  - [ ] App icon master at 1024 × 1024. Xcode auto-generates the rest.
-  - [ ] Screenshots at three sizes: 6.7", 6.5", 5.5" (≥3 each).
+- [x] ~~Xcode + Mac~~ — bypassed entirely via Codemagic CI.
+- [x] ~~Run `npx cap add ios` on a Mac~~ — Codemagic does this in every build.
+- [x] **First IPA built + uploaded to App Store Connect** via Codemagic
+      (build `ios-v0.1.7` → asset `401fb390-2392-429c-8109-80d0e727c51f`).
+- [ ] **Fill in TestFlight Test Information** at
+      https://appstoreconnect.apple.com/apps/6768775634/testflight/test-info
+      (feedback email + reviewer contact info). One-time blocker for the
+      first build to go live to internal testers. Future builds auto-pass
+      this check once filled.
+- [ ] **Graphics** — covered in the "Blocking everything visual" section
+      (one icon master serves Play Store + App Store + PWA).
 - [ ] **Ask me to add the native Sign in with Apple plugin.** Hard blocker
       for App Store submission (~30 min work). See APP_STORE.md top-of-doc.
 - [ ] **Review the App Privacy form answers** in [APP_STORE.md](APP_STORE.md)
@@ -160,11 +203,9 @@ through any store. Some of this is already started but needs finishing.
 - Theme color, background color, and standalone display mode are set.
 
 **Outstanding (mostly gated on icon assets):**
-- [ ] **Icons in real raster sizes.** Currently only an SVG is referenced.
-      Need PNG versions at 192×192, 512×512 (for Chrome / Android adaptive),
-      and a 180×180 `apple-touch-icon.png` (for iOS home screen). Same source
-      file as the Play Store / App Store 1024×1024 master — Android Studio's
-      Image Asset wizard or any online PWA icon generator can downsample once.
+- [ ] **Icons in real raster sizes** — produced as part of the
+      "Blocking everything visual" section above. Drop the PNG outputs
+      into `frontend/public/` once available.
 - [ ] **Update the manifest description.** Currently reads "Era-adjusted
       music streaming data, community ratings, and reviews" — stale after
       the social-first pivot. Should match the new "Rate. Review. Discover."
