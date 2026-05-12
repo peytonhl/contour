@@ -1,5 +1,5 @@
 {
-  "appId": "app.contour.music",
+  "appId": "com.peytonhl.contour",
   "appName": "Contour",
   "webDir": "dist",
   "server": {
