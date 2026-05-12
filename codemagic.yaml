@@ -14,8 +14,20 @@
 #      so no .p12 / .mobileprovision upload is needed.
 #   3. Environment variables (Codemagic UI → app settings → Environment vars,
 #      add to a group called 'contour-prod' so the import below works):
-#        VITE_POSTHOG_KEY    (secret) — frontend analytics
-#        VITE_APPLE_CLIENT_ID — Sign-in-with-Apple Services ID
+#        VITE_POSTHOG_KEY        (secret) — frontend analytics
+#        VITE_APPLE_CLIENT_ID    — Sign-in-with-Apple Services ID
+#        CERTIFICATE_PRIVATE_KEY (secret) — 2048-bit RSA PEM private key.
+#                                  Codemagic uses this to register an iOS
+#                                  Distribution cert with App Store Connect
+#                                  on first build, then reuses on every
+#                                  build after. Generate locally with:
+#                                    ssh-keygen -t rsa -b 2048 -m PEM \
+#                                      -f $env:USERPROFILE\Secrets\contour_signing_key \
+#                                      -N '""'
+#                                  Paste the PEM contents (BEGIN/END lines
+#                                  included) into Codemagic as a SECURE var.
+#                                  BACK THIS UP — losing it means you can
+#                                  never update the iOS app.
 #      VITE_API_URL is already baked into the build via frontend/.env.production,
 #      no Codemagic config needed for that one.
 
@@ -115,38 +127,27 @@ workflows:
       - name: Set up code signing
         script: |
           set -ex
-          # Full Codemagic signing dance. `use-profiles` alone is NOT enough —
-          # it only applies an existing profile. For a first-ever build of a
-          # brand-new bundle ID, no App Store profile exists yet, so we have
-          # to ask App Store Connect to CREATE one via `fetch-signing-files
-          # --create`. After that, certs go into a fresh keychain, then the
-          # Xcode project gets pointed at the profile.
+          # Standard Codemagic iOS signing sequence. Relies on env var
+          # CERTIFICATE_PRIVATE_KEY being set in the Codemagic UI (group
+          # contour-prod) — that's a 2048-bit RSA PEM private key that
+          # Codemagic uses to register a Distribution cert with App Store
+          # Connect on first build, then reuses on every subsequent build.
+          # Setup instructions: TODO_PEYTON.md → "Codemagic signing key".
+          #
+          # Without CERTIFICATE_PRIVATE_KEY set, fetch-signing-files dies
+          # with "Cannot save Signing Certificates without certificate
+          # private key" — that's the canary that the env var is missing.
           keychain initialize
 
-          # FIRST: create a brand-new iOS Distribution certificate that
-          # Codemagic owns the private key for. Without this, fetch-signing-
-          # files finds the orphan cert that already exists in App Store
-          # Connect (whose private key lives on some other machine we don't
-          # have access to) and dies with "Cannot save Signing Certificates
-          # without certificate private key". `--save` persists the new cert
-          # + key into Codemagic's keychain cache for reuse on later builds.
-          #
-          # Apple caps Distribution certs at 2 per team; if this hits the
-          # cap, log into App Store Connect → Users and Access → Keys →
-          # Certificates and revoke the orphan one before retrying.
-          app-store-connect certificates create \
-            --type IOS_DISTRIBUTION \
-            --save
-
-          # Now fetch (or create) the App Store provisioning profile for the
-          # bundle ID. The freshly-created cert above will be the one bound
-          # into this profile.
+          # Fetch (or create, if missing) the iOS Distribution certificate
+          # AND the App Store provisioning profile for the bundle ID. The
+          # cert is bound to CERTIFICATE_PRIVATE_KEY; the profile is bound
+          # to the cert. Idempotent across builds.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
 
-          # Import the freshly-downloaded cert into the build keychain so
-          # xcodebuild can actually sign with it.
+          # Import the cert into the build keychain so xcodebuild can sign.
           keychain add-certificates
 
           # Wire the profile into App.xcodeproj (sets DEVELOPMENT_TEAM,

@@ -94,6 +94,10 @@ next to "Spotify ↗" whenever a match exists.
 - [ ] **Back up the keystore + password to 1Password — and delete
       `C:/Users/peytonhl/Secrets/keystore-password.txt` afterward.** If you
       lose this file, you can never update the published app.
+- [ ] **Back up `C:/Users/peytonhl/Secrets/contour_signing_key`** (the RSA
+      private key Codemagic uses to register iOS Distribution certs). Same
+      "can never update the app again" stakes as the Android keystore.
+      Should sit alongside the keystore + .p8 files in the hard-drive backup.
 - [ ] **Privacy Policy page** at https://contour-rosy.vercel.app/privacy
       (route exists — content needs writing). Required for Play Store, App
       Store, and Apple Music API ToS.
