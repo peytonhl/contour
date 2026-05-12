@@ -662,7 +662,9 @@ function ColdStartBanner({ ratingCount }) {
 
   return (
     <div style={{
-      padding: "8px 16px",
+      // Right padding bumped to 54px (gear button is 30px wide + 10px right
+      // inset + 14px breathing room) so the gear no longer eats the label.
+      padding: "8px 54px 8px 16px",
       background: "rgba(167,139,250,0.08)",
       borderBottom: "1px solid rgba(167,139,250,0.15)",
       display: "flex", alignItems: "center", gap: 10,
@@ -694,7 +696,15 @@ function ForYouFeed() {
   const [debugInfo, setDebugInfo] = useState(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [userRatings, setUserRatings] = useState({});
-  const [ratingCount, setRatingCount] = useState(() => getRatingCount());
+  // For signed-in users, prefer the authoritative server count (covers ratings
+  // made via album/track pages, not just For You feed). Falls back to the
+  // local-storage history count for signed-out users / before /me lands.
+  const [ratingCount, setRatingCount] = useState(() => {
+    return (user?.rating_count !== undefined ? user.rating_count : getRatingCount());
+  });
+  useEffect(() => {
+    if (user?.rating_count !== undefined) setRatingCount(user.rating_count);
+  }, [user?.rating_count]);
   const [englishOnly, setEnglishOnly] = useState(loadEnglishOnly);
   const englishOnlyRef = useRef(loadEnglishOnly());
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1253,7 +1263,9 @@ export function ForYouPage() {
             below Layout's sticky header as the page scrolls.
 
           zIndex 40 stays under Layout's header (50) in both modes. */}
-      <div style={{
+      <div
+        className="foryou-tabs-strip"
+        style={{
         position: isSwipe ? "relative" : "sticky",
         top: isSwipe ? undefined : STICKY_TOP,
         zIndex: 40,

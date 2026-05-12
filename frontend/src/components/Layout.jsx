@@ -171,8 +171,15 @@ export function Layout() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
 
-      {/* ── Top header ── */}
-      <header ref={headerRef} style={{
+      {/* ── Top header ──
+          Sticky on desktop (top nav is useful at all scroll positions).
+          On mobile a CSS override in index.css (.app-header media query)
+          flips this to position: static so the header scrolls away — the
+          Contour wordmark + bell + avatar aren't worth the vertical real
+          estate to keep pinned on a phone-sized viewport. Inner For You
+          sub-tab strip becomes the sole pinned strip on mobile via its
+          own CSS override (.foryou-tabs-strip top: 0). */}
+      <header ref={headerRef} className="app-header" style={{
         borderBottom: "1px solid var(--border)",
         padding: "0 16px",
         paddingTop: "env(safe-area-inset-top, 0px)",  /* iPhone Dynamic Island / notch */
@@ -326,9 +333,13 @@ export function Layout() {
       >
         <div style={{ display: "flex", alignItems: "stretch", height: 56 }}>
           {/* For You first — it's the home. Friends + Community live as tabs inside it.
-              Charts/Compare reachable via desktop top nav and direct URL. */}
+              Compare is a signature feature so it earns a top-level mobile slot
+              (previously only reachable via desktop top nav / direct URL —
+              mobile users had no way to discover it). Charts still reachable
+              via direct URL + desktop top nav; lower frequency-of-use. */}
           <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
           <BottomTab to="/search" label="Search" icon={<SearchIcon />} />
+          <BottomTab to="/compare" label="Compare" icon={<CompareIcon />} />
 
           {user ? (
             <NavLink

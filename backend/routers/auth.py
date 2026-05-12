@@ -303,6 +303,16 @@ async def get_me(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Count user's ratings from the DB. Used by the For You cold-start banner
+    # to show real personalization progress when the user has rated tracks
+    # via album pages (which don't increment the local-storage history that
+    # the banner previously read from in isolation).
+    from sqlalchemy import func as _func
+    rating_count_result = await db.execute(
+        select(_func.count(Rating.id)).where(Rating.user_id == user_id)
+    )
+    rating_count = rating_count_result.scalar() or 0
+
     return {
         "id": user.id,
         "display_name": user.display_name,
@@ -310,6 +320,7 @@ async def get_me(
         "email": user.email,
         "bio": user.bio,
         "is_admin": user.is_admin,
+        "rating_count": rating_count,
     }
 
 

@@ -154,6 +154,26 @@ button, a, [role="button"] {
     overflow-x: hidden;
   }
 
+  /* Mobile header behavior: the Contour wordmark + bell + avatar header
+     is sticky on desktop (where the top nav links are useful at all
+     scroll positions) but on phone-sized viewports it wastes vertical
+     real estate. Override to non-sticky so it scrolls off as the user
+     scrolls down. */
+  .app-header {
+    position: static !important;
+    top: auto !important;
+  }
+
+  /* When the header is non-sticky on mobile, the For You sub-tab strip
+     (For You / Friends / Community) becomes the *only* element that
+     should pin to the viewport top during scroll. The desktop offset
+     was `top: var(--layout-header-h)` to clear the sticky header above
+     it — on mobile that header scrolls off, so the strip needs to pin
+     all the way at top: 0. */
+  .foryou-tabs-strip {
+    top: 0 !important;
+  }
+
   /* Charts fill full width */
   .chart-container {
     padding: 12px !important;
