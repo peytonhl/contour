@@ -98,6 +98,25 @@ next to "Spotify ↗" whenever a match exists.
       private key Codemagic uses to register iOS Distribution certs). Same
       "can never update the app again" stakes as the Android keystore.
       Should sit alongside the keystore + .p8 files in the hard-drive backup.
+
+---
+
+## ✳ Architecture note: iOS/Android are live-update shells
+
+`frontend/capacitor.config.json` is set to `server.url:
+https://contour-rosy.vercel.app`, so native iOS and Android binaries load
+the live web app from Vercel on every launch. Implications:
+
+- Web/React/CSS/backend changes reach mobile users the moment Vercel finishes
+  deploying — usually 2 minutes. No app store involvement.
+- IPA / AAB rebuilds are only required when adding native capabilities
+  (Capacitor plugins, entitlements, icon, splash). Probably quarterly.
+- The bundled `dist/` is included in the IPA but unused at runtime. It's
+  effectively a 2MB dead weight; not worth optimizing away yet.
+
+This is documented at length in `CLAUDE.md` → "iOS & Android: live-update
+shell model". Do not switch back to bundled mode without thinking through
+the upgrade-cadence implications.
 - [ ] **Privacy Policy page** at https://contour-rosy.vercel.app/privacy
       (route exists — content needs writing). Required for Play Store, App
       Store, and Apple Music API ToS.
