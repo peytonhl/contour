@@ -84,13 +84,19 @@ export const api = {
   getArtistFavorite: (id) => request(`/artists/${id}/favorite`),
   toggleArtistFavorite: (id) => post(`/artists/${id}/favorite`, {}),
 
-  // Compare
-  compare: (idA, idB, { editionIdsA = null, editionIdsB = null, trackIdA = null, trackIdB = null } = {}) => {
+  // Compare — Side C optional. Pass idC=null for a 2-way comparison.
+  compare: (idA, idB, idC = null, {
+    editionIdsA = null, editionIdsB = null, editionIdsC = null,
+    trackIdA = null, trackIdB = null, trackIdC = null,
+  } = {}) => {
     const params = new URLSearchParams({ album_a_id: idA, album_b_id: idB });
+    if (idC) params.set("album_c_id", idC);
     if (editionIdsA?.length) params.set("edition_ids_a", editionIdsA.join(","));
     if (editionIdsB?.length) params.set("edition_ids_b", editionIdsB.join(","));
+    if (editionIdsC?.length) params.set("edition_ids_c", editionIdsC.join(","));
     if (trackIdA) params.set("track_a_id", trackIdA);
     if (trackIdB) params.set("track_b_id", trackIdB);
+    if (trackIdC) params.set("track_c_id", trackIdC);
     return request(`/compare/?${params}`);
   },
 

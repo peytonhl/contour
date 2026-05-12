@@ -21,6 +21,7 @@ class SaveRequest(BaseModel):
     result: dict
     name_a: str
     name_b: str
+    name_c: Optional[str] = None
 
 
 @router.post("/")
@@ -37,6 +38,7 @@ async def save_comparison(
         result_json=json.dumps(body.result),
         name_a=body.name_a,
         name_b=body.name_b,
+        name_c=body.name_c,
     )
     db.add(row)
     await db.commit()
@@ -57,5 +59,6 @@ async def get_comparison(comparison_id: str, db: AsyncSession = Depends(get_db))
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "name_a": row.name_a,
         "name_b": row.name_b,
+        "name_c": row.name_c,
         "result": json.loads(row.result_json),
     }
