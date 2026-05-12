@@ -3,6 +3,11 @@
 Self-contained checklist of every external dependency, account, asset, or
 credential I (Claude) can't produce. Grouped by what's blocking what.
 
+For ongoing service monitoring (renewal dates, free-tier ceilings, etc.) and
+multi-system runbooks (domain change, key rotation), see
+[OPERATIONS.md](OPERATIONS.md). This file is one-time setup tasks; that one
+is recurring operational work.
+
 Last updated: 2026-05-12
 
 ---
@@ -216,7 +221,10 @@ Things I genuinely can't verify from here — please poke at them when you can:
       observability.
 - [ ] **Custom domain** — `contour-rosy.vercel.app` works but a real domain
       (e.g. `contour.app`, `contour.fm`) reads more legit on the App Store
-      listing. Vercel makes the swap one-click once you own the domain.
+      listing. The Vercel swap is one-click but several external services
+      (Google OAuth, Apple Services ID, CORS, User-Agent strings) need to
+      update in lockstep — full runbook is in
+      [OPERATIONS.md](OPERATIONS.md#domain-migration-runbook).
 - [ ] **Contact email on Privacy Policy / About page.** Apple expects a way
       for users to file data-rights requests.
 - [ ] **Status / uptime monitor** (UptimeRobot free tier) pointed at the

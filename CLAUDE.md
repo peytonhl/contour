@@ -24,6 +24,9 @@ Live at: https://contour-rosy.vercel.app
 Backend: https://contour-production.up.railway.app  
 Health check: https://contour-production.up.railway.app/health
 
+Service inventory, monthly monitoring checklist, and the runbook for changing
+domains: see [OPERATIONS.md](OPERATIONS.md).
+
 ---
 
 ## Stack
