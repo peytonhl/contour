@@ -68,31 +68,29 @@ async def match_entity(
     entity_type: str,
     spotify_id: str,
     storefront: str = Query("us"),
+    force: bool = Query(False, description="Bypass cache and re-attempt matching"),
     db: AsyncSession = Depends(get_db),
 ):
     if entity_type not in ("album", "track"):
         raise HTTPException(status_code=400, detail="entity_type must be 'album' or 'track'")
 
-    cached = await _cached_link(db, spotify_id, entity_type, storefront)
-    if cached and cached.apple_music_id:
-        return {
-            "spotify_id": spotify_id,
-            "entity_type": entity_type,
-            "apple_music_id": cached.apple_music_id,
-            "url": apple_music.deep_link(entity_type, cached.apple_music_id, storefront),
-            "storefront": storefront,
-            "match_method": cached.match_method,
-            "cached": True,
-        }
-
-    # Negative cache hit — we've already tried to match and failed. Don't
-    # spend an HTTP call on every page view.
-    if cached and not cached.apple_music_id:
-        raise HTTPException(status_code=404, detail="No Apple Music match")
+    if not force:
+        cached = await _cached_link(db, spotify_id, entity_type, storefront)
+        if cached and cached.apple_music_id:
+            return {
+                "spotify_id": spotify_id,
+                "entity_type": entity_type,
+                "apple_music_id": cached.apple_music_id,
+                "url": apple_music.deep_link(entity_type, cached.apple_music_id, storefront),
+                "storefront": storefront,
+                "match_method": cached.match_method,
+                "cached": True,
+            }
+        # Note: negative cache rows are no longer respected — we only cache
+        # positive matches. A null row from older code is ignored, and the
+        # migration that ships with this change deletes them.
 
     if not apple_music.is_configured():
-        # Don't write a negative-cache row here — once keys land we want the
-        # next request to retry, not skip.
         raise HTTPException(status_code=404, detail="Apple Music not configured")
 
     # Cold cache + service enabled → try matching now.
@@ -137,9 +135,21 @@ async def match_entity(
     except Exception as exc:
         logger.warning("apple_music match failed for %s/%s: %s", entity_type, spotify_id, exc)
 
-    await _persist(db, spotify_id, entity_type, storefront, apple_music_id, match_method)
-
-    if not apple_music_id:
+    # Only persist positive matches. Negative results stay un-cached so a
+    # transient Apple API failure (auth glitch during deploy, rate limit,
+    # whatever) doesn't permanently hide the button. Match cost is one
+    # Apple API call per page view of an unmatched entity — acceptable.
+    if apple_music_id:
+        # If a (legacy) negative row exists for this entity, replace it.
+        existing = await _cached_link(db, spotify_id, entity_type, storefront)
+        if existing is not None:
+            existing.apple_music_id = apple_music_id
+            existing.match_method = match_method
+            existing.matched_at = datetime.utcnow()
+            await db.commit()
+        else:
+            await _persist(db, spotify_id, entity_type, storefront, apple_music_id, match_method)
+    else:
         raise HTTPException(status_code=404, detail="No Apple Music match")
 
     return {

@@ -226,6 +226,19 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [track.id, track.image_url, track.album_id]);
+
+  // Apple Music deep-link match — fetched lazily, 404 means no match / service
+  // unconfigured, in which case we just don't render the button.
+  const [appleMusicUrl, setAppleMusicUrl] = useState(null);
+  useEffect(() => {
+    setAppleMusicUrl(null);
+    if (!track.id) return;
+    let cancelled = false;
+    api.getAppleMusicLink("track", track.id).then((data) => {
+      if (!cancelled && data?.url) setAppleMusicUrl(data.url);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [track.id]);
   const [progress, setProgress] = useState(0);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
@@ -379,6 +392,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                 href={track.external_url}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => analytics.spotifyLinkClicked("track")}
                 title="Open in Spotify"
                 style={{
                   fontSize: 11, color: "rgba(255,255,255,0.6)",
@@ -388,6 +402,23 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                 }}
               >
                 Spotify ↗
+              </a>
+            )}
+            {appleMusicUrl && (
+              <a
+                href={appleMusicUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => analytics.appleMusicLinkClicked("track")}
+                title="Open in Apple Music"
+                style={{
+                  fontSize: 11, color: "rgba(255,255,255,0.6)",
+                  background: "rgba(0,0,0,0.4)", borderRadius: 20,
+                  padding: "4px 10px", textDecoration: "none",
+                  backdropFilter: "blur(4px)",
+                }}
+              >
+                Music ↗
               </a>
             )}
             <a
