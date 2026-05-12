@@ -115,6 +115,8 @@ export const api = {
 
   // Auth
   getProfile: () => request(`/auth/profile`),
+  appleSignIn: (identity_token, nonce, name) =>
+    post(`/auth/apple`, { identity_token, nonce, name }),
 
   // Featured
   getFeatured: () => request(`/featured`),

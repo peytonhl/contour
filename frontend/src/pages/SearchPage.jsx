@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { AppleSignInButton } from "../components/AppleSignInButton.jsx";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -289,18 +290,21 @@ export function SearchPage() {
             <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Rate, review &amp; follow listeners</span>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Sign in to unlock ratings, reviews, and your personalized feed.</span>
           </div>
-          <a
-            href={LOGIN_URL}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "8px 16px", background: "#fff", borderRadius: 20,
-              color: "#3c3c3c", fontSize: 13, fontWeight: 600, textDecoration: "none",
-              border: "1px solid #dadce0", flexShrink: 0,
-            }}
-          >
-            <GoogleIcon size={15} />
-            Sign in with Google
-          </a>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
+            <a
+              href={LOGIN_URL}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "8px 16px", background: "#fff", borderRadius: 20,
+                color: "#3c3c3c", fontSize: 13, fontWeight: 600, textDecoration: "none",
+                border: "1px solid #dadce0",
+              }}
+            >
+              <GoogleIcon size={15} />
+              Sign in with Google
+            </a>
+            <AppleSignInButton />
+          </div>
         </div>
       )}
 

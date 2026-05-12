@@ -13,8 +13,11 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    # Google OAuth identity (new primary auth method)
+    # Google OAuth identity (primary auth method)
     google_id: Mapped[Optional[str]] = mapped_column(String(128), unique=True, index=True, nullable=True)
+    # Apple sign-in identity ("sub" claim from Apple's ID token). Same user may
+    # have both google_id and apple_sub set after cross-provider account linking.
+    apple_sub: Mapped[Optional[str]] = mapped_column(String(128), unique=True, index=True, nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     # Legacy Spotify ID — kept nullable for existing rows, no longer populated
     spotify_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True, nullable=True)
