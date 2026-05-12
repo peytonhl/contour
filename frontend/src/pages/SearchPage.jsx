@@ -375,10 +375,14 @@ export function SearchPage() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
             {popular.items.map((it) => (
+              // `display: contents` lets this wrapper bubble the analytics
+              // click without taking part in layout — otherwise the inner
+              // <button> wouldn't stretch to the grid cell and cards would
+              // sort themselves by their cover image's natural size.
               <div
                 key={it.id}
                 onClick={() => analytics.trendingModuleClicked("search_empty", "album", it.id)}
-                style={{ cursor: "pointer" }}
+                style={{ display: "contents" }}
               >
                 <FeaturedCard item={{ ...it, artists: it.artist }} type="album" />
               </div>
