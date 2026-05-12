@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import ArtistFavorite, Rating, Review, User, AlbumCache, TrackCache
 from services import spotify
+from services import apple_auth
 
 _ENV_FILE = Path(__file__).parent.parent / ".env"
 
@@ -37,6 +38,9 @@ class AuthSettings(BaseSettings):
     frontend_url: str = "http://localhost:5173"
     jwt_secret: str
     jwt_expire_days: int = 30
+    # Apple sign-in — Services ID (acts as JWT audience). Optional: when unset,
+    # /auth/apple returns 503 and the frontend should hide the button.
+    apple_client_id: Optional[str] = None
 
 
 _settings: Optional[AuthSettings] = None
@@ -137,16 +141,23 @@ async def callback(code: str, db: AsyncSession = Depends(get_db)):
     display_name = profile.get("name") or email.split("@")[0]
     image_url = profile.get("picture")
 
-    # Upsert user by Google ID
+    # 1. Existing user with this google_id → log them in
     result = await db.execute(select(User).where(User.google_id == google_id))
     user = result.scalar_one_or_none()
 
-    if user:
-        user.display_name = display_name
-        user.image_url = image_url
-        user.email = email
-        user.last_seen = datetime.utcnow()
-    else:
+    # 2. Else: existing user with this real email (e.g. signed in with Apple
+    #    previously and now linking Google) → set google_id on that account.
+    #    Apple private-relay emails are excluded — they cannot reliably match
+    #    a real user's primary email.
+    if user is None and email and not apple_auth.is_private_relay_email(email):
+        result = await db.execute(select(User).where(User.email == email))
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            existing.google_id = google_id
+            user = existing
+
+    # 3. Else: brand-new user
+    if user is None:
         user = User(
             id=str(uuid.uuid4()),
             google_id=google_id,
@@ -155,12 +166,95 @@ async def callback(code: str, db: AsyncSession = Depends(get_db)):
             image_url=image_url,
         )
         db.add(user)
+    else:
+        user.display_name = display_name
+        user.image_url = image_url
+        user.email = email
+        user.last_seen = datetime.utcnow()
 
     await db.commit()
     await db.refresh(user)
 
     jwt_token = _make_jwt(user.id)
     return RedirectResponse(f"{s.frontend_url}/auth/success?token={jwt_token}&provider=google")
+
+
+# ── Sign in with Apple ────────────────────────────────────────────────────────
+
+
+class AppleSignInRequest(BaseModel):
+    identity_token: str
+    nonce: Optional[str] = None
+    # Apple only returns name on the *first* authentication. Frontend should
+    # forward it through so we can set display_name on new account creation.
+    name: Optional[str] = None
+
+
+@router.post("/apple")
+async def apple_sign_in(
+    body: AppleSignInRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify an Apple identity token and issue a Contour JWT.
+
+    Returns {token, provider} so the frontend can mirror the Google flow:
+    store the token and call /auth/me.
+    """
+    s = _get_settings()
+    if not s.apple_client_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Sign in with Apple is not configured on this server",
+        )
+
+    try:
+        claims = await apple_auth.verify_identity_token(
+            body.identity_token,
+            expected_nonce=body.nonce,
+            audience=s.apple_client_id,
+        )
+    except apple_auth.AppleAuthError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    apple_sub = claims["sub"]
+    email = claims.get("email")
+    is_relay = apple_auth.is_private_relay_email(email)
+    display_name = body.name or (email.split("@")[0] if email else f"user_{apple_sub[:8]}")
+
+    # 1. Existing user with this apple_sub → log them in
+    result = await db.execute(select(User).where(User.apple_sub == apple_sub))
+    user = result.scalar_one_or_none()
+
+    # 2. Else: existing user with this real email (e.g. signed in with Google
+    #    previously) → set apple_sub on that account. Relay emails skipped.
+    if user is None and email and not is_relay:
+        result = await db.execute(select(User).where(User.email == email))
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            existing.apple_sub = apple_sub
+            user = existing
+
+    # 3. Else: brand-new user. Use the provided email even if it's a relay
+    #    — we just don't use it for matching.
+    if user is None:
+        user = User(
+            id=str(uuid.uuid4()),
+            apple_sub=apple_sub,
+            email=email,
+            display_name=display_name,
+        )
+        db.add(user)
+    else:
+        user.last_seen = datetime.utcnow()
+        # Don't overwrite display_name on existing accounts — Apple only sends
+        # name on first auth and the user may have customized theirs since.
+        if email and not user.email:
+            user.email = email
+
+    await db.commit()
+    await db.refresh(user)
+
+    return {"token": _make_jwt(user.id), "provider": "apple"}
 
 
 @router.get("/me")

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
 import { userAvatar } from "../utils/userAvatar.js";
+import { AppleSignInButton } from "./AppleSignInButton.jsx";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -213,15 +214,18 @@ export function Layout() {
               <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{user.display_name}</span>
             </Link>
           ) : (
-            <a href={LOGIN_URL} style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "6px 14px", background: "#fff", borderRadius: 20,
-              color: "#3c3c3c", fontSize: 12, fontWeight: 600, textDecoration: "none",
-              border: "1px solid #dadce0",
-            }}>
-              <GoogleIcon size={16} />
-              Sign in with Google
-            </a>
+            <>
+              <a href={LOGIN_URL} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "6px 14px", background: "#fff", borderRadius: 20,
+                color: "#3c3c3c", fontSize: 12, fontWeight: 600, textDecoration: "none",
+                border: "1px solid #dadce0",
+              }}>
+                <GoogleIcon size={16} />
+                Sign in with Google
+              </a>
+              <AppleSignInButton />
+            </>
           )}
         </div>
 
@@ -250,15 +254,18 @@ export function Layout() {
             </NavLink>
           )}
           {!loading && !user && (
-            <a href={LOGIN_URL} style={{
-              display: "flex", alignItems: "center", gap: 6,
-              padding: "5px 10px", background: "#fff", borderRadius: 20,
-              color: "#3c3c3c", fontSize: 11, fontWeight: 600, textDecoration: "none",
-              border: "1px solid #dadce0",
-            }}>
-              <GoogleIcon size={13} />
-              Sign in
-            </a>
+            <>
+              <a href={LOGIN_URL} style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "5px 10px", background: "#fff", borderRadius: 20,
+                color: "#3c3c3c", fontSize: 11, fontWeight: 600, textDecoration: "none",
+                border: "1px solid #dadce0",
+              }}>
+                <GoogleIcon size={13} />
+                Sign in
+              </a>
+              <AppleSignInButton size="small" />
+            </>
           )}
         </div>
       </header>

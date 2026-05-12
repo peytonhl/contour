@@ -87,8 +87,63 @@ the new SDKs, acceptable for a launch SDK pair).
 ### ⏳ Task 4 — Apple Music deep links
 Pending. Will gate on Apple Music developer token (Section A item 8).
 
-### ⏳ Task 5 — Sign in with Apple
-Pending. Will gate on Apple Service ID + private key (Section A item 8).
+### ✅ Task 5 — Sign in with Apple (skeleton, env-gated)
+**Shipped:** 2026-05-11
+
+End-to-end skeleton lands now. The endpoint, model, migration, frontend
+button, and the full 10-case test suite are all in place. Flipping the
+`APPLE_CLIENT_ID` env var on backend + `VITE_APPLE_CLIENT_ID` on frontend
+activates everything — no further code work needed once you have the
+Services ID from the Apple Developer portal.
+
+**Backend:**
+- `backend/services/apple_auth.py` — fetches and 24h-caches Apple's JWKS,
+  verifies RS256-signed identity tokens (iss / aud / exp / nonce), and
+  exposes `is_private_relay_email()` so callers don't link cross-provider
+  accounts via privaterelay.appleid.com aliases. `jwks_fetcher` is injectable
+  for tests.
+- `backend/models.py` — new nullable unique `apple_sub` column on User.
+- `backend/migrations/versions/i9j0k1l2m3n4_add_apple_sub.py` — Alembic
+  migration adds the column + unique index. Will run automatically on next
+  Railway deploy.
+- `backend/routers/auth.py` — new `POST /auth/apple` endpoint with the full
+  account-linking logic. Returns `503` when `APPLE_CLIENT_ID` is unset so the
+  frontend can probe + hide the button. The Google `/auth/callback` was also
+  extended with the mirror-image linking pass (if Google email matches an
+  existing apple_sub user → link, don't duplicate). Private relay emails are
+  excluded from cross-provider linking on both sides.
+- `backend/requirements.txt` — added `cryptography` (PyJWT needs it for RS256),
+  plus `pytest` / `pytest-asyncio` / `asgi-lifespan` for the test suite.
+
+**Frontend:**
+- `frontend/src/components/AppleSignInButton.jsx` — lazy-loads Apple's JS lib
+  (`appleid.auth.js`), runs the popup flow with a fresh nonce, and POSTs the
+  identity token + nonce + first-auth name to `/auth/apple`. Renders `null`
+  when `VITE_APPLE_CLIENT_ID` is unset.
+- Wired into `Layout.jsx` (desktop top nav + mobile header) and the SearchPage
+  sign-in nudge, beside the Google button.
+- `api.js` got an `appleSignIn(token, nonce, name)` helper.
+
+**Tests (10/10 passing locally):**
+- `backend/tests/test_auth_linking.py` covers all 10 scenarios specified —
+  Google-fresh / Apple-fresh signups, both linking directions, private relay
+  isolation, idempotent repeat sign-in, and the four token-validation
+  failure modes (signature / exp / aud / iss).
+- `backend/tests/conftest.py` provides an RSA keypair, JWKS monkeypatch,
+  Google httpx mock, and a per-test in-memory SQLite session with the
+  schema rebuilt every test.
+- Run locally:
+  `cd backend && python -m venv .venv && .venv/Scripts/activate && pip install -r requirements.txt && pytest`
+
+**Manual test checklist for live activation (run once keys are set):**
+- [ ] Click Apple button on desktop → Apple popup opens, returns to home logged in.
+- [ ] Same on iOS Safari mobile.
+- [ ] Existing Google user signs in with Apple (same email) → no duplicate user
+      (verify via /auth/profile or DB).
+- [ ] Existing Apple user signs in with Google (same email) → no duplicate.
+- [ ] Sign in with Apple, choose "Hide my email" → new account is created with
+      relay email; sign in again with same Apple ID → same account returned.
+- [ ] `signup_completed` event fires with `auth_provider=apple` in PostHog.
 
 ### ⏳ Task 7 — Play Store packaging prep
 Pending.
