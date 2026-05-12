@@ -22,8 +22,26 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import ContentReport, Review, ReviewReply, User, UserBlock
+from models import (
+    AlbumCache,
+    ContentReport,
+    Rating,
+    Review,
+    ReviewLike,
+    ReviewReply,
+    ReviewVote,
+    TrackCache,
+    User,
+    UserBlock,
+)
 from routers.auth import require_user_id
+from services import spotify
+
+import asyncio
+import logging
+import httpx
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/moderation", tags=["moderation"])
@@ -299,3 +317,207 @@ async def resolve_report(
 
     await db.commit()
     return {"ok": True, "status": report.status, "content_deleted": body.delete_content}
+
+
+# ── Entity-cache backfill / orphan cleanup ────────────────────────────────────
+
+
+class BackfillIn(BaseModel):
+    """Body for POST /moderation/backfill-entity-cache."""
+    execute: bool = False           # When False, the call is a dry run
+    limit: int = Field(100, ge=1, le=500)
+    # Restrict to one entity type per call so the user can iterate
+    # (e.g. tracks first, then albums). "all" processes both.
+    entity_type: str = "track"      # "track" | "album" | "all"
+
+
+async def _try_fetch_spotify(entity_type: str, entity_id: str) -> tuple[Optional[dict], str]:
+    """
+    Fetch entity meta from Spotify with 404 distinguished from other errors.
+    Returns (data, status) where status is "ok" | "orphan" | "error".
+    """
+    try:
+        if entity_type == "track":
+            data = await spotify.get_track(entity_id)
+        else:
+            data = await spotify.get_album(entity_id)
+        return data, "ok"
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            return None, "orphan"
+        logger.warning("[backfill] %s/%s HTTP %d", entity_type, entity_id, exc.response.status_code)
+        return None, "error"
+    except Exception as exc:
+        logger.warning("[backfill] %s/%s failed: %s", entity_type, entity_id, exc)
+        return None, "error"
+
+
+async def _delete_orphan_references(db: AsyncSession, entity_type: str, entity_id: str) -> dict:
+    """
+    Delete Review + Rating rows pointing at an orphaned entity, plus cascade
+    cleanup of votes / likes / replies / content reports tied to those
+    reviews. Returns a count of what was removed.
+    """
+    review_ids = (await db.execute(
+        select(Review.id).where(
+            Review.entity_type == entity_type,
+            Review.entity_id == entity_id,
+        )
+    )).scalars().all()
+
+    removed = {"reviews": 0, "ratings": 0, "votes": 0, "likes": 0, "replies": 0, "reports": 0}
+
+    if review_ids:
+        # Cascades — no FK constraints in this app, so do it explicitly.
+        removed["votes"] = (await db.execute(
+            delete(ReviewVote).where(ReviewVote.review_id.in_(review_ids))
+        )).rowcount or 0
+        removed["likes"] = (await db.execute(
+            delete(ReviewLike).where(ReviewLike.review_id.in_(review_ids))
+        )).rowcount or 0
+        removed["replies"] = (await db.execute(
+            delete(ReviewReply).where(ReviewReply.review_id.in_(review_ids))
+        )).rowcount or 0
+        removed["reports"] = (await db.execute(
+            delete(ContentReport).where(
+                ContentReport.target_type == "review",
+                ContentReport.target_id.in_(review_ids),
+            )
+        )).rowcount or 0
+        removed["reviews"] = (await db.execute(
+            delete(Review).where(Review.id.in_(review_ids))
+        )).rowcount or 0
+
+    removed["ratings"] = (await db.execute(
+        delete(Rating).where(
+            Rating.entity_type == entity_type,
+            Rating.entity_id == entity_id,
+        )
+    )).rowcount or 0
+
+    return removed
+
+
+@router.post("/backfill-entity-cache")
+async def backfill_entity_cache(
+    body: BackfillIn,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_user_id),
+):
+    """
+    Admin-only. Walks Review + Rating rows for entity_ids that aren't in
+    TrackCache / AlbumCache, calls Spotify for each, and either:
+      • caches the result if Spotify returns it, or
+      • deletes the Review + Rating rows (with cascades) when Spotify
+        returns 404 — those entities are gone, the reviews are orphaned.
+
+    Defaults to dry-run so the caller can preview the orphan list before
+    approving deletion. Set execute=true to actually delete.
+
+    Iterate by calling repeatedly until "remaining" returns 0.
+    """
+    await _require_admin(db, user_id)
+
+    if body.entity_type not in ("track", "album", "all"):
+        raise HTTPException(status_code=400, detail="entity_type must be 'track', 'album', or 'all'")
+
+    entity_types = ["track", "album"] if body.entity_type == "all" else [body.entity_type]
+
+    summary = {
+        "dry_run": not body.execute,
+        "checked": 0,
+        "cached": 0,
+        "orphaned": 0,
+        "errors": 0,
+        "deleted": {"reviews": 0, "ratings": 0, "votes": 0, "likes": 0, "replies": 0, "reports": 0},
+        "samples": {"cached": [], "orphaned": [], "errors": []},
+        "remaining": 0,
+    }
+
+    for et in entity_types:
+        Cache = TrackCache if et == "track" else AlbumCache
+
+        # Collect unique entity_ids referenced by reviews + ratings of this type
+        review_ids = (await db.execute(
+            select(Review.entity_id).where(Review.entity_type == et).distinct()
+        )).scalars().all()
+        rating_ids = (await db.execute(
+            select(Rating.entity_id).where(Rating.entity_type == et).distinct()
+        )).scalars().all()
+        referenced = set(review_ids) | set(rating_ids)
+
+        # Filter to those not already in cache
+        cached_ids = set((await db.execute(
+            select(Cache.spotify_id).where(Cache.spotify_id.in_(referenced))
+        )).scalars().all()) if referenced else set()
+        missing = sorted(referenced - cached_ids)
+
+        # Per-type batch cap so the caller can iterate
+        to_process = missing[: body.limit - summary["checked"]]
+        summary["remaining"] += max(0, len(missing) - len(to_process))
+
+        for entity_id in to_process:
+            summary["checked"] += 1
+            data, status = await _try_fetch_spotify(et, entity_id)
+
+            if status == "ok" and data:
+                # Write through to cache. Re-check existence in case a
+                # concurrent request beat us to it.
+                exists = (await db.execute(
+                    select(Cache).where(Cache.spotify_id == entity_id)
+                )).scalar_one_or_none()
+                if not exists:
+                    if et == "track":
+                        db.add(TrackCache(
+                            spotify_id=entity_id,
+                            name=data.get("name") or "",
+                            artist=(data.get("artists") or [""])[0],
+                            album_name=data.get("album_name"),
+                            album_id=data.get("album_id"),
+                            release_date=data.get("release_date"),
+                            duration_ms=data.get("duration_ms"),
+                            explicit=data.get("explicit", False),
+                            popularity=data.get("popularity"),
+                            image_url=data.get("image_url"),
+                            external_url=data.get("external_url"),
+                        ))
+                    else:
+                        db.add(AlbumCache(
+                            spotify_id=entity_id,
+                            name=data.get("name") or "",
+                            artist=(data.get("artists") or [""])[0],
+                            release_date=data.get("release_date"),
+                            image_url=data.get("image_url"),
+                            enrichment_status="pending",
+                        ))
+                summary["cached"] += 1
+                if len(summary["samples"]["cached"]) < 5:
+                    summary["samples"]["cached"].append({
+                        "id": entity_id,
+                        "type": et,
+                        "name": data.get("name"),
+                        "artists": data.get("artists", []),
+                    })
+
+            elif status == "orphan":
+                summary["orphaned"] += 1
+                if len(summary["samples"]["orphaned"]) < 10:
+                    summary["samples"]["orphaned"].append({"id": entity_id, "type": et})
+                if body.execute:
+                    removed = await _delete_orphan_references(db, et, entity_id)
+                    for k, v in removed.items():
+                        summary["deleted"][k] += v
+
+            else:  # "error" — leave it alone, retry next call
+                summary["errors"] += 1
+                if len(summary["samples"]["errors"]) < 5:
+                    summary["samples"]["errors"].append({"id": entity_id, "type": et})
+
+            # Be polite to Spotify — small delay between calls
+            await asyncio.sleep(0.05)
+
+        if summary["checked"] >= body.limit:
+            break
+
+    await db.commit()
+    return summary
