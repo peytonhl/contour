@@ -1087,22 +1087,31 @@ function ForYouFeed() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", position: "relative" }}>
+      {/* Floating settings gear (top-right). Previously lived in its own
+          horizontal strip below the tab bar, which read as an empty black
+          band between the tab strip and the first track card — wasted
+          vertical space. Floating it on top of the card keeps it
+          accessible without consuming a row. */}
+      <button
+        onClick={() => setSettingsOpen(o => !o)}
+        title="Feed settings"
+        aria-label="Feed settings"
+        style={{
+          position: "absolute", top: 8, right: 10, zIndex: 5,
+          fontSize: 15, lineHeight: 1,
+          width: 30, height: 30, borderRadius: 16, padding: 0,
+          background: "rgba(0,0,0,0.55)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          color: settingsOpen ? ACCENT_A : "rgba(255,255,255,0.55)",
+          cursor: "pointer",
+          transition: "color 0.15s, background 0.15s",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >⚙</button>
+
       {/* Cold-start progress banner */}
       <ColdStartBanner ratingCount={ratingCount} />
-
-      {/* Settings toggle row */}
-      <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 12px", flexShrink: 0 }}>
-        <button
-          onClick={() => setSettingsOpen(o => !o)}
-          title="Feed settings"
-          style={{
-            fontSize: 14, background: "none", border: "none", cursor: "pointer",
-            color: settingsOpen ? ACCENT_A : "rgba(255,255,255,0.3)",
-            padding: "4px 6px", transition: "color 0.15s",
-          }}
-        >⚙</button>
-      </div>
 
       {/* Settings panel */}
       {settingsOpen && (
