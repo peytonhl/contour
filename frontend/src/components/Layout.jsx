@@ -152,14 +152,15 @@ export function Layout() {
     return () => clearInterval(interval);
   }, [user]);
 
-  // Primary nav: For You is the home — audio swipe, Friends timeline, and
-  // Community reviews all live there as tabs. /feed was retired.
+  // Primary nav: For You is the home (audio swipe, Friends timeline, and
+  // Community reviews all live there as tabs). /feed was retired.
+  // "How It Works" was moved to the profile settings menu — keeps the top
+  // nav focused on primary navigation and not explainer content.
   const desktopNavLinks = [
     { to: "/", label: "For You", end: true },
     { to: "/search", label: "Search" },
     { to: "/compare", label: "Compare" },
     { to: "/charts", label: "Charts" },
-    { to: "/methodology", label: "How It Works" },
     ...(user?.is_admin ? [{ to: "/admin/reports", label: "Admin" }] : []),
   ];
 

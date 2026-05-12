@@ -101,10 +101,13 @@ export function Methodology() {
         </P>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
           {[
-            "Rate albums & tracks (1–5 stars)",
+            "Rate albums & tracks (half-star, 0.5–5.0)",
             "Write reviews",
             "Follow other listeners",
             "Build & share lists",
+            "Backlog (want to listen)",
+            "Import ratings from Rate Your Music",
+            "Trending hub",
             "Discover new music (For You feed)",
             "View streaming trajectories",
             "Era Score leaderboard",
@@ -248,6 +251,49 @@ export function Methodology() {
           The "Known For" section on artist pages highlights the artist's biggest hits using Spotify's popularity
           ranking, with no extra computation required. Spotify already surfaces an artist's top tracks sorted by
           total streams, so we display the top 4 as a visual card grid with album art, track name, and release year.
+        </P>
+      </Section>
+
+      <Section title="Backlog">
+        <P>
+          The Backlog is a public "want to listen" list. Tap <strong style={{ color: "var(--text)" }}>+ Want to
+          listen</strong> on any album or track to save it; the row shows up on your profile as the Backlog tab,
+          visible to anyone viewing your profile. When you've actually listened, the <strong style={{ color: "var(--text)" }}>Rate
+          it now</strong> button removes the entry and jumps you to the rating widget on the entity page.
+        </P>
+        <P>
+          Backlogs are intentionally public. The point isn't a private to-do list; it's social discovery, so friends
+          can see what you're excited about and a "Popular in backlogs" panel surfaces albums other listeners are
+          saving but you haven't yet.
+        </P>
+      </Section>
+
+      <Section title="Import from Rate Your Music">
+        <P>
+          If you already keep ratings on RYM, you can bring them in. Export your data from RYM
+          (Account &rarr; Export your data), upload the CSV in <strong style={{ color: "var(--text)" }}>Settings
+          &rarr; Import ratings</strong>, and every rated row is matched to a Spotify album and saved as a Contour
+          rating. RYM's 0–10 scale is converted to Contour's 0.5–5.0 half-star scale (1&nbsp;=&nbsp;½★ … 10&nbsp;=&nbsp;5★).
+        </P>
+        <P>
+          Matching uses title plus artist with a fuzzy score; about 90&nbsp;% of typical libraries match cleanly.
+          Rows we can't pair are returned in an "unmatched" list so you can rate them manually rather than guessing.
+          Reviews come along too when present, but an existing Contour review on the same album is never overwritten.
+        </P>
+      </Section>
+
+      <Section title="Trending">
+        <P>
+          The Trending hub at <strong style={{ color: "var(--text)" }}>/trending</strong> ranks albums, reviews,
+          and searches by recent activity (default window: 7 days). Albums rank by new ratings; reviews by
+          (upvotes − downvotes); backlogged by new adds; searches by query frequency.
+        </P>
+        <P>
+          The window auto-expands if the requested period is sparse:{" "}
+          <strong style={{ color: "var(--text)" }}>24h &rarr; 7d &rarr; 30d &rarr; all-time</strong>. The label
+          shown on the page reflects whatever window actually had data, so when the community is small the section
+          honestly relabels itself "Popular on Contour" rather than mislabeling a stale 30-day pull as
+          "Trending this week".
         </P>
       </Section>
 

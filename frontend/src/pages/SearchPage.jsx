@@ -49,10 +49,17 @@ function FeaturedCard({ item, type }) {
     <button
       onClick={() => navigate(path)}
       style={{
+        // width: 100% is load-bearing — buttons are intrinsically sized in CSS
+        // grid (they don't honor the default `stretch` alignment the way plain
+        // divs do), so without this albums with larger natural cover images
+        // render visibly bigger than ones with smaller covers. Keeps the grid
+        // uniform regardless of any wrapper around the card.
+        width: "100%",
         background: "var(--surface)", border: "1px solid var(--border)",
         borderRadius: 10, overflow: "hidden", cursor: "pointer",
         textAlign: "left", transition: "border-color 0.15s, transform 0.15s",
         display: "flex", flexDirection: "column",
+        padding: 0,
       }}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = TYPE_COLORS[type]; e.currentTarget.style.transform = "translateY(-2px)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; }}
