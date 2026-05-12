@@ -13,6 +13,7 @@ from models import User, UserFollow, Rating, Review, ReviewVote, ArtistFavorite,
 from routers.auth import decode_jwt, optional_user_id
 from routers.notifications import create_notification
 from services import spotify
+from services import artist_cache
 from services import deezer as deezer_svc
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -287,7 +288,23 @@ async def get_user_taste(user_id: str, db: AsyncSession = Depends(get_db)):
     # ── 2. Top genres from highly-rated content ───────────────────────────────
     top_rated = [r for r in ratings if r.value >= 4][:12]
 
+    # Resolve each rated entity → primary artist ID. TrackCache stores
+    # artist_ids_json, AlbumCache only stores the artist name; in both cases
+    # we fall through to spotify.get_track / get_album (now 30d Redis-cached,
+    # so the first lookup is the only one that hits the network).
     async def get_entity_artist_ids(entity_type: str, entity_id: str) -> list[str]:
+        # Fast path for tracks: TrackCache has artist_ids serialized.
+        if entity_type == "track":
+            row = (await db.execute(
+                select(TrackCache).where(TrackCache.spotify_id == entity_id)
+            )).scalar_one_or_none()
+            if row and row.artist_ids_json:
+                try:
+                    ids = json.loads(row.artist_ids_json)
+                    if ids:
+                        return ids[:1]
+                except Exception:
+                    pass
         try:
             if entity_type == "track":
                 data = await spotify.get_track(entity_id)
@@ -307,12 +324,12 @@ async def get_user_taste(user_id: str, db: AsyncSession = Depends(get_db)):
         if isinstance(res, list):
             artist_id_set.update(res)
 
+    # Genres come from ArtistCache (DB) when fresh, else write-through from
+    # Spotify. Eliminates the per-profile-view Spotify fan-out — previously
+    # 6 cache-miss calls per page load, now 0 once warm (≤30d).
     async def get_genres(artist_id: str) -> list[str]:
-        try:
-            a = await spotify.get_artist(artist_id)
-            return a.get("genres", [])[:3]
-        except Exception:
-            return []
+        meta = await artist_cache.get_or_fetch_artist(db, artist_id)
+        return (meta or {}).get("genres", [])[:3]
 
     genre_results = await asyncio.gather(
         *[get_genres(aid) for aid in list(artist_id_set)[:6]],

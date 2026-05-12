@@ -22,6 +22,15 @@ from services import redis_cache
 # pointless; we'd rather return DB results immediately.
 _MAX_RETRY_WAIT = 15  # seconds
 
+# ── Cache TTLs ────────────────────────────────────────────────────────────────
+# Track/album metadata is immutable post-release; bump TTLs aggressively so we
+# rarely re-fetch. Anything that legitimately changes (charts, new releases)
+# keeps a shorter window.
+_TTL_30D = 2_592_000   # immutable metadata (tracks, albums, album tracklists, previews)
+_TTL_7D  =   604_800   # slow-changing (artists, search results, top tracks, genre searches)
+_TTL_24H =    86_400   # daily-ish (global top charts)
+_TTL_1H  =     3_600   # fast-changing (new releases)
+
 # Circuit breaker: when Spotify hands us a long Retry-After (credential-wide
 # rate-limit block, sometimes hours), stop hitting the API entirely until
 # the block expires. Otherwise every new request resets the timer and keeps
@@ -160,7 +169,8 @@ async def search_artists(query: str, limit: int = 10) -> list[dict]:
 
 
 async def get_artist(artist_id: str) -> dict:
-    """Fetch artist metadata by Spotify artist ID. Cached 24 h in Redis."""
+    """Fetch artist metadata by Spotify artist ID. Cached 7d in Redis (genres
+    update occasionally but the bulk of fields are stable)."""
     cache_key = f"spotify:artist:{artist_id}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
@@ -170,12 +180,18 @@ async def get_artist(artist_id: str) -> dict:
         resp = await _spotify_get(client, f"https://api.spotify.com/v1/artists/{artist_id}", token)
         resp.raise_for_status()
         result = _parse_artist(resp.json())
-    await redis_cache.set(cache_key, result, ttl=86400)  # 24 h
+    await redis_cache.set(cache_key, result, ttl=_TTL_7D)
     return result
 
 
 async def get_album_tracks(album_id: str) -> list[dict]:
-    """Fetch the tracklist for an album."""
+    """Fetch the tracklist for an album. Cached 30d — tracklists never change
+    after release, and this is called every album page view."""
+    cache_key = f"spotify:album_tracks:{album_id}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     results = []
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
@@ -188,7 +204,7 @@ async def get_album_tracks(album_id: str) -> list[dict]:
             results.extend(data.get("items", []))
             url = data.get("next")
             params = {}
-    return [
+    parsed = [
         {
             "id": t["id"],
             "name": t["name"],
@@ -201,6 +217,9 @@ async def get_album_tracks(album_id: str) -> list[dict]:
         }
         for t in results
     ]
+    if parsed:
+        await redis_cache.set(cache_key, parsed, ttl=_TTL_30D)
+    return parsed
 
 
 async def search_tracks(query: str, limit: int = 10) -> list[dict]:
@@ -227,7 +246,8 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
 
 
 async def get_track(track_id: str) -> dict:
-    """Fetch full track metadata by Spotify track ID. Cached 24 h in Redis."""
+    """Fetch full track metadata by Spotify track ID. Cached 30d — track
+    metadata is immutable post-release and this is one of the hottest endpoints."""
     cache_key = f"spotify:track:{track_id}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
@@ -237,12 +257,17 @@ async def get_track(track_id: str) -> dict:
         resp = await _spotify_get(client, f"https://api.spotify.com/v1/tracks/{track_id}", token)
         resp.raise_for_status()
         result = _parse_track(resp.json())
-    await redis_cache.set(cache_key, result, ttl=86400)  # 24 h
+    await redis_cache.set(cache_key, result, ttl=_TTL_30D)
     return result
 
 
 async def search_albums(query: str, limit: int = 10) -> list[dict]:
-    """Search Spotify for albums matching the query string."""
+    """Search Spotify for albums matching the query string. Cached 7d in Redis."""
+    cache_key = f"spotify:album_search:{query.lower().strip()}:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         resp = await client.get(
@@ -257,7 +282,10 @@ async def search_albums(query: str, limit: int = 10) -> list[dict]:
         items = resp.json().get("albums", {}).get("items", [])
         _log.debug("[spotify.search_albums] %d raw items for q=%r", len(items), query)
 
-    return [_parse_album(a) for a in items if a and a.get("id")]
+    result = [_parse_album(a) for a in items if a and a.get("id")]
+    if result:
+        await redis_cache.set(cache_key, result, ttl=_TTL_7D)
+    return result
 
 
 async def get_artist_albums_limited(artist_id: str, limit: int = 20) -> list[dict]:
@@ -289,7 +317,8 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 20) -> list[dic
 
 
 async def get_album(album_id: str) -> dict:
-    """Fetch full album metadata by Spotify album ID. Cached 24 h in Redis."""
+    """Fetch full album metadata by Spotify album ID. Cached 30d — album
+    metadata is immutable post-release."""
     cache_key = f"spotify:album:{album_id}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
@@ -299,7 +328,7 @@ async def get_album(album_id: str) -> dict:
         resp = await _spotify_get(client, f"https://api.spotify.com/v1/albums/{album_id}", token)
         resp.raise_for_status()
         result = _parse_album(resp.json())
-    await redis_cache.set(cache_key, result, ttl=86400)  # 24 h
+    await redis_cache.set(cache_key, result, ttl=_TTL_30D)
     return result
 
 
@@ -330,7 +359,10 @@ async def get_playlist_tracks(playlist_id: str, limit: int = 20) -> list[dict]:
             tracks.append(_parse_track(t))
 
     if tracks:
-        await redis_cache.set(cache_key, tracks)
+        # New Music Friday is updated weekly — 1h TTL gives near-real-time
+        # surfacing of new releases while still cutting load by ~600x.
+        # Other playlists piggyback on this TTL; they're updated even less often.
+        await redis_cache.set(cache_key, tracks, ttl=_TTL_1H)
     return tracks
 
 
@@ -376,7 +408,7 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
         items = resp.json().get("tracks", {}).get("items", [])
     result = [_parse_track(t) for t in items if t.get("id")]
     if result:  # only cache non-empty results
-        await redis_cache.set(cache_key, result)
+        await redis_cache.set(cache_key, result, ttl=_TTL_7D)
     return result
 
 
@@ -417,12 +449,13 @@ async def get_global_top_tracks(limit: int = 10) -> list[dict]:
                     all_tracks.append(_parse_track(t))
 
     if all_tracks:
-        await redis_cache.set(cache_key, all_tracks)
+        await redis_cache.set(cache_key, all_tracks, ttl=_TTL_24H)
     return all_tracks[:limit]
 
 
 async def get_artist_top_tracks(artist_id: str, market: str = "US") -> list[dict]:
-    """Fetch an artist's top 10 tracks from Spotify."""
+    """Fetch an artist's top 10 tracks from Spotify. Cached 7d — top tracks
+    shift weekly at most."""
     cache_key = f"spotify:artist_top:{artist_id}:{market}"
     cached = await redis_cache.get(cache_key)
     if cached:  # guard: don't use an empty cached result
@@ -439,7 +472,7 @@ async def get_artist_top_tracks(artist_id: str, market: str = "US") -> list[dict
         tracks = resp.json().get("tracks", [])
     result = [_parse_track(t) for t in tracks[:10]]
     if result:  # only cache non-empty results
-        await redis_cache.set(cache_key, result)
+        await redis_cache.set(cache_key, result, ttl=_TTL_7D)
     return result
 
 

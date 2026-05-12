@@ -81,7 +81,8 @@ async def get_chart_tracks(limit: int = 50) -> list[dict]:
     """
     Return Deezer's global chart tracks (real chart data, not a text search).
     Avoids the "Top Hits band" problem caused by searching the string "top hits".
-    Cached for 6 hours.
+    Cached 24h — charts don't shift hour-to-hour and this is hit on every For You
+    batch.
     """
     cache_key = f"deezer:chart:{limit}"
     cached = await redis_cache.get(cache_key)
@@ -99,7 +100,7 @@ async def get_chart_tracks(limit: int = 50) -> list[dict]:
             and (t.get("artist") or {}).get("name", "").lower() not in _JUNK_ARTISTS
         ]
         if result:
-            await redis_cache.set(cache_key, result, ttl=21_600)  # 6 h
+            await redis_cache.set(cache_key, result, ttl=86_400)  # 24 h
         return result
     except Exception:
         return []
@@ -109,15 +110,30 @@ async def get_preview(track_name: str, artist_name: str) -> str | None:
     """
     Search Deezer for a matching track and return its 30-second preview URL.
     Returns None if no match is found or the request fails.
+    Cached 30d — preview URLs are immutable; this is called as a fallback for
+    Spotify tracks missing preview_url, so every For You card potentially fires
+    one of these on first show.
     """
+    cache_key = f"deezer:preview:{artist_name.lower().strip()}:{track_name.lower().strip()}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        # Cache hit (could be a real URL or an explicit empty-string sentinel
+        # marking a previous miss — both are valid "we already tried this" signals)
+        return cached or None
+
     query = f"{artist_name} {track_name}"
+    result: str | None = None
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(_BASE, params={"q": query, "limit": 1})
             resp.raise_for_status()
             items = resp.json().get("data", [])
             if items and items[0].get("preview"):
-                return items[0]["preview"]
+                result = items[0]["preview"]
     except Exception:
         pass
-    return None
+
+    # Store hits for 30d; store negative results (empty string) for 7d so we
+    # don't keep retrying broken matches but eventually re-check.
+    await redis_cache.set(cache_key, result or "", ttl=2_592_000 if result else 604_800)
+    return result

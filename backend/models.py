@@ -255,12 +255,21 @@ class ArtistCache(Base):
 
     Used by the search router to decide whether to refresh album data from
     Spotify (daily cadence) so users see new releases on drop day.
+
+    Also caches lightweight artist metadata (genres, image, popularity) so
+    the profile-taste endpoint can derive top genres without making a Spotify
+    call per artist — the single hottest source of Spotify fan-out on the
+    site before this was added.
     """
     __tablename__ = "artist_cache"
 
     spotify_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(256))
     discography_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    genres: Mapped[Optional[str]] = mapped_column(Text, nullable=True)          # JSON array
+    image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    popularity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    meta_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class UserBlock(Base):
