@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import AppleMusicLink
+from models import AlbumCache, AppleMusicLink, TrackCache
 from services import apple_music, spotify
 
 logger = logging.getLogger(__name__)
@@ -99,31 +99,31 @@ async def match_entity(
 
     try:
         if entity_type == "track":
-            track = await spotify.get_track(spotify_id)
-            isrc = track.get("isrc")
+            track_meta = await _get_track_meta(spotify_id, db)
+            isrc = track_meta.get("isrc")
             if isrc:
                 match = await apple_music.match_track_by_isrc(isrc, storefront)
                 if match and match.get("track_id"):
                     apple_music_id = match["track_id"]
                     match_method = "isrc"
-            if not apple_music_id:
+            if not apple_music_id and track_meta.get("name"):
                 apple_music_id = await apple_music.search_by_text(
-                    name=track.get("name", ""),
-                    artist=(track.get("artists") or [""])[0],
+                    name=track_meta.get("name", ""),
+                    artist=(track_meta.get("artists") or [""])[0],
                     entity_type="track",
                     storefront=storefront,
                 )
                 if apple_music_id:
                     match_method = "text"
         else:  # album
-            album_data = await _get_album_with_first_track_isrc(spotify_id)
+            album_data = await _get_album_meta(spotify_id, db)
             isrc = album_data.get("first_track_isrc")
             if isrc:
                 match = await apple_music.match_track_by_isrc(isrc, storefront)
                 if match and match.get("album_id"):
                     apple_music_id = match["album_id"]
                     match_method = "isrc"
-            if not apple_music_id:
+            if not apple_music_id and album_data.get("name"):
                 apple_music_id = await apple_music.search_by_text(
                     name=album_data.get("name", ""),
                     artist=(album_data.get("artists") or [""])[0],
@@ -163,22 +163,82 @@ async def match_entity(
     }
 
 
-async def _get_album_with_first_track_isrc(spotify_album_id: str) -> dict:
-    """Fetch album metadata and the ISRC of its first track. The track-list
-    call isn't cached in Redis directly but each track fetch downstream is."""
-    album = await spotify.get_album(spotify_album_id)
-    isrc = None
+async def _get_album_meta(spotify_album_id: str, db: AsyncSession) -> dict:
+    """Best-effort album metadata for Apple Music matching.
+
+    Name + artist come from AlbumCache (DB) first — that table is populated
+    whenever an album page is viewed and survives Spotify rate limits /
+    circuit breaker. Live Spotify is consulted only to fill gaps and to
+    attempt an ISRC lookup; any Spotify failure is swallowed. The matcher
+    can still fall back to a text search using just the cached name +
+    artist when Spotify is down.
+    """
+    name: Optional[str] = None
+    artist: Optional[str] = None
+    isrc: Optional[str] = None
+
+    # 1. DB cache (survives Spotify outages)
+    cached = (await db.execute(
+        select(AlbumCache).where(AlbumCache.spotify_id == spotify_album_id)
+    )).scalar_one_or_none()
+    if cached:
+        name = cached.name
+        artist = cached.artist
+
+    # 2. Live Spotify (best-effort fill + ISRC fetch)
     try:
-        tracklist = await spotify.get_album_tracks(spotify_album_id)
-        if tracklist:
-            first_id = tracklist[0].get("id")
-            if first_id:
-                track = await spotify.get_track(first_id)
-                isrc = track.get("isrc")
+        album = await spotify.get_album(spotify_album_id)
+        if album:
+            if not name:
+                name = album.get("name")
+            if not artist:
+                artist = (album.get("artists") or [""])[0]
+        try:
+            tracklist = await spotify.get_album_tracks(spotify_album_id)
+            if tracklist:
+                first_id = tracklist[0].get("id")
+                if first_id:
+                    track = await spotify.get_track(first_id)
+                    isrc = track.get("isrc")
+        except Exception:
+            pass
     except Exception:
-        isrc = None
+        pass
+
     return {
-        "name": album.get("name"),
-        "artists": album.get("artists") or [],
+        "name": name,
+        "artists": [artist] if artist else [],
         "first_track_isrc": isrc,
+    }
+
+
+async def _get_track_meta(spotify_track_id: str, db: AsyncSession) -> dict:
+    """Best-effort track metadata. Mirrors _get_album_meta — TrackCache is
+    consulted first; live Spotify is only used to fetch ISRC when reachable."""
+    name: Optional[str] = None
+    artist: Optional[str] = None
+    isrc: Optional[str] = None
+
+    cached = (await db.execute(
+        select(TrackCache).where(TrackCache.spotify_id == spotify_track_id)
+    )).scalar_one_or_none()
+    if cached:
+        name = cached.name
+        artist = cached.artist
+
+    try:
+        track = await spotify.get_track(spotify_track_id)
+        if track:
+            if not name:
+                name = track.get("name")
+            if not artist:
+                artist = (track.get("artists") or [""])[0]
+            isrc = track.get("isrc")
+    except Exception:
+        pass
+
+    return {
+        "name": name,
+        "artists": [artist] if artist else [],
+        "isrc": isrc,
     }
