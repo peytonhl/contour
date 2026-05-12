@@ -8,9 +8,16 @@ DB and would short-circuit lookups via the legacy cached_link path if any
 fallback path consults them. This migration purges them; future failed
 matches simply don't write a row, so retry-on-next-view becomes automatic.
 
-Revision ID: m3n4o5p6q7r8
-Revises: l2m3n4o5p6q7
+Revision ID: q7r8s9t0u1v2
+Revises: p6q7r8s9t0u1
 Create Date: 2026-05-12
+
+NOTE: This migration was originally created with revision ID m3n4o5p6q7r8
+chained off l2m3n4o5p6q7, but that ID collided with another migration
+added in a concurrent push (imports_backlog_trending). Renamed to chain
+after p6q7r8s9t0u1 (the current head) so Alembic has a single linear
+history again. Behavior identical — still deletes negative Apple Music
+match rows; nothing else.
 """
 from typing import Sequence, Union
 
@@ -18,8 +25,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'm3n4o5p6q7r8'
-down_revision: Union[str, None] = 'l2m3n4o5p6q7'
+revision: str = 'q7r8s9t0u1v2'
+down_revision: Union[str, None] = 'p6q7r8s9t0u1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
