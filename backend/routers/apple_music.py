@@ -28,6 +28,52 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/apple-music", tags=["apple-music"])
 
 
+@router.get("/debug")
+async def debug():
+    """Diagnostic endpoint — surfaces enough state to figure out why matching
+    might be failing without exposing the full private key. Safe to leave on;
+    everything returned is presence/length info, no secrets."""
+    import os
+    pk = os.environ.get("APPLE_MUSIC_PRIVATE_KEY") or ""
+    info = {
+        "is_configured": apple_music.is_configured(),
+        "env": {
+            "team_id_value": os.environ.get("APPLE_MUSIC_TEAM_ID"),
+            "key_id_value": os.environ.get("APPLE_MUSIC_KEY_ID"),
+            "private_key_length": len(pk),
+            "private_key_first_30": pk[:30],
+            "private_key_last_30": pk[-30:],
+            "has_actual_newlines": "\n" in pk,
+            "has_escaped_newlines": "\\n" in pk,
+            "starts_with_dashes_begin": pk.lstrip().startswith("-----BEGIN"),
+        },
+    }
+    # Try to mint a token
+    try:
+        token = apple_music._get_dev_token()
+        info["token_minted"] = True
+        info["token_first_40"] = token[:40] + "..."
+    except Exception as e:
+        info["token_minted"] = False
+        info["token_error"] = f"{type(e).__name__}: {e}"
+        return info
+
+    # Try a real search call against Apple
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{apple_music.APPLE_MUSIC_API_BASE}/catalog/us/search",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"term": "folklore taylor swift", "types": "albums", "limit": 1},
+            )
+            info["apple_test_status"] = resp.status_code
+            info["apple_test_body_first_200"] = resp.text[:200]
+    except Exception as e:
+        info["apple_test_error"] = f"{type(e).__name__}: {e}"
+    return info
+
+
 async def _cached_link(
     db: AsyncSession, spotify_id: str, entity_type: str, storefront: str
 ) -> Optional[AppleMusicLink]:
