@@ -149,7 +149,7 @@ export function AlbumPage() {
     <div className="hero-page" style={{ maxWidth: 1000, margin: "0 auto", display: "flex", flexDirection: "column" }}>
 
       {/* ── Hero ── */}
-      <div style={{
+      <div className="entity-hero" style={{
         padding: "36px 28px 32px",
         background: `linear-gradient(180deg, ${ACCENT}12 0%, transparent 100%)`,
         borderBottom: "1px solid var(--border)",
@@ -196,8 +196,14 @@ export function AlbumPage() {
 
             <div className="hero-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
               <button
-                onClick={() => navigate(`/compare`)}
+                onClick={() => document.getElementById("rate-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
                 style={{ padding: "8px 18px", background: ACCENT, border: "none", borderRadius: 6, color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer", letterSpacing: "0.01em" }}
+              >
+                ★ Rate
+              </button>
+              <button
+                onClick={() => navigate(`/compare`)}
+                style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", fontSize: 13, cursor: "pointer", letterSpacing: "0.01em" }}
               >
                 Compare
               </button>
@@ -222,10 +228,10 @@ export function AlbumPage() {
       </div>
 
       {/* ── Body ── */}
-      <div style={{ padding: "28px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <div className="entity-body" style={{ padding: "28px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
         <PreStreamingBanner releaseDate={album.release_date} />
 
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px" }}>
+        <div id="rate-section" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px", scrollMarginTop: 70 }}>
           <ReviewSection entityType="album" entityId={id} user={user} />
         </div>
 

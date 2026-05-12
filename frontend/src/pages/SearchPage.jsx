@@ -151,6 +151,12 @@ export function SearchPage() {
               value={query}
               onChange={handleInput}
               placeholder="Search albums, tracks, artists, users…"
+              type="search"
+              inputMode="search"
+              enterKeyHint="search"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               style={{
                 flex: 1, padding: "18px 16px 18px 20px", fontSize: 16,
                 background: "transparent", border: "none", outline: "none",
