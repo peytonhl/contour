@@ -2,6 +2,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { analytics } from "../services/analytics.js";
+
+// Tier source for analytics — backend tags deezer-sourced tracks with _source,
+// everything else came through Spotify (tier 1 related-artist or tier 2 genre).
+// Coarser than the full tier1..tier5 enum but reflects what the data we have.
+function tierSourceOf(track) {
+  return track?._source === "deezer" ? "deezer" : "spotify";
+}
 
 import { FollowingTab } from "./FeedPage.jsx";
 
@@ -205,6 +213,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
     } else {
       audioRef.current.play();
       setPlaying(true);
+      analytics.forYouTrackPlayed(tierSourceOf(track));
     }
   }
 
@@ -732,12 +741,15 @@ function ForYouFeed() {
     setUserRatings((prev) => ({ ...prev, [track.id]: value }));
     recordRating(track.id, track.artist_ids?.[0], value);
     setRatingCount(getRatingCount());
+    const tier = tierSourceOf(track);
+    analytics.forYouRated(tier, value);
     try {
       const spotifyId = await _resolveSpotifyId(track);
       if (!spotifyId) return; // Deezer-only track not on Spotify — skip silently
 
       // Pass artist_id so the server auto-updates the taste profile on high ratings
       await api.rateEntity("track", spotifyId, value, track.artist_ids?.[0] ?? null);
+      analytics.ratingSubmitted("track", spotifyId, value);
       // Also update local genre cache for logged-out / cold-start scenarios
       if (value >= 4 && track.artist_ids?.[0]) {
         api.getArtist(track.artist_ids[0]).then((artist) => {
@@ -755,6 +767,7 @@ function ForYouFeed() {
       const spotifyId = await _resolveSpotifyId(track);
       if (!spotifyId) return false;
       await api.submitReview("track", spotifyId, body, ratingValue);
+      analytics.reviewSubmitted("track", body.trim().length);
       return true;
     } catch {
       return false;

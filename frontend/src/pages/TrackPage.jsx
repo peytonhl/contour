@@ -7,6 +7,7 @@ import { EraAdjustedStat } from "../components/EraAdjustedStat.jsx";
 import { PreStreamingBanner } from "../components/PreStreamingBanner.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { analytics } from "../services/analytics.js";
 
 const ACCENT = "#34d399";
 const DISCLAIMER = "Stream trajectory is a modeled approximation calibrated to the known total stream count. Exact day-by-day data requires Luminate licensing.";
@@ -178,7 +179,11 @@ export function TrackPage() {
               } />
               <StatBlock label="Released" value={formatReleaseDate(track.release_date)} />
               <StatBlock label="Duration" value={formatDuration(track.duration_ms)} />
-              <EraAdjustedStat eraContext={trajectory?.era_context} totalStreams={trajectory?.total_streams} />
+              <EraAdjustedStat
+                eraContext={trajectory?.era_context}
+                totalStreams={trajectory?.total_streams}
+                onOpen={() => analytics.eraAdjustmentViewed("track")}
+              />
               {topCert && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
@@ -202,6 +207,7 @@ export function TrackPage() {
               <ShareButton title={`${track.name} on Contour`} />
               {track.external_url && (
                 <a href={track.external_url} target="_blank" rel="noreferrer"
+                  onClick={() => analytics.spotifyLinkClicked("track")}
                   style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", fontSize: 13, display: "inline-flex", alignItems: "center", letterSpacing: "0.01em" }}>
                   Spotify ↗
                 </a>

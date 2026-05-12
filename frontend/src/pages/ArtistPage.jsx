@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { ReviewSection } from "../components/ReviewSection.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { analytics } from "../services/analytics.js";
 
 const ACCENT_A = "#a78bfa";
 
@@ -305,6 +306,7 @@ export function ArtistPage() {
             <ShareButton title={`${artist.name} on Contour`} />
             {artist.external_url && (
               <a href={artist.external_url} target="_blank" rel="noreferrer"
+                onClick={() => analytics.spotifyLinkClicked("artist")}
                 style={{ display: "inline-flex", alignItems: "center", padding: "8px 18px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13 }}>
                 Open in Spotify ↗
               </a>

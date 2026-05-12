@@ -24,8 +24,29 @@ See the milestone plan in chat for full task descriptions.
 
 Verification: `npx vite build` succeeds; no console errors expected.
 
-### ⏳ Task 2 — PostHog + Vercel Analytics
-Pending. Will gate on `VITE_POSTHOG_KEY` env var (Section A item 1).
+### ✅ Task 2 — PostHog + Vercel Analytics
+**Shipped:** 2026-05-11
+
+- Installed `posthog-js` + `@vercel/analytics`.
+- New `frontend/src/services/analytics.js` — thin wrapper. Silent no-op when
+  `VITE_POSTHOG_KEY` is unset, so all `analytics.*()` calls are safe to leave in
+  the code regardless of environment. Defaults host to `us.i.posthog.com`;
+  override with `VITE_POSTHOG_HOST`.
+- `main.jsx` initializes PostHog (autocapture + pageview + pageleave on) and
+  wraps `<App />` with Vercel's `<Analytics />` component.
+- `AuthContext` calls `identify` on login + after page reload with a stored
+  token; `reset` on logout. First time a user is seen on a given device fires
+  `signup_completed` with the appropriate provider.
+- Google callback now passes `?provider=google` to `/auth/success` so the
+  signup event gets a clean attribution; the frontend falls back to `"google"`
+  if the param is absent (covers in-flight sessions during deploy).
+- Twelve named events wired across the app. Catalog documented in `README.md`
+  under the new "Analytics" section.
+- `apple_music_link_clicked` will be wired in Task 4; everything else fires now.
+
+Verification: production build succeeds (998 KB / 285 KB gzipped — +200 KB from
+the new SDKs, acceptable for a launch SDK pair).
+
 
 ### ⏳ Task 3 — Mobile UX audit and fixes
 Pending.

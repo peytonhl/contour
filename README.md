@@ -282,6 +282,39 @@ frontend/
 
 ---
 
+## Analytics
+
+Two telemetry layers, both opt-in via env vars and both no-op when unconfigured:
+
+- **PostHog** (`VITE_POSTHOG_KEY`) — autocapture is enabled, plus the named events
+  listed below. Identity is set on login (`posthog.identify` with `user_id` + `email`)
+  and cleared on logout (`posthog.reset`). All wiring lives in
+  `frontend/src/services/analytics.js`.
+- **Vercel Web Analytics** (`@vercel/analytics`) — wraps `<App />` in
+  `frontend/src/main.jsx`. Enable the toggle in the Vercel dashboard; no key needed.
+
+### Named events (PostHog)
+
+| Event | Properties | Fires when |
+|---|---|---|
+| `signup_completed` | `auth_provider` (`google` / `apple`) | First identification of a user on a given device |
+| `rating_submitted` | `rating_value`, `entity_type`, `entity_id` | Any star rating saved (album, track, artist, or For You feed) |
+| `review_submitted` | `entity_type`, `review_length` | Written review saved |
+| `review_voted` | `vote_type` (`up` / `down`) | Upvote or downvote on a review |
+| `follow_user` | — | A follow toggles from off → on |
+| `era_adjustment_viewed` | `entity_type` (`album` / `track`) | The era-adjustment "?" popover is opened (validates the contextual pivot) |
+| `comparison_created` | — | A trajectory comparison successfully runs |
+| `list_created` | — | A user-created list is created |
+| `for_you_track_played` | `tier_source` (`spotify` / `deezer`) | A track preview begins playing in the For You feed |
+| `for_you_rated` | `tier_source`, `rating_value` | A track is rated from within the For You feed |
+| `apple_music_link_clicked` | `entity_type` | A "Play on Apple Music" button is clicked |
+| `spotify_link_clicked` | `entity_type` (`album` / `track` / `artist`) | An open-in-Spotify link is clicked |
+
+To add a new event, define a helper on the `analytics` object in
+`frontend/src/services/analytics.js` and call it from the relevant component.
+
+---
+
 ## Data Notes
 
 - Stream trajectory is **modeled**, not actual historical data. True day-by-day counts require Luminate licensing. When Wayback Machine snapshots exist for an album, the curve is interpolated through them; otherwise the decay model runs solo.
