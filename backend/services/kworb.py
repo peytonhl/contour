@@ -28,15 +28,27 @@ async def get_artist_albums_by_id(spotify_artist_id: str) -> Optional[list[dict]
     """
     Fetch all albums + stream counts for an artist using their Spotify artist ID.
     Returns a list of {"name": str, "streams": int} or None on failure.
+
+    Timeout note: bumped from 4s → 15s because huge-discography artists
+    (Kanye, Travis Scott, Drake — anyone with 100+ feature credits) have
+    albums pages that don't reliably return in 4 seconds. Misses there
+    silently dropped real-streaming-data fallthroughs to Last.fm — which
+    occasionally also misses, leaving the album stuck in "failed" status.
     """
     url = f"{KWORB_BASE}/{spotify_artist_id}_albums.html"
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=4) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
             resp = await client.get(url, headers=HEADERS)
             if resp.status_code != 200:
+                _log.info("kworb: HTTP %d for artist albums %s", resp.status_code, spotify_artist_id)
                 return None
-            return _parse_album_page(resp.text)
-    except Exception:
+            albums = _parse_album_page(resp.text)
+            _log.info("kworb: %d albums for artist %s", len(albums), spotify_artist_id)
+            return albums
+    except Exception as exc:
+        _log.warning("kworb: get_artist_albums_by_id(%s) failed — %s", spotify_artist_id, exc)
         return None
 
 

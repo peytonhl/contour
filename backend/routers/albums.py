@@ -535,25 +535,53 @@ async def _enrich_album(album_id: str, meta: dict, db: AsyncSession) -> None:
       2. Last.fm album.getInfo — reliable REST API, returns lifetime scrobbles.
          Slightly different scale than Spotify streams but suitable for ranking
          and era-adjustment comparisons.
+      3. (NEW) For multi-artist albums: try each credited artist for Kworb,
+         not just the first. The first artist isn't always the one with the
+         primary Kworb page entry — e.g. a collab where the second-listed
+         artist has the better Kworb data.
     """
     import logging as _logging
     _log = _logging.getLogger(__name__)
 
     artist_ids = meta.get("artist_ids", [])
     artists = meta.get("artists", [])
+    name = meta.get("name", "")
     streams: int | None = None
+    source: str = "none"
 
-    # 1. Kworb
-    if artist_ids:
-        streams = await kworb.get_album_streams(artist_ids[0], meta["name"])
+    # 1. Kworb — try each credited artist in order until one returns a hit.
+    #    For collab / feature-heavy albums (think Donda with its many credited
+    #    artists, or Travis Scott's UTOPIA), the first-listed artist might
+    #    not be the one whose Kworb page indexes this album well.
+    for aid in (artist_ids or [])[:3]:  # cap at 3 to keep latency bounded
+        try:
+            streams = await kworb.get_album_streams(aid, name)
+        except Exception as exc:
+            _log.warning("enrichment: kworb threw for %s/%s — %s", aid, name, exc)
+            streams = None
         if streams:
-            _log.info("enrichment: kworb  %s — %s", meta["name"], f"{streams:,}")
+            source = "kworb"
+            _log.info("enrichment: kworb  %s (via artist %s) — %s", name, aid, f"{streams:,}")
+            break
 
-    # 2. Last.fm fallback
+    # 2. Last.fm fallback — same multi-artist treatment.
     if streams is None and artists:
         from services import lastfm
-        streams = await lastfm.get_album_playcount(artists[0], meta["name"])
-        if streams:
-            _log.info("enrichment: lastfm %s — %s", meta["name"], f"{streams:,}")
+        for artist in artists[:3]:
+            try:
+                streams = await lastfm.get_album_playcount(artist, name)
+            except Exception as exc:
+                _log.warning("enrichment: lastfm threw for %s/%s — %s", artist, name, exc)
+                streams = None
+            if streams:
+                source = "lastfm"
+                _log.info("enrichment: lastfm %s (via artist %s) — %s plays", name, artist, f"{streams:,}")
+                break
+
+    if streams is None:
+        _log.warning(
+            "enrichment: FAILED %s — artists=%s artist_ids=%s (both Kworb and Last.fm returned nothing)",
+            name, artists, artist_ids,
+        )
 
     await cache.save_kworb_streams(db, album_id, streams)
