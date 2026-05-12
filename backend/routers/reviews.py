@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import Review, AlbumCache
 from routers.auth import optional_user_id
+from routers.moderation import blocked_user_ids
 from routers.ratings import _enrich_reviews
 from services import spotify
 
@@ -59,6 +60,11 @@ async def global_reviews(
         q = q.where(Review.entity_type == entity_type)
 
     reviews = (await db.execute(q)).scalars().all()
+
+    # Hide reviews authored by users the viewer has blocked.
+    blocked = await blocked_user_ids(db, user_id)
+    if blocked:
+        reviews = [r for r in reviews if r.user_id not in blocked]
 
     # Enrich with votes, replies, user info
     enriched = await _enrich_reviews(reviews, db, user_id)

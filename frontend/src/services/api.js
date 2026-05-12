@@ -130,6 +130,17 @@ export const api = {
   getAppleMusicLink: (entityType, spotifyId, storefront = "us") =>
     request(`/apple-music/match/${entityType}/${spotifyId}?storefront=${storefront}`),
 
+  // Moderation
+  reportContent: (target_type, target_id, reason, notes = null) =>
+    post(`/moderation/reports`, { target_type, target_id, reason, notes }),
+  blockUser: (id) => post(`/moderation/block/${id}`, {}),
+  unblockUser: (id) => del(`/moderation/block/${id}`),
+  getMyBlocks: () => request(`/moderation/blocks`),
+  // Admin (is_admin gated server-side)
+  adminListReports: (status = "open") => request(`/moderation/reports?status=${status}`),
+  adminResolveReport: (id, status, delete_content) =>
+    patch(`/moderation/reports/${id}`, { status, delete_content }),
+
   // Leaderboard
   getLeaderboard: (sort = "era", decade = "all", limit = 50) => request(`/leaderboard/?sort=${sort}&decade=${decade}&limit=${limit}`),
 

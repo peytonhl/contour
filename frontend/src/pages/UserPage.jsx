@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
+import { BlockButton } from "../components/BlockButton.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeChips } from "./FeedPage.jsx";
 
@@ -161,22 +162,29 @@ export function UserPage() {
           <Stat value={profile.following_count ?? 0} label="Following" />
         </div>
 
-        {/* Follow / sign-in prompt */}
+        {/* Follow + Block / sign-in prompt */}
         {me && !profile.is_self && (
-          <button
-            onClick={handleFollow}
-            disabled={followLoading}
-            style={{
-              padding: "8px 28px", borderRadius: 6, fontWeight: 700, fontSize: 13,
-              cursor: followLoading ? "default" : "pointer",
-              background: profile.is_following ? "var(--surface2)" : `linear-gradient(90deg, ${ACCENT}, ${ACCENT_B})`,
-              color: profile.is_following ? "var(--text-muted)" : "#000",
-              border: profile.is_following ? "1px solid var(--border)" : "none",
-              transition: "all 0.15s", letterSpacing: "0.01em",
-            }}
-          >
-            {profile.is_following ? "Following" : "Follow"}
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              onClick={handleFollow}
+              disabled={followLoading}
+              style={{
+                padding: "8px 28px", borderRadius: 6, fontWeight: 700, fontSize: 13,
+                cursor: followLoading ? "default" : "pointer",
+                background: profile.is_following ? "var(--surface2)" : `linear-gradient(90deg, ${ACCENT}, ${ACCENT_B})`,
+                color: profile.is_following ? "var(--text-muted)" : "#000",
+                border: profile.is_following ? "1px solid var(--border)" : "none",
+                transition: "all 0.15s", letterSpacing: "0.01em",
+              }}
+            >
+              {profile.is_following ? "Following" : "Follow"}
+            </button>
+            <BlockButton
+              targetUserId={id}
+              initiallyBlocked={profile.is_blocked ?? false}
+              onChange={(isBlocked) => setProfile((p) => ({ ...p, is_blocked: isBlocked }))}
+            />
+          </div>
         )}
         {!me && (
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>

@@ -140,6 +140,7 @@ export function Layout() {
     { to: "/compare", label: "Compare" },
     { to: "/charts", label: "Charts" },
     { to: "/methodology", label: "How It Works" },
+    ...(user?.is_admin ? [{ to: "/admin/reports", label: "Admin" }] : []),
   ];
 
   return (

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
+import { ReportModal } from "./ReportModal.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#a78bfa";
@@ -72,6 +73,7 @@ function ReplyThread({ reviewId, user, initialCount }) {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [count, setCount] = useState(initialCount);
+  const [reportingReplyId, setReportingReplyId] = useState(null);
 
   async function load() {
     const data = await api.getReplies(reviewId);
@@ -168,11 +170,26 @@ function ReplyThread({ reviewId, user, initialCount }) {
                 {r.user.display_name}
               </Link>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{timeAgo(r.created_at)}</span>
+              {user && user.id !== r.user.id && (
+                <button
+                  onClick={() => setReportingReplyId(r.id)}
+                  title="Report this reply"
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 11, padding: 0, marginLeft: "auto" }}
+                >
+                  ⚐
+                </button>
+              )}
             </div>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>{r.body}</p>
           </div>
         </div>
       ))}
+      <ReportModal
+        open={reportingReplyId !== null}
+        onClose={() => setReportingReplyId(null)}
+        targetType="reply"
+        targetId={reportingReplyId}
+      />
     </div>
   );
 }
@@ -180,6 +197,7 @@ function ReplyThread({ reviewId, user, initialCount }) {
 // ── Single review card ────────────────────────────────────────────────────────
 function ReviewCard({ rev, onVote, user, entityType, entityId }) {
   const [copiedShare, setCopiedShare] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   async function handleShare() {
     const url = `${window.location.origin}/${entityType}/${entityId}#review-${rev.id}`;
@@ -219,15 +237,33 @@ function ReviewCard({ rev, onVote, user, entityType, entityId }) {
           </div>
         </div>
 
-        {/* Share this review */}
-        <button
-          onClick={handleShare}
-          title="Share this review"
-          style={{ background: "none", border: "none", cursor: "pointer", color: copiedShare ? "var(--accent-b)" : "var(--text-muted)", fontSize: 12, padding: "4px 6px", flexShrink: 0 }}
-        >
-          {copiedShare ? "✓" : "↗"}
-        </button>
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {/* Share this review */}
+          <button
+            onClick={handleShare}
+            title="Share this review"
+            style={{ background: "none", border: "none", cursor: "pointer", color: copiedShare ? "var(--accent-b)" : "var(--text-muted)", fontSize: 12, padding: "4px 6px", flexShrink: 0 }}
+          >
+            {copiedShare ? "✓" : "↗"}
+          </button>
+          {/* Report — only show for signed-in users, and never on your own review */}
+          {user && user.id !== rev.user.id && (
+            <button
+              onClick={() => setReportOpen(true)}
+              title="Report this review"
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: "4px 6px", flexShrink: 0 }}
+            >
+              ⚐
+            </button>
+          )}
+        </div>
       </div>
+      <ReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        targetType="review"
+        targetId={rev.id}
+      />
 
       {/* Body */}
       <p style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text-muted)", margin: 0 }}>

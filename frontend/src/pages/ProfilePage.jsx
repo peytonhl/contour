@@ -321,17 +321,30 @@ export function ProfilePage() {
                 </h1>
                 <BadgeChips badges={badges} userId={user?.id} size="md" />
               </div>
-              <button
-                onClick={logout}
-                style={{
-                  fontSize: 12, color: "var(--text-muted)", background: "none",
-                  border: "1px solid var(--border)", borderRadius: 6,
-                  cursor: "pointer", padding: "4px 12px", flexShrink: 0,
-                  letterSpacing: "0.01em",
-                }}
-              >
-                Sign out
-              </button>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <Link
+                  to="/blocks"
+                  style={{
+                    fontSize: 12, color: "var(--text-muted)", background: "none",
+                    border: "1px solid var(--border)", borderRadius: 6,
+                    textDecoration: "none", padding: "4px 12px",
+                    letterSpacing: "0.01em", display: "inline-flex", alignItems: "center",
+                  }}
+                >
+                  Blocked
+                </Link>
+                <button
+                  onClick={logout}
+                  style={{
+                    fontSize: 12, color: "var(--text-muted)", background: "none",
+                    border: "1px solid var(--border)", borderRadius: 6,
+                    cursor: "pointer", padding: "4px 12px",
+                    letterSpacing: "0.01em",
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
             </div>
 
             {/* Bio */}

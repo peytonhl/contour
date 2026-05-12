@@ -18,6 +18,9 @@ class User(Base):
     # Apple sign-in identity ("sub" claim from Apple's ID token). Same user may
     # have both google_id and apple_sub set after cross-provider account linking.
     apple_sub: Mapped[Optional[str]] = mapped_column(String(128), unique=True, index=True, nullable=True)
+    # Marks the account as a moderator — required to access /moderation admin
+    # endpoints (list reports, hide content, etc.). Manually toggled in DB.
+    is_admin: Mapped[bool] = mapped_column(default=False)
     email: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     # Legacy Spotify ID — kept nullable for existing rows, no longer populated
     spotify_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True, nullable=True)
@@ -247,6 +250,38 @@ class ArtistCache(Base):
     spotify_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(256))
     discography_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class UserBlock(Base):
+    """`blocker` has blocked `blocked` — `blocked`'s content (reviews, replies,
+    feed activity) is hidden from `blocker`. Asymmetric: the blocked user can
+    still see the blocker's content (Twitter-style)."""
+    __tablename__ = "user_blocks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    blocker_user_id: Mapped[str] = mapped_column(String(64), index=True)
+    blocked_user_id: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ContentReport(Base):
+    """User-submitted report against a review or reply. Admin reviews these
+    under /moderation/reports and resolves them (delete content / dismiss)."""
+    __tablename__ = "content_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    reporter_user_id: Mapped[str] = mapped_column(String(64), index=True)
+    # "review" or "reply"
+    target_type: Mapped[str] = mapped_column(String(16))
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+    # enum: spam / harassment / hate_speech / explicit_content / misinformation / other
+    reason: Mapped[str] = mapped_column(String(32))
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # open / resolved / dismissed
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    resolved_by_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
 
 class AppleMusicLink(Base):

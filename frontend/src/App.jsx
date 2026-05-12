@@ -17,6 +17,8 @@ import { ForYouPage } from "./pages/ForYouPage.jsx";
 import { Methodology } from "./components/Methodology.jsx";
 import { PrivacyPage } from "./pages/PrivacyPage.jsx";
 import { ListDetailPage } from "./pages/ListDetailPage.jsx";
+import { BlocksPage } from "./pages/BlocksPage.jsx";
+import { AdminReportsPage } from "./pages/AdminReportsPage.jsx";
 
 export default function App() {
   return (
@@ -40,6 +42,8 @@ export default function App() {
         <Route path="auth/success" element={<AuthSuccessPage />} />
         <Route path="privacy" element={<PrivacyPage />} />
         <Route path="list/:id" element={<ListDetailPage />} />
+        <Route path="blocks" element={<BlocksPage />} />
+        <Route path="admin/reports" element={<AdminReportsPage />} />
       </Route>
     </Routes>
     </>

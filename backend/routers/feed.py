@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import Rating, Review, User, UserFollow, AlbumCache, TrackCache
+from routers.moderation import blocked_user_ids
 from routers.auth import decode_jwt
 from services import spotify
 
@@ -59,6 +60,11 @@ async def get_feed(
         select(UserFollow).where(UserFollow.follower_id == user_id)
     )).scalars().all()
     following_ids = [r.following_id for r in rows]
+
+    # Exclude anyone the viewer has blocked even if they're following them.
+    blocked = await blocked_user_ids(db, user_id)
+    if blocked:
+        following_ids = [fid for fid in following_ids if fid not in blocked]
 
     if not following_ids:
         return []

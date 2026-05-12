@@ -278,6 +278,7 @@ async def get_me(
         "image_url": user.image_url,
         "email": user.email,
         "bio": user.bio,
+        "is_admin": user.is_admin,
     }
 
 

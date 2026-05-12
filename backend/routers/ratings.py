@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, AsyncSessionLocal
 from models import Rating, Review, ReviewLike, ReviewVote, ReviewReply, User, UserTasteProfile
 from routers.auth import optional_user_id
+from routers.moderation import blocked_user_ids
 from routers.notifications import create_notification
 
 SPOTIFY_ID_RE = re.compile(r'^[A-Za-z0-9]{22}$')
@@ -309,6 +310,11 @@ async def list_reviews(
         )
     )).scalars().all()
 
+    # Hide reviews authored by users the viewer has blocked.
+    blocked = await blocked_user_ids(db, user_id)
+    if blocked:
+        reviews = [r for r in reviews if r.user_id not in blocked]
+
     out = await _enrich_reviews(reviews, db, user_id,
                                 entity_type=entity_type, entity_id=entity_id)
 
@@ -380,7 +386,11 @@ async def vote_review(
 
 
 @router.get("/reviews/{review_id}/replies")
-async def get_replies(review_id: int, db: AsyncSession = Depends(get_db)):
+async def get_replies(
+    review_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(optional_user_id),
+):
     replies = (await db.execute(
         select(ReviewReply)
         .where(ReviewReply.review_id == review_id)
@@ -389,6 +399,13 @@ async def get_replies(review_id: int, db: AsyncSession = Depends(get_db)):
 
     if not replies:
         return []
+
+    # Hide replies from users the viewer has blocked.
+    blocked = await blocked_user_ids(db, user_id)
+    if blocked:
+        replies = [r for r in replies if r.user_id not in blocked]
+        if not replies:
+            return []
 
     user_ids = list({r.user_id for r in replies})
     users = (await db.execute(
