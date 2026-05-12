@@ -118,11 +118,25 @@ workflows:
 
       - name: Set the build number
         script: |
-          # Use Codemagic's auto-incrementing build number so every uploaded
-          # build has a unique CFBundleVersion (App Store requires this).
+          set -ex
+          # Bundle versions (CFBundleVersion) must be strictly monotonic for
+          # every IPA we upload to App Store Connect — repeating one means
+          # the upload gets rejected with ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE.
+          #
+          # Strategy: ask App Store Connect what the highest existing bundle
+          # version for our Apple ID is, then bump by 1. This is robust to
+          # local CI build counters (which can reset, drift, or share numbers
+          # with manually-uploaded builds) — App Store Connect itself is the
+          # source of truth.
+          LATEST_BUILD_NUMBER=$(
+            app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" \
+              2>/dev/null || echo 0
+          )
+          NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
+          echo ">>> Previous CFBundleVersion on App Store Connect: $LATEST_BUILD_NUMBER"
+          echo ">>> New CFBundleVersion for this build:           $NEW_BUILD_NUMBER"
           cd frontend/ios/App
-          agvtool new-version -all $(($(google-app-store-version-number "$BUNDLE_ID" 2>/dev/null || echo 0) + 1)) || \
-            agvtool new-version -all "$BUILD_NUMBER"
+          agvtool new-version -all "$NEW_BUILD_NUMBER"
 
       - name: Set up code signing
         script: |
