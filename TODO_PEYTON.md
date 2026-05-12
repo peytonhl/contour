@@ -26,6 +26,11 @@ Last updated: 2026-05-12
 - [x] /feed page retired; For You is home with three tabs (For You / Friends / Community).
 - [x] Era-adjustment contextualized everywhere.
 - [x] Tagline updated to "Rate. Review. Discover."
+- [x] Android Studio + JDK installed locally; `npx cap add android` ran cleanly.
+- [x] Release signing keystore generated at
+      `C:/Users/peytonhl/Secrets/contour-release.keystore`.
+- [x] `frontend/android/keystore.properties` created (gitignored) so
+      `./gradlew bundleRelease` can sign automatically.
 
 ---
 
@@ -77,12 +82,13 @@ next to "Spotify ↗" whenever a match exists.
 
 ## 🟠 Blocking Play Store launch
 
-- [ ] **Android Studio + JDK 17** installed locally. Bundled JDK works.
-- [ ] Run once on your machine: `cd frontend && npx cap add android`.
-      This creates `frontend/android/`.
-- [ ] **Generate the signing keystore** — full `keytool` command in [PLAY_STORE.md](PLAY_STORE.md) §3.
-      Store the keystore somewhere outside the repo (1Password recommended).
-      **Do not lose it** — losing it means a new appId, losing all reviews.
+- [x] **Android Studio + JDK 17** installed locally.
+- [x] Ran `npx cap add android`; `frontend/android/` project scaffold lives in master.
+- [x] **Signing keystore generated** at `C:/Users/peytonhl/Secrets/contour-release.keystore`,
+      wired to Gradle via `frontend/android/keystore.properties` (gitignored).
+- [ ] **Back up the keystore + password to 1Password — and delete
+      `C:/Users/peytonhl/Secrets/keystore-password.txt` afterward.** If you
+      lose this file, you can never update the published app.
 - [ ] **Privacy Policy page** at https://contour-rosy.vercel.app/privacy
       (route exists — content needs writing). Required for Play Store, App
       Store, and Apple Music API ToS.
