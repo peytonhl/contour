@@ -1,0 +1,132 @@
+# Codemagic CI workflow for Contour
+#
+# Builds the iOS app from frontend/ (Vite-built React wrapped by Capacitor).
+# Android builds happen locally on the dev machine; Codemagic is iOS-only
+# because that's the platform that actually requires macOS to build.
+#
+# Required Codemagic configuration (one-time setup, see OPERATIONS.md):
+#   1. App Store Connect API integration — add under "Teams" → "Integrations".
+#      Name it 'app-store-connect' so the publishing block below picks it up.
+#      Needs an App Store Connect API key (.p8 + Key ID + Issuer ID), generated
+#      at appstoreconnect.apple.com → Users and Access → Keys.
+#   2. Code signing — Codemagic uses the same App Store Connect API key to
+#      auto-fetch your iOS Distribution certificate and provisioning profile,
+#      so no .p12 / .mobileprovision upload is needed.
+#   3. Environment variables (Codemagic UI → app settings → Environment vars,
+#      add to a group called 'contour-prod' so the import below works):
+#        VITE_POSTHOG_KEY    (secret) — frontend analytics
+#        VITE_APPLE_CLIENT_ID — Sign-in-with-Apple Services ID
+#      VITE_API_URL is already baked into the build via frontend/.env.production,
+#      no Codemagic config needed for that one.
+
+workflows:
+  ios-release:
+    name: iOS · Release build
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      groups:
+        - contour-prod        # see comment above; create in Codemagic UI
+      vars:
+        XCODE_WORKSPACE: "frontend/ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+        BUNDLE_ID: "com.peytonhl.contour"
+        APP_STORE_APPLE_ID: "0000000000"   # replace once you've created the App Store Connect record
+      node: 20.x
+      xcode: latest
+      cocoapods: default
+
+    triggering:
+      # Don't auto-build every push — iOS releases are deliberate. Trigger
+      # manually from the Codemagic UI or via a git tag like 'ios-v0.1.0'.
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'ios-v*'
+          include: true
+
+    cache:
+      cache_paths:
+        - $HOME/Library/Caches/CocoaPods
+        - $HOME/.npm
+        - frontend/node_modules
+
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          cd frontend
+          npm ci
+
+      - name: Build the web frontend
+        script: |
+          cd frontend
+          npm run build
+
+      - name: Add or sync the iOS platform
+        script: |
+          cd frontend
+          if [ ! -d "ios" ]; then
+            echo "iOS platform not yet scaffolded — running 'npx cap add ios'"
+            npx cap add ios
+          fi
+          npx cap sync ios
+
+      - name: CocoaPods install
+        script: |
+          cd frontend/ios/App
+          pod install
+
+      - name: Set Info.plist values
+        script: |
+          # ITSAppUsesNonExemptEncryption=NO sidesteps the export-compliance
+          # question on every TestFlight upload (we only use HTTPS, no
+          # proprietary crypto).
+          plutil -replace ITSAppUsesNonExemptEncryption -bool NO \
+            "frontend/ios/App/App/Info.plist"
+
+      - name: Set the build number
+        script: |
+          # Use Codemagic's auto-incrementing build number so every uploaded
+          # build has a unique CFBundleVersion (App Store requires this).
+          cd frontend/ios/App
+          agvtool new-version -all $(($(google-app-store-version-number "$BUNDLE_ID" 2>/dev/null || echo 0) + 1)) || \
+            agvtool new-version -all "$BUILD_NUMBER"
+
+      - name: Set up code signing
+        script: |
+          # Pulls the iOS Distribution cert + App Store provisioning profile
+          # via the App Store Connect API integration configured in the UI.
+          xcode-project use-profiles
+
+      - name: Build the IPA
+        script: |
+          cd frontend/ios/App
+          xcode-project build-ipa \
+            --workspace "App.xcworkspace" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - frontend/ios/App/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+
+    publishing:
+      # Drop into a notification channel for build outcomes; remove if you
+      # don't want emails.
+      email:
+        recipients:
+          - peyton2117@gmail.com
+        notify:
+          success: true
+          failure: true
+
+      # Auto-upload to TestFlight on every successful tag build. Disable by
+      # setting submit_to_testflight: false if you'd rather upload manually
+      # via the Codemagic UI ("Download artifacts" → upload through Transporter).
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # Add specific tester groups here once you've set them up in App Store Connect.
+        # beta_groups:
+        #   - "Internal Testers"
