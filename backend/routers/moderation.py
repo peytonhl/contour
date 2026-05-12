@@ -329,32 +329,46 @@ class BackfillIn(BaseModel):
     # Restrict to one entity type per call so the user can iterate
     # (e.g. tracks first, then albums). "all" processes both.
     entity_type: str = "track"      # "track" | "album" | "all"
+    # Inter-call delay in milliseconds. 1000ms by default — Spotify's basic
+    # tier rate-limits aggressively and bursts here can knock the whole app
+    # offline for the For You feed (per CLAUDE.md). Lower at your own risk.
+    delay_ms: int = Field(1000, ge=0, le=10000)
 
 
-async def _try_fetch_spotify(entity_type: str, entity_id: str) -> tuple[Optional[dict], str, Optional[str]]:
+async def _try_fetch_spotify(entity_type: str, entity_id: str) -> tuple[Optional[dict], str, Optional[str], Optional[int]]:
     """
     Fetch entity meta from Spotify with 404 distinguished from other errors.
-    Returns (data, status, detail) where:
+    Returns (data, status, detail, retry_after) where:
       - status is "ok" | "orphan" | "error"
       - detail is a short reason string for error cases (e.g. "HTTP 429",
         "ReadTimeout", "ConnectionError"), or None
+      - retry_after is the Spotify-supplied Retry-After header (seconds) on
+        a 429, or None for any other case. Used by the caller to bail out
+        of the batch on a rate-limit hit.
     """
     try:
         if entity_type == "track":
             data = await spotify.get_track(entity_id)
         else:
             data = await spotify.get_album(entity_id)
-        return data, "ok", None
+        return data, "ok", None, None
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 404:
-            return None, "orphan", None
-        detail = f"HTTP {exc.response.status_code}"
-        logger.warning("[backfill] %s/%s %s", entity_type, entity_id, detail)
-        return None, "error", detail
+        status_code = exc.response.status_code
+        if status_code == 404:
+            return None, "orphan", None, None
+        detail = f"HTTP {status_code}"
+        retry_after = None
+        if status_code == 429:
+            try:
+                retry_after = int(exc.response.headers.get("Retry-After", "0"))
+            except (TypeError, ValueError):
+                retry_after = None
+        logger.warning("[backfill] %s/%s %s (retry_after=%s)", entity_type, entity_id, detail, retry_after)
+        return None, "error", detail, retry_after
     except Exception as exc:
         detail = f"{type(exc).__name__}: {exc}"[:120]
         logger.warning("[backfill] %s/%s failed: %s", entity_type, entity_id, detail)
-        return None, "error", detail
+        return None, "error", detail, None
 
 
 async def _delete_orphan_references(db: AsyncSession, entity_type: str, entity_id: str) -> dict:
@@ -437,9 +451,18 @@ async def backfill_entity_cache(
         "deleted": {"reviews": 0, "ratings": 0, "votes": 0, "likes": 0, "replies": 0, "reports": 0},
         "samples": {"cached": [], "orphaned": [], "errors": []},
         "remaining": 0,
+        # Set to True (with retry_after_seconds) if Spotify rate-limited us
+        # mid-batch. Spotify locks expand the more you hammer them — bailing
+        # immediately keeps the rest of the app responsive.
+        "aborted_due_to_rate_limit": False,
+        "retry_after_seconds": None,
     }
 
+    rate_limited = False
+
     for et in entity_types:
+        if rate_limited:
+            break
         Cache = TrackCache if et == "track" else AlbumCache
 
         # Collect unique entity_ids referenced by reviews + ratings of this type
@@ -463,7 +486,20 @@ async def backfill_entity_cache(
 
         for entity_id in to_process:
             summary["checked"] += 1
-            data, status, detail = await _try_fetch_spotify(et, entity_id)
+            data, status, detail, retry_after = await _try_fetch_spotify(et, entity_id)
+
+            # Bail immediately on rate-limit. Continuing would deepen the
+            # block and waste the remaining batch slots.
+            if retry_after is not None:
+                rate_limited = True
+                summary["aborted_due_to_rate_limit"] = True
+                summary["retry_after_seconds"] = retry_after
+                summary["errors"] += 1
+                if len(summary["samples"]["errors"]) < 5:
+                    summary["samples"]["errors"].append({"id": entity_id, "type": et, "reason": detail})
+                # Re-add this entity_id to remaining so the count stays honest
+                summary["remaining"] += 1
+                break
 
             if status == "ok" and data:
                 # Write through to cache. Re-check existence in case a
@@ -518,8 +554,9 @@ async def backfill_entity_cache(
                 if len(summary["samples"]["errors"]) < 5:
                     summary["samples"]["errors"].append({"id": entity_id, "type": et, "reason": detail})
 
-            # Be polite to Spotify — small delay between calls
-            await asyncio.sleep(0.05)
+            # Be polite to Spotify — configurable per request
+            if body.delay_ms > 0:
+                await asyncio.sleep(body.delay_ms / 1000.0)
 
         if summary["checked"] >= body.limit:
             break
