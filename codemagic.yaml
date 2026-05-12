@@ -114,8 +114,28 @@ workflows:
 
       - name: Set up code signing
         script: |
-          # Pulls the iOS Distribution cert + App Store provisioning profile
-          # via the App Store Connect API integration configured in the UI.
+          set -ex
+          # Full Codemagic signing dance. `use-profiles` alone is NOT enough —
+          # it only applies an existing profile. For a first-ever build of a
+          # brand-new bundle ID, no App Store profile exists yet, so we have
+          # to ask App Store Connect to CREATE one via `fetch-signing-files
+          # --create`. After that, certs go into a fresh keychain, then the
+          # Xcode project gets pointed at the profile.
+          keychain initialize
+
+          # Create + download a Distribution cert and IOS_APP_STORE profile
+          # for this bundle ID. Idempotent: reuses existing artefacts if
+          # they're already in App Store Connect.
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+          # Import the freshly-downloaded cert into the build keychain so
+          # xcodebuild can actually sign with it.
+          keychain add-certificates
+
+          # Wire the profile into App.xcodeproj (sets DEVELOPMENT_TEAM,
+          # PROVISIONING_PROFILE_SPECIFIER, CODE_SIGN_IDENTITY on the target).
           xcode-project use-profiles
 
       - name: Build the IPA
