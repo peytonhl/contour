@@ -254,9 +254,59 @@ Services ID from the Apple Developer portal.
 
 **Outstanding items that block public launch but were not in scope here:**
 - Native Sign in with Apple flow on iOS (Guideline 4.8 — see APP_STORE.md).
-- UGC reporting + user-blocking flows (Guideline 1.2 — see APP_STORE.md).
+- ~~UGC reporting + user-blocking flows~~ ✅ shipped — see UGC moderation below.
 - App icon + screenshot assets (Section A item 6).
 - Privacy Policy + Terms of Service pages (Section A item 5).
+
+---
+
+## UGC moderation (post-milestone follow-up)
+
+Shipped 2026-05-11 in response to the Guideline 1.2 risk flagged in APP_STORE.md.
+This is the working minimum: report content, block users, admin review queue.
+
+### Backend
+- New migration `k1l2m3n4o5p6_moderation` adds `users.is_admin` (default false,
+  flip your own row in the Railway DB to grant access), `user_blocks` table,
+  and `content_reports` table.
+- New router `routers/moderation.py`:
+  - `POST/DELETE /moderation/block/{user_id}` — symmetric block/unblock.
+    Idempotent ({already: true} on repeat). Cannot block self.
+  - `GET /moderation/blocks` — list my blocks with display_name + avatar.
+  - `POST /moderation/reports` — submit a report (review or reply). Reasons:
+    spam, harassment, hate_speech, explicit_content, misinformation, other.
+    Dedupes: a user can only have one open report per target.
+  - `GET /moderation/reports?status=open|resolved|dismissed|all` — admin only.
+    Enriched with target body, author, reporter info.
+  - `PATCH /moderation/reports/{id}` — admin only. Resolve/dismiss with
+    optional `delete_content` flag (hard-deletes the review/reply and
+    auto-resolves any sibling reports against the same target).
+- `blocked_user_ids()` helper exposed at module level — review/reply/feed
+  routers call it to filter out blocked authors transparently. Wired into:
+  `/ratings/.../reviews`, `/ratings/reviews/.../replies`, `/reviews/global`,
+  `/feed`.
+- `/auth/me` now returns `is_admin` so the frontend can conditionally show
+  the Admin link.
+
+### Frontend
+- New `ReportModal` component — reusable across reviews and replies.
+- New `BlockButton` component with confirm step (one-tap unblock).
+- Report flag (⚐) icon on each review and reply for signed-in viewers
+  (hidden on own content).
+- Block button on user profiles next to Follow.
+- New `/blocks` page — view + unblock your blocked users; linked from the
+  Profile page top action row.
+- New `/admin/reports` page — admin-only triage queue with tabs for
+  open / resolved / dismissed. Per-report actions: delete content + resolve,
+  keep content + resolve, or dismiss.
+- "Admin" link appears in the desktop top nav for admin users.
+
+### Tests
+- `backend/tests/test_moderation.py` — 8 new tests covering block/unblock
+  idempotency, self-block rejection, listing blocks, report dedup, reason
+  validation, the **block filter actually hiding content** in the global
+  feed, admin endpoint authorization, and the resolve-with-delete flow.
+- 18 backend tests total now pass (10 auth linking + 8 moderation).
 
 ---
 
