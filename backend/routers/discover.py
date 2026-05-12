@@ -20,13 +20,12 @@ variety while the taste profile builds.
 
 Tier ladder (in order, until `limit` tracks are gathered)
 ─────────────────────────────────────────────────────────
-  1. Related-artist tracks  — Spotify /related-artists (often 404 these days
-                              for non-Extended-Access apps; we detect that
-                              and fall straight to tier 1b)
-  1b. Genre-of-liked-artist  — fallback used when tier 1 returns nothing.
-                              We fetch each seed artist's own genres and
-                              search those, which keeps the result tied to
-                              what the user actually liked.
+  1. Seed-artist genre pivot — fetch each seed artist's own Spotify genres
+                              (cached 24h) and search those. Keeps results
+                              tied to what the user actually liked. Replaces
+                              the older /related-artists tier, which Spotify
+                              deprecated for non-Extended-Access apps in
+                              late 2024 and now always returns 0.
   2. Genre-filtered search   — Spotify search across the user's profile
                               genres
   3. Deezer chart baseline   — /chart/0/tracks, no auth, no quota
@@ -176,41 +175,16 @@ async def get_discover_feed(
     add_personalized = _make_adder(soft_excluded)
     add_baseline = _make_adder(disliked_set)
 
-    # ── Tier 1: Related-artist tracks (most personalized) ────────────────────
-    # Falls through silently if Spotify's deprecated /related-artists 404s.
+    # ── Tier 1: Seed-artist genre pivot ──────────────────────────────────────
+    # We used to call Spotify's /related-artists for each seed first, but that
+    # endpoint was deprecated for non-Extended-Access apps in late 2024 and
+    # always returns 0. Instead, fetch the seed artists' own genres (cached
+    # 24h in Redis) and search those — keeps the result tied to what the user
+    # actually liked, costs 3 cached artist lookups + 3 cached genre searches
+    # max per batch rather than 3 dead /related-artists calls plus the same
+    # fallback work.
     tier1_added_before = len(tracks)
-    related_ids: list[str] = []
-    if seed_artist_ids:
-        related_results = await asyncio.gather(*[
-            spotify.get_related_artists(aid)
-            for aid in seed_artist_ids[:3]
-        ], return_exceptions=True)
-
-        for r in related_results:
-            if isinstance(r, list):
-                related_ids.extend(r[:4])
-        related_ids = [a for a in dict.fromkeys(related_ids) if a not in soft_excluded]
-        random.shuffle(related_ids)
-        related_ids = related_ids[:6]
-
-        if related_ids:
-            top_track_results = await asyncio.gather(*[
-                spotify.get_artist_top_tracks(aid)
-                for aid in related_ids
-            ], return_exceptions=True)
-            for result in top_track_results:
-                if isinstance(result, list):
-                    candidates = [t for t in result if t.get("preview_url")]
-                    if candidates:
-                        add_personalized([random.choice(candidates)])
-    tier1_count = len(tracks) - tier1_added_before
-    logger.info("discover: tier1 (related) → %d tracks (related_ids=%d)", tier1_count, len(related_ids))
-
-    # ── Tier 1b: Seed-artist genre fallback (only if tier 1 produced nothing) ─
-    # When /related-artists is dead (the common case for non-Extended-Access
-    # apps), pivot off the seed artists' *own* genres so the result is still
-    # tied to what the user actually liked, not generic profile genres.
-    if seed_artist_ids and tier1_count == 0 and len(tracks) < limit:
+    if seed_artist_ids and len(tracks) < limit:
         artist_meta = await asyncio.gather(*[
             spotify.get_artist(aid) for aid in seed_artist_ids[:3]
         ], return_exceptions=True)
@@ -228,7 +202,7 @@ async def get_discover_feed(
                 if isinstance(res, list):
                     add_personalized(res)
             logger.info(
-                "discover: tier1b (seed-artist genre fallback) → %d tracks (genres=%s)",
+                "discover: tier1 (seed-artist genre pivot) → %d tracks (genres=%s)",
                 len(tracks) - tier1_added_before, seed_genres,
             )
 
@@ -345,20 +319,23 @@ async def discover_debug():
     except Exception as exc:
         results["spotify_auth"] = {"ok": False, "error": str(exc)}
 
-    # ── Tier 1: /related-artists liveness probe ───────────────────────────────
-    # Pings a known artist (Taylor Swift). 404 here means tier 1 will silently
-    # produce zero candidates and the feed runs on tier 1b/2/3 instead.
+    # ── Tier 1: seed-artist genre pivot probe ────────────────────────────────
+    # Tests the live tier-1 path: fetch a known artist's genres, then verify
+    # a genre search returns tracks. /related-artists is no longer in the
+    # ladder (Spotify deprecated it).
     try:
         t0 = time.monotonic()
-        related = await spotify_svc.get_related_artists("06HL4z0CvFAxyc27GXpf02")
-        results["tier1_related_artists"] = {
+        meta = await spotify_svc.get_artist("06HL4z0CvFAxyc27GXpf02")  # Taylor Swift
+        genres = meta.get("genres") or []
+        sample_tracks = await spotify.search_tracks_by_genre(genres[0], limit=5) if genres else []
+        results["tier1_seed_genre"] = {
             "ok": True,
-            "count": len(related),
-            "deprecated_signal": len(related) == 0,
+            "artist_genres": genres[:3],
+            "sample_track_count": len(sample_tracks),
             "latency_ms": round((time.monotonic() - t0) * 1000),
         }
     except Exception as exc:
-        results["tier1_related_artists"] = {"ok": False, "error": str(exc)}
+        results["tier1_seed_genre"] = {"ok": False, "error": str(exc)}
 
     # ── Tier 3: Deezer popular search ────────────────────────────────────────
     try:

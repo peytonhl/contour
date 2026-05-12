@@ -126,10 +126,15 @@ async def search_tracks(q: str = Query(..., min_length=1), db: AsyncSession = De
 
 @router.get("/{track_id}", response_model=TrackResult)
 async def get_track(track_id: str, db: AsyncSession = Depends(get_db)):
-    # Check local cache first
+    # Cache short-circuit: if we already have the track locally, return it
+    # without a Spotify roundtrip. Mirrors the album endpoint's behavior —
+    # the previous code fired Spotify on every page view even when the cache
+    # was warm, which burned the rate-limit budget for hot tracks.
     cached = (await db.execute(
         select(TrackCache).where(TrackCache.spotify_id == track_id)
     )).scalar_one_or_none()
+    if cached and cached.image_url:
+        return _row_to_track_result(cached)
 
     try:
         meta = await spotify.get_track(track_id)
