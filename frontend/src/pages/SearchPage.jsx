@@ -80,6 +80,10 @@ export function SearchPage() {
   const [featured, setFeatured] = useState(null);
   const [recent, setRecent] = useState(loadRecent);
   const [trendingSearches, setTrendingSearches] = useState([]);
+  // Contour's own community-ranked trending. The backend returns a `label`
+  // that downshifts ("Trending this week" → "Popular on Contour") when the
+  // requested window is too sparse, so we render whatever it gives us.
+  const [popular, setPopular] = useState(null);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const debounceRef = useRef(null);
@@ -89,6 +93,9 @@ export function SearchPage() {
     // Trending search queries — only shown when the search box is empty.
     api.getTrendingSearched("7d", 10)
       .then((r) => setTrendingSearches(r.items ?? []))
+      .catch(() => {});
+    api.getTrendingAlbums("7d", 10)
+      .then((r) => setPopular(r))
       .catch(() => {});
   }, []);
 
@@ -343,6 +350,39 @@ export function SearchPage() {
               Sign in with Google
             </a>
             <AppleSignInButton />
+          </div>
+        </div>
+      )}
+
+      {/* Popular on Contour — community-driven, shown first because it's the
+          on-brand surface (Spotify's "Trending right now" + "New releases"
+          below are useful but generic to the platform). Uses the honest label
+          from the backend so a sparse week shows "Popular on Contour" rather
+          than mislabeling. */}
+      {!query && popular?.items?.length > 0 && (
+        <div>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>
+              {popular.label}
+            </h2>
+            <Link
+              to="/trending"
+              onClick={() => analytics.trendingModuleClicked("search_empty", "see_all", null)}
+              style={{ fontSize: 12, color: ACCENT_A, textDecoration: "none", fontWeight: 600 }}
+            >
+              See all →
+            </Link>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
+            {popular.items.map((it) => (
+              <div
+                key={it.id}
+                onClick={() => analytics.trendingModuleClicked("search_empty", "album", it.id)}
+                style={{ cursor: "pointer" }}
+              >
+                <FeaturedCard item={{ ...it, artists: it.artist }} type="album" />
+              </div>
+            ))}
           </div>
         </div>
       )}
