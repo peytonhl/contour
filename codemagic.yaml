@@ -36,13 +36,14 @@ workflows:
       groups:
         - contour-prod        # see comment above; create in Codemagic UI
       vars:
-        XCODE_WORKSPACE: "frontend/ios/App/App.xcworkspace"
+        # Capacitor 8 uses Swift Package Manager — no .xcworkspace, build
+        # straight against the .xcodeproj.
+        XCODE_PROJECT: "frontend/ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
         BUNDLE_ID: "com.peytonhl.contour"
         APP_STORE_APPLE_ID: "0000000000"   # replace once you've created the App Store Connect record
       node: latest
       xcode: latest
-      cocoapods: default
 
     triggering:
       # Don't auto-build every push — iOS releases are deliberate. Trigger
@@ -84,22 +85,16 @@ workflows:
           else
             echo ">>> iOS platform already exists, skipping cap add"
           fi
-          echo ">>> Confirming iOS scaffold layout:"
+          echo ">>> Confirming iOS scaffold layout (Capacitor 8 uses SPM):"
           ls -la ios/ || (echo "FATAL: ios/ directory missing after cap add" && exit 1)
           ls -la ios/App/ || (echo "FATAL: ios/App/ directory missing" && exit 1)
-          test -f ios/App/Podfile || (echo "FATAL: Podfile missing" && exit 1)
+          test -d ios/App/App.xcodeproj || (echo "FATAL: App.xcodeproj missing" && exit 1)
 
       - name: Sync web assets into iOS
         script: |
           set -ex
           cd frontend
           npx cap sync ios
-
-      - name: CocoaPods install
-        script: |
-          set -ex
-          cd frontend/ios/App
-          pod install --repo-update
 
       - name: Set Info.plist values
         script: |
@@ -125,9 +120,10 @@ workflows:
 
       - name: Build the IPA
         script: |
+          set -ex
           cd frontend/ios/App
           xcode-project build-ipa \
-            --workspace "App.xcworkspace" \
+            --project "App.xcodeproj" \
             --scheme "$XCODE_SCHEME"
 
     artifacts:
