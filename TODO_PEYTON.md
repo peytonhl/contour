@@ -156,6 +156,19 @@ Things I genuinely can't verify from here — please poke at them when you can:
 
 ## 🟢 Optional follow-ups (none are launch-blocking)
 
+- [ ] **Push notifications (v1.1 — post-launch).** Push capability is enabled
+      on the iOS App ID so we can ship without re-provisioning. Implementation
+      scope: ~1-2 days. Wire `@capacitor/push-notifications` (works for both
+      iOS via APNs and Android via FCM), add a `device_tokens` table, register
+      tokens on app launch, extend `backend/routers/notifications.py` to fan
+      out a push payload alongside the in-app row it already creates. Trigger
+      events already exist: new follower, review reply, friend rates an album
+      you care about. Keep all notifications event-driven and contextual —
+      Apple Guideline 4.5.4 rejects generic "come back!" pings without
+      explicit marketing consent, and event-driven pushes get 3-5× the open
+      rate anyway.
+
+
 - [ ] **Session Replay** — enabled at project level in PostHog but not
       capturing data yet. Ask me to wire `posthog.init({ session_recording: ... })`
       with masking for the OAuth `?token=` URL (~5 lines, big debugging upside
