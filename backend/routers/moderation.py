@@ -331,25 +331,30 @@ class BackfillIn(BaseModel):
     entity_type: str = "track"      # "track" | "album" | "all"
 
 
-async def _try_fetch_spotify(entity_type: str, entity_id: str) -> tuple[Optional[dict], str]:
+async def _try_fetch_spotify(entity_type: str, entity_id: str) -> tuple[Optional[dict], str, Optional[str]]:
     """
     Fetch entity meta from Spotify with 404 distinguished from other errors.
-    Returns (data, status) where status is "ok" | "orphan" | "error".
+    Returns (data, status, detail) where:
+      - status is "ok" | "orphan" | "error"
+      - detail is a short reason string for error cases (e.g. "HTTP 429",
+        "ReadTimeout", "ConnectionError"), or None
     """
     try:
         if entity_type == "track":
             data = await spotify.get_track(entity_id)
         else:
             data = await spotify.get_album(entity_id)
-        return data, "ok"
+        return data, "ok", None
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
-            return None, "orphan"
-        logger.warning("[backfill] %s/%s HTTP %d", entity_type, entity_id, exc.response.status_code)
-        return None, "error"
+            return None, "orphan", None
+        detail = f"HTTP {exc.response.status_code}"
+        logger.warning("[backfill] %s/%s %s", entity_type, entity_id, detail)
+        return None, "error", detail
     except Exception as exc:
-        logger.warning("[backfill] %s/%s failed: %s", entity_type, entity_id, exc)
-        return None, "error"
+        detail = f"{type(exc).__name__}: {exc}"[:120]
+        logger.warning("[backfill] %s/%s failed: %s", entity_type, entity_id, detail)
+        return None, "error", detail
 
 
 async def _delete_orphan_references(db: AsyncSession, entity_type: str, entity_id: str) -> dict:
@@ -458,7 +463,7 @@ async def backfill_entity_cache(
 
         for entity_id in to_process:
             summary["checked"] += 1
-            data, status = await _try_fetch_spotify(et, entity_id)
+            data, status, detail = await _try_fetch_spotify(et, entity_id)
 
             if status == "ok" and data:
                 # Write through to cache. Re-check existence in case a
@@ -511,7 +516,7 @@ async def backfill_entity_cache(
             else:  # "error" — leave it alone, retry next call
                 summary["errors"] += 1
                 if len(summary["samples"]["errors"]) < 5:
-                    summary["samples"]["errors"].append({"id": entity_id, "type": et})
+                    summary["samples"]["errors"].append({"id": entity_id, "type": et, "reason": detail})
 
             # Be polite to Spotify — small delay between calls
             await asyncio.sleep(0.05)

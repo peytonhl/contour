@@ -111,10 +111,13 @@ async def get_badges(db: AsyncSession = Depends(get_db)):
     )).all()
 
     # ── Connectors: top 5 by follower count ──────────────────────────────────
+    # UserFollow has no `id` column (composite PK on follower_id/following_id),
+    # so we count the follower_id rows directly. The previous func.count(UserFollow.id)
+    # raised AttributeError and returned 500.
     connector_rows = (await db.execute(
-        select(UserFollow.following_id, func.count(UserFollow.id).label("score"))
+        select(UserFollow.following_id, func.count(UserFollow.follower_id).label("score"))
         .group_by(UserFollow.following_id)
-        .order_by(func.count(UserFollow.id).desc())
+        .order_by(func.count(UserFollow.follower_id).desc())
         .limit(5)
     )).all()
 
