@@ -527,6 +527,9 @@ def _parse_track(t: dict) -> dict:
         "image_url": image_url,
         "preview_url": t.get("preview_url"),
         "external_url": t.get("external_urls", {}).get("spotify"),
+        # ISRC is the canonical international identifier for a recording —
+        # used to match Spotify tracks to Apple Music songs reliably.
+        "isrc": t.get("external_ids", {}).get("isrc"),
         # Fields needed by album cache upsert
         "label": None,
         "total_tracks": None,

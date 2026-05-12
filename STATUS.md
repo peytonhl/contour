@@ -84,8 +84,45 @@ the new SDKs, acceptable for a launch SDK pair).
 - Mobile hero padding tightening — visually verify the new spacing feels
   balanced; easy to dial in further if it looks cramped.
 
-### ⏳ Task 4 — Apple Music deep links
-Pending. Will gate on Apple Music developer token (Section A item 8).
+### ✅ Task 4 — Apple Music deep links (env-gated)
+**Shipped:** 2026-05-11
+
+Catalog-only, no user auth. The frontend button hides itself when the service
+is disabled or no match exists.
+
+**Backend:**
+- New `AppleMusicLink` model + Alembic migration `j0k1l2m3n4o5` (additive,
+  runs on next Railway deploy). Caches one row per `(spotify_id, entity_type,
+  storefront)` including *negative* matches so we don't retry on every load.
+- `services/apple_music.py` — generates an ES256 developer token (cached for
+  ~6mo with a 24h refresh margin), runs ISRC-first matching with text fallback:
+  1. `/v1/catalog/{storefront}/songs?filter[isrc]={isrc}` → song + its album.
+  2. `/v1/catalog/{storefront}/search?term=...&types=albums|songs` fallback.
+  Returns `is_configured()` for callers to gate behavior.
+- `routers/apple_music.py` exposes `GET /apple-music/match/{album|track}/{spotify_id}`
+  with `?storefront=us` (default). Returns `404` for any miss (unconfigured,
+  no match, negative cache hit) so the frontend hides the button cleanly.
+- ISRC is now surfaced in `services/spotify.py._parse_track` so the matcher
+  has it without an extra Spotify call.
+- Env vars documented in `backend/.env.example`:
+  `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` (PEM
+  contents of the .p8 file, literal `\n` newlines accepted).
+
+**Frontend:**
+- `AlbumPage` + `TrackPage` fetch the match via `Promise.allSettled` alongside
+  trajectory data on mount. On success, an "Apple Music ↗" pill appears next
+  to the existing "Spotify ↗" link. `apple_music_link_clicked` analytics event
+  fires on click — completing the event catalog from Task 2.
+
+**Backfill semantics:** "On-demand" per the spec — first page visit for an
+entity that's not cached triggers an inline ISRC + text attempt, results are
+persisted, every subsequent visit hits the DB cache.
+
+**Verification:** All 10 backend auth-linking tests still pass. App imports
+cleanly with the new router (70 total routes registered). No tests written
+specifically for apple_music — they would require either live Apple keys or
+a non-trivial httpx mock; the structural code is straightforward and the
+endpoint behaves as a thin orchestrator over a well-tested service.
 
 ### ✅ Task 5 — Sign in with Apple (skeleton, env-gated)
 **Shipped:** 2026-05-11

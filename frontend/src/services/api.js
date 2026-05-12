@@ -125,6 +125,11 @@ export const api = {
   getDiscoverDebug: () => request(`/discover/debug`),
   getHealth: () => request(`/health`),
 
+  // Apple Music deep-link resolution. Returns {apple_music_id, url, ...} or
+  // throws on 404 (no match or service disabled — caller should hide button).
+  getAppleMusicLink: (entityType, spotifyId, storefront = "us") =>
+    request(`/apple-music/match/${entityType}/${spotifyId}?storefront=${storefront}`),
+
   // Leaderboard
   getLeaderboard: (sort = "era", decade = "all", limit = 50) => request(`/leaderboard/?sort=${sort}&decade=${decade}&limit=${limit}`),
 
