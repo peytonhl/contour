@@ -372,7 +372,10 @@ export function ProfilePage() {
   ];
 
   return (
-    <div style={{ maxWidth: 780, margin: "0 auto", display: "flex", flexDirection: "column" }}>
+    <div
+      className="profile-root"
+      style={{ maxWidth: 780, margin: "0 auto", display: "flex", flexDirection: "column" }}
+    >
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <div style={{
@@ -414,7 +417,11 @@ export function ProfilePage() {
 
           {/* Name + bio + stats */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 8 }}>
+            {/* flexWrap so on narrow viewports the settings/sign-out
+                buttons drop below the name instead of squeezing the
+                name into an unreadable width or producing horizontal
+                page overflow. */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 8, flexWrap: "wrap" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.025em", margin: 0, lineHeight: 1.1 }}>
                   {user.display_name}
@@ -611,10 +618,18 @@ export function ProfilePage() {
       )}
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
-      <div style={{ padding: "28px 28px", display: "flex", flexDirection: "column", gap: 28 }}>
+      {/* On mobile, CSS reorders the .profile-tab-content above the
+          .profile-taste-section so tapping a tab shows the data right
+          beneath it. Desktop keeps the original "Taste → tab content"
+          order since the wider layout makes both visible at once. */}
+      <div className="profile-body" style={{ padding: "28px 28px", display: "flex", flexDirection: "column", gap: 28 }}>
 
         {/* Taste */}
-        <TasteSection userId={user.id} isOwner={true} />
+        <div className="profile-taste-section">
+          <TasteSection userId={user.id} isOwner={true} />
+        </div>
+
+        <div className="profile-tab-content" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
 
         {/* ── Ratings ── */}
         {tab === "ratings" && (
@@ -812,6 +827,7 @@ export function ProfilePage() {
           <BacklogTabContent userId={user.id} isOwner={true} showSuggestions={true} />
         )}
 
+        </div>{/* /.profile-tab-content */}
       </div>
     </div>
   );

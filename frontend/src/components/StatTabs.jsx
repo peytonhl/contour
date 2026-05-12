@@ -17,13 +17,15 @@ export function StatTabs({ tabs, active, onChange }) {
   return (
     <div
       role="tablist"
+      className="stat-tabs"
       style={{
         display: "flex",
         gap: 0,
-        overflowX: "auto",
         borderBottom: "1px solid var(--border)",
-        // Hide scrollbar visually on overflow — still works on touch and keyboard.
-        scrollbarWidth: "none",
+        // Desktop: flat row, no wrap. Mobile-specific overrides live in
+        // index.css via the `.stat-tabs` class (flex-wrap + reduced
+        // per-tab width so 5+ tabs fit in two rows instead of overflowing
+        // off-screen the way the previous `overflowX: auto` did).
       }}
     >
       {tabs.map(({ key, label, count }) => {
@@ -34,6 +36,7 @@ export function StatTabs({ tabs, active, onChange }) {
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(key)}
+            className="stat-tab-button"
             style={{
               flex: "0 0 auto",
               display: "flex", flexDirection: "column",

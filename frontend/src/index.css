@@ -117,6 +117,43 @@ button, a, [role="button"] {
     gap: 16px !important;
   }
 
+  /* StatTabs (profile / other-user-profile tab nav). On mobile we wrap
+     to multiple rows instead of horizontal-scrolling — much easier to
+     read all the tab labels at a glance. Each cell flexes to fill its
+     row so the rows feel balanced rather than left-aligned. */
+  .stat-tabs {
+    flex-wrap: wrap !important;
+  }
+  .stat-tabs .stat-tab-button {
+    flex: 1 1 33% !important;        /* 3 per row, then 2 wrap */
+    min-width: 0 !important;
+    padding: 10px 6px !important;
+    /* Subtle row separator when wrapped — softens the visual */
+    border-right: 1px solid var(--border);
+  }
+  .stat-tabs .stat-tab-button:last-child,
+  .stat-tabs .stat-tab-button:nth-child(3n) {
+    border-right: none;
+  }
+
+  /* Profile page mobile reorder: tab content sits IMMEDIATELY below the
+     StatTabs (so tapping a tab shows the data right under it). The
+     TasteSection moves below the tab content. Implemented via CSS order
+     since the markup is the same desktop+mobile. */
+  .profile-body {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .profile-tab-content { order: 1; }
+  .profile-taste-section { order: 2; margin-top: 28px; }
+
+  /* Defensive: hard-cap horizontal overflow on the profile root so a
+     stray wide element never produces page-level horizontal scroll
+     (the "wiggle room" issue). */
+  .profile-root {
+    overflow-x: hidden;
+  }
+
   /* Charts fill full width */
   .chart-container {
     padding: 12px !important;
