@@ -780,9 +780,20 @@ function ForYouFeed() {
   }, [activeIdx, goToCard]);
 
   /**
-   * For Deezer-sourced tracks (numeric IDs), look up the real Spotify track ID
-   * before saving anything. Returns null only if the track genuinely can't be
-   * found on Spotify after multiple search strategies.
+   * For Deezer-sourced tracks, resolve to a Spotify track ID that we've
+   * confirmed actually fetches. Returns null when no verified match exists —
+   * caller must treat null as "do not save this rating" to prevent orphans.
+   *
+   * Hardening vs. the original:
+   * - Tightened name match (exact, case-insensitive) so we don't swap
+   *   "Golden" for "Golden Hour"
+   * - Artist match required for strategy 1 (substring either direction) so
+   *   we don't pick a same-titled song by a different artist
+   * - Each candidate is verified via /tracks/{id} before being returned.
+   *   Spotify search occasionally surfaces tracks that 404 on direct fetch
+   *   (market restrictions, recent takedowns) — those would orphan the
+   *   rating the moment it's saved. With the 30d Redis cache on get_track,
+   *   verification is cheap on repeats.
    */
   async function _resolveSpotifyId(track) {
     if (track._source !== "deezer") return track.id;
@@ -790,26 +801,44 @@ function ForYouFeed() {
     // Strip special characters from artist name (slashes, parens, etc. break search)
     const cleanArtist = (track.artists?.[0] ?? "").replace(/[/\\()|&]/g, " ").replace(/\s+/g, " ").trim();
     const trackName = track.name ?? "";
+    if (!trackName) return null;
+    const trackLower = trackName.toLowerCase();
+    const artistLower = cleanArtist.toLowerCase();
 
-    // Strategy 1: track name + cleaned artist
+    // Verify a candidate actually fetches from our backend. With Redis caching
+    // tracks for 30d, repeated verifications of the same ID are free.
+    async function verify(id) {
+      if (!id) return false;
+      try { await api.getTrack(id); return true; } catch { return false; }
+    }
+
+    // Strategy 1: name + artist. Exact-name match (case-insensitive) AND
+    // some artist overlap. Take up to 3 candidates and return the first
+    // one that verifies.
     try {
       const q1 = `${trackName} ${cleanArtist}`.trim();
-      const r1 = await api.searchTracks(q1);
-      // Verify the result loosely matches — avoid swapping "Golden" for Jungkook's album etc.
-      const match1 = r1?.find((t) =>
-        t.name?.toLowerCase().includes(trackName.toLowerCase()) ||
-        trackName.toLowerCase().includes(t.name?.toLowerCase())
-      );
-      if (match1?.id) return match1.id;
+      const candidates = (await api.searchTracks(q1) ?? []).filter((t) => {
+        if (t.name?.toLowerCase() !== trackLower) return false;
+        if (!artistLower) return true;
+        return (t.artists || []).some((a) => {
+          const al = (a || "").toLowerCase();
+          return al.includes(artistLower) || artistLower.includes(al);
+        });
+      }).slice(0, 3);
+      for (const c of candidates) {
+        if (await verify(c.id)) return c.id;
+      }
     } catch { /* fall through */ }
 
-    // Strategy 2: track name only (catches when artist name is exotic / new)
+    // Strategy 2: name only, for exotic / new artists where the artist
+    // string itself breaks the search. Still requires exact-name match.
     try {
-      const r2 = await api.searchTracks(trackName);
-      const match2 = r2?.find((t) =>
-        t.name?.toLowerCase() === trackName.toLowerCase()
-      );
-      if (match2?.id) return match2.id;
+      const candidates = (await api.searchTracks(trackName) ?? [])
+        .filter((t) => t.name?.toLowerCase() === trackLower)
+        .slice(0, 3);
+      for (const c of candidates) {
+        if (await verify(c.id)) return c.id;
+      }
     } catch { /* fall through */ }
 
     return null;
