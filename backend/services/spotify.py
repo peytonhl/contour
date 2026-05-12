@@ -38,9 +38,28 @@ _TTL_1H  =     3_600   # fast-changing (new releases)
 # call before that deadline short-circuits with a synthetic 429 response so
 # callers fall back to their DB cache without ever touching the network.
 _circuit_open_until: float = 0.0
-# Don't trip the breaker for short retry-afters that the per-call wait can
-# absorb — those are normal backoff hints, not credential blocks.
-_CIRCUIT_BREAKER_THRESHOLD = 60  # seconds
+# Trip the breaker on any Retry-After this long or longer. Tighter than
+# the default httpx exponential because Spotify's "you exceeded the rate
+# limit" responses tend to compound: 30s blocks become 5min blocks become
+# hours if we keep hammering. Failing fast is the cheaper trade.
+_CIRCUIT_BREAKER_THRESHOLD = 10  # seconds
+
+# Concurrency cap on outbound Spotify HTTP. Spotify rate-limits per rolling
+# window AND per-app burst behavior. A small concurrency cap prevents
+# cold-cache traffic spikes (many users loading the site at once, RYM CSV
+# imports, etc.) from firing dozens of parallel requests and tripping a
+# credential-wide block. Sustained throughput is still ~5 / per-call-latency
+# req/s, which is plenty under normal traffic.
+_SPOTIFY_CONCURRENCY = 5
+_spotify_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    """Lazy-init so the semaphore binds to the active event loop, not import-time."""
+    global _spotify_semaphore
+    if _spotify_semaphore is None:
+        _spotify_semaphore = asyncio.Semaphore(_SPOTIFY_CONCURRENCY)
+    return _spotify_semaphore
 
 
 def _circuit_remaining() -> float:
@@ -78,27 +97,30 @@ async def _spotify_get(client: httpx.AsyncClient, url: str, token: str, params: 
     If Retry-After > _MAX_RETRY_WAIT, returns the 429 response immediately so
     callers can fall back to DB/Redis without making the user wait.
 
-    Also honors a process-level circuit breaker: if Spotify previously asked
-    us to back off for a long time, we short-circuit without touching the
-    network until that window expires.
+    Also honors a process-level circuit breaker (skips the network when
+    Spotify recently asked for a long backoff) and a concurrency semaphore
+    (caps in-flight outbound calls so a traffic spike can't fire hundreds
+    of parallel requests at once).
     """
     if _circuit_remaining() > 0:
         _log.debug("[spotify] circuit open (%ds left), short-circuiting %s", int(_circuit_remaining()), url)
         return _make_synthetic_429(url)
 
-    resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
-    if resp.status_code == 429:
-        retry_after = int(resp.headers.get("Retry-After", 8))
-        # Long retry-after = credential-wide block. Open the circuit so the
-        # next 100 callers don't each pay the round trip and keep extending it.
-        if retry_after >= _CIRCUIT_BREAKER_THRESHOLD:
-            _trip_circuit(retry_after)
-        if retry_after > _MAX_RETRY_WAIT:
-            _log.warning("[spotify] 429 on %s — Retry-After=%ds (>%ds threshold), bailing immediately", url, retry_after, _MAX_RETRY_WAIT)
-            return resp  # caller will treat non-200 as failure and use DB
-        _log.warning("[spotify] 429 on %s — Retry-After=%ds, waiting then retrying", url, retry_after)
-        await asyncio.sleep(retry_after)
-        resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
+    headers = {"Authorization": f"Bearer {token}"}
+    async with _get_semaphore():
+        resp = await client.get(url, headers=headers, params=params)
+        if resp.status_code == 429:
+            retry_after = int(resp.headers.get("Retry-After", 8))
+            # Long retry-after = credential-wide block. Open the circuit so the
+            # next 100 callers don't each pay the round trip and keep extending it.
+            if retry_after >= _CIRCUIT_BREAKER_THRESHOLD:
+                _trip_circuit(retry_after)
+            if retry_after > _MAX_RETRY_WAIT:
+                _log.warning("[spotify] 429 on %s — Retry-After=%ds (>%ds threshold), bailing immediately", url, retry_after, _MAX_RETRY_WAIT)
+                return resp  # caller will treat non-200 as failure and use DB
+            _log.warning("[spotify] 429 on %s — Retry-After=%ds, waiting then retrying", url, retry_after)
+            await asyncio.sleep(retry_after)
+            resp = await client.get(url, headers=headers, params=params)
     return resp
 
 _ENV_FILE = Path(__file__).parent.parent / ".env"
@@ -199,7 +221,7 @@ async def get_album_tracks(album_id: str) -> list[dict]:
         url = f"https://api.spotify.com/v1/albums/{album_id}/tracks"
         params = {"limit": 50}
         while url:
-            resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
+            resp = await _spotify_get(client, url, token, params=params)
             resp.raise_for_status()
             data = resp.json()
             results.extend(data.get("items", []))
@@ -271,9 +293,8 @@ async def search_albums(query: str, limit: int = 10) -> list[dict]:
 
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            "https://api.spotify.com/v1/search",
-            headers={"Authorization": f"Bearer {token}"},
+        resp = await _spotify_get(
+            client, "https://api.spotify.com/v1/search", token,
             params={"q": query, "type": "album", "limit": limit, "market": "US"},
         )
         _log.debug("[spotify.search_albums] HTTP %d for q=%r", resp.status_code, query)
@@ -345,9 +366,8 @@ async def get_playlist_tracks(playlist_id: str, limit: int = 20) -> list[dict]:
 
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
-            headers={"Authorization": f"Bearer {token}"},
+        resp = await _spotify_get(
+            client, f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks", token,
             params={"limit": limit, "market": "US"},
         )
         resp.raise_for_status()
@@ -400,9 +420,8 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
 
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            "https://api.spotify.com/v1/search",
-            headers={"Authorization": f"Bearer {token}"},
+        resp = await _spotify_get(
+            client, "https://api.spotify.com/v1/search", token,
             params={"q": f"{genre} hits", "type": "track", "limit": limit, "market": "US"},
         )
         resp.raise_for_status()
@@ -436,9 +455,8 @@ async def get_global_top_tracks(limit: int = 10) -> list[dict]:
         for q in queries:
             if len(all_tracks) >= limit * 3:
                 break
-            resp = await client.get(
-                "https://api.spotify.com/v1/search",
-                headers={"Authorization": f"Bearer {token}"},
+            resp = await _spotify_get(
+                client, "https://api.spotify.com/v1/search", token,
                 params={"q": q, "type": "track", "limit": 20, "market": "US"},
             )
             if resp.status_code != 200:
@@ -464,9 +482,8 @@ async def get_artist_top_tracks(artist_id: str, market: str = "US") -> list[dict
 
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks",
-            headers={"Authorization": f"Bearer {token}"},
+        resp = await _spotify_get(
+            client, f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks", token,
             params={"market": market},
         )
         resp.raise_for_status()
@@ -493,9 +510,8 @@ async def get_related_artists(artist_id: str) -> list[str]:
 
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await client.get(
-            f"https://api.spotify.com/v1/artists/{artist_id}/related-artists",
-            headers={"Authorization": f"Bearer {token}"},
+        resp = await _spotify_get(
+            client, f"https://api.spotify.com/v1/artists/{artist_id}/related-artists", token,
         )
         if resp.status_code in (403, 404):
             _log.warning(
@@ -558,9 +574,8 @@ async def find_editions(album_id: str) -> list[dict]:
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
         # Re-fetch raw to get artist IDs
-        resp = await client.get(
-            f"https://api.spotify.com/v1/albums/{album_id}",
-            headers={"Authorization": f"Bearer {token}"},
+        resp = await _spotify_get(
+            client, f"https://api.spotify.com/v1/albums/{album_id}", token,
         )
         resp.raise_for_status()
         raw = resp.json()
