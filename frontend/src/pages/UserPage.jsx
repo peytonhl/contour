@@ -5,6 +5,7 @@ import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { BlockButton } from "../components/BlockButton.jsx";
+import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeChips } from "./FeedPage.jsx";
 
@@ -50,15 +51,6 @@ function timeAgo(iso) {
   return `${Math.floor(days / 365)}y ago`;
 }
 
-function Stat({ value, label }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-      <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1 }}>{value}</span>
-      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>{label}</span>
-    </div>
-  );
-}
-
 export function UserPage() {
   const { id } = useParams();
   const { user: me } = useAuth();
@@ -66,6 +58,8 @@ export function UserPage() {
   const [reviews, setReviews] = useState([]);
   const [lists, setLists] = useState([]);
   const [ratings, setRatings] = useState([]);
+  const [following, setFollowing] = useState([]);
+  const [followers, setFollowers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [followLoading, setFollowLoading] = useState(false);
   const [tab, setTab] = useState("taste");
@@ -82,12 +76,16 @@ export function UserPage() {
       api.getUserReviews(id).catch(() => []),
       api.getUserLists(id).catch(() => []),
       api.getUserRatings(id).catch(() => []),
+      api.getFollowing(id).catch(() => []),
+      api.getFollowers(id).catch(() => []),
     ])
-      .then(([p, rev, userLists, userRatings]) => {
+      .then(([p, rev, userLists, userRatings, followingList, followersList]) => {
         setProfile(p);
         setReviews(rev);
         setLists(userLists);
         setRatings(userRatings);
+        setFollowing(followingList);
+        setFollowers(followersList);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -107,11 +105,14 @@ export function UserPage() {
   if (loading) return <div style={{ padding: 80, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>Loading…</div>;
   if (!profile) return <div style={{ padding: 80, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>User not found.</div>;
 
+  // No `count` on Taste — it's the "Hi, this is me" view, not a count of anything.
   const tabs = [
-    { key: "taste",   label: "Taste" },
-    { key: "ratings", label: `Ratings (${profile.ratings_count ?? ratings.length})` },
-    { key: "reviews", label: `Reviews (${profile.reviews_count})` },
-    { key: "lists",   label: `Lists (${lists.length})` },
+    { key: "taste",     label: "Taste" },
+    { key: "ratings",   label: "Ratings",   count: profile.ratings_count ?? ratings.length },
+    { key: "reviews",   label: "Reviews",   count: profile.reviews_count ?? reviews.length },
+    { key: "lists",     label: "Lists",     count: lists.length },
+    { key: "following", label: "Following", count: profile.following_count ?? following.length },
+    { key: "followers", label: "Followers", count: profile.followers_count ?? followers.length },
   ];
 
   return (
@@ -154,13 +155,7 @@ export function UserPage() {
           )}
         </div>
 
-        {/* Stats */}
-        <div style={{ display: "flex", gap: 28, flexWrap: "wrap", justifyContent: "center" }}>
-          <Stat value={profile.ratings_count ?? 0} label="Ratings" />
-          <Stat value={profile.reviews_count ?? 0} label="Reviews" />
-          <Stat value={profile.followers_count ?? 0} label="Followers" />
-          <Stat value={profile.following_count ?? 0} label="Following" />
-        </div>
+        {/* Stats are no longer rendered here — they're the tab nav below. */}
 
         {/* Follow + Block / sign-in prompt */}
         {me && !profile.is_self && (
@@ -196,28 +191,8 @@ export function UserPage() {
       {/* ── Body ── */}
       <div style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
 
-        {/* Tab bar */}
-        <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 2 }}>
-          {tabs.map(({ key, label }) => {
-            const active = tab === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                style={{
-                  padding: "6px 15px", fontSize: 13, fontWeight: active ? 700 : 500,
-                  whiteSpace: "nowrap", borderRadius: 6, border: "none", cursor: "pointer",
-                  background: active ? "var(--surface2)" : "transparent",
-                  color: active ? "var(--text)" : "var(--text-muted)",
-                  outline: active ? "1px solid var(--border)" : "none",
-                  transition: "color 0.12s, background 0.12s",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        {/* Stat-style tab nav — each cell shows count + label and activates a section. */}
+        <StatTabs tabs={tabs} active={tab} onChange={setTab} />
 
         {/* ── Taste ── */}
         {tab === "taste" && <TasteSection userId={id} isOwner={false} />}
@@ -322,7 +297,52 @@ export function UserPage() {
             ))}
           </div>
         )}
+
+        {/* ── Following / Followers ── */}
+        {tab === "following" && <UserList users={following} emptyText="Not following anyone yet." />}
+        {tab === "followers" && <UserList users={followers} emptyText="No followers yet." />}
       </div>
+    </div>
+  );
+}
+
+// ── Compact user list — used by Following / Followers tabs ───────────────────
+function UserList({ users, emptyText }) {
+  if (!users?.length) {
+    return <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>{emptyText}</p>;
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {users.map((u) => (
+        <Link
+          key={u.id}
+          to={`/user/${u.id}`}
+          style={{
+            display: "flex", alignItems: "center", gap: 12,
+            padding: "10px 14px", background: "var(--surface)",
+            border: "1px solid var(--border)", borderRadius: 10,
+            textDecoration: "none", color: "var(--text)",
+            transition: "border-color 0.15s",
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT}
+          onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+        >
+          {u.image_url
+            ? <img src={u.image_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+            : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
+          }
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {u.display_name}
+            </div>
+            {u.bio && (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+                {u.bio.slice(0, 80)}{u.bio.length > 80 ? "…" : ""}
+              </div>
+            )}
+          </div>
+        </Link>
+      ))}
     </div>
   );
 }
