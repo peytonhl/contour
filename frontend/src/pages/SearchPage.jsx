@@ -239,7 +239,7 @@ export function SearchPage() {
         {/* Quick hint — only while idle */}
         {!query && (
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
-            Stream trajectories, era-adjusted comparisons, and community ratings — all in one place.
+            Stream trajectories, era-adjusted comparisons, and community ratings, all in one place.
           </p>
         )}
       </div>

@@ -89,8 +89,8 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen }) {
               </div>
               <div style={{ color: "var(--text-muted)", marginBottom: 10 }}>
                 Released in <strong style={{ color: "var(--text)" }}>{eraContext.release_year}</strong>{" "}
-                when Spotify had <strong style={{ color: "var(--text)" }}>{eraContext.release_mau}M</strong> monthly listeners
-                {" "}— a fraction of today's audience.
+                when Spotify had <strong style={{ color: "var(--text)" }}>{eraContext.release_mau}M</strong> monthly listeners,
+                a fraction of today's audience.
               </div>
               <div style={{ color: "var(--text-muted)", marginBottom: 10 }}>
                 Scaled to <strong style={{ color: "var(--text)" }}>{eraContext.current_mau}M</strong> {currentYear} listeners,

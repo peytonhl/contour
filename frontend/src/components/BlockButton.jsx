@@ -50,7 +50,7 @@ export function BlockButton({ targetUserId, initiallyBlocked, onChange }) {
           cursor: busy ? "default" : "pointer",
         }}
       >
-        Blocked — Unblock
+        Blocked · Unblock
       </button>
     );
   }
@@ -86,7 +86,7 @@ export function BlockButton({ targetUserId, initiallyBlocked, onChange }) {
   return (
     <button
       onClick={() => setConfirming(true)}
-      title="Block this user — their content will be hidden from you"
+      title="Block this user. Their content will be hidden from you."
       style={{
         padding: "8px 12px", borderRadius: 6, fontSize: 12,
         background: "none", color: "var(--text-muted)",

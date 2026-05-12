@@ -181,7 +181,7 @@ export function LeaderboardPage() {
         </h1>
         <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
           {sort === "era"
-            ? "The fairest ranking in music — era-adjusted so every generation competes on equal footing."
+            ? "The fairest ranking in music: era-adjusted so every generation competes on equal footing."
             : "Ranked by total lifetime plays."}
         </p>
       </div>
@@ -274,7 +274,7 @@ export function LeaderboardPage() {
 
       {/* Explainer */}
       <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.7, margin: 0 }}>
-        <strong style={{ color: "var(--text)" }}>Era Score</strong> multiplies raw plays by how much larger Spotify's audience is today vs. when the album released —
+        <strong style={{ color: "var(--text)" }}>Era Score</strong> multiplies raw plays by how much larger Spotify's audience is today vs. when the album released,
         making this the first chart where a 2012 classic and a 2024 hit compete fairly.{" "}
         <strong style={{ color: "var(--text)" }}>Underrated / Overrated</strong> badges appear once enough community ratings exist to compare against stream rank.
         Hover any row to compare that album against another.

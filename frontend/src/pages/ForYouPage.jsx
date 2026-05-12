@@ -298,7 +298,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
       setSubmitted(true);
       setReviewOpen(false);
     } else {
-      setReviewError("Couldn't save — try again.");
+      setReviewError("Couldn't save. Try again.");
     }
   }
 

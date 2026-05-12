@@ -181,7 +181,7 @@ export function GlobalReviewsFeed() {
         </div>
         <button
           onClick={() => setShowLeaderboard((v) => !v)}
-          title="Top 5 leaderboard"
+          title="See the top reviewers, most-upvoted users, and most-followed users"
           style={{
             display: "flex", alignItems: "center", gap: 5,
             fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 20,
@@ -191,7 +191,7 @@ export function GlobalReviewsFeed() {
             cursor: "pointer", flexShrink: 0,
           }}
         >
-          🏆 Top 5
+          Top users
         </button>
       </div>
 
@@ -206,7 +206,7 @@ export function GlobalReviewsFeed() {
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
           </svg>
-          <p style={{ margin: 0, fontSize: 14 }}>No reviews yet — be the first to write one.</p>
+          <p style={{ margin: 0, fontSize: 14 }}>No reviews yet. Be the first to write one.</p>
         </div>
       )}
       {!loading && reviews.map((item) => (

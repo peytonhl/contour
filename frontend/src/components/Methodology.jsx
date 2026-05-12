@@ -96,7 +96,7 @@ export function Methodology() {
 
       <Section title="What You Can Do">
         <P>
-          Contour combines a social music rating layer with era-adjusted streaming analytics — think IMDb for music,
+          Contour combines a social music rating layer with era-adjusted streaming analytics. Think IMDb for music,
           but with the context to actually compare across decades.
         </P>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
@@ -113,7 +113,7 @@ export function Methodology() {
           ].map((f) => <FeaturePill key={f} label={f} />)}
         </div>
         <P>
-          Your taste profile is learned from your ratings and onboarding choices — the For You feed personalizes
+          Your taste profile is learned from your ratings and onboarding choices, so the For You feed personalizes
           across devices as you rate more music.
         </P>
       </Section>
@@ -121,13 +121,13 @@ export function Methodology() {
       <Section title="The Problem with Raw Stream Counts">
         <P>
           Spotify had 75 million monthly active users in 2015. By 2026 that number has grown to an estimated
-          800 million — more than 10× larger. An album released in 2015 was competing for ears on a platform
+          800 million, more than 10× larger. An album released in 2015 was competing for ears on a platform
           one-tenth the size of today's. Comparing raw stream totals across that gap isn't a fair comparison;
           it's like comparing box office numbers from different eras without adjusting for ticket price inflation.
         </P>
         <P>
           A debut album that cracked 100M streams in 2016 reached roughly 1 in every 1,000 Spotify users.
-          The same 100M streams in 2024 only reached 1 in every 6,780. The music didn't get less popular —
+          The same 100M streams in 2024 only reached 1 in every 6,780. The music didn't get less popular;
           the ocean just got bigger.
         </P>
         <Callout>
@@ -147,7 +147,7 @@ export function Methodology() {
           Era Score = raw streams × (MAU today ÷ MAU at release)
         </Formula>
         <P>
-          A ×5 multiplier means Spotify had 5× fewer users when the album came out — so each of those streams
+          A ×5 multiplier means Spotify had 5× fewer users when the album came out, so each of those streams
           was 5× harder to earn than a stream today. The Charts leaderboard ranks albums by Era Score by default,
           with raw streams available as an alternative sort.
         </P>
@@ -159,7 +159,7 @@ export function Methodology() {
         </Formula>
         <P>
           MAU values between annual data points are linearly interpolated month-by-month, so an album released
-          in June 2019 uses a MAU figure that reflects the midpoint between the 2019 and 2020 annual totals —
+          in June 2019 uses a MAU figure that reflects the midpoint between the 2019 and 2020 annual totals,
           not a stale year-end snapshot.
         </P>
       </Section>
@@ -206,7 +206,7 @@ export function Methodology() {
           {[
             ["Day 0", "Release date from Spotify. Streams start at zero."],
             ["Endpoint", "Current total stream count scraped from Kworb.net."],
-            ["Curve shape", "Two-phase decay for post-2015 releases: exponential drop-off in the first 180 days (half-life ~45 days, reflecting the release-week spike and its decay), followed by a power-law catalog tail. Pre-2015 releases skip the spike phase entirely — they were already in catalog mode when streaming began — and use a pure power-law model from day one."],
+            ["Curve shape", "Two-phase decay for post-2015 releases: exponential drop-off in the first 180 days (half-life ~45 days, reflecting the release-week spike and its decay), followed by a power-law catalog tail. Pre-2015 releases skip the spike phase entirely (they were already in catalog mode when streaming began) and use a pure power-law model from day one."],
           ].map(([term, def]) => (
             <div key={term} style={{ display: "flex", gap: 12, fontSize: 13, lineHeight: 1.7 }}>
               <span style={{ fontWeight: 700, color: "var(--accent-a)", minWidth: 80, flexShrink: 0 }}>{term}</span>
@@ -216,7 +216,7 @@ export function Methodology() {
         </div>
         <Callout>
           The curve is calibrated so its cumulative area equals the known total stream count at today's date.
-          This means the shape is plausible and the endpoint is accurate — but the path between them is an
+          This means the shape is plausible and the endpoint is accurate, but the path between them is an
           approximation. A disclaimer is shown on every chart that uses modeled data.
         </Callout>
       </Section>
@@ -246,7 +246,7 @@ export function Methodology() {
       <Section title="Artist Known For">
         <P>
           The "Known For" section on artist pages highlights the artist's biggest hits using Spotify's popularity
-          ranking — no extra computation required. Spotify already surfaces an artist's top tracks sorted by
+          ranking, with no extra computation required. Spotify already surfaces an artist's top tracks sorted by
           total streams, so we display the top 4 as a visual card grid with album art, track name, and release year.
         </P>
       </Section>
@@ -273,8 +273,8 @@ export function Methodology() {
           with context explaining why data may be missing.
         </P>
         <P>
-          For releases before Spotify's launch (pre-2008), any trajectory shown is modeled from 2008 onward —
-          the chart reflects only the streaming portion of the album's commercial life.
+          For releases before Spotify's launch (pre-2008), any trajectory shown is modeled from 2008 onward.
+          The chart reflects only the streaming portion of the album's commercial life.
         </P>
       </Section>
 
@@ -298,7 +298,7 @@ export function Methodology() {
           build lists, and keep your taste profile synced across devices. We request only your basic Google profile.
         </P>
         {[
-          ["What we store", "Your Google display name and profile photo — used to show who you are in the app. Your ratings, reviews, lists, and follows are stored in our database."],
+          ["What we store", "Your Google display name and profile photo, used to show who you are in the app. Your ratings, reviews, lists, and follows are stored in our database."],
           ["What we don't store", "Your Google Drive, Gmail, contacts, or any other Google account data. We never read or write anything in your Google account beyond basic profile info."],
           ["Why Google?", "Google Sign-In is a familiar, secure, password-free way to create an account. Your Contour activity is kept entirely separate from your Google account."],
         ].map(([term, desc]) => (

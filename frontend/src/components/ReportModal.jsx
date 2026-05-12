@@ -81,7 +81,7 @@ export function ReportModal({ open, onClose, targetType, targetId, onSubmitted }
 
         {done ? (
           <div style={{ padding: "16px 0", textAlign: "center", color: "var(--accent-b)", fontSize: 14 }}>
-            ✓ Thanks — we'll review this shortly.
+            ✓ Thanks. We'll review this shortly.
           </div>
         ) : (
           <>

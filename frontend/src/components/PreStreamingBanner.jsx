@@ -32,7 +32,7 @@ export function PreStreamingBanner({ releaseDate }) {
           {isPreStreaming
             ? <>
                 Released in {year}, before Spotify's 2008 launch. Any trajectory is modeled from
-                when this {year < 1990 ? "classic" : "release"} entered the streaming era — so the chart
+                when this {year < 1990 ? "classic" : "release"} entered the streaming era, so the chart
                 starts in 2008, not {year}.
               </>
             : <>

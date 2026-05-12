@@ -169,8 +169,8 @@ export function ComparisonChart({ data, nameA, nameB, nameC, disclaimer }) {
         </div>
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
           {mode === "normalized"
-            ? "Cumulative streams per Spotify user — controls for platform growth"
-            : "Cumulative streams — unadjusted"}
+            ? "Cumulative streams per Spotify user (controls for platform growth)"
+            : "Cumulative streams, unadjusted"}
         </span>
       </div>
 

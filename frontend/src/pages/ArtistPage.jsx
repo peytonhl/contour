@@ -248,7 +248,7 @@ export function ArtistPage() {
               <h1 style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1 }}>{artist.name}</h1>
               {totalEraAdjusted > totalStreams * 1.1 && totalEraAdjusted > 0 && (
                 <span
-                  title="Era Score — combined catalog streams adjusted for Spotify's user base at each release's era"
+                  title="Era Score: combined catalog streams adjusted for Spotify's user base at each release's era"
                   style={{
                     fontSize: 11, fontWeight: 700,
                     padding: "3px 10px", borderRadius: 999,
@@ -366,7 +366,7 @@ export function ArtistPage() {
               {[
                 ["date",    "Latest",  "Sorted by release date, newest first"],
                 ["streams", "Streams", "Raw stream count from Spotify (or Last.fm scrobbles). Favors newer releases since Spotify's audience was much smaller before 2018."],
-                ["era",     "Era Score", "Stream count adjusted for when the album came out. Older albums are multiplied up to account for Spotify having fewer users at the time — lets you compare a 2012 album to a 2024 album fairly."],
+                ["era",     "Era Score", "Stream count adjusted for when the album came out. Older albums are multiplied up to account for Spotify having fewer users at the time, so you can compare a 2012 album to a 2024 album fairly."],
               ].map(([val, lbl, tip]) => (
                 <div key={val} style={{ position: "relative" }} className={`sort-btn-wrap sort-btn-wrap-${val}`}>
                   <button

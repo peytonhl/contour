@@ -66,9 +66,9 @@ function RiaaTooltip() {
             Awarded by the RIAA based on certified units (streams + downloads + physical sales).
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3, color: "var(--gold)", fontWeight: 600 }}>
-            <span>Gold — 500K units</span>
-            <span>Platinum — 1M units</span>
-            <span>Diamond — 10M units</span>
+            <span>Gold · 500K units</span>
+            <span>Platinum · 1M units</span>
+            <span>Diamond · 10M units</span>
           </div>
         </div>
       )}
@@ -103,7 +103,7 @@ function NoChartData({ releaseDate }) {
       <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-muted)" }}>No streaming data available</div>
       <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 420, lineHeight: 1.6, opacity: 0.75 }}>
         {isEarlyEra
-          ? `Releases from ${year} predate widespread streaming adoption — historical data is often absent from our sources.`
+          ? `Releases from ${year} predate widespread streaming adoption. Historical data is often absent from our sources.`
           : "Streaming data isn't available for this album yet. It may not be indexed by our data sources."}
       </div>
     </div>

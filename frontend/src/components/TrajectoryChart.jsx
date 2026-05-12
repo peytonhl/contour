@@ -66,7 +66,7 @@ export function TrajectoryChart({ trajectory, milestones = [], accentColor = "va
           </div>
         </div>
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          {mode === "normalized" ? "Cumulative streams per Spotify user" : "Cumulative streams — unadjusted"}
+          {mode === "normalized" ? "Cumulative streams per Spotify user" : "Cumulative streams, unadjusted"}
         </span>
       </div>
 

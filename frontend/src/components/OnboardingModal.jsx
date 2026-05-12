@@ -57,25 +57,67 @@ export function GenreChip({ genre, selected, onToggle }) {
   );
 }
 
+// ── Value prop icons (SVG, stroke-based — matches the rest of the app) ───────
+function StarIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  );
+}
+function ChartIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 17 9 11 13 15 21 7" />
+      <polyline points="14 7 21 7 21 14" />
+    </svg>
+  );
+}
+function HeadphonesIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z" />
+      <path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+    </svg>
+  );
+}
+function UploadIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+function BookmarkIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
 // ── Value prop cards ──────────────────────────────────────────────────────────
 const VALUE_PROPS = [
   {
-    icon: "★",
+    Icon: StarIcon,
     color: ACCENT_A,
     title: "Rate & review anything",
-    body: "Half-star ratings and reviews for albums, tracks, and artists — like Letterboxd, but for music.",
+    body: "Half-star ratings and reviews for albums, tracks, and artists. Think Letterboxd, but for music.",
   },
   {
-    icon: "📊",
+    Icon: ChartIcon,
     color: ACCENT_B,
     title: "See what actually streamed",
     body: "Era-adjusted scores level the playing field. A 2012 album that was massive gets the credit it deserves, even next to a 2024 release.",
   },
   {
-    icon: "🎵",
+    Icon: HeadphonesIcon,
     color: ACCENT_C,
     title: "Find music made for you",
-    body: "Rate 10 tracks in the feed and Contour learns your taste — genre, era, vibe. Every rating sharpens what comes next.",
+    body: "Rate 10 tracks in the feed and Contour learns your taste: genre, era, vibe. Every rating sharpens what comes next.",
   },
 ];
 
@@ -115,6 +157,20 @@ export function OnboardingModal() {
       const t = setTimeout(() => setVisible(true), 400);
       return () => clearTimeout(t);
     }
+  }, []);
+
+  // Replay-tutorial hook: any caller (e.g. profile settings menu) can fire
+  // this CustomEvent to re-open the onboarding from step 0 without a reload.
+  useEffect(() => {
+    function handler() {
+      localStorage.removeItem(STORAGE_KEY);
+      setStep(0);
+      setSelectedGenres([]);
+      setExiting(false);
+      setVisible(true);
+    }
+    window.addEventListener("contour:replay-onboarding", handler);
+    return () => window.removeEventListener("contour:replay-onboarding", handler);
   }, []);
 
   function dismiss() {
@@ -221,7 +277,7 @@ export function OnboardingModal() {
                   Rate. Review.<br />Discover.
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
-                  The only music app that combines ratings and reviews with real streaming analytics — so you can finally settle the debate.
+                  The only music app that combines ratings and reviews with real streaming analytics, so you can finally settle the debate.
                 </p>
               </div>
 
@@ -233,12 +289,13 @@ export function OnboardingModal() {
                     border: "1px solid var(--border)",
                   }}>
                     <span style={{
-                      fontSize: 16, width: 32, height: 32, flexShrink: 0,
+                      width: 32, height: 32, flexShrink: 0,
                       borderRadius: 8, background: `${vp.color}18`,
                       border: `1px solid ${vp.color}35`,
+                      color: vp.color,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
-                      {vp.icon}
+                      <vp.Icon />
                     </span>
                     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{vp.title}</span>
@@ -326,7 +383,7 @@ export function OnboardingModal() {
                   Already rate music elsewhere?
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>
-                  Bring your ratings from Rate Your Music — we'll match them to
+                  Bring your ratings from Rate Your Music. We'll match them to
                   albums on Contour so you don't start from scratch.
                 </p>
               </div>
@@ -337,16 +394,17 @@ export function OnboardingModal() {
                 display: "flex", alignItems: "center", gap: 12,
               }}>
                 <span style={{
-                  fontSize: 18, width: 36, height: 36, flexShrink: 0,
+                  width: 36, height: 36, flexShrink: 0,
                   borderRadius: 8, background: `${ACCENT_A}18`,
                   border: `1px solid ${ACCENT_A}35`,
+                  color: ACCENT_A,
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  📥
+                  <UploadIcon />
                 </span>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  Export your data from RYM, upload the CSV — every rated album
-                  is matched on Spotify and saved to your Contour profile.
+                  Export your data from RYM and upload the CSV. Every rated
+                  album is matched on Spotify and saved to your Contour profile.
                 </div>
               </div>
 
@@ -396,12 +454,13 @@ export function OnboardingModal() {
                 display: "flex", alignItems: "center", gap: 12,
               }}>
                 <span style={{
-                  fontSize: 18, width: 36, height: 36, flexShrink: 0,
+                  width: 36, height: 36, flexShrink: 0,
                   borderRadius: 8, background: `${ACCENT_B}18`,
                   border: `1px solid ${ACCENT_B}35`,
+                  color: ACCENT_B,
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  🎯
+                  <BookmarkIcon />
                 </span>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
                   Tap <strong style={{ color: "var(--text)" }}>+ Want to listen</strong> on

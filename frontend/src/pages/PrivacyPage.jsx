@@ -39,10 +39,10 @@ export function PrivacyPage() {
       <Section title="1. Information We Collect">
         <p>When you sign in with Google, we receive from Google's API:</p>
         <ul style={{ paddingLeft: 20, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-          <li><strong style={{ color: "var(--text)" }}>Google user ID</strong> — a unique identifier for your Google account</li>
-          <li><strong style={{ color: "var(--text)" }}>Display name</strong> — the name on your Google profile</li>
-          <li><strong style={{ color: "var(--text)" }}>Profile photo</strong> — your Google profile image</li>
-          <li><strong style={{ color: "var(--text)" }}>Email address</strong> — used only for account identification, never for marketing</li>
+          <li><strong style={{ color: "var(--text)" }}>Google user ID</strong>: a unique identifier for your Google account</li>
+          <li><strong style={{ color: "var(--text)" }}>Display name</strong>: the name on your Google profile</li>
+          <li><strong style={{ color: "var(--text)" }}>Profile photo</strong>: your Google profile image</li>
+          <li><strong style={{ color: "var(--text)" }}>Email address</strong>: used only for account identification, never for marketing</li>
         </ul>
         <p style={{ marginTop: 10 }}>
           We also store content you create on Contour: ratings, reviews, favorite artists,
@@ -70,7 +70,7 @@ export function PrivacyPage() {
           <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" style={{ color: ACCENT_A }}>
             Google's Privacy Policy
           </a>) and the <strong style={{ color: "var(--text)" }}>Spotify API</strong> to retrieve
-          music metadata — album art, track names, and stream data. Spotify is used only for
+          music metadata such as album art, track names, and stream data. Spotify is used only for
           music data, not for user authentication. Contour is not affiliated with Spotify or Google.
         </p>
       </Section>

@@ -175,7 +175,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
         const res = await api.searchAlbums(val.trim());
         setResults(res || []);
       } catch {
-        setSearchError("Search failed — check your connection and try again.");
+        setSearchError("Search failed. Check your connection and try again.");
         setResults([]);
       } finally {
         setSearching(false);
@@ -241,7 +241,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
               <div>
                 <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>Pick your top albums</h3>
                 <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
-                  Choose up to 4 — {picks.length}/4 selected
+                  Choose up to 4 · {picks.length}/4 selected
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -324,7 +324,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
             )}
             {!searching && !searchError && query.length >= 2 && results.length === 0 && (
               <div style={{ textAlign: "center", color: "var(--text-muted)", padding: "28px 0", fontSize: 13 }}>
-                No albums found — try a different title or artist name
+                No albums found. Try a different title or artist name.
               </div>
             )}
             {!searching && results.length === 0 && query.length < 2 && (
@@ -427,7 +427,7 @@ function GenreEditorSheet({ currentGenres, onSave, onClose }) {
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Edit your genres</h3>
               <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--text-muted)" }}>
-                {selected.length > 0 ? `${selected.length} selected` : "None selected — your feed will use defaults"}
+                {selected.length > 0 ? `${selected.length} selected` : "None selected · your feed will use defaults"}
               </p>
             </div>
             <button
@@ -661,7 +661,7 @@ export function TasteSection({ userId, isOwner }) {
         {/* Empty state — owner has no content at all */}
         {isOwner && !hasAnyContent && (
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
-            Rate music to build your taste profile — your genres and rating history will appear here.
+            Rate music to build your taste profile. Your genres and rating history will appear here.
           </p>
         )}
       </div>
