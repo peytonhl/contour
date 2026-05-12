@@ -104,6 +104,8 @@ class SavedComparison(Base):
     result_json: Mapped[str] = mapped_column(Text, nullable=False)
     name_a: Mapped[str] = mapped_column(String(256))
     name_b: Mapped[str] = mapped_column(String(256))
+    # Optional third side — null for 2-way comparisons (the legacy default).
+    name_c: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
 
 
 class UserFollow(Base):

@@ -60,9 +60,24 @@ button, a, [role="button"] {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
+/* Three-side variant — search slots + AlbumCards when Side C is in play.
+   Falls back to two cols on tablet so cells don't get crushed below ~280px. */
+.compare-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .compare-grid-3 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
 
 @media (max-width: 640px) {
   .compare-grid {
+    grid-template-columns: 1fr;
+  }
+  .compare-grid-3 {
     grid-template-columns: 1fr;
   }
 

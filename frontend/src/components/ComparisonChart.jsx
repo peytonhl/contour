@@ -13,6 +13,7 @@ import {
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
+const ACCENT_C = "#fb923c";
 
 function CertLabel({ viewBox, value, color, index }) {
   if (!viewBox) return null;
@@ -25,16 +26,19 @@ function CertLabel({ viewBox, value, color, index }) {
   );
 }
 
-function mergeTrajectories(trajA, trajB) {
+// Merge any number of trajectories into a single row-per-day array. Each
+// series writes to its own pair of fields ({k}_raw, {k}_norm) so recharts
+// can pick them up individually.
+function mergeTrajectories(trajectories) {
   const map = new Map();
-  for (const pt of trajA) {
-    map.set(pt.day, { day: pt.day, a_raw: pt.streams_cumulative, a_norm: pt.normalized });
-  }
-  for (const pt of trajB) {
-    const existing = map.get(pt.day) ?? { day: pt.day };
-    existing.b_raw = pt.streams_cumulative;
-    existing.b_norm = pt.normalized;
-    map.set(pt.day, existing);
+  for (const { key, traj } of trajectories) {
+    if (!traj?.length) continue;
+    for (const pt of traj) {
+      const existing = map.get(pt.day) ?? { day: pt.day };
+      existing[`${key}_raw`] = pt.streams_cumulative;
+      existing[`${key}_norm`] = pt.normalized;
+      map.set(pt.day, existing);
+    }
   }
   return Array.from(map.values()).sort((a, b) => a.day - b.day);
 }
@@ -59,7 +63,7 @@ function buildCertLines(trajectory, milestones) {
   });
 }
 
-function CustomTooltip({ active, payload, label, mode, nameA, nameB }) {
+function CustomTooltip({ active, payload, label, mode, nameMap }) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{
@@ -73,27 +77,40 @@ function CustomTooltip({ active, payload, label, mode, nameA, nameB }) {
       <div style={{ color: "var(--text-muted)", marginBottom: 6, fontSize: 12 }}>
         Day {label}
       </div>
-      {payload.map((p) => (
-        <div key={p.dataKey} style={{ color: p.color }}>
-          <strong>{p.dataKey.startsWith("a_") ? nameA : nameB}:</strong>{" "}
-          {mode === "normalized"
-            ? `${p.value?.toFixed(3)} streams/user`
-            : Number(p.value)?.toLocaleString()}
-        </div>
-      ))}
+      {payload.map((p) => {
+        const seriesKey = p.dataKey.split("_")[0]; // "a" | "b" | "c"
+        return (
+          <div key={p.dataKey} style={{ color: p.color }}>
+            <strong>{nameMap[seriesKey]}:</strong>{" "}
+            {mode === "normalized"
+              ? `${p.value?.toFixed(3)} streams/user`
+              : Number(p.value)?.toLocaleString()}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-export function ComparisonChart({ data, nameA, nameB, disclaimer }) {
+export function ComparisonChart({ data, nameA, nameB, nameC, disclaimer }) {
   const [mode, setMode] = React.useState("normalized");
 
-  const merged = mergeTrajectories(data.trajectory_a, data.trajectory_b);
-  const dataKeyA = mode === "normalized" ? "a_norm" : "a_raw";
-  const dataKeyB = mode === "normalized" ? "b_norm" : "b_raw";
+  const hasC = !!data.album_c && !!data.trajectory_c;
+  const merged = mergeTrajectories([
+    { key: "a", traj: data.trajectory_a },
+    { key: "b", traj: data.trajectory_b },
+    ...(hasC ? [{ key: "c", traj: data.trajectory_c }] : []),
+  ]);
+
+  const suffix = mode === "normalized" ? "_norm" : "_raw";
+  const dataKeyA = `a${suffix}`;
+  const dataKeyB = `b${suffix}`;
+  const dataKeyC = `c${suffix}`;
+  const nameMap = { a: nameA, b: nameB, c: nameC };
 
   const certLinesA = buildCertLines(data.trajectory_a, data.album_a.riaa_milestones);
   const certLinesB = buildCertLines(data.trajectory_b, data.album_b.riaa_milestones);
+  const certLinesC = hasC ? buildCertLines(data.trajectory_c, data.album_c.riaa_milestones) : [];
 
   return (
     <div style={{
@@ -172,9 +189,9 @@ export function ComparisonChart({ data, nameA, nameB, disclaimer }) {
             tickFormatter={(v) => formatYAxis(v, mode)}
             width={64}
           />
-          <Tooltip content={<CustomTooltip mode={mode} nameA={nameA} nameB={nameB} />} />
+          <Tooltip content={<CustomTooltip mode={mode} nameMap={nameMap} />} />
           <Legend
-            formatter={(value) => value === dataKeyA ? nameA : nameB}
+            formatter={(value) => nameMap[value.split("_")[0]]}
             wrapperStyle={{ fontSize: 13, paddingTop: 8 }}
           />
 
@@ -188,11 +205,20 @@ export function ComparisonChart({ data, nameA, nameB, disclaimer }) {
               strokeDasharray="4 3" strokeOpacity={0.5}
               label={<CertLabel value={cl.label} color={ACCENT_B} index={i} />} />
           ))}
+          {certLinesC.map((cl, i) => (
+            <ReferenceLine key={`c-${cl.label}`} x={cl.day} stroke={ACCENT_C}
+              strokeDasharray="4 3" strokeOpacity={0.5}
+              label={<CertLabel value={cl.label} color={ACCENT_C} index={i} />} />
+          ))}
 
           <Line type="monotone" dataKey={dataKeyA} stroke={ACCENT_A} strokeWidth={2.5}
             dot={false} name={dataKeyA} connectNulls />
           <Line type="monotone" dataKey={dataKeyB} stroke={ACCENT_B} strokeWidth={2.5}
             dot={false} name={dataKeyB} connectNulls />
+          {hasC && (
+            <Line type="monotone" dataKey={dataKeyC} stroke={ACCENT_C} strokeWidth={2.5}
+              dot={false} name={dataKeyC} connectNulls />
+          )}
         </LineChart>
       </ResponsiveContainer>
 

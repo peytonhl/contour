@@ -48,8 +48,12 @@ class AlbumMeta(BaseModel):
 class ComparisonResponse(BaseModel):
     album_a: AlbumMeta
     album_b: AlbumMeta
+    # Side C is optional. When the request omits album_c_id (and track_c_id),
+    # album_c / trajectory_c are None and the frontend renders a 2-way chart.
+    album_c: Optional[AlbumMeta] = None
     trajectory_a: List[TrajectoryPoint]
     trajectory_b: List[TrajectoryPoint]
+    trajectory_c: Optional[List[TrajectoryPoint]] = None
     data_disclaimer: str
     enrichment_pending: bool
 
@@ -66,10 +70,13 @@ DISCLAIMER = (
 async def compare_albums(
     album_a_id: str = Query(...),
     album_b_id: str = Query(...),
+    album_c_id: Optional[str] = Query(None, description="Optional third album to overlay"),
     edition_ids_a: Optional[str] = Query(None, description="Comma-separated Spotify IDs to aggregate for album A"),
     edition_ids_b: Optional[str] = Query(None, description="Comma-separated Spotify IDs to aggregate for album B"),
+    edition_ids_c: Optional[str] = Query(None, description="Comma-separated Spotify IDs to aggregate for album C"),
     track_a_id: Optional[str] = Query(None, description="If set, treat slot A as a track instead of an album"),
     track_b_id: Optional[str] = Query(None, description="If set, treat slot B as a track instead of an album"),
+    track_c_id: Optional[str] = Query(None, description="If set, treat slot C as a track instead of an album"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
 ):
@@ -114,21 +121,67 @@ async def compare_albums(
         streams_b, source_b, pending_b = await _resolve_streams(ids_b, meta_b, background_tasks, db)
         entity_type_b, album_name_b = "album", None
 
+    # --- Slot C (optional) ---
+    meta_c = None
+    streams_c = None
+    source_c = "none"
+    pending_c = False
+    entity_type_c = "album"
+    album_name_c = None
+    if track_c_id:
+        try:
+            meta_c = await spotify.get_track(track_c_id)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"Track C not found: {e}")
+        streams_c, source_c, pending_c = await _resolve_track_streams(track_c_id, meta_c, background_tasks, db)
+        entity_type_c, album_name_c = "track", meta_c.get("album_name")
+    elif album_c_id:
+        ids_c = [i.strip() for i in edition_ids_c.split(",")] if edition_ids_c else [album_c_id]
+        try:
+            meta_c = await spotify.get_album(album_c_id)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"Album C not found: {e}")
+        streams_c, source_c, pending_c = await _resolve_streams(ids_c, meta_c, background_tasks, db)
+
     release_a = parse_release_date(meta_a["release_date"], meta_a["release_date_precision"])
     release_b = parse_release_date(meta_b["release_date"], meta_b["release_date_precision"])
+    release_c = parse_release_date(meta_c["release_date"], meta_c["release_date_precision"]) if meta_c else None
 
     today = date.today()
     if release_a is None or release_a.year < 2006:
         raise HTTPException(status_code=422, detail="Item A released before 2006. Pre-2006 is not supported — Spotify launched in 2008 and reliable stream totals require at least a few years of platform history.")
     if release_b is None or release_b.year < 2006:
         raise HTTPException(status_code=422, detail="Item B released before 2006. Pre-2006 is not supported — Spotify launched in 2008 and reliable stream totals require at least a few years of platform history.")
+    if meta_c is not None and (release_c is None or release_c.year < 2006):
+        raise HTTPException(status_code=422, detail="Item C released before 2006. Pre-2006 is not supported — Spotify launched in 2008 and reliable stream totals require at least a few years of platform history.")
     if release_a > today:
         release_a = today
     if release_b > today:
         release_b = today
+    if release_c and release_c > today:
+        release_c = today
 
     traj_a = build_trajectory(release_a, streams_a) if streams_a else []
     traj_b = build_trajectory(release_b, streams_b) if streams_b else []
+    traj_c = build_trajectory(release_c, streams_c) if (release_c and streams_c) else []
+
+    album_c_meta = None
+    if meta_c is not None:
+        album_c_meta = AlbumMeta(
+            id=meta_c["id"],
+            name=meta_c["name"],
+            artists=meta_c["artists"],
+            release_date=meta_c["release_date"],
+            label=meta_c.get("label"),
+            total_streams=streams_c,
+            stream_source=source_c,
+            stream_warning=_warning(source_c, meta_c["name"]),
+            popularity=meta_c.get("popularity"),
+            image_url=meta_c.get("image_url"),
+            riaa_milestones=riaa_milestones(streams_c),
+            entity_type=entity_type_c,
+            album_name=album_name_c,
+        )
 
     return ComparisonResponse(
         album_a=AlbumMeta(
@@ -161,10 +214,12 @@ async def compare_albums(
             entity_type=entity_type_b,
             album_name=album_name_b,
         ),
+        album_c=album_c_meta,
         trajectory_a=[TrajectoryPoint(**p) for p in traj_a],
         trajectory_b=[TrajectoryPoint(**p) for p in traj_b],
+        trajectory_c=[TrajectoryPoint(**p) for p in traj_c] if album_c_meta else None,
         data_disclaimer=DISCLAIMER,
-        enrichment_pending=pending_a or pending_b,
+        enrichment_pending=pending_a or pending_b or pending_c,
     )
 
 
