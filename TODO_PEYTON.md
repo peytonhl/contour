@@ -22,8 +22,7 @@ Last updated: 2026-05-12
 - [x] Vercel Web Analytics framework toggled to "Other".
 - [x] `is_admin` flag flipped on Peyton's user — Admin link in nav, moderation
       queue accessible at `/admin/reports`.
-- [x] Apple Developer Program membership purchased (awaiting Apple's approval
-      — usually 24–48 hours).
+- [x] Apple Developer Program membership active.
 - [x] UGC reporting + user-blocking flows shipped.
 - [x] Compare gained an optional Side C (overlay up to 3 trajectories);
       "Try these" suggestions removed.
@@ -36,52 +35,64 @@ Last updated: 2026-05-12
       `C:/Users/peytonhl/Secrets/contour-release.keystore`.
 - [x] `frontend/android/keystore.properties` created (gitignored) so
       `./gradlew bundleRelease` can sign automatically.
+- [x] **Codemagic CI iOS build pipeline working end-to-end.** Signing,
+      archive, IPA build, App Store Connect upload, TestFlight processing
+      — all green. First build (`401fb390-...`, build #1) reached
+      TestFlight 2026-05-12. See [APP_STORE.md](APP_STORE.md).
+- [x] **iOS App Store Connect record created.** Name "Contour Music"
+      (since "Contour" was taken). Apple ID `6768775634`. Bundle ID
+      `com.peytonhl.contour`.
+- [x] **iOS distribution signing.** RSA private key at
+      `C:\Users\peytonhl\Secrets\contour_signing_key`, mirrored into the
+      `CERTIFICATE_PRIVATE_KEY` env var in the Codemagic `contour-prod`
+      group. Distribution cert + provisioning profile auto-managed.
+- [x] **Live-update Capacitor mode** — iOS/Android native shells load
+      `contour-rosy.vercel.app` on every launch. Web/backend changes reach
+      mobile users in seconds via Vercel/Railway without an IPA rebuild.
+      See [CLAUDE.md](CLAUDE.md) → "iOS & Android: live-update shell model".
+- [x] **SigninGate** — full-screen first-launch modal with sign-in CTAs +
+      "Browse without signing in" guest mode (shipped 2026-05-12).
+- [x] **OAuth return-to-app via `contour://` URL scheme** — Google sign-in
+      from inside the native shell opens external Safari, then deep-links
+      back into the app with the token (shipped in `ios-v0.1.11`).
 
 ---
 
-## 🟠 Blocking Sign in with Apple activation
+## ✅ Apple Developer state — mostly done
 
-Required for iOS App Store (Guideline 4.8). Not blocking Play Store.
+All Apple Developer-portal work is complete. Reference for state-of-the-world:
 
-- [x] **Apple Developer Program membership** purchased — awaiting approval.
-- [ ] Once approved, in Apple Developer portal → Certificates, Identifiers & Profiles → Identifiers → "+"
-  - [ ] Create an **App ID** with bundle ID `com.peytonhl.contour`. Capability:
-        Sign in with Apple. (Push Notifications can stay off for v1.)
-  - [ ] Create a **Services ID** (e.g. `com.peytonhl.contour.signin`). Configure
-        domain `contour-rosy.vercel.app` and redirect URL
-        `https://contour-rosy.vercel.app/auth/success`.
-  - [ ] Create a **Sign in with Apple key** under Keys → "+". Download the .p8
-        file (it can only be downloaded once — save it). Note the Key ID.
-- [ ] **Railway env var:** `APPLE_CLIENT_ID=com.peytonhl.contour.signin`
-- [ ] **Vercel env var:** `VITE_APPLE_CLIENT_ID=com.peytonhl.contour.signin`
+- [x] **Apple Developer Program membership** active. Team ID `NUBAA7ZY2X`.
+- [x] **App ID** `com.peytonhl.contour` registered with Sign in with Apple,
+      MusicKit, and Push Notifications capabilities enabled.
+- [x] **Services ID** `com.peytonhl.contour.signin` configured with
+      `contour-rosy.vercel.app` as the domain and
+      `https://contour-rosy.vercel.app/auth/success` as the redirect.
+- [x] **Sign in with Apple key** (`N8XMJRY4GH`) — `.p8` at
+      `C:\Users\peytonhl\Secrets\AuthKey_N8XMJRY4GH.p8`.
+- [x] **MusicKit key** (`GGQAY4K9PC`) — `.p8` at
+      `C:\Users\peytonhl\Secrets\AuthKey_GGQAY4K9PC.p8`.
+- [x] **App Store Connect API key** (`D75T7XD5LM`) — `.p8` at
+      `C:\Users\peytonhl\Secrets\AuthKey_D75T7XD5LM.p8`. Used by Codemagic
+      for signing + uploads.
 
-Once both env vars are set, the Apple button appears on desktop and mobile,
-and `POST /auth/apple` accepts requests. 10 backend tests already cover the
-linking + token-validation edge cases.
+Verify these env vars are set in **Railway** (backend) and **Vercel**
+(frontend) — if any are missing, the corresponding feature is dormant:
 
-**⚠ Note for iOS submission:** the current button uses Apple's *web* JS lib
-inside a WebView. Apple reviewers may demand the *native* flow
-(`ASAuthorizationAppleIDProvider`) under Guideline 4.8. See APP_STORE.md
-top-of-doc — when you're ready to ship to TestFlight, ask me to add
-`@capacitor-community/apple-sign-in` (~30 min of work).
+| Env var | Where | Used for | Test if active |
+|---|---|---|---|
+| `APPLE_CLIENT_ID` | Railway | Backend Sign in with Apple token verification | `POST /auth/apple` returns non-503 |
+| `VITE_APPLE_CLIENT_ID` | Vercel | Frontend shows "Sign in with Apple" button | Apple button visible on Layout / SigninGate |
+| `APPLE_MUSIC_TEAM_ID` | Railway | MusicKit JWT generation | Apple Music pill appears on album pages |
+| `APPLE_MUSIC_KEY_ID` | Railway | Same | Same |
+| `APPLE_MUSIC_PRIVATE_KEY` | Railway | Same — paste the full PEM including BEGIN/END | `/apple-music/debug` shows `key_loaded: true` |
 
----
-
-## 🟠 Blocking Apple Music deep links activation
-
-Same Apple Developer account as above.
-
-- [ ] In Apple Developer portal → Keys → "+":
-  - [ ] Create a **MusicKit key**. Download the .p8 file (one-time download).
-        Note the Key ID and your Team ID.
-- [ ] **Railway env vars:**
-  - `APPLE_MUSIC_TEAM_ID=...` (10-char alphanumeric, found on Membership page)
-  - `APPLE_MUSIC_KEY_ID=...` (10-char alphanumeric from the MusicKit key)
-  - `APPLE_MUSIC_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"`
-    (paste the .p8 contents; literal `\n` newlines are fine)
-
-Once those are set, album/track pages start showing "Apple Music ↗" pills
-next to "Spotify ↗" whenever a match exists.
+Open issue: the iOS app currently uses Apple's **web** JS lib for Sign in
+with Apple inside the WebView. Apple Guideline 4.8 may demand the native
+flow (`ASAuthorizationAppleIDProvider`). Mitigation if rejected: add
+`@capacitor-community/apple-sign-in` (~30 min). Decision deferred to first
+external beta review feedback. See [APP_STORE.md](APP_STORE.md) →
+"Guideline 4.8".
 
 ---
 
@@ -171,24 +182,92 @@ the upgrade-cadence implications.
 
 ---
 
-## 🟠 Blocking App Store launch
+## 🍎 iOS — three-tier beta + launch sequence
 
+Don't try to ship all three tiers at once. Live in Tier 1 (internal) for a
+week or two, then promote to Tier 2 when stable, then Tier 3 once you're
+ready for the App Store. Full architectural context in
+[APP_STORE.md](APP_STORE.md).
+
+Already done (no action needed):
 - [x] ~~Xcode + Mac~~ — bypassed entirely via Codemagic CI.
 - [x] ~~Run `npx cap add ios` on a Mac~~ — Codemagic does this in every build.
-- [x] **First IPA built + uploaded to App Store Connect** via Codemagic
-      (build `ios-v0.1.7` → asset `401fb390-2392-429c-8109-80d0e727c51f`).
-- [ ] **Fill in TestFlight Test Information** at
-      https://appstoreconnect.apple.com/apps/6768775634/testflight/test-info
-      (feedback email + reviewer contact info). One-time blocker for the
-      first build to go live to internal testers. Future builds auto-pass
-      this check once filled.
-- [ ] **Graphics** — covered in the "Blocking everything visual" section
-      (one icon master serves Play Store + App Store + PWA).
-- [ ] **Ask me to add the native Sign in with Apple plugin.** Hard blocker
-      for App Store submission (~30 min work). See APP_STORE.md top-of-doc.
+- [x] **Codemagic build pipeline working end-to-end** — sign, archive,
+      upload, TestFlight processing all working.
+- [x] **Live-update mode** — iOS shell loads `contour-rosy.vercel.app`
+      on every launch. Web/backend changes reach iOS testers in seconds
+      with no IPA rebuild needed.
+- [x] **OAuth return-to-app** (`ios-v0.1.11+`) — `contour://` URL scheme
+      registered, `@capacitor/app` plugin baked in. Google sign-in opens
+      external Safari and returns to the app on completion.
+- [x] **TestFlight Test Information** filled in (feedback email, reviewer
+      contact, beta description).
+
+### 🟢 Tier 1 — Internal TestFlight beta (this is where you live right now)
+
+No Apple review needed. Up to 100 testers, each added by Apple ID email.
+
+- [ ] **Install `ios-v0.1.11` on your iPhone** when Codemagic finishes,
+      smoke-test the OAuth-return-to-app fix end-to-end.
+- [ ] **Invite first round of internal testers** in App Store Connect →
+      Users and Access. Friends, family, anyone with an Apple ID. They
+      install via TestFlight on their phone within minutes of the invite
+      email.
+- [ ] **Iterate.** Every web/backend deploy reaches them instantly via
+      Vercel/Railway. Tag a fresh `ios-vX.Y.Z` only when you change native
+      config (new Capacitor plugin, icon, etc.). Apple does not gate any
+      of this.
+
+### 🟡 Tier 2 — External TestFlight (when build feels stable)
+
+First build of a version (`1.0`) needs ~24h Apple beta review. Subsequent
+builds within the same version usually pass through in minutes. Up to
+10,000 testers via email or public link.
+
+Additional blockers before submitting (none of these are needed for Tier 1):
+
+- [ ] **App icon** — covered in the "Blocking everything visual" section
+      above. Apple's beta reviewers reject builds with default/placeholder
+      icons. This is the main thing gating Tier 2 right now.
+- [ ] **App Review demo account.** Create a throwaway Gmail like
+      `contour.appstorereview@gmail.com`. Sign into Contour with it once
+      via Google OAuth (creates the user record on the backend). Paste
+      the credentials into App Store Connect → TestFlight → Test
+      Information → Sign-in Required → Yes → Demo Account.
+- [ ] **Create the External Testing group** in App Store Connect →
+      TestFlight → External Testing → `+`. Name it "Public Beta" or
+      "Friends & Family." Enable public link in Settings.
+- [ ] **Assign `ios-v0.1.11+` to the external group** and click
+      "Submit for Beta App Review."
+- [ ] **Wait ~24h.** Apple emails when approved. External testers can
+      then install via the public link.
+
+### 🟠 Tier 3 — Full App Store production launch
+
+Apple reviews each release (~24–72h typical). The bar is higher than for
+TestFlight.
+
+Additional blockers (on top of everything in Tier 2):
+
+- [ ] **Screenshots** — covered in "Blocking everything visual" section.
+      Required, ≥3 per device size class. The 6.7" set covers 6.5" and
+      5.5" via Apple's auto-downsampling.
+- [ ] **Privacy Policy content** at https://contour-rosy.vercel.app/privacy.
+      Route exists, content TBD. Required.
+- [ ] **Terms of Service page.** Required.
+- [ ] **Native Sign in with Apple plugin (optional / risk-dependent).**
+      Guideline 4.8 may still demand the native flow even though
+      OAuth-via-Safari + URL scheme works for Google. Decide based on
+      Tier 2 reviewer feedback whether to add
+      `@capacitor-community/apple-sign-in` (~30 min) before submitting
+      for App Store review.
 - [ ] **Review the App Privacy form answers** in [APP_STORE.md](APP_STORE.md)
-      §"App Store Connect listing checklist" — update if anything has changed
-      (e.g. you don't end up using Session Replay).
+      §"App Privacy form" — update if anything has changed (e.g. you
+      don't end up using Session Replay).
+- [ ] **Age rating questionnaire.** Expected outcome: 12+.
+- [ ] **Subtitle + category metadata** — see APP_STORE.md → "App
+      Information" checklist.
+- [ ] **Submit for App Store review** via App Store Connect → Distribution.
 
 ---
 
