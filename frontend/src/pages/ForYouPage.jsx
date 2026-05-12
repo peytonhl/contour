@@ -12,6 +12,7 @@ function tierSourceOf(track) {
 }
 
 import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
+import { FollowingTab } from "../components/FollowingTab.jsx";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -159,6 +160,20 @@ function ShareIcon() {
 function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating, cardIndex, totalCards, onNext, onPrev }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
+  // Some Spotify/Deezer responses ship a track without album.images populated
+  // (e.g. fresh releases mid-indexing). When that happens, lazily fetch the
+  // album to backfill the cover so the card doesn't render as a blank tile.
+  const [backfillImage, setBackfillImage] = useState(null);
+  const effectiveImage = track.image_url || backfillImage;
+  useEffect(() => {
+    setBackfillImage(null);
+    if (track.image_url || !track.album_id) return;
+    let cancelled = false;
+    api.getAlbum(track.album_id).then((a) => {
+      if (!cancelled && a?.image_url) setBackfillImage(a.image_url);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [track.id, track.image_url, track.album_id]);
   const [progress, setProgress] = useState(0);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
@@ -260,16 +275,16 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
     }}>
       {/* Album art — top portion (44% leaves room for all controls below) */}
       <div style={{ flex: "0 0 44%", position: "relative", overflow: "hidden" }}>
-        {track.image_url
+        {effectiveImage
           ? <>
               <div style={{
                 position: "absolute", inset: "-20px",
-                backgroundImage: `url(${track.image_url})`,
+                backgroundImage: `url(${effectiveImage})`,
                 backgroundSize: "cover", backgroundPosition: "center",
                 filter: "blur(20px) brightness(0.4)",
               }} />
               <img
-                src={track.image_url}
+                src={effectiveImage}
                 alt={track.album_name}
                 style={{
                   position: "absolute", top: "50%", left: "50%",
@@ -1003,10 +1018,9 @@ export function ForYouPage() {
       background: "#0a0a0a",
       overflow: "hidden",
     }}>
-      {/* Tab bar — two discovery modes:
-            • For You = audio-driven, TikTok-style swipe (the original feed)
-            • Reviews = read what the community is saying (formerly /feed's "All Reviews")
-          The social timeline lives entirely on /feed now; it's not a tab here. */}
+      {/* Three modes — For You (audio swipe), Friends (followed users'
+          activity), Community (global review feed). /feed was retired:
+          this is the single home for all three discovery modes. */}
       <div style={{
         display: "flex",
         borderBottom: "1px solid rgba(255,255,255,0.1)",
@@ -1014,16 +1028,20 @@ export function ForYouPage() {
         background: "#0a0a0a",
       }}>
         <button style={tabStyle(tab === "foryou")} onClick={() => setTab("foryou")}>For You</button>
-        <button style={tabStyle(tab === "reviews")} onClick={() => setTab("reviews")}>Reviews</button>
+        <button style={tabStyle(tab === "friends")} onClick={() => setTab("friends")}>Friends</button>
+        <button style={tabStyle(tab === "community")} onClick={() => setTab("community")}>Community</button>
       </div>
 
-      {/* Content — both panels stay mounted so ForYouFeed never loses its
-          track list or scroll position when the user flips tabs. */}
+      {/* Content — all three panels stay mounted so ForYouFeed never loses
+          its track list or scroll position when the user flips tabs. */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative", background: "var(--bg)" }}>
         <div style={{ display: tab === "foryou" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <ForYouFeed />
         </div>
-        <div style={{ display: tab === "reviews" ? "block" : "none", height: "100%", overflowY: "auto" }}>
+        <div style={{ display: tab === "friends" ? "block" : "none", height: "100%", overflowY: "auto" }}>
+          <FollowingTab />
+        </div>
+        <div style={{ display: tab === "community" ? "block" : "none", height: "100%", overflowY: "auto" }}>
           <GlobalReviewsFeed />
         </div>
       </div>

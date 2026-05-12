@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-import { BadgeChips } from "../pages/FeedPage.jsx";
+import { BadgeChips, BadgeLeaderboard } from "./Badges.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT_A = "#a78bfa";
@@ -136,6 +136,7 @@ export function GlobalReviewsFeed() {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [badges, setBadges] = useState(null);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   useEffect(() => {
     api.getBadges().then(setBadges).catch(() => {});
@@ -160,20 +161,41 @@ export function GlobalReviewsFeed() {
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 20px" }}>
-      <div style={{ display: "flex", gap: 0, padding: "0 0 6px", borderBottom: "1px solid var(--border)", marginBottom: 4 }}>
-        {SORT_LABELS.map(({ key, label }) => (
-          <button key={key} onClick={() => setSort(key)}
-            style={{
-              padding: "4px 14px", fontSize: 12, fontWeight: sort === key ? 700 : 400,
-              background: sort === key ? "var(--surface2)" : "none",
-              border: sort === key ? "1px solid var(--border)" : "1px solid transparent",
-              borderRadius: 20, color: sort === key ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", marginRight: 4,
-            }}>
-            {label}
-          </button>
-        ))}
+      {/* Sort row + Top 5 leaderboard toggle. Top 5 surfaces community-wide
+          "discover people to follow" data; lives here since it's the only
+          community-flavored surface after the /feed page was retired. */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 0 6px", borderBottom: "1px solid var(--border)", marginBottom: showLeaderboard ? 14 : 4 }}>
+        <div style={{ display: "flex", gap: 0 }}>
+          {SORT_LABELS.map(({ key, label }) => (
+            <button key={key} onClick={() => setSort(key)}
+              style={{
+                padding: "4px 14px", fontSize: 12, fontWeight: sort === key ? 700 : 400,
+                background: sort === key ? "var(--surface2)" : "none",
+                border: sort === key ? "1px solid var(--border)" : "1px solid transparent",
+                borderRadius: 20, color: sort === key ? "var(--text)" : "var(--text-muted)",
+                cursor: "pointer", marginRight: 4,
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowLeaderboard((v) => !v)}
+          title="Top 5 leaderboard"
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 20,
+            background: showLeaderboard ? "var(--surface2)" : "transparent",
+            border: `1px solid ${showLeaderboard ? "var(--border)" : "transparent"}`,
+            color: showLeaderboard ? "var(--text)" : "var(--text-muted)",
+            cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          🏆 Top 5
+        </button>
       </div>
+
+      {showLeaderboard && <BadgeLeaderboard badges={badges} />}
 
       {loading && (
         <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>

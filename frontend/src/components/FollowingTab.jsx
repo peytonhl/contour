@@ -6,54 +6,8 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
 
-const ENTITY_COLOR = { album: ACCENT_A, track: ACCENT_B, artist: "#fb923c" };
-
-// ── Badge definitions ─────────────────────────────────────────────────────────
-export const BADGE_DEFS = [
-  { key: "critics",      emoji: "✍️",  label: "Top Critic",     color: "#a78bfa", title: "Top 5 most reviews written" },
-  { key: "influencers",  emoji: "⬆️",  label: "Influential",    color: "#34d399", title: "Top 5 most upvotes received" },
-  { key: "connectors",   emoji: "👥",  label: "Most Followed",  color: "#fb923c", title: "Top 5 most followers" },
-];
-
-/**
- * Given the badges object from the API, return which badge keys this userId holds.
- * badges = { critics: [{id,...}], influencers: [...], connectors: [...] }
- */
-export function getBadgesForUser(badges, userId) {
-  if (!badges || !userId) return [];
-  return BADGE_DEFS.filter((def) =>
-    (badges[def.key] ?? []).some((u) => u.id === userId)
-  );
-}
-
-export function BadgeChips({ badges, userId, size = "sm" }) {
-  const held = getBadgesForUser(badges, userId);
-  if (!held.length) return null;
-  const fs = size === "sm" ? 10 : 12;
-  const pad = size === "sm" ? "2px 7px" : "3px 10px";
-  return (
-    <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
-      {held.map((b) => (
-        <span
-          key={b.key}
-          title={b.title}
-          style={{
-            fontSize: fs, fontWeight: 700, padding: pad,
-            borderRadius: 20,
-            background: `${b.color}18`,
-            border: `1px solid ${b.color}50`,
-            color: b.color,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {b.emoji} {b.label}
-        </span>
-      ))}
-    </span>
-  );
-}
+const ENTITY_COLOR = { album: ACCENT_A, track: "#34d399", artist: "#fb923c" };
 
 function timeAgo(iso) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -66,7 +20,6 @@ function timeAgo(iso) {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-// ── Following feed item (existing) ────────────────────────────────────────────
 function FollowingItem({ item }) {
   const entityPath = `/${item.entity_type}/${item.entity_id}`;
   const userPath = `/user/${item.user?.id}`;
@@ -114,7 +67,6 @@ function FollowingItem({ item }) {
   );
 }
 
-// ── Suggested user row ────────────────────────────────────────────────────────
 function SuggestedUser({ u, onFollow }) {
   const [followed, setFollowed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -168,7 +120,11 @@ function SuggestedUser({ u, onFollow }) {
   );
 }
 
-// ── Following tab — exported so ForYouPage can embed it ──────────────────────
+/**
+ * "Friends" tab content — chronological feed of ratings and reviews from
+ * users you follow. Falls back to a suggested-people list when you follow
+ * nobody, and a sign-in prompt when unauthenticated. Used inside ForYouPage.
+ */
 export function FollowingTab() {
   const { user } = useAuth();
   const [following, setFollowing] = useState([]);
@@ -218,95 +174,6 @@ export function FollowingTab() {
       {user && !loadingFollowing && following.map((item, i) => (
         <FollowingItem key={`${item.type}-${item.user?.id}-${item.entity_id}-${i}`} item={item} />
       ))}
-    </div>
-  );
-}
-
-// ── Badge leaderboard sidebar section ────────────────────────────────────────
-function BadgeLeaderboard({ badges }) {
-  if (!badges) return null;
-  return (
-    <div style={{
-      background: "var(--surface)",
-      border: "1px solid var(--border)",
-      borderRadius: 12,
-      padding: "16px 18px",
-      marginBottom: 20,
-    }}>
-      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 14 }}>
-        Community Top 5
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {BADGE_DEFS.map((def) => {
-          const list = badges[def.key] ?? [];
-          if (!list.length) return null;
-          return (
-            <div key={def.key}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 13 }}>{def.emoji}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: def.color, letterSpacing: "0.04em", textTransform: "uppercase" }}>{def.label}</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {list.map((u, i) => (
-                  <Link key={u.id} to={`/user/${u.id}`} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 14, flexShrink: 0 }}>#{i + 1}</span>
-                    {u.image_url
-                      ? <img src={u.image_url} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-                      : <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
-                    }
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name}</span>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{u.score}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Page ──────────────────────────────────────────────────────────────────────
-export function FeedPage() {
-  const [badges, setBadges] = useState(null);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-
-  // Top 5 leaderboard data — community-flavored discovery for finding people
-  // to follow. Lives here because /feed is the social surface; the actual
-  // social timeline (FollowingTab) is the main content below.
-  useEffect(() => {
-    api.getBadges().then(setBadges).catch(() => {});
-  }, []);
-
-  return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 20px" }}>
-
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Feed</h1>
-        <button
-          onClick={() => setShowLeaderboard((v) => !v)}
-          title="Top 5 leaderboard"
-          style={{
-            display: "flex", alignItems: "center", gap: 5,
-            fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 20,
-            background: showLeaderboard ? "var(--surface2)" : "transparent",
-            border: `1px solid ${showLeaderboard ? "var(--border)" : "transparent"}`,
-            color: showLeaderboard ? "var(--text)" : "var(--text-muted)",
-            cursor: "pointer",
-          }}
-        >
-          🏆 Top 5
-        </button>
-      </div>
-
-      {/* Collapsible badge leaderboard — discovery aid for finding people to follow. */}
-      {showLeaderboard && <BadgeLeaderboard badges={badges} />}
-
-      {/* Social timeline — what people you follow have rated and reviewed.
-          (The community-wide "All Reviews" feed moved to the Reviews tab on /.) */}
-      <FollowingTab />
     </div>
   );
 }
