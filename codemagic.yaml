@@ -27,8 +27,10 @@ workflows:
 
     integrations:
       # Name on the right MUST match the integration name configured in
-      # Codemagic UI → Teams → Integrations → App Store Connect API key.
-      app_store_connect: app-store-connect
+      # Codemagic UI → Apple Developer Portal integration (or App Store
+      # Connect API key, same key). Currently 'Codemagic CI' — default name
+      # Codemagic assigned when the .p8 was uploaded.
+      app_store_connect: "Codemagic CI"
 
     environment:
       groups:
