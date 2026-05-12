@@ -9,6 +9,11 @@ dist/
 # Environment
 .env
 .env.local
+# .env.production is committed (public values only — see frontend/.env.production).
+# Per-machine secret overrides (PostHog key, Apple sign-in IDs, etc.) go in
+# .env.production.local — gitignored so secrets never get committed.
+.env.production.local
+.env.*.local
 
 # SQLite
 *.db
