@@ -191,7 +191,13 @@ async def health():
         t0 = time.monotonic()
         async with httpx.AsyncClient() as client:
             await spotify_svc._get_token(client)
-        results["spotify"] = {"ok": True, "latency_ms": round((time.monotonic() - t0) * 1000)}
+        circuit_left = int(spotify_svc._circuit_remaining())
+        results["spotify"] = {
+            "ok": True,
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+            "circuit_open": circuit_left > 0,
+            "circuit_seconds_remaining": circuit_left,
+        }
     except Exception as exc:
         results["spotify"] = {"ok": False, "error": str(exc)}
         healthy = False  # Spotify down = feed broken

@@ -22,16 +22,68 @@ from services import redis_cache
 # pointless; we'd rather return DB results immediately.
 _MAX_RETRY_WAIT = 15  # seconds
 
+# Circuit breaker: when Spotify hands us a long Retry-After (credential-wide
+# rate-limit block, sometimes hours), stop hitting the API entirely until
+# the block expires. Otherwise every new request resets the timer and keeps
+# us locked out indefinitely. The breaker stores a UNIX-epoch deadline; any
+# call before that deadline short-circuits with a synthetic 429 response so
+# callers fall back to their DB cache without ever touching the network.
+_circuit_open_until: float = 0.0
+# Don't trip the breaker for short retry-afters that the per-call wait can
+# absorb — those are normal backoff hints, not credential blocks.
+_CIRCUIT_BREAKER_THRESHOLD = 60  # seconds
+
+
+def _circuit_remaining() -> float:
+    """Seconds until the circuit breaker re-closes. 0 when not tripped."""
+    if _circuit_open_until == 0.0:
+        return 0.0
+    remaining = _circuit_open_until - time.time()
+    return max(0.0, remaining)
+
+
+def _trip_circuit(retry_after_seconds: int) -> None:
+    """Open the circuit for the supplied duration. No-op if already open longer."""
+    global _circuit_open_until
+    new_deadline = time.time() + retry_after_seconds
+    if new_deadline > _circuit_open_until:
+        _circuit_open_until = new_deadline
+        _log.warning(
+            "[spotify] CIRCUIT OPEN for %ds (until %s). All Spotify calls will short-circuit.",
+            retry_after_seconds, time.strftime("%H:%M:%S", time.localtime(_circuit_open_until)),
+        )
+
+
+def _make_synthetic_429(url: str) -> httpx.Response:
+    """Build a fake 429 response so circuit-tripped calls look like real ones."""
+    return httpx.Response(
+        429,
+        headers={"Retry-After": str(int(_circuit_remaining()) or 1)},
+        request=httpx.Request("GET", url),
+    )
+
 
 async def _spotify_get(client: httpx.AsyncClient, url: str, token: str, params: dict | None = None) -> httpx.Response:
     """GET wrapper with one automatic retry on 429 — only if the wait is short.
 
     If Retry-After > _MAX_RETRY_WAIT, returns the 429 response immediately so
     callers can fall back to DB/Redis without making the user wait.
+
+    Also honors a process-level circuit breaker: if Spotify previously asked
+    us to back off for a long time, we short-circuit without touching the
+    network until that window expires.
     """
+    if _circuit_remaining() > 0:
+        _log.debug("[spotify] circuit open (%ds left), short-circuiting %s", int(_circuit_remaining()), url)
+        return _make_synthetic_429(url)
+
     resp = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
     if resp.status_code == 429:
         retry_after = int(resp.headers.get("Retry-After", 8))
+        # Long retry-after = credential-wide block. Open the circuit so the
+        # next 100 callers don't each pay the round trip and keep extending it.
+        if retry_after >= _CIRCUIT_BREAKER_THRESHOLD:
+            _trip_circuit(retry_after)
         if retry_after > _MAX_RETRY_WAIT:
             _log.warning("[spotify] 429 on %s — Retry-After=%ds (>%ds threshold), bailing immediately", url, retry_after, _MAX_RETRY_WAIT)
             return resp  # caller will treat non-200 as failure and use DB
