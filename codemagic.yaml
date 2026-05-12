@@ -110,11 +110,32 @@ workflows:
 
       - name: Set Info.plist values
         script: |
+          set -ex
+          INFO_PLIST="frontend/ios/App/App/Info.plist"
+
           # ITSAppUsesNonExemptEncryption=NO sidesteps the export-compliance
           # question on every TestFlight upload (we only use HTTPS, no
           # proprietary crypto).
-          plutil -replace ITSAppUsesNonExemptEncryption -bool NO \
-            "frontend/ios/App/App/Info.plist"
+          plutil -replace ITSAppUsesNonExemptEncryption -bool NO "$INFO_PLIST"
+
+          # Register the `contour` URL scheme so iOS knows our app handles
+          # contour://... links. This is what completes the Google OAuth flow
+          # on native: backend redirects to `contour://auth?token=...` after
+          # external Safari sign-in, iOS wakes the app up, and the WebView
+          # gets the URL via Capacitor's appUrlOpen event.
+          #
+          # CFBundleURLTypes is an array of dicts; we replace the whole key
+          # (Capacitor doesn't generate one by default).
+          plutil -replace CFBundleURLTypes -json '[
+            {
+              "CFBundleURLName": "com.peytonhl.contour",
+              "CFBundleTypeRole": "Editor",
+              "CFBundleURLSchemes": ["contour"]
+            }
+          ]' "$INFO_PLIST"
+
+          echo ">>> Info.plist values now set:"
+          plutil -p "$INFO_PLIST" | grep -E 'ITSAppUsesNonExemptEncryption|CFBundleURLTypes|CFBundleURLSchemes' || true
 
       - name: Set the build number
         script: |
