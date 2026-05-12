@@ -274,11 +274,30 @@ frontend/
 
 ## Roadmap
 
-- [ ] App Store launch (iOS via Codemagic + Capacitor)
-- [ ] Google Play launch (Android via Capacitor)
+- [ ] App Store launch (iOS via Codemagic + Capacitor) — see [APP_STORE.md](APP_STORE.md)
+- [ ] Google Play launch (Android via Capacitor) — see [PLAY_STORE.md](PLAY_STORE.md)
 - [ ] Push notifications (new follower, review reply)
 - [ ] Cross-platform normalization (Apple Music, YouTube, Tidal)
 - [ ] True historical stream data via Luminate API
+
+## Non-goals
+
+Decisions about what Contour deliberately won't do, so future contributors
+don't relitigate them:
+
+- **Spotify user OAuth ("Sign in with Spotify").** Spotify dev-mode tier
+  caps user OAuth at 5 manually-allowlisted accounts. Going past it requires
+  250k MAU + a registered business entity. Out of scope until then. Identity
+  stays **Google + Apple only**.
+- **Apple Music MusicKit user sign-in.** Adds onboarding friction without
+  enabling a feature we currently want. The Apple Music integration we *do*
+  ship is catalog-only deep links (search by ISRC → `music.apple.com` URL).
+- **User playlist import (Spotify or Apple Music).** Recreates the upstream
+  platforms; blocked by the same quota issue on Spotify; not a differentiator.
+- **User library / listening history access.** Same reasons.
+
+Streaming integrations stay at the catalog + deep-link level. We may revisit
+these once we cross the Spotify dev-mode threshold (~250k MAU).
 
 ---
 

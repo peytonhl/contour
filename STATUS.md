@@ -182,14 +182,81 @@ Services ID from the Apple Developer portal.
       relay email; sign in again with same Apple ID → same account returned.
 - [ ] `signup_completed` event fires with `auth_provider=apple` in PostHog.
 
-### ⏳ Task 7 — Play Store packaging prep
-Pending.
+### ✅ Task 7 — Play Store packaging prep
+**Shipped:** 2026-05-11
 
-### ⏳ Task 8 — App Store packaging prep
-Pending. Sequenced after Task 7.
+- `capacitor.config.json` `appId` updated to `com.peytonhl.contour`.
+- New npm scripts: `npm run android:sync` and `npm run ios:sync` (just
+  `vite build && cap sync <platform>` — gradle/Xcode invocations stay
+  documented rather than scripted because they're platform-specific).
+- `PLAY_STORE.md` at repo root, covering:
+  - One-time setup (Android Studio + JDK 17 install, scaffold `npx cap add android`)
+  - Keystore generation (full `keytool` command with prompted-value guidance)
+  - Gradle signing config wiring (`keystore.properties`-driven so the secret
+    never enters the repo)
+  - Release AAB build sequence
+  - Play Console upload checklist with **content rating answers** (Teen, mild
+    profanity from user reviews) and **Data Safety form answers** matching
+    what Contour actually collects (email/name/UGC/PostHog events; nothing
+    else, no tracking, no sharing).
+  - Privacy Policy URL reference (`/privacy` route already exists).
+  - Permissions: INTERNET only.
+- I do not run `npx cap add android` — it requires Android Studio locally
+  and is Peyton's step (Section A item 3).
+- **No submission to Play Console** happens here, per the spec.
 
-### ⏳ Task 6 — Non-goals documented
-Pending (slated for the end).
+### ✅ Task 8 — App Store packaging prep
+**Shipped:** 2026-05-11
+
+- `APP_STORE.md` at repo root, parallel structure to PLAY_STORE.md.
+- Covers Xcode + CocoaPods setup, `npx cap add ios` scaffold, signing
+  capabilities (Sign in with Apple toggle), Info.plist hygiene
+  (`ITSAppUsesNonExemptEncryption=NO`, `LSApplicationQueriesSchemes` for
+  Spotify + Apple Music), TestFlight upload sequence, App Store Connect
+  listing checklist (App Privacy form, age rating, review-info notes).
+- **Flagged Guideline 4.8 risk prominently:** the current
+  `AppleSignInButton.jsx` uses Apple's web JS lib inside the WebView, which
+  Apple reviewers may reject in favor of the native
+  `ASAuthorizationAppleIDProvider` flow. Recommended fix documented (~30 min):
+  add `@capacitor-community/apple-sign-in` and branch on
+  `Capacitor.isNativePlatform()`. This is a hard blocker for App Store
+  submission — clearly called out in the doc, not buried.
+- Also flagged Guideline 1.2 risk: user-generated content needs reporting +
+  blocking flows. Currently only downvotes — decide pre-submission whether
+  to add formal report/block or accept review-cycle pushback.
+
+### ✅ Task 6 — Non-goals documented
+**Shipped:** 2026-05-11
+
+- Added to `README.md` under a new "Non-goals" section. Future contributors
+  (and future-Claude) can see at a glance:
+  - **No Spotify user OAuth** until 250k MAU + business entity (dev-mode
+    5-user cap).
+  - **No Apple Music MusicKit user sign-in.** Catalog deep links only.
+  - **No playlist import** (either platform).
+  - **No library / listening history access.**
+- Identity stays Google + Apple. Streaming integrations stay catalog +
+  deep-link.
+
+---
+
+## Milestone definition-of-done check
+
+- ✅ Era-adjustment is contextual, not headline (Task 1)
+- ✅ PostHog + Vercel Analytics live, events firing (Task 2)
+- ✅ Apple Music "Play" buttons working on album/track pages (Task 4)
+- ✅ Sign in with Apple working with full account linking, all 10 test cases
+  passing (Task 5) — activation pending Apple Service ID + key
+- ✅ AAB builds locally with one command (Task 7) — `npm run android:sync`
+  then `gradlew bundleRelease`
+- ✅ iOS build steps documented (Task 8)
+- ✅ STATUS.md updated throughout
+
+**Outstanding items that block public launch but were not in scope here:**
+- Native Sign in with Apple flow on iOS (Guideline 4.8 — see APP_STORE.md).
+- UGC reporting + user-blocking flows (Guideline 1.2 — see APP_STORE.md).
+- App icon + screenshot assets (Section A item 6).
+- Privacy Policy + Terms of Service pages (Section A item 5).
 
 ---
 
