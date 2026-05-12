@@ -169,8 +169,9 @@ async def search_artists(query: str, limit: int = 10) -> list[dict]:
 
 
 async def get_artist(artist_id: str) -> dict:
-    """Fetch artist metadata by Spotify artist ID. Cached 7d in Redis (genres
-    update occasionally but the bulk of fields are stable)."""
+    """Fetch artist metadata by Spotify artist ID. Cached 30d in Redis —
+    artist genres are essentially frozen post-launch and the rest of the
+    fields drift slowly enough that a month is a reasonable refresh window."""
     cache_key = f"spotify:artist:{artist_id}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
@@ -180,7 +181,7 @@ async def get_artist(artist_id: str) -> dict:
         resp = await _spotify_get(client, f"https://api.spotify.com/v1/artists/{artist_id}", token)
         resp.raise_for_status()
         result = _parse_artist(resp.json())
-    await redis_cache.set(cache_key, result, ttl=_TTL_7D)
+    await redis_cache.set(cache_key, result, ttl=_TTL_30D)
     return result
 
 

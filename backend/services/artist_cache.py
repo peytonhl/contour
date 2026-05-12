@@ -25,9 +25,12 @@ from services import spotify
 logger = logging.getLogger(__name__)
 
 # How long before we consider cached artist metadata stale enough to re-fetch.
-# Genres + image + popularity don't change often; 30d is the right tradeoff
-# between freshness and Spotify load.
-META_TTL = timedelta(days=30)
+# Artist genres on Spotify are effectively immutable for established artists —
+# the rare official genre shift (or popularity ticking up) doesn't materially
+# affect our taste-section math. Treat the cache as effectively permanent
+# (1y refresh window) so an artist enters the DB once and almost never gets
+# re-fetched. Manual invalidation (delete the row) is the escape hatch.
+META_TTL = timedelta(days=365)
 
 
 async def _is_meta_fresh(row: ArtistCache) -> bool:
