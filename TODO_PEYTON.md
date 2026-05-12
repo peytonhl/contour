@@ -121,6 +121,46 @@ next to "Spotify ↗" whenever a match exists.
 
 ---
 
+## 🟡 PWA / installable web app
+
+Make `contour-rosy.vercel.app` installable to the home screen on desktop
+Chrome, Android, and iOS — gives users an "app" experience without going
+through any store. Some of this is already started but needs finishing.
+
+**Already done:**
+- `frontend/public/manifest.json` exists and is linked from `index.html`.
+- Theme color, background color, and standalone display mode are set.
+
+**Outstanding (mostly gated on icon assets):**
+- [ ] **Icons in real raster sizes.** Currently only an SVG is referenced.
+      Need PNG versions at 192×192, 512×512 (for Chrome / Android adaptive),
+      and a 180×180 `apple-touch-icon.png` (for iOS home screen). Same source
+      file as the Play Store / App Store 1024×1024 master — Android Studio's
+      Image Asset wizard or any online PWA icon generator can downsample once.
+- [ ] **Update the manifest description.** Currently reads "Era-adjusted
+      music streaming data, community ratings, and reviews" — stale after
+      the social-first pivot. Should match the new "Rate. Review. Discover."
+      tagline / something like "Rate, review, and discover music with friends."
+- [ ] **Service worker.** Without one, Chrome doesn't surface the "Install app"
+      prompt in the address bar. Easiest path is dropping in `vite-plugin-pwa`
+      (~5 lines of `vite.config.js` config, ~30 min). Auto-generates the SW
+      and handles asset precaching. Side benefit: offline support for the
+      shell so the app at least loads without network.
+- [ ] **iOS meta tags in `index.html`.** Add `<link rel="apple-touch-icon">`,
+      `<meta name="apple-mobile-web-app-capable" content="yes">`, and
+      `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
+      so iOS "Add to Home Screen" produces a proper full-screen app instead
+      of a Safari-chrome shortcut.
+- [ ] **Verify the install prompt.** Once the above is in place, open Chrome
+      DevTools → Application → Manifest, click "Install app" — should produce
+      a real-looking install dialog with the right icon and name.
+
+Ask me to wire all of this once you have the icon PNGs in hand — it's
+straightforward and the bulk of the work is just dropping files into
+`frontend/public/`.
+
+---
+
 ## 🟡 Manual testing on a real phone
 
 Things I genuinely can't verify from here — please poke at them when you can:
