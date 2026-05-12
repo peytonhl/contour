@@ -41,7 +41,7 @@ workflows:
         XCODE_PROJECT: "frontend/ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
         BUNDLE_ID: "com.peytonhl.contour"
-        APP_STORE_APPLE_ID: "0000000000"   # replace once you've created the App Store Connect record
+        APP_STORE_APPLE_ID: "6768775634"   # Contour Music — App Store Connect record
       node: latest
       xcode: latest
 
