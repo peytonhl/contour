@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover is required for env(safe-area-inset-*) to work on iPhone notch/Dynamic Island -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Contour — Era-adjusted music data</title>
+    <title>Contour — Rate. Review. Discover.</title>
 
     <!-- PWA / home screen -->
     <meta name="theme-color" content="#0d0d0f" />
@@ -12,11 +12,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Contour" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <!-- Icons. Order matters: browsers pick the first format they understand.
+         favicon.ico is the multi-resolution legacy fallback (16/32/48 inside).
+         96x96 PNG covers modern browser-tab high-DPI rendering.
+         apple-touch-icon is the 180x180 used by iOS "Add to Home Screen". -->
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
     <!-- Description for sharing -->
-    <meta name="description" content="See how songs and albums would perform if released today. Era-adjusted stream data, community ratings, and reviews." />
+    <meta name="description" content="Rate, review, and discover music with friends. Half-star ratings, written reviews, side-by-side streaming comparison, and a personalized For You feed." />
   </head>
   <body>
     <div id="root"></div>
