@@ -194,20 +194,3 @@ Things I genuinely can't verify from here — please poke at them when you can:
 - [ ] **Native Sign in with Apple plugin** — listed under App Store blockers
       but technically optional if you're willing to risk a rejection cycle.
 
----
-
-## ⚠️ One open question for you
-
-The Layout's logo subtitle still reads **"Music history, in context"** —
-that tagline made sense when era-adjustment was the headline feature, but
-the app is now social-first. The CLAUDE.md tagline and the onboarding modal
-both already use **"Music opinions, backed by data."** I'd recommend
-swapping the Layout subtitle to match. Other options if you want to lean
-even more social:
-
-- *"Music opinions, backed by data."* — matches existing canonical tagline
-- *"Rate, review, discover."* — verb-forward, social action
-- *"Letterboxd for music."* — instantly understandable; risky if you don't
-  want to define the product by a comparison
-
-Tell me which and I'll swap it (or propose your own).

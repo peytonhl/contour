@@ -8,7 +8,7 @@ and rules that apply to every task.
 ## What this app is
 
 Contour is a music ratings, reviews, and streaming analytics platform.
-Tagline: **"Music opinions, backed by data."**
+Tagline: **"Rate. Review. Discover."**
 
 Core features:
 - **Rate & review** albums, tracks, and artists (half-star, 0.5–5.0) — think Letterboxd for music
