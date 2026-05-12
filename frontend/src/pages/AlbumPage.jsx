@@ -201,6 +201,7 @@ export function AlbumPage() {
               )}
             </div>
 
+            {/* Primary actions — high-intent, things to do *here*. */}
             <div className="hero-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
               <button
                 onClick={() => document.getElementById("rate-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
@@ -208,36 +209,45 @@ export function AlbumPage() {
               >
                 ★ Rate
               </button>
+              <WantToListenButton entityType="album" entityId={id} />
               <button
                 onClick={() => navigate(`/compare`)}
                 style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", fontSize: 13, cursor: "pointer", letterSpacing: "0.01em" }}
               >
                 Compare
               </button>
-              <WantToListenButton entityType="album" entityId={id} />
               <ShareButton title={`${album.name} on Contour`} />
-              {album.external_url && (
-                <a href={album.external_url} target="_blank" rel="noreferrer"
-                  onClick={() => analytics.spotifyLinkClicked("album")}
-                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", fontSize: 13, display: "inline-flex", alignItems: "center", letterSpacing: "0.01em" }}>
-                  Spotify ↗
-                </a>
-              )}
-              {appleMusic?.url && (
-                <a href={appleMusic.url} target="_blank" rel="noreferrer"
-                  onClick={() => analytics.appleMusicLinkClicked("album")}
-                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", fontSize: 13, display: "inline-flex", alignItems: "center", letterSpacing: "0.01em" }}>
-                  Apple Music ↗
-                </a>
-              )}
-              <a
-                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${album.name} ${album.artists?.[0] ?? ""}`)}`}
-                target="_blank" rel="noreferrer"
-                style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", fontSize: 13, display: "inline-flex", alignItems: "center", letterSpacing: "0.01em" }}
-              >
-                YouTube ↗
-              </a>
             </div>
+
+            {/* Listen on — deemphasized; one-tap link to wherever the user streams. */}
+            {(album.external_url || appleMusic?.url) && (
+              <div className="hero-listen-row" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 2 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)", marginRight: 4 }}>
+                  Listen on
+                </span>
+                {album.external_url && (
+                  <a href={album.external_url} target="_blank" rel="noreferrer"
+                    onClick={() => analytics.spotifyLinkClicked("album")}
+                    style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                    Spotify ↗
+                  </a>
+                )}
+                {appleMusic?.url && (
+                  <a href={appleMusic.url} target="_blank" rel="noreferrer"
+                    onClick={() => analytics.appleMusicLinkClicked("album")}
+                    style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                    Apple Music ↗
+                  </a>
+                )}
+                <a
+                  href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${album.name} ${album.artists?.[0] ?? ""}`)}`}
+                  target="_blank" rel="noreferrer"
+                  style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+                >
+                  YouTube ↗
+                </a>
+              </div>
+            )}
           </div>
         </div>
       </div>
