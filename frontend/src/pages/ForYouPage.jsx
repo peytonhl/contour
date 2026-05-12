@@ -11,7 +11,7 @@ function tierSourceOf(track) {
   return track?._source === "deezer" ? "deezer" : "spotify";
 }
 
-import { FollowingTab } from "./FeedPage.jsx";
+import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -1003,7 +1003,10 @@ export function ForYouPage() {
       background: "#0a0a0a",
       overflow: "hidden",
     }}>
-      {/* Tab bar */}
+      {/* Tab bar — two discovery modes:
+            • For You = audio-driven, TikTok-style swipe (the original feed)
+            • Reviews = read what the community is saying (formerly /feed's "All Reviews")
+          The social timeline lives entirely on /feed now; it's not a tab here. */}
       <div style={{
         display: "flex",
         borderBottom: "1px solid rgba(255,255,255,0.1)",
@@ -1011,19 +1014,17 @@ export function ForYouPage() {
         background: "#0a0a0a",
       }}>
         <button style={tabStyle(tab === "foryou")} onClick={() => setTab("foryou")}>For You</button>
-        <button style={tabStyle(tab === "following")} onClick={() => setTab("following")}>
-          Following {!user && <span style={{ fontSize: 11, opacity: 0.5 }}>(sign in)</span>}
-        </button>
+        <button style={tabStyle(tab === "reviews")} onClick={() => setTab("reviews")}>Reviews</button>
       </div>
 
-      {/* Content — both components stay mounted so ForYouFeed never loses
-          its track list or scroll position when the user switches tabs. */}
-      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+      {/* Content — both panels stay mounted so ForYouFeed never loses its
+          track list or scroll position when the user flips tabs. */}
+      <div style={{ flex: 1, overflow: "hidden", position: "relative", background: "var(--bg)" }}>
         <div style={{ display: tab === "foryou" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <ForYouFeed />
         </div>
-        <div style={{ display: tab === "following" ? "block" : "none", height: "100%", overflowY: "auto" }}>
-          <FollowingTab />
+        <div style={{ display: tab === "reviews" ? "block" : "none", height: "100%", overflowY: "auto" }}>
+          <GlobalReviewsFeed />
         </div>
       </div>
     </div>
