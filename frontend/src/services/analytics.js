@@ -61,4 +61,16 @@ export const analytics = {
     track("apple_music_link_clicked", { entity_type }),
   spotifyLinkClicked: (entity_type) =>
     track("spotify_link_clicked", { entity_type }),
+
+  // ── Conversion / discovery (Task 9) ──────────────────────────────────────
+  importCompleted: (source, matched_count, unmatched_count) =>
+    track("import_completed", { source, matched_count, unmatched_count }),
+  backlogAdded: (album_id) => track("backlog_added", { album_id }),
+  backlogPromotedToRating: (album_id, rating_value) =>
+    track("backlog_promoted_to_rating", { album_id, rating_value }),
+  trendingModuleClicked: (surface, entity_type, entity_id) =>
+    track("trending_module_clicked", { surface, entity_type, entity_id }),
+  trendingPageViewed: () => track("trending_page_viewed"),
+  onboardingStepCompleted: (step_name, skipped) =>
+    track("onboarding_step_completed", { step_name, skipped }),
 };

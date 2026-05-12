@@ -211,4 +211,41 @@ export const api = {
       return r.json();
     });
   },
+
+  // ── Imports (RYM CSV) ──────────────────────────────────────────────────────
+  // Multipart upload — bypasses the JSON `post()` helper.
+  importRymCsv: async (file) => {
+    const token = getToken();
+    const fd = new FormData();
+    fd.append("file", file);
+    const headers = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(BASE + "/imports/rym", { method: "POST", headers, body: fd });
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      throw new Error(b.detail ?? `HTTP ${res.status}`);
+    }
+    return res.json();
+  },
+
+  // ── Backlog (Want to listen) ───────────────────────────────────────────────
+  addToBacklog: (albumId, note = null) => post(`/backlog`, { album_id: albumId, note }),
+  removeFromBacklog: (albumId) => del(`/backlog/${albumId}`),
+  getMyBacklog: (sort = "recent") => request(`/backlog?sort=${sort}`),
+  getUserBacklog: (userId, sort = "recent") => request(`/backlog/${userId}?sort=${sort}`),
+  checkBacklog: (albumId) => request(`/backlog/check/${albumId}`),
+  promoteBacklog: (albumId, rating = null) =>
+    post(`/backlog/${albumId}/promote`, rating == null ? {} : { rating }),
+
+  // ── Trending ───────────────────────────────────────────────────────────────
+  getTrendingAlbums: (window = "7d", limit = 20) =>
+    request(`/trending/albums?window=${window}&limit=${limit}`),
+  getTrendingReviews: (window = "7d", limit = 20) =>
+    request(`/trending/reviews?window=${window}&limit=${limit}`),
+  getTrendingBacklogged: (window = "7d", limit = 20) =>
+    request(`/trending/backlogged?window=${window}&limit=${limit}`),
+  getTrendingSearched: (window = "7d", limit = 20) =>
+    request(`/trending/searched?window=${window}&limit=${limit}`),
+  getBacklogSuggestions: (limit = 5) =>
+    request(`/trending/backlog-suggestions?limit=${limit}`),
 };

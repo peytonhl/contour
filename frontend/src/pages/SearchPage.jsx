@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api.js";
+import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { AppleSignInButton } from "../components/AppleSignInButton.jsx";
 
@@ -78,12 +79,17 @@ export function SearchPage() {
   const [searching, setSearching] = useState(false);
   const [featured, setFeatured] = useState(null);
   const [recent, setRecent] = useState(loadRecent);
+  const [trendingSearches, setTrendingSearches] = useState([]);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const debounceRef = useRef(null);
 
   useEffect(() => {
     api.getFeatured().then(setFeatured).catch(() => {});
+    // Trending search queries — only shown when the search box is empty.
+    api.getTrendingSearched("7d", 10)
+      .then((r) => setTrendingSearches(r.items ?? []))
+      .catch(() => {});
   }, []);
 
   function handleInput(e) {
@@ -273,6 +279,39 @@ export function SearchPage() {
                   <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{item.name}</div>
                   {item.sub && <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{item.sub}</div>}
                 </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Trending searches — only when the box is empty. Chips run a search
+          on tap rather than navigating, so the user lands in the same flow as
+          typing the query themselves. */}
+      {!query && trendingSearches.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+            Trending searches
+          </span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {trendingSearches.map((s) => (
+              <button
+                key={s.query}
+                onClick={() => {
+                  analytics.trendingModuleClicked("search_empty", "search", s.query);
+                  setQuery(s.query);
+                  handleInput({ target: { value: s.query } });
+                }}
+                style={{
+                  padding: "6px 14px", borderRadius: 18,
+                  background: "var(--surface)", border: "1px solid var(--border)",
+                  color: "var(--text)", fontSize: 13, cursor: "pointer",
+                  transition: "border-color 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT_A}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+              >
+                {s.query}
               </button>
             ))}
           </div>

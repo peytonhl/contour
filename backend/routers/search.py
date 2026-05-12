@@ -36,7 +36,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, AsyncSessionLocal
-from models import AlbumCache as AlbumCacheModel, ArtistCache, TrackCache, User
+from models import AlbumCache as AlbumCacheModel, ArtistCache, SearchEvent, TrackCache, User
+from routers.auth import optional_user_id
 from services import spotify
 from routers.albums import _artist_id_for_query, _row_to_album_result, AlbumResult
 from routers.tracks import _row_to_track_result, TrackResult
@@ -160,14 +161,36 @@ async def _persist_discography(artist_id: str, artist_name: str, albums: list[di
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
+async def _log_search_event(q_norm: str, user_id: Optional[str]) -> None:
+    """Persist a search event in its own session so it never breaks the response.
+
+    Runs as a background task because the request-scoped session may be closed
+    by the time the queue gets to it. Failures here are silently swallowed —
+    trending searches is a nice-to-have surface, not a critical path.
+    """
+    try:
+        async with AsyncSessionLocal() as ev_db:
+            ev_db.add(SearchEvent(query=q_norm, user_id=user_id))
+            await ev_db.commit()
+    except Exception:
+        logger.debug("search event log failed (non-fatal)", exc_info=False)
+
+
 @router.get("", response_model=SearchResponse)
 async def unified_search(
     q: str = Query(..., min_length=1),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(optional_user_id),
 ):
     q_stripped = q.strip()
     pattern = f"%{q_stripped}%"
+
+    # Log search events for queries that look like real intent (≥ MIN_CHARS).
+    # Powers the /trending/searched endpoint. Capped length protects the index.
+    q_norm = q_stripped.lower()[:128]
+    if len(q_norm) >= MIN_CHARS:
+        background_tasks.add_task(_log_search_event, q_norm, user_id)
 
     # ── Step 1: DB searches — always run, always free ─────────────────────────
 

@@ -302,3 +302,41 @@ class AppleMusicLink(Base):
     # "isrc", "text", or "none" (negative cache)
     match_method: Mapped[str] = mapped_column(String(16), default="none")
     matched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ImportLog(Base):
+    """One row per CSV import attempt — for support/debug and per-user history."""
+    __tablename__ = "import_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    source: Mapped[str] = mapped_column(String(16))  # "rym" (also "aoty" reserved for future)
+    file_name: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    matched_count: Mapped[int] = mapped_column(Integer, default=0)
+    unmatched_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class BacklogItem(Base):
+    """Albums a user wants to listen to. Always public — surfaces on profile."""
+    __tablename__ = "backlog_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    album_id: Mapped[str] = mapped_column(String(64), index=True)  # Spotify album ID
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class SearchEvent(Base):
+    """A logged search query — used to compute /trending/searched.
+
+    user_id is optional (logged-out searches still count). Pruning is best-effort
+    via window-based aggregation, no TTL is enforced at the DB layer.
+    """
+    __tablename__ = "search_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    query: Mapped[str] = mapped_column(String(128), index=True)  # normalized lowercased
+    user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

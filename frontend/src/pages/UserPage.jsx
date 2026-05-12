@@ -8,6 +8,7 @@ import { BlockButton } from "../components/BlockButton.jsx";
 import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeChips } from "../components/Badges.jsx";
+import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 
 const ACCENT = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -113,6 +114,8 @@ export function UserPage() {
     { key: "lists",     label: "Lists",     count: lists.length },
     { key: "following", label: "Following", count: profile.following_count ?? following.length },
     { key: "followers", label: "Followers", count: profile.followers_count ?? followers.length },
+    // Backlog — public, viewable on anyone's profile.
+    { key: "backlog",   label: "Backlog" },
   ];
 
   return (
@@ -307,6 +310,11 @@ export function UserPage() {
         {/* ── Following / Followers ── */}
         {tab === "following" && <UserList users={following} emptyText="Not following anyone yet." />}
         {tab === "followers" && <UserList users={followers} emptyText="No followers yet." />}
+
+        {/* ── Backlog (public) ── */}
+        {tab === "backlog" && (
+          <BacklogTabContent userId={id} isOwner={false} showSuggestions={false} />
+        )}
       </div>
     </div>
   );

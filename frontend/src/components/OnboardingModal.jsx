@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
+import { analytics } from "../services/analytics.js";
 
 const STORAGE_KEY = "contour_onboarded_v2";
 const GENRES_KEY = "contour_genres_v1";
@@ -95,10 +97,16 @@ function Dots({ total, active }) {
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
+// Steps:
+//   0 — value prop
+//   1 — genre picker
+//   2 — RYM import upsell (optional, skippable)
+//   3 — Backlog explainer (informational, skippable)
 export function OnboardingModal() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
-  const [step, setStep] = useState(0); // 0 = value prop, 1 = genres, 2 = done
+  const [step, setStep] = useState(0);
   const [exiting, setExiting] = useState(false);
   const [selectedGenres, setSelectedGenres] = useState([]);
 
@@ -118,20 +126,47 @@ export function OnboardingModal() {
     }, 220);
   }
 
-  async function saveGenresAndFinish() {
+  // Save genres ASAP (after step 1) so that progress isn't lost if the user
+  // bails on the import/backlog explainer steps.
+  async function saveGenresAndAdvance() {
     if (selectedGenres.length > 0) {
       localStorage.setItem(GENRES_KEY, JSON.stringify(selectedGenres));
       if (user) {
         api.saveTasteProfile(selectedGenres, [], true).catch(() => {});
       }
     }
-    dismiss();
+    analytics.onboardingStepCompleted("genres", selectedGenres.length === 0);
+    setStep(2);
   }
 
   function toggleGenre(slug) {
     setSelectedGenres((prev) =>
       prev.includes(slug) ? prev.filter((g) => g !== slug) : [...prev, slug]
     );
+  }
+
+  function goToImport() {
+    analytics.onboardingStepCompleted("import", false);
+    // Mark onboarding done BEFORE navigating — the next visit shouldn't replay it.
+    localStorage.setItem(STORAGE_KEY, "1");
+    setVisible(false);
+    navigate("/import");
+  }
+
+  function skipImport() {
+    analytics.onboardingStepCompleted("import", true);
+    setStep(3);
+  }
+
+  function finishBacklogStep(deepLink) {
+    analytics.onboardingStepCompleted("backlog_explainer", !deepLink);
+    if (deepLink) {
+      localStorage.setItem(STORAGE_KEY, "1");
+      setVisible(false);
+      navigate("/profile?tab=backlog");
+    } else {
+      dismiss();
+    }
   }
 
   if (!visible) return null;
@@ -214,10 +249,10 @@ export function OnboardingModal() {
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={2} active={0} />
+                <Dots total={4} active={0} />
               </div>
 
-              <button onClick={() => setStep(1)} style={{
+              <button onClick={() => { analytics.onboardingStepCompleted("value_prop", false); setStep(1); }} style={{
                 width: "100%", padding: "13px 0", borderRadius: 12,
                 background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                 border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
@@ -257,25 +292,145 @@ export function OnboardingModal() {
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={2} active={1} />
+                <Dots total={4} active={1} />
               </div>
 
               <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={dismiss} style={{
+                <button onClick={() => { analytics.onboardingStepCompleted("genres", true); setStep(2); }} style={{
                   flex: 1, padding: "12px 0", borderRadius: 12,
                   background: "none", border: "1px solid var(--border)",
                   color: "var(--text-muted)", fontSize: 14, cursor: "pointer",
                 }}>
                   Skip
                 </button>
-                <button onClick={saveGenresAndFinish} style={{
+                <button onClick={saveGenresAndAdvance} style={{
                   flex: 2, padding: "12px 0", borderRadius: 12,
                   background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                   border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
                 }}>
-                  {selectedGenres.length > 0 ? "Let's go →" : "Skip for now →"}
+                  {selectedGenres.length > 0 ? "Next →" : "Skip for now →"}
                 </button>
               </div>
+            </>
+          )}
+
+          {/* ── Step 2: RYM import upsell ── */}
+          {step === 2 && (
+            <>
+              <div style={{ textAlign: "center", marginBottom: 20 }}>
+                <h2 style={{
+                  fontSize: 22, fontWeight: 800, margin: "0 0 8px",
+                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+                }}>
+                  Already rate music elsewhere?
+                </h2>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>
+                  Bring your ratings from Rate Your Music — we'll match them to
+                  albums on Contour so you don't start from scratch.
+                </p>
+              </div>
+
+              <div style={{
+                background: "var(--surface2)", border: "1px solid var(--border)",
+                borderRadius: 12, padding: "14px 16px", marginBottom: 20,
+                display: "flex", alignItems: "center", gap: 12,
+              }}>
+                <span style={{
+                  fontSize: 18, width: 36, height: 36, flexShrink: 0,
+                  borderRadius: 8, background: `${ACCENT_A}18`,
+                  border: `1px solid ${ACCENT_A}35`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  📥
+                </span>
+                <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  Export your data from RYM, upload the CSV — every rated album
+                  is matched on Spotify and saved to your Contour profile.
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <Dots total={4} active={2} />
+              </div>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={skipImport} style={{
+                  flex: 1, padding: "12px 0", borderRadius: 12,
+                  background: "none", border: "1px solid var(--border)",
+                  color: "var(--text-muted)", fontSize: 14, cursor: "pointer",
+                }}>
+                  Skip for now
+                </button>
+                <button onClick={goToImport} style={{
+                  flex: 2, padding: "12px 0", borderRadius: 12,
+                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                  border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
+                }}>
+                  Import from RYM →
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ── Step 3: Backlog explainer ── */}
+          {step === 3 && (
+            <>
+              <div style={{ textAlign: "center", marginBottom: 20 }}>
+                <h2 style={{
+                  fontSize: 22, fontWeight: 800, margin: "0 0 8px",
+                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+                }}>
+                  Track what you want to listen to
+                </h2>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>
+                  Save albums to your backlog as you find them. It's public on
+                  your profile so friends can see what you're excited about.
+                </p>
+              </div>
+
+              <div style={{
+                background: "var(--surface2)", border: "1px solid var(--border)",
+                borderRadius: 12, padding: "14px 16px", marginBottom: 16,
+                display: "flex", alignItems: "center", gap: 12,
+              }}>
+                <span style={{
+                  fontSize: 18, width: 36, height: 36, flexShrink: 0,
+                  borderRadius: 8, background: `${ACCENT_B}18`,
+                  border: `1px solid ${ACCENT_B}35`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  🎯
+                </span>
+                <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  Tap <strong style={{ color: "var(--text)" }}>+ Want to listen</strong> on
+                  any album. Your backlog lives as a tab on your profile.
+                </div>
+              </div>
+
+              <button
+                onClick={() => finishBacklogStep(true)}
+                style={{
+                  background: "none", border: "none", color: ACCENT_A,
+                  fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  padding: "0 0 16px", display: "block", marginInline: "auto",
+                }}
+              >
+                See how it works →
+              </button>
+
+              <div style={{ marginBottom: 18 }}>
+                <Dots total={4} active={3} />
+              </div>
+
+              <button onClick={() => finishBacklogStep(false)} style={{
+                width: "100%", padding: "13px 0", borderRadius: 12,
+                background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
+              }}>
+                Got it →
+              </button>
             </>
           )}
         </div>
