@@ -40,7 +40,7 @@ workflows:
         XCODE_SCHEME: "App"
         BUNDLE_ID: "com.peytonhl.contour"
         APP_STORE_APPLE_ID: "0000000000"   # replace once you've created the App Store Connect record
-      node: 20.x
+      node: latest
       xcode: latest
       cocoapods: default
 
