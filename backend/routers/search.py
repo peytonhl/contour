@@ -299,22 +299,31 @@ async def unified_search(
                         except Exception:
                             pass
 
-                else:
-                    # No artist match → treat the query as a title and search
-                    # both albums and tracks. Previously this branch only
-                    # searched tracks, which broke single-word album titles
-                    # like "donda" or "lemonade" (no Spotify artist match →
-                    # zero albums returned).
-                    if need_albums:
-                        try:
-                            spotify_albums = await spotify.search_albums(q_stripped, limit=10)
-                        except Exception:
-                            pass
-                    if need_tracks:
-                        try:
-                            spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
-                        except Exception:
-                            pass
+                # Album title search ALWAYS runs for single-word queries when
+                # we need albums, even if an artist matched above. The artist
+                # resolver picks one candidate ("utopia" → some obscure 70s
+                # band, "renaissance" → some metal band) which can shadow the
+                # popular album the user actually meant (Travis Scott's
+                # UTOPIA, Beyoncé's RENAISSANCE). Title search surfaces those.
+                if need_albums:
+                    try:
+                        title_hits = await spotify.search_albums(q_stripped, limit=10)
+                        if title_hits:
+                            existing_ids = {a["id"] for a in spotify_albums}
+                            spotify_albums = list(spotify_albums) + [
+                                a for a in title_hits if a["id"] not in existing_ids
+                            ]
+                    except Exception:
+                        pass
+                if need_tracks and not artist_id:
+                    # Tracks: only fall back to title search if no artist
+                    # match, since a confirmed artist match drives discovery
+                    # via discography (and the user is rarely typing a track
+                    # title with a single word that exactly matches an artist).
+                    try:
+                        spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
+                    except Exception:
+                        pass
 
     # ── Step 2b: Persist search results to DB (background) ───────────────────
     # Albums fetched via the title-search fallback aren't covered by
