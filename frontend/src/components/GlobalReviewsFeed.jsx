@@ -73,7 +73,7 @@ function ReviewCardItem({ item, user, onVote, badges }) {
         }
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: ENTITY_COLOR[item.entity_type] ?? "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {item.entity_name ?? item.entity_id}
+            {item.entity_name ?? `Unknown ${item.entity_type ?? "item"}`}
           </div>
           {item.entity_artists?.length > 0 && (
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{item.entity_artists.slice(0, 2).join(", ")}</div>

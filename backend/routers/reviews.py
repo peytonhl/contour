@@ -1,27 +1,85 @@
 """Global public reviews feed."""
 
 import asyncio
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import AsyncSessionLocal, get_db
 from models import Review, AlbumCache, TrackCache
 from routers.auth import optional_user_id
 from routers.moderation import blocked_user_ids
 from routers.ratings import _enrich_reviews
 from services import spotify
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/reviews", tags=["reviews"])
+
+
+async def _write_through_cache(entity_type: str, entity_id: str, data: dict) -> None:
+    """
+    Persist a Spotify-fetched entity into TrackCache / AlbumCache so the next
+    request hits the DB cache for free. Runs in its own session because the
+    caller's request session may have closed by the time this fires.
+
+    Idempotent — checks for existing rows first; concurrent inserts are
+    swallowed by the rollback. Failures here are non-fatal, the response
+    has already been sent.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            if entity_type == "track":
+                existing = (await session.execute(
+                    select(TrackCache).where(TrackCache.spotify_id == entity_id)
+                )).scalar_one_or_none()
+                if existing:
+                    return
+                session.add(TrackCache(
+                    spotify_id=entity_id,
+                    name=data.get("name") or "",
+                    artist=(data.get("artists") or [""])[0],
+                    album_name=data.get("album_name"),
+                    album_id=data.get("album_id"),
+                    release_date=data.get("release_date"),
+                    duration_ms=data.get("duration_ms"),
+                    explicit=data.get("explicit", False),
+                    popularity=data.get("popularity"),
+                    image_url=data.get("image_url"),
+                    external_url=data.get("external_url"),
+                ))
+            elif entity_type == "album":
+                existing = (await session.execute(
+                    select(AlbumCache).where(AlbumCache.spotify_id == entity_id)
+                )).scalar_one_or_none()
+                if existing:
+                    return
+                session.add(AlbumCache(
+                    spotify_id=entity_id,
+                    name=data.get("name") or "",
+                    artist=(data.get("artists") or [""])[0],
+                    release_date=data.get("release_date"),
+                    image_url=data.get("image_url"),
+                    enrichment_status="pending",
+                ))
+            else:
+                return  # artists not cached here
+            await session.commit()
+    except Exception as exc:
+        logger.warning("[reviews] write-through cache failed for %s/%s: %s", entity_type, entity_id, exc)
 
 
 async def _entity_meta(entity_type: str, entity_id: str, db: AsyncSession) -> dict:
     """
     Get name + image for an entity. Tries the local DB caches first
     (AlbumCache for albums, TrackCache for tracks) and only falls through
-    to Spotify on a cache miss.
+    to Spotify on a cache miss. On a successful Spotify fetch we write
+    through to the cache so subsequent requests are free — this matters
+    most when Redis is not configured (every miss otherwise re-hits Spotify
+    forever).
 
     Without the TrackCache check, every track review fell straight through
     to Spotify, and any failure (rate limit, deleted track, Extended Access
@@ -56,6 +114,9 @@ async def _entity_meta(entity_type: str, entity_id: str, db: AsyncSession) -> di
             data = await spotify.get_track(entity_id)
         else:
             data = await spotify.get_artist(entity_id)
+        # Fire-and-forget cache write — don't block the response
+        if entity_type in ("track", "album") and data.get("name"):
+            asyncio.create_task(_write_through_cache(entity_type, entity_id, data))
         return {
             "name": data.get("name"),
             "image_url": data.get("image_url"),

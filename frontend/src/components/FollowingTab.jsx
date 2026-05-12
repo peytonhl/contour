@@ -42,7 +42,7 @@ function FollowingItem({ item }) {
           <Link to={userPath} style={{ color: "var(--text)", fontWeight: 700, textDecoration: "none" }}>{item.user?.display_name}</Link>
           <span style={{ color: "var(--text-muted)" }}>{isReview ? " reviewed " : " rated "}</span>
           <Link to={entityPath} style={{ color: ENTITY_COLOR[item.entity_type] ?? "var(--text)", fontWeight: 600, textDecoration: "none" }}>
-            {item.entity_name ?? item.entity_id}
+            {item.entity_name ?? `Unknown ${item.entity_type ?? "item"}`}
           </Link>
           {item.entity_artists?.length > 0 && (
             <span style={{ color: "var(--text-muted)" }}> by {item.entity_artists.slice(0, 2).join(", ")}</span>

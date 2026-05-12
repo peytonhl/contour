@@ -225,7 +225,7 @@ export function UserPage() {
                     to={`/${r.entity_type}/${r.entity_id}`}
                     style={{ color: "var(--text)", fontWeight: 600, textDecoration: "none", fontSize: 14, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                   >
-                    {r.entity_name ?? r.entity_id}
+                    {r.entity_name ?? `Unknown ${r.entity_type ?? "item"}`}
                   </Link>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                     {r.entity_artists?.join(", ")}
@@ -258,7 +258,7 @@ export function UserPage() {
                     </Link>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <Link to={entityPath} style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {r.entity_name ?? r.entity_id}
+                        {r.entity_name ?? `Unknown ${r.entity_type ?? "item"}`}
                       </Link>
                       <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                         {r.entity_artists?.join(", ")}

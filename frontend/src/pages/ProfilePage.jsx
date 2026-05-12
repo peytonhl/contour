@@ -78,7 +78,7 @@ function EntityRow({ item, right }) {
           onMouseEnter={(e) => e.currentTarget.style.color = accent}
           onMouseLeave={(e) => e.currentTarget.style.color = "var(--text)"}
         >
-          {item.entity_name ?? (/^\d+$/.test(item.entity_id) ? "Unknown track" : item.entity_id)}
+          {item.entity_name ?? `Unknown ${item.entity_type ?? "item"}`}
         </Link>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
           {item.entity_artists?.join(", ")}

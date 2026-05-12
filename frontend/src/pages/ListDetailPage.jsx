@@ -154,7 +154,7 @@ function ListItemRow({ item, index, isOwner, isRanked, onMoveUp, onMoveDown, onR
       <div style={{ flex: 1, minWidth: 0 }}>
         <Link to={entityPath} style={{ textDecoration: "none" }}>
           <div style={{ fontSize: 14, fontWeight: 700, color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {item.entity_name ?? item.entity_id}
+            {item.entity_name ?? `Unknown ${item.entity_type ?? "item"}`}
           </div>
         </Link>
         <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
