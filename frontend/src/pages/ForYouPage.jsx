@@ -1057,10 +1057,11 @@ export function ForYouPage() {
     cursor: "pointer", transition: "all 0.15s",
   });
 
-  // Layout's sticky <header> sits above this page in the document, so the
-  // tab strip needs to stick BELOW it. The header is roughly 53px tall
-  // plus the safe-area inset on devices with a notch.
-  const STICKY_TOP = "calc(env(safe-area-inset-top, 0px) + 53px)";
+  // Layout publishes its measured header height as --layout-header-h via
+  // ResizeObserver — survives safe-area inset changes, address-bar
+  // collapse, and the desktop nav wrapping on narrow viewports. Fallback
+  // value covers the brief pre-measurement render before the variable lands.
+  const STICKY_TOP = "var(--layout-header-h, 53px)";
 
   // For the audio-swipe tab we need a fixed-height container so the swipe
   // gesture has room to operate. For the scrollable tabs (Friends, Community)

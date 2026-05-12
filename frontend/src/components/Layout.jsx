@@ -1,5 +1,5 @@
 import { NavLink, Outlet, Link, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
 import { userAvatar } from "../utils/userAvatar.js";
@@ -119,8 +119,29 @@ export function Layout() {
   const { user, loading, logout } = useAuth();
   const location = useLocation();
   const [unread, setUnread] = useState(0);
+  const headerRef = useRef(null);
 
   const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? ""}/auth/login`;
+
+  // Publish the header's measured height to CSS so descendants can position
+  // sticky elements right beneath it. Header height varies with safe-area
+  // insets (iOS notch, dynamic island) and with whether the desktop nav row
+  // wraps on narrow viewports, so a hard-coded offset gets it wrong on the
+  // edges. ResizeObserver keeps the variable accurate through orientation
+  // changes and address-bar collapse on mobile.
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const el = headerRef.current;
+    const update = () => {
+      const h = el.getBoundingClientRect().height;
+      document.documentElement.style.setProperty("--layout-header-h", `${Math.round(h)}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener("resize", update);
+    return () => { ro.disconnect(); window.removeEventListener("resize", update); };
+  }, []);
 
   // Poll unread notification count every 60s when logged in
   useEffect(() => {
@@ -146,7 +167,7 @@ export function Layout() {
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
 
       {/* ── Top header ── */}
-      <header style={{
+      <header ref={headerRef} style={{
         borderBottom: "1px solid var(--border)",
         padding: "0 16px",
         paddingTop: "env(safe-area-inset-top, 0px)",  /* iPhone Dynamic Island / notch */

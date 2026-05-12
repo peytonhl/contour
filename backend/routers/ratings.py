@@ -74,11 +74,25 @@ class ReplyIn(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _controversial_score(upvotes: int, downvotes: int) -> float:
-    """Higher = more divisive. Rewards high total engagement + close 50/50 split."""
+    """Higher = more divisive.
+
+    Strict Reddit-style "controversial" requires both sides, but on a small
+    community even one downvote is the clearest signal of disagreement we'll
+    get — pure-positive reviews would never reach the threshold and the
+    filter would feel broken. So we treat any downvote as a baseline signal,
+    rewarding balance and total engagement on top.
+
+    A purely positive review (downvotes == 0) is by definition not
+    controversial → score 0, ranking below anything with even a single
+    downvote.
+    """
     total = upvotes + downvotes
-    if total == 0:
+    if total == 0 or downvotes == 0:
         return 0.0
-    return total * min(upvotes, downvotes) / (max(upvotes, downvotes) + 1)
+    # The +0.5 ensures one-sided downvoted reviews score above zero so they
+    # bubble to the top of the controversial tab. Balanced reviews still
+    # dominate as both up and down counts grow.
+    return total * (min(upvotes, downvotes) + 0.5) / (max(upvotes, downvotes) + 1)
 
 
 async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None):
