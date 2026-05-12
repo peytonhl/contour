@@ -62,27 +62,44 @@ workflows:
     scripts:
       - name: Install npm dependencies
         script: |
+          set -ex
           cd frontend
-          npm ci
+          # npm ci is strict; fall back to npm install if the lockfile drifts
+          # so we don't lose the whole build to a transient lockfile mismatch.
+          npm ci || npm install
 
       - name: Build the web frontend
         script: |
+          set -ex
           cd frontend
           npm run build
 
-      - name: Add or sync the iOS platform
+      - name: Add iOS platform (first time only)
         script: |
+          set -ex
           cd frontend
           if [ ! -d "ios" ]; then
-            echo "iOS platform not yet scaffolded — running 'npx cap add ios'"
+            echo ">>> iOS platform not yet scaffolded — running 'npx cap add ios'"
             npx cap add ios
+          else
+            echo ">>> iOS platform already exists, skipping cap add"
           fi
+          echo ">>> Confirming iOS scaffold layout:"
+          ls -la ios/ || (echo "FATAL: ios/ directory missing after cap add" && exit 1)
+          ls -la ios/App/ || (echo "FATAL: ios/App/ directory missing" && exit 1)
+          test -f ios/App/Podfile || (echo "FATAL: Podfile missing" && exit 1)
+
+      - name: Sync web assets into iOS
+        script: |
+          set -ex
+          cd frontend
           npx cap sync ios
 
       - name: CocoaPods install
         script: |
+          set -ex
           cd frontend/ios/App
-          pod install
+          pod install --repo-update
 
       - name: Set Info.plist values
         script: |
