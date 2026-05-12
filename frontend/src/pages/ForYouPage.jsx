@@ -229,16 +229,23 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
 
   // Apple Music deep-link match — fetched lazily, 404 means no match / service
   // unconfigured, in which case we just don't render the button.
+  //
+  // For You feed tracks can come from Deezer (Spotify dropped preview URLs
+  // for most tracks late 2023), in which case `track.id` is a Deezer
+  // numeric ID, not a Spotify ID — and the backend's DB cache + Spotify
+  // lookup both fail. We pass name + first-artist as hints so the backend
+  // can still complete the match via Apple Music's text search endpoint.
   const [appleMusicUrl, setAppleMusicUrl] = useState(null);
   useEffect(() => {
     setAppleMusicUrl(null);
     if (!track.id) return;
     let cancelled = false;
-    api.getAppleMusicLink("track", track.id).then((data) => {
+    const hint = { name: track.name, artist: track.artists?.[0] };
+    api.getAppleMusicLink("track", track.id, "us", hint).then((data) => {
       if (!cancelled && data?.url) setAppleMusicUrl(data.url);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [track.id]);
+  }, [track.id, track.name, track.artists]);
   const [progress, setProgress] = useState(0);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
@@ -1235,18 +1242,29 @@ export function ForYouPage() {
           activity), Community (global review feed). /feed was retired:
           this is the single home for all three discovery modes.
 
-          position: sticky pins the strip below Layout's sticky header as the
-          page scrolls (Friends / Community tabs only — the swipe tab has no
-          scroll). zIndex 40 sits under Layout's header (50) so the header
-          remains the topmost layer if anything overlaps. */}
+          Positioning model:
+          - Swipe mode (For You): the outer div has fixed height + overflow:hidden.
+            position: sticky degrades to relative-like behavior inside a
+            non-scrolling parent on some iOS WebKit configs, occasionally
+            allowing inner content to paint above the strip. Use explicit
+            position: relative + zIndex isolation to guarantee the strip
+            is the topmost layer of the swipe view.
+          - Scroll mode (Friends / Community): use sticky so the strip pins
+            below Layout's sticky header as the page scrolls.
+
+          zIndex 40 stays under Layout's header (50) in both modes. */}
       <div style={{
-        position: "sticky",
-        top: STICKY_TOP,
+        position: isSwipe ? "relative" : "sticky",
+        top: isSwipe ? undefined : STICKY_TOP,
         zIndex: 40,
         display: "flex",
         borderBottom: "1px solid rgba(255,255,255,0.1)",
         flexShrink: 0,
         background: "#0a0a0a",
+        // Belt-and-suspenders: force the strip onto its own GPU layer so
+        // nothing in the content panel paints above it regardless of
+        // descendant stacking-context shenanigans.
+        isolation: "isolate",
       }}>
         <button style={tabStyle(tab === "foryou")} onClick={() => setTab("foryou")}>For You</button>
         <button style={tabStyle(tab === "friends")} onClick={() => setTab("friends")}>Friends</button>
@@ -1254,10 +1272,13 @@ export function ForYouPage() {
       </div>
 
       {/* Content — all three panels stay mounted so ForYouFeed never loses
-          its track list or scroll position when the user flips tabs. */}
+          its track list or scroll position when the user flips tabs.
+          isolation: isolate scopes any inner zIndex shenanigans to this
+          subtree — children cannot paint above the tab strip. */}
       <div style={{
         position: "relative", background: "var(--bg)",
-        ...(isSwipe ? { flex: 1, overflow: "hidden" } : {}),
+        isolation: "isolate",
+        ...(isSwipe ? { flex: 1, overflow: "hidden", minHeight: 0 } : {}),
       }}>
         <div style={{ display: tab === "foryou" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <ForYouFeed />

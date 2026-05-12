@@ -133,8 +133,17 @@ export const api = {
 
   // Apple Music deep-link resolution. Returns {apple_music_id, url, ...} or
   // throws on 404 (no match or service disabled — caller should hide button).
-  getAppleMusicLink: (entityType, spotifyId, storefront = "us") =>
-    request(`/apple-music/match/${entityType}/${spotifyId}?storefront=${storefront}`),
+  //
+  // The optional `hint` object ({ name, artist }) supplies fallback metadata
+  // for entities whose `entityId` isn't a Spotify ID — e.g. Deezer-sourced
+  // For You feed tracks. The backend ignores hints when DB / Spotify lookup
+  // already produced the name + artist itself.
+  getAppleMusicLink: (entityType, entityId, storefront = "us", hint = null) => {
+    const params = new URLSearchParams({ storefront });
+    if (hint?.name) params.set("hint_name", hint.name);
+    if (hint?.artist) params.set("hint_artist", hint.artist);
+    return request(`/apple-music/match/${entityType}/${entityId}?${params.toString()}`);
+  },
 
   // Moderation
   reportContent: (target_type, target_id, reason, notes = null) =>

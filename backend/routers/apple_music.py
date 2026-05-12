@@ -115,6 +115,14 @@ async def match_entity(
     spotify_id: str,
     storefront: str = Query("us"),
     force: bool = Query(False, description="Bypass cache and re-attempt matching"),
+    # Fallback hints for entities whose ID isn't a Spotify ID (e.g. tracks
+    # surfaced in the For You feed from Deezer — see services/deezer.py).
+    # When DB + Spotify lookups fail to resolve the entity's name/artist,
+    # the matcher uses these instead so a text search can still succeed.
+    # Optional and unused for Spotify-keyed entities (the DB cache covers
+    # those cleanly).
+    hint_name: Optional[str] = Query(None, description="Track/album name hint when ID is non-Spotify"),
+    hint_artist: Optional[str] = Query(None, description="Artist name hint when ID is non-Spotify"),
     db: AsyncSession = Depends(get_db),
 ):
     if entity_type not in ("album", "track"):
@@ -146,6 +154,14 @@ async def match_entity(
     try:
         if entity_type == "track":
             track_meta = await _get_track_meta(spotify_id, db)
+            # Fold in caller-provided hints when DB+Spotify failed to resolve
+            # the entity (Deezer-keyed For You feed tracks land here). The
+            # hints fill in name/artist so the text-search path can succeed
+            # even though no ISRC is available.
+            if not track_meta.get("name") and hint_name:
+                track_meta["name"] = hint_name
+            if not (track_meta.get("artists") or []) and hint_artist:
+                track_meta["artists"] = [hint_artist]
             isrc = track_meta.get("isrc")
             if isrc:
                 match = await apple_music.match_track_by_isrc(isrc, storefront)
@@ -163,6 +179,10 @@ async def match_entity(
                     match_method = "text"
         else:  # album
             album_data = await _get_album_meta(spotify_id, db)
+            if not album_data.get("name") and hint_name:
+                album_data["name"] = hint_name
+            if not (album_data.get("artists") or []) and hint_artist:
+                album_data["artists"] = [hint_artist]
             isrc = album_data.get("first_track_isrc")
             if isrc:
                 match = await apple_music.match_track_by_isrc(isrc, storefront)
