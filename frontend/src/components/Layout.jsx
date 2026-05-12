@@ -84,16 +84,6 @@ function BellIcon() {
   );
 }
 
-function ChartsIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="12" width="4" height="9" />
-      <rect x="10" y="7" width="4" height="14" />
-      <rect x="17" y="3" width="4" height="18" />
-    </svg>
-  );
-}
-
 // ── Bottom nav tab item ───────────────────────────────────────────────────────
 function BottomTab({ to, label, icon, end = false }) {
   return (
@@ -137,10 +127,12 @@ export function Layout() {
     return () => clearInterval(interval);
   }, [user]);
 
+  // Primary nav (social-first): Feed → Search → For You → Profile.
+  // Charts/Compare/How It Works remain accessible but as secondary items, after the primaries.
   const desktopNavLinks = [
-    { to: "/", label: "For You", end: true },
-    { to: "/feed", label: "Community" },
+    { to: "/feed", label: "Feed" },
     { to: "/search", label: "Search" },
+    { to: "/", label: "For You", end: true },
     { to: "/compare", label: "Compare" },
     { to: "/charts", label: "Charts" },
     { to: "/methodology", label: "How It Works" },
@@ -297,10 +289,11 @@ export function Layout() {
         }}
       >
         <div style={{ display: "flex", alignItems: "stretch", height: 56 }}>
-          <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
-          <BottomTab to="/feed" label="Community" icon={<CommunityIcon />} />
+          {/* Social-first: Feed → Search → For You → Profile. Charts demoted to secondary
+              nav (still reachable via desktop top nav and direct URL /charts). */}
+          <BottomTab to="/feed" label="Feed" icon={<CommunityIcon />} />
           <BottomTab to="/search" label="Search" icon={<SearchIcon />} />
-          <BottomTab to="/charts" label="Charts" icon={<ChartsIcon />} />
+          <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
 
           {user ? (
             <NavLink

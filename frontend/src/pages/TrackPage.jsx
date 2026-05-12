@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { TrajectoryChart } from "../components/TrajectoryChart.jsx";
 import { ReviewSection } from "../components/ReviewSection.jsx";
-import { EraCallout } from "../components/EraCallout.jsx";
+import { EraAdjustedStat } from "../components/EraAdjustedStat.jsx";
 import { PreStreamingBanner } from "../components/PreStreamingBanner.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -178,7 +178,7 @@ export function TrackPage() {
               } />
               <StatBlock label="Released" value={formatReleaseDate(track.release_date)} />
               <StatBlock label="Duration" value={formatDuration(track.duration_ms)} />
-              <StatBlock label="Total Streams" value={formatStreams(trajectory?.total_streams)} />
+              <EraAdjustedStat eraContext={trajectory?.era_context} totalStreams={trajectory?.total_streams} />
               {topCert && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
@@ -221,22 +221,27 @@ export function TrackPage() {
       {/* ── Body ── */}
       <div style={{ padding: "28px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
         <PreStreamingBanner releaseDate={track.release_date} />
-        <EraCallout eraContext={trajectory?.era_context} totalStreams={trajectory?.total_streams} />
 
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px" }}>
           <ReviewSection entityType="track" entityId={id} user={user} />
         </div>
 
-        {trajectory?.trajectory?.length > 0 ? (
-          <TrajectoryChart
-            trajectory={trajectory.trajectory}
-            milestones={trajectory.riaa_milestones}
-            accentColor="var(--accent-b)"
-            disclaimer={trajectory.stream_source !== "kworb" ? DISCLAIMER : undefined}
-          />
-        ) : (
-          <NoChartData releaseDate={track.release_date} />
-        )}
+        {/* Streaming trajectory — moved below the fold; era-adjustment is contextual, surfaced in the hero stat */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase", margin: 0 }}>
+            Streaming trajectory
+          </h2>
+          {trajectory?.trajectory?.length > 0 ? (
+            <TrajectoryChart
+              trajectory={trajectory.trajectory}
+              milestones={trajectory.riaa_milestones}
+              accentColor="var(--accent-b)"
+              disclaimer={trajectory.stream_source !== "kworb" ? DISCLAIMER : undefined}
+            />
+          ) : (
+            <NoChartData releaseDate={track.release_date} />
+          )}
+        </div>
       </div>
     </div>
   );

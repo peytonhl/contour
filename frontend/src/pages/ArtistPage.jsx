@@ -221,6 +221,7 @@ export function ArtistPage() {
   });
 
   const totalStreams = albums.reduce((sum, a) => sum + (a.streams ?? 0), 0);
+  const totalEraAdjusted = albums.reduce((sum, a) => sum + (a.era_adjusted_streams ?? a.streams ?? 0), 0);
   const topAlbum = [...albums].sort((a, b) => (b.streams ?? -1) - (a.streams ?? -1))[0];
 
   if (loading) return <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>;
@@ -242,7 +243,24 @@ export function ArtistPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minWidth: 0 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 4 }}>Artist</div>
-            <h1 style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1 }}>{artist.name}</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <h1 style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1 }}>{artist.name}</h1>
+              {totalEraAdjusted > totalStreams * 1.1 && totalEraAdjusted > 0 && (
+                <span
+                  title="Era Score — combined catalog streams adjusted for Spotify's user base at each release's era"
+                  style={{
+                    fontSize: 11, fontWeight: 700,
+                    padding: "3px 10px", borderRadius: 999,
+                    background: "rgba(167,139,250,0.12)",
+                    color: ACCENT_A,
+                    border: `1px solid rgba(167,139,250,0.35)`,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Era Score: {formatStreams(totalEraAdjusted)}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Followers + genres */}
