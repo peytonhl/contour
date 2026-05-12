@@ -206,6 +206,13 @@ when `master` gets a new commit. Merging a PR to `master` = production deploy.
 
 Alembic migrations run automatically on startup — no manual migration step needed.
 
+**Full update-workflow runbook** — including the decision tree for which
+changes need which deploy path (web / backend / iOS rebuild), the
+Codemagic webhook-glitch fallback, build-version bumping, and verification
+steps for each target — lives in
+[OPERATIONS.md → "Deploy & update workflow"](OPERATIONS.md#deploy--update-workflow).
+Consult that before assuming a change needs a rebuild that it doesn't.
+
 ### iOS & Android: live-update shell model
 
 **Important architectural fact for mobile work.** The native iOS and Android

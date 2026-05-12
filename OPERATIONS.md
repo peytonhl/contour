@@ -88,6 +88,132 @@ Run through this monthly (or whenever something feels off). Most are 30-second c
 
 ---
 
+## Deploy & update workflow
+
+How code changes reach users. Most updates don't need a single click of human
+action — push to `master` and you're done. A small minority of changes
+require tagging a build. None of this is captured intuitively from the
+codebase, so it lives here.
+
+### The decision tree
+
+```
+Made a change. What deploy path applies?
+│
+├── Frontend code (React, CSS, page layout, new web feature)
+│     → Push to master. Vercel auto-builds + deploys (~2 min).
+│       Reaches web users on next page refresh.
+│       Reaches iOS/Android users on next app open (live-update mode).
+│       NO Codemagic involvement. NO IPA rebuild. NO Apple review.
+│
+├── Backend code (Python, API endpoint, DB schema)
+│     → Push to master. Railway auto-builds + deploys (~3 min).
+│       Migrations run automatically on startup.
+│       Reaches all clients (web + iOS + Android) on next request.
+│
+├── Native config (Capacitor plugin added, app icon, splash screen,
+│   Info.plist key, entitlement, iOS SDK / target bump)
+│     → Push to master AND git tag ios-vX.Y.Z + push the tag.
+│       Codemagic auto-builds (~10 min), uploads to TestFlight.
+│       Reaches internal testers in minutes after upload.
+│       Reaches external testers in ~24h (first build of version) or
+│       minutes (subsequent builds within same version).
+│
+└── Documentation / non-shipped files (TODO_PEYTON.md, this file, etc.)
+      → Push to master. Done — no deploy needed.
+```
+
+### What each deploy target watches
+
+| Target | Watches | Triggered by | Build time | Reaches users when |
+|---|---|---|---|---|
+| **Vercel** (frontend) | `master` branch push | Any commit to master | ~1–2 min | Next page refresh / app open (live-update reaches mobile too) |
+| **Railway** (backend) | `master` branch push | Any commit to master | ~2–3 min | Next API request |
+| **Codemagic** (iOS IPA) | Git tags matching `ios-v*` | Tag push to GitHub | ~5–10 min | After App Store Connect upload + processing + TestFlight propagation |
+| **Android local build** | Manual | You running `./gradlew bundleRelease` | ~3–5 min | After manual upload to Play Console |
+
+### Where to verify each deploy landed
+
+Don't just assume the deploy worked. Quick verification steps per target:
+
+| Target | How to check |
+|---|---|
+| Vercel | vercel.com → Contour → Deployments tab. The latest commit should show a green "Ready" status within ~2 min. Production URL `contour-rosy.vercel.app` immediately serves the new build. |
+| Railway | railway.app → Contour → Deployments tab. Latest should show "Active." Then `curl https://contour-production.up.railway.app/health` returns ok. |
+| Codemagic | codemagic.io → Apps → Contour → Builds. A new entry for your tag should appear within ~30s of the tag push (sometimes the webhook is flaky; see fallback below). |
+| App Store Connect (after Codemagic) | appstoreconnect.apple.com → Contour Music → TestFlight → iOS Builds. New build appears as "Processing" then "Ready to Test" within ~10 min of Codemagic finishing. |
+
+### The Codemagic webhook fallback (intermittent)
+
+Codemagic's GitHub webhook **usually** fires within ~30 seconds of a tag
+push. Occasionally it silently drops the event — no error anywhere, just no
+new build. If after ~2 minutes you don't see a new build in the Codemagic
+dashboard:
+
+1. Codemagic dashboard → Apps → Contour → click **"Start new build"**.
+2. Select workflow `ios-release`, branch `master` (or tag `ios-vX.Y.Z` if
+   the dropdown shows it), then click **Start**.
+3. Same result as if the webhook had fired — Codemagic builds against
+   whatever commit the branch / tag points at.
+
+This is a rare-but-real Codemagic quirk, not a config issue on our side.
+The `triggering.tag_patterns: ios-v*` rule in `codemagic.yaml` is correct.
+Don't bother debugging unless it happens repeatedly within a week.
+
+### When you actually need a new IPA rebuild
+
+You'll find yourself NOT tagging most of the time. The architecture is
+designed so that the iOS/Android binaries are effectively frozen and the
+web app (which they load on every launch) carries all the iteration.
+
+Triggers for a fresh `ios-v*` tag:
+
+- New Capacitor plugin (e.g. adding `@capacitor/push-notifications`,
+  `@capacitor-community/apple-sign-in`, `@capacitor/haptics`).
+- App icon, launch / splash screen, app name.
+- New entitlement (Push Notifications capability flipped on, Associated
+  Domains added for Universal Links, etc.).
+- New `Info.plist` key (e.g. URL scheme registration — exactly what
+  prompted `ios-v0.1.11`).
+- Capacitor or iOS SDK / target version bump (annual-ish).
+- Native-only bug fix.
+
+Realistic cadence during beta: **1–3 native rebuilds per month** with
+near-daily web/backend deploys in between. Once production-launched and
+the native shell is stable, this drops to roughly quarterly.
+
+### When a build version actually changes
+
+`CFBundleVersion` (the App Store build number, distinct from the
+user-visible app version like "1.0") is auto-bumped by Codemagic's
+`agvtool` step. It reads the latest from App Store Connect and adds 1.
+You never touch this manually. Two implications:
+
+- You can tag the same git commit multiple times (e.g. retry-build) and
+  every successful upload gets a fresh, monotonic bundle version.
+- The user-visible version string (`CFBundleShortVersionString` — the
+  "1.0" part) only bumps when you explicitly want to communicate a
+  meaningful release ("1.1 has push notifications!"). Changed via
+  `agvtool new-marketing-version 1.1` if/when needed; not currently
+  automated.
+
+### Mistakes that won't happen and don't need worrying about
+
+- **Pushing only to `develop`.** Develop never deploys anywhere. Only
+  `master` triggers Vercel / Railway / (via tag) Codemagic.
+- **Web change accidentally needs an iOS rebuild.** No, web changes ship
+  via Vercel only. You can't accidentally trigger an iOS build by editing
+  a React file.
+- **Vercel deploy reaches mobile users before iOS shell catches up.** No,
+  this is the entire point of live-update mode — the shell *always* loads
+  the latest Vercel deploy on every launch. There's no version mismatch.
+- **Tag pushed but Codemagic builds the wrong commit.** Codemagic builds
+  exactly whatever the tag points at. As long as the tag exists at the
+  intended commit (verify with `git ls-remote --tags origin`), the build
+  is correct.
+
+---
+
 ## Domain migration runbook
 
 If you replace `contour-rosy.vercel.app` with a custom domain (`contour.app`, `contour.fm`, etc.), here's the complete list of places it needs to be updated. Doing all of these in one focused session takes ~30 min — partial updates leave the app half-broken.
