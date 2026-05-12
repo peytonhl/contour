@@ -3,12 +3,15 @@
   "appName": "Contour",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
+    "url": "https://contour-rosy.vercel.app",
+    "androidScheme": "https",
+    "iosScheme": "https",
+    "cleartext": false
   },
   "ios": {
     "contentInset": "always",
     "scrollEnabled": true,
-    "limitsNavigationsToAppBoundDomains": true
+    "limitsNavigationsToAppBoundDomains": false
   },
   "android": {
     "allowMixedContent": false

@@ -206,6 +206,34 @@ when `master` gets a new commit. Merging a PR to `master` = production deploy.
 
 Alembic migrations run automatically on startup — no manual migration step needed.
 
+### iOS & Android: live-update shell model
+
+**Important architectural fact for mobile work.** The native iOS and Android
+apps are **thin Capacitor shells that load the live web app from
+`https://contour-rosy.vercel.app` on every launch.** Configured in
+`frontend/capacitor.config.json` via `server.url`.
+
+What this means for deploys:
+
+| Change type | Where to ship | Reaches mobile users when |
+|---|---|---|
+| React / CSS / page layout | Push to `master` → Vercel | Next app launch (seconds) |
+| Backend logic / API | Push to `master` → Railway | Next request |
+| **Add a Capacitor plugin** (e.g. `@capacitor/push-notifications`, native SIWA) | Push, then tag `ios-v*` to trigger Codemagic rebuild | After TestFlight / App Store review |
+| App icon, splash screen | Same as above — IPA rebuild | After TestFlight / App Store review |
+| Native config (entitlements, `Info.plist`, deep-link schemes) | Same as above | After TestFlight / App Store review |
+
+In practice: 90%+ of changes ship via web deploy and reach mobile instantly.
+IPA rebuilds happen quarterly-ish, when bundling new native capabilities.
+
+**Do NOT switch to bundled-mode** (removing `server.url`) without a discussion —
+that locks iOS/Android users on whichever frontend was bundled into the IPA at
+build time, which is the opposite of what we want for a mobile-first social app.
+
+**Mobile-specific UI in React:** detect via `Capacitor.isNativePlatform()`
+plus viewport size. Same component tree can render desktop-web, mobile-web,
+and native-shell variants without conditional builds.
+
 ---
 
 ## Known Spotify rate limit behaviour
