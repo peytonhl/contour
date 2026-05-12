@@ -108,6 +108,31 @@ workflows:
           cd frontend
           npx cap sync ios
 
+      - name: Generate iOS app icon + splash from master assets
+        script: |
+          set -ex
+          cd frontend
+          # `@capacitor/assets generate` reads ./assets/icon.png +
+          # icon-only.png (and optionally splash.png, splash-dark.png),
+          # then writes every required iOS variant straight into
+          # ios/App/App/Assets.xcassets/AppIcon.appiconset/. Same tool
+          # handles Android adaptive icons when we wire that pipeline up.
+          #
+          # The `--iconBackgroundColor` flags only matter for icon
+          # variants that need a fill behind a transparent foreground
+          # (e.g. Android adaptive). Our icon-only.png is full-bleed
+          # opaque so these are effectively a fallback for any Android
+          # density that wants the solid background.
+          npx capacitor-assets generate --ios \
+            --iconBackgroundColor "#0d0d0f" \
+            --iconBackgroundColorDark "#0d0d0f" \
+            --splashBackgroundColor "#0d0d0f" \
+            --splashBackgroundColorDark "#0d0d0f"
+
+          echo ">>> Confirming icon variants landed in AppIcon.appiconset:"
+          ls -la ios/App/App/Assets.xcassets/AppIcon.appiconset/ || \
+            (echo "FATAL: AppIcon.appiconset missing — capacitor-assets failed silently" && exit 1)
+
       - name: Set Info.plist values
         script: |
           set -ex

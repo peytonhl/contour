@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "android:sync": "npm run build && cap sync android",
-    "ios:sync": "npm run build && cap sync ios"
+    "ios:sync": "npm run build && cap sync ios",
+    "assets:generate": "capacitor-assets generate --iconBackgroundColor '#0d0d0f' --iconBackgroundColorDark '#0d0d0f' --splashBackgroundColor '#0d0d0f' --splashBackgroundColorDark '#0d0d0f'"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.1",
@@ -24,6 +25,7 @@
     "recharts": "^2.12.7"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
