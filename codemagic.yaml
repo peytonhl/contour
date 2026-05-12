@@ -120,23 +120,28 @@ workflows:
         script: |
           set -ex
           # Bundle versions (CFBundleVersion) must be strictly monotonic for
-          # every IPA we upload to App Store Connect — repeating one means
-          # the upload gets rejected with ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE.
+          # every IPA we upload to App Store Connect. Re-using a version
+          # gets rejected with ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE.
           #
-          # Strategy: ask App Store Connect what the highest existing bundle
-          # version for our Apple ID is, then bump by 1. This is robust to
-          # local CI build counters (which can reset, drift, or share numbers
-          # with manually-uploaded builds) — App Store Connect itself is the
-          # source of truth.
+          # `get-latest-build-number` (no suffix) checks ALL tracks —
+          # App Store production + TestFlight + processing. The "app-store"
+          # and "testflight" suffixed variants only check one track each,
+          # which causes false-zero returns when builds exist on the other
+          # track. The unsuffixed variant is the right one for monotonicity.
           LATEST_BUILD_NUMBER=$(
-            app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" \
-              2>/dev/null || echo 0
+            app-store-connect get-latest-build-number "$APP_STORE_APPLE_ID" \
+              || echo 0
           )
+          # Normalize: strip whitespace, fall back to 0 if empty.
+          LATEST_BUILD_NUMBER=$(echo "$LATEST_BUILD_NUMBER" | tr -d '[:space:]')
+          LATEST_BUILD_NUMBER=${LATEST_BUILD_NUMBER:-0}
           NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
-          echo ">>> Previous CFBundleVersion on App Store Connect: $LATEST_BUILD_NUMBER"
-          echo ">>> New CFBundleVersion for this build:           $NEW_BUILD_NUMBER"
+          echo ">>> Latest CFBundleVersion on App Store Connect: $LATEST_BUILD_NUMBER"
+          echo ">>> New CFBundleVersion for this build:          $NEW_BUILD_NUMBER"
           cd frontend/ios/App
           agvtool new-version -all "$NEW_BUILD_NUMBER"
+          echo ">>> Version actually applied by agvtool:"
+          agvtool what-version -terse
 
       - name: Set up code signing
         script: |
