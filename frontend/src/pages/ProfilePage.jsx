@@ -45,7 +45,9 @@ function RatingBadge({ value }) {
 }
 
 function timeAgo(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
+  // Backend serializes naive UTC; normalize tz-less strings to UTC.
+  const normalized = /[Z+-]\d{2}:?\d{2}$|Z$/.test(iso) ? iso : `${iso}Z`;
+  const diff = Math.max(0, Date.now() - new Date(normalized).getTime());
   const days = Math.floor(diff / 86400000);
   if (days === 0) return "today";
   if (days === 1) return "yesterday";
@@ -123,6 +125,23 @@ function SettingsMenu({ open, onClose }) {
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
           Import ratings
+        </Link>
+        <Link
+          to="/disliked-artists"
+          onClick={onClose}
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "10px 12px", borderRadius: 6,
+            color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
+          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18.364 5.636L5.636 18.364" />
+            <circle cx="12" cy="12" r="9" />
+          </svg>
+          Disliked artists
         </Link>
         <Link
           to="/blocks"

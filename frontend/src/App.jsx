@@ -17,6 +17,7 @@ import { Methodology } from "./components/Methodology.jsx";
 import { PrivacyPage } from "./pages/PrivacyPage.jsx";
 import { ListDetailPage } from "./pages/ListDetailPage.jsx";
 import { BlocksPage } from "./pages/BlocksPage.jsx";
+import { DislikedArtistsPage } from "./pages/DislikedArtistsPage.jsx";
 import { AdminReportsPage } from "./pages/AdminReportsPage.jsx";
 import { ImportPage } from "./pages/ImportPage.jsx";
 import { TrendingPage } from "./pages/TrendingPage.jsx";
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="privacy" element={<PrivacyPage />} />
         <Route path="list/:id" element={<ListDetailPage />} />
         <Route path="blocks" element={<BlocksPage />} />
+        <Route path="disliked-artists" element={<DislikedArtistsPage />} />
         <Route path="admin/reports" element={<AdminReportsPage />} />
         <Route path="import" element={<ImportPage />} />
         <Route path="trending" element={<TrendingPage />} />

@@ -157,7 +157,7 @@ async def trending_reviews(db: AsyncSession, window: str, limit: int) -> Trendin
             {
                 "id": r.id,
                 "body": r.body,
-                "created_at": r.created_at.isoformat(),
+                "created_at": r.created_at.isoformat() + "Z",
                 "entity_type": r.entity_type,
                 "entity_id": r.entity_id,
                 "entity_meta": _album_to_dict(meta_map.get(r.entity_id), r.entity_id) if r.entity_type == "album" else None,

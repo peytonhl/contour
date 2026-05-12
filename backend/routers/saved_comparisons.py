@@ -56,7 +56,7 @@ async def get_comparison(comparison_id: str, db: AsyncSession = Depends(get_db))
 
     return {
         "id": row.id,
-        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "created_at": row.created_at.isoformat() + "Z" if row.created_at else None,
         "name_a": row.name_a,
         "name_b": row.name_b,
         "name_c": row.name_c,

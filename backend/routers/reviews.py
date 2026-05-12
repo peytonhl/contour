@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Review, AlbumCache
+from models import Review, AlbumCache, TrackCache
 from routers.auth import optional_user_id
 from routers.moderation import blocked_user_ids
 from routers.ratings import _enrich_reviews
@@ -18,7 +18,16 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
 
 
 async def _entity_meta(entity_type: str, entity_id: str, db: AsyncSession) -> dict:
-    """Get name + image for an entity. Tries album_cache first, falls back to Spotify."""
+    """
+    Get name + image for an entity. Tries the local DB caches first
+    (AlbumCache for albums, TrackCache for tracks) and only falls through
+    to Spotify on a cache miss.
+
+    Without the TrackCache check, every track review fell straight through
+    to Spotify, and any failure (rate limit, deleted track, Extended Access
+    restrictions) made the review render as a raw entity ID in the global
+    feed.
+    """
     try:
         if entity_type == "album":
             cached = (await db.execute(
@@ -30,7 +39,17 @@ async def _entity_meta(entity_type: str, entity_id: str, db: AsyncSession) -> di
                     "image_url": cached.image_url,
                     "artists": [cached.artist],
                 }
-        # Fall through to Spotify for tracks, artists, and uncached albums
+        elif entity_type == "track":
+            cached = (await db.execute(
+                select(TrackCache).where(TrackCache.spotify_id == entity_id)
+            )).scalar_one_or_none()
+            if cached:
+                return {
+                    "name": cached.name,
+                    "image_url": cached.image_url,
+                    "artists": [cached.artist] if cached.artist else [],
+                }
+        # Fall through to Spotify for artists and uncached albums/tracks
         if entity_type == "album":
             data = await spotify.get_album(entity_id)
         elif entity_type == "track":

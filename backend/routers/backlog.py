@@ -102,7 +102,7 @@ async def _serialize_items(db: AsyncSession, items: list[BacklogItem]) -> list[d
             # still read .album_id / .album. Safe to drop once the next Vercel
             # deploy has propagated.
             "album_id": i.entity_id if i.entity_type == "album" else None,
-            "added_at": i.added_at.isoformat(),
+            "added_at": i.added_at.isoformat() + "Z",
             "note": i.note,
             "entity": entity,
             "album": entity if i.entity_type == "album" else None,

@@ -193,12 +193,21 @@ class UserTasteProfile(Base):
     Server-side taste profile — genres the user likes + artist IDs they've
     rated 4–5 stars.  Drives the For You feed for logged-in users.
     Populated by the onboarding flow and auto-updated on high ratings.
+
+    Negative signal columns:
+      - disliked_artist_ids: explicit "Not interested" clicks (hard exclude
+        from every tier).
+      - down_weighted_artist_ids: inferred from 1–2 star ratings (excluded
+        from personalized seed/related/genre tiers, but still allowed to
+        appear in baseline chart tiers so the user isn't blackholed).
     """
     __tablename__ = "user_taste_profiles"
 
     user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    liked_artist_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array
-    genres: Mapped[Optional[str]] = mapped_column(Text, nullable=True)            # JSON array
+    liked_artist_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)            # JSON array
+    genres: Mapped[Optional[str]] = mapped_column(Text, nullable=True)                       # JSON array
+    disliked_artist_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)          # JSON array
+    down_weighted_artist_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)     # JSON array
     onboarding_done: Mapped[bool] = mapped_column(default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

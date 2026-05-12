@@ -129,7 +129,7 @@ async def list_my_blocks(
             "user_id": b.blocked_user_id,
             "display_name": by_id.get(b.blocked_user_id).display_name if by_id.get(b.blocked_user_id) else None,
             "image_url": by_id.get(b.blocked_user_id).image_url if by_id.get(b.blocked_user_id) else None,
-            "blocked_at": b.created_at.isoformat(),
+            "blocked_at": b.created_at.isoformat() + "Z",
         }
         for b in blocks
     ]
@@ -235,8 +235,8 @@ async def list_reports(
             "reason": r.reason,
             "notes": r.notes,
             "status": r.status,
-            "created_at": r.created_at.isoformat(),
-            "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
+            "created_at": r.created_at.isoformat() + "Z",
+            "resolved_at": r.resolved_at.isoformat() + "Z" if r.resolved_at else None,
         })
     return out
 

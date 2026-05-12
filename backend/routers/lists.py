@@ -140,8 +140,8 @@ async def get_list(
         "title": lst.title,
         "description": lst.description,
         "is_ranked": lst.is_ranked,
-        "created_at": lst.created_at.isoformat(),
-        "updated_at": lst.updated_at.isoformat(),
+        "created_at": lst.created_at.isoformat() + "Z",
+        "updated_at": lst.updated_at.isoformat() + "Z",
         "is_owner": viewer_id == lst.user_id,
         "owner": {
             "id": owner.id,

@@ -10,8 +10,12 @@ const ACCENT_A = "#a78bfa";
 const ENTITY_COLOR = { album: ACCENT_A, track: "#34d399", artist: "#fb923c" };
 
 function timeAgo(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
+  // Backend serializes naive UTC; treat tz-less strings as UTC so non-UTC
+  // clients don't show negative values like "-219m ago".
+  const normalized = /[Z+-]\d{2}:?\d{2}$|Z$/.test(iso) ? iso : `${iso}Z`;
+  const diff = Math.max(0, Date.now() - new Date(normalized).getTime());
   const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(diff / 3600000);
   if (hours < 24) return `${hours}h ago`;

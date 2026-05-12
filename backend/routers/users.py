@@ -375,7 +375,7 @@ async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
             "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
             "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
             "value": r.value,
-            "created_at": r.created_at.isoformat(),
+            "created_at": r.created_at.isoformat() + "Z",
         }
         for r in ratings
     ]
@@ -428,7 +428,7 @@ async def get_user_lists(user_id: str, db: AsyncSession = Depends(get_db)):
             "is_ranked": lst.is_ranked,
             "item_count": item_count,
             "preview_images": [img for img in preview_images if img],
-            "updated_at": lst.updated_at.isoformat(),
+            "updated_at": lst.updated_at.isoformat() + "Z",
         })
 
     return result
@@ -476,7 +476,7 @@ async def get_user_reviews(user_id: str, db: AsyncSession = Depends(get_db)):
             "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
             "body": r.body,
             "rating": rating_map.get((r.entity_type, r.entity_id)),
-            "created_at": r.created_at.isoformat(),
+            "created_at": r.created_at.isoformat() + "Z",
         }
         for r in reviews
     ]

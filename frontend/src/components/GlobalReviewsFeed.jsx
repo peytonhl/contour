@@ -17,7 +17,13 @@ const SORT_LABELS = [
 ];
 
 function timeAgo(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
+  // The backend serializes datetime.utcnow() as a naive ISO string with no
+  // timezone suffix, which JS interprets as local time. For non-UTC users
+  // this makes UTC server timestamps appear shifted by their TZ offset
+  // (e.g. -219m ago for an East Coast user). Treat tz-less strings as UTC.
+  const normalized = /[Z+-]\d{2}:?\d{2}$|Z$/.test(iso) ? iso : `${iso}Z`;
+  const diff = Math.max(0, Date.now() - new Date(normalized).getTime());
+  if (diff < 60000) return "just now";
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(diff / 3600000);

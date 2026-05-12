@@ -34,8 +34,10 @@ function saveEnglishOnly(val) {
   localStorage.setItem(ENGLISH_ONLY_KEY, String(val));
 }
 
-// How many ratings before we switch from cold-start to personalized mode
-const COLD_START_THRESHOLD = 5;
+// Soft ramp threshold — past this many ratings we hide the "rate to personalize"
+// banner. Personalization itself kicks in from rating #1; this number only
+// controls the banner UI, NOT whether the backend sees the user's signals.
+const PERSONALIZATION_RAMP = 5;
 
 // ── Genre prefs ───────────────────────────────────────────────────────────────
 function loadGenres() {
@@ -81,15 +83,19 @@ function getRatingCount() {
 }
 
 // ── Disliked artists ──────────────────────────────────────────────────────────
+// Local cache only — for logged-in users the server profile is the source of
+// truth (synced via api.addArtistDislike). For logged-out users this *is*
+// the source of truth, sent as the disliked_artists query param.
 function loadDisliked() {
   try { return JSON.parse(localStorage.getItem(DISLIKED_KEY) || "[]"); } catch { return []; }
 }
 function recordDislike(artistId) {
   if (!artistId) return;
-  const prev = loadDisliked();
-  if (!prev.includes(artistId)) {
-    localStorage.setItem(DISLIKED_KEY, JSON.stringify([...prev, artistId].slice(0, 50)));
-  }
+  const prev = loadDisliked().filter((a) => a !== artistId);
+  // New entries go to the front so the cap evicts the oldest, not the newest.
+  // The previous slice(0, 50) silently dropped every dislike past 50.
+  const next = [artistId, ...prev].slice(0, 50);
+  localStorage.setItem(DISLIKED_KEY, JSON.stringify(next));
 }
 
 // ── Share helper ──────────────────────────────────────────────────────────────
@@ -605,11 +611,15 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
   );
 }
 
-// ── Cold-start progress banner ────────────────────────────────────────────────
+// ── Personalization-ramp progress banner ──────────────────────────────────────
+// The feed adapts from rating #1; this banner just lets users see that more
+// ratings = a stronger signal until they hit the ramp threshold.
 function ColdStartBanner({ ratingCount }) {
-  if (ratingCount >= COLD_START_THRESHOLD) return null;
-  const remaining = COLD_START_THRESHOLD - ratingCount;
-  const pct = (ratingCount / COLD_START_THRESHOLD) * 100;
+  if (ratingCount >= PERSONALIZATION_RAMP) return null;
+  const pct = (ratingCount / PERSONALIZATION_RAMP) * 100;
+  const label = ratingCount === 0
+    ? "Rate a track to start personalizing"
+    : `${ratingCount} of ${PERSONALIZATION_RAMP} — feed gets sharper as you rate`;
 
   return (
     <div style={{
@@ -628,7 +638,7 @@ function ColdStartBanner({ ratingCount }) {
         }} />
       </div>
       <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", flexShrink: 0 }}>
-        Rate {remaining} more to personalize
+        {label}
       </span>
     </div>
   );
@@ -652,8 +662,6 @@ function ForYouFeed() {
   const genresRef = useRef(loadGenres());
   const fetchingMoreRef = useRef(false);
 
-  const isPersonalized = ratingCount >= COLD_START_THRESHOLD;
-
   async function fetchBatch(append = false, attempt = 0) {
     if (append && fetchingMoreRef.current) return;
     if (append) fetchingMoreRef.current = true;
@@ -662,12 +670,18 @@ function ForYouFeed() {
     setter(true);
     setFetchError(false);
     try {
-      const likedArtists = isPersonalized ? getLikedArtists() : [];
+      // Soft ramp: send everything we have, from rating #1. The backend
+      // already handles the empty-signal case by falling through to baseline
+      // tiers, so there's no upside to gating on the client.
+      const likedArtists = getLikedArtists();
       // On retry (attempt >= 1) skip the disliked filter — the user may have
       // marked so many artists as "not interested" that nothing is left.
+      // (For logged-in users this only affects the local cache; the server
+      // profile dislikes are still applied — but the nuclear-fallback tier
+      // on the backend handles that case.)
       const dislikedArtists = attempt === 0 ? loadDisliked() : [];
       const batch = await api.getDiscoverFeed({
-        genres: isPersonalized ? genresRef.current.slice(0, 3) : [],
+        genres: genresRef.current.slice(0, 3),
         liked_artists: likedArtists,
         disliked_artists: dislikedArtists,
         english_only: englishOnlyRef.current,
@@ -699,6 +713,9 @@ function ForYouFeed() {
 
   function clearNotInterested() {
     localStorage.removeItem(DISLIKED_KEY);
+    // Best-effort server clear for logged-in users — failure is non-fatal,
+    // they just see their server-side dislikes again on the next fetch.
+    if (user) api.clearArtistDislikes().catch(() => {});
     fetchBatch();
   }
 
@@ -835,11 +852,44 @@ function ForYouFeed() {
     }
   }
 
-  function handleDislike(track) {
-    const artistId = track.artist_ids?.[0];
-    recordDislike(artistId);
+  /**
+   * Resolve a track's artist to a Spotify artist ID.
+   *
+   * Deezer-sourced cards carry a Deezer numeric artist ID, which can't be
+   * cross-matched against Spotify-sourced cards from later batches. So we
+   * search Spotify by name to get a stable canonical ID for the dislike
+   * record. If lookup fails we fall back to whatever we have locally — at
+   * worst that just blocks future Deezer cards from the same artist.
+   */
+  async function _resolveSpotifyArtistId(track) {
+    const localId = track.artist_ids?.[0];
+    if (track._source !== "deezer") return localId;
+    const name = track.artists?.[0];
+    if (!name) return localId;
+    try {
+      const matches = await api.searchArtists(name);
+      const exact = matches?.find((a) => a.name?.toLowerCase() === name.toLowerCase());
+      return exact?.id ?? matches?.[0]?.id ?? localId;
+    } catch {
+      return localId;
+    }
+  }
+
+  async function handleDislike(track) {
+    const localArtistId = track.artist_ids?.[0];
     // Immediately remove every track by this artist from the current feed
-    setTracks((prev) => prev.filter((t) => t.artist_ids?.[0] !== artistId));
+    // using whatever ID we have locally — don't wait on the network.
+    setTracks((prev) => prev.filter((t) => t.artist_ids?.[0] !== localArtistId));
+
+    // Resolve to a canonical Spotify ID, then persist.
+    const canonicalId = await _resolveSpotifyArtistId(track);
+    recordDislike(canonicalId);
+    // Sync to the server profile so the dislike follows the user across
+    // devices (and so the server can apply it before serving the next
+    // batch). Best-effort — local cache already holds it for this device.
+    if (user && canonicalId) {
+      api.addArtistDislike(canonicalId).catch(() => {});
+    }
   }
 
   if (loading) {

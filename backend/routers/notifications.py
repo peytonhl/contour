@@ -60,7 +60,7 @@ async def get_notifications(
             "id": n.id,
             "type": n.type,
             "read": n.read,
-            "created_at": n.created_at.isoformat(),
+            "created_at": n.created_at.isoformat() + "Z",
             "actor": actor_map.get(n.actor_id),
             "review_id": n.review_id,
             "entity_type": review.entity_type if review else n.entity_type,

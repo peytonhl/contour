@@ -388,7 +388,7 @@ async def get_profile(
                 "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
                 "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
                 "value": r.value,
-                "created_at": r.created_at.isoformat(),
+                "created_at": r.created_at.isoformat() + "Z",
             }
             for r in ratings
         ],
@@ -400,7 +400,7 @@ async def get_profile(
                 "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
                 "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
                 "body": r.body,
-                "created_at": r.created_at.isoformat(),
+                "created_at": r.created_at.isoformat() + "Z",
             }
             for r in reviews
         ],

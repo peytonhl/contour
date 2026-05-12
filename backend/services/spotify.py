@@ -392,7 +392,14 @@ async def get_artist_top_tracks(artist_id: str, market: str = "US") -> list[dict
 
 
 async def get_related_artists(artist_id: str) -> list[str]:
-    """Return up to 10 artist IDs related to the given artist."""
+    """
+    Return up to 10 artist IDs related to the given artist.
+
+    Spotify deprecated /artists/{id}/related-artists for new client-credentials
+    apps in late 2024 — it now returns 404 for most callers. We catch that
+    explicitly so the discover feed can fall back to genre-based seeding
+    instead of silently producing zero candidates.
+    """
     cache_key = f"spotify:related:{artist_id}"
     cached = await redis_cache.get(cache_key)
     if cached:  # guard: don't use an empty cached result
@@ -404,6 +411,14 @@ async def get_related_artists(artist_id: str) -> list[str]:
             f"https://api.spotify.com/v1/artists/{artist_id}/related-artists",
             headers={"Authorization": f"Bearer {token}"},
         )
+        if resp.status_code in (403, 404):
+            _log.warning(
+                "[spotify] /related-artists returned %d for %s — endpoint is "
+                "deprecated for non-Extended-Access apps; tier 1 will use "
+                "genre fallback",
+                resp.status_code, artist_id,
+            )
+            return []
         resp.raise_for_status()
         artists = resp.json().get("artists", [])
     result = [a["id"] for a in artists[:10]]

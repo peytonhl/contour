@@ -6,7 +6,10 @@
 // ── Time ─────────────────────────────────────────────────────────────────────
 
 export function timeAgo(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
+  // Backend emits naive UTC ISO strings (no Z suffix); JS would otherwise
+  // parse those as local time and produce negative diffs for non-UTC users.
+  const normalized = /[Z+-]\d{2}:?\d{2}$|Z$/.test(iso) ? iso : `${iso}Z`;
+  const diff = Math.max(0, Date.now() - new Date(normalized).getTime());
   const days = Math.floor(diff / 86400000);
   if (days === 0) return "today";
   if (days === 1) return "yesterday";

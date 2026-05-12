@@ -166,6 +166,13 @@ export const api = {
   getMyTasteProfile: () => request(`/taste/profile`),
   saveTasteProfile: (genres, likedArtistIds = [], onboardingDone = false) =>
     post(`/taste/profile`, { genres, liked_artist_ids: likedArtistIds, onboarding_done: onboardingDone }),
+  // Hard-dislike list ("Not interested" on a For You card). Idempotent.
+  // Best-effort fire-and-forget from the UI; backend is the source of truth.
+  addArtistDislike: (artistId) => post(`/taste/dislike`, { artist_id: artistId }),
+  removeArtistDislike: (artistId) => del(`/taste/dislike/${artistId}`),
+  clearArtistDislikes: () => del(`/taste/dislikes`),
+  // Enriched listing (id + name + image_url) for the management page
+  listArtistDislikes: () => request(`/taste/dislikes`),
 
   // Badge leaderboard (top-5 critics, influencers, connectors)
   getBadges: () => request(`/users/badges`),

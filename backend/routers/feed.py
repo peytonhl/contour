@@ -112,7 +112,7 @@ async def get_feed(
             "entity_image_url": meta.get("image_url"),
             "entity_artists": meta.get("artists", []),
             "value": r.value,
-            "created_at": r.created_at.isoformat(),
+            "created_at": r.created_at.isoformat() + "Z",
         })
     for r in reviews:
         meta = entity_map.get((r.entity_type, r.entity_id), {})
@@ -125,7 +125,7 @@ async def get_feed(
             "entity_image_url": meta.get("image_url"),
             "entity_artists": meta.get("artists", []),
             "body": r.body,
-            "created_at": r.created_at.isoformat(),
+            "created_at": r.created_at.isoformat() + "Z",
         })
 
     # Sort by date descending, limit to 50

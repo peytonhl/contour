@@ -155,7 +155,7 @@ async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None
             "entity_type": rev.entity_type,
             "entity_id": rev.entity_id,
             "body": rev.body,
-            "created_at": rev.created_at.isoformat(),
+            "created_at": rev.created_at.isoformat() + "Z",
             "rating": rating_map.get(rev.user_id),
             "upvotes": up,
             "downvotes": down,
@@ -174,7 +174,12 @@ async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None
 # ── Background taste-profile updater ──────────────────────────────────────────
 
 async def _update_taste_from_rating(user_id: str, artist_id: str) -> None:
-    """Prepend artist_id to the user's liked_artist_ids in UserTasteProfile."""
+    """
+    Prepend artist_id to the user's liked_artist_ids in UserTasteProfile.
+
+    Also removes the artist from down_weighted_artist_ids if present — a high
+    rating is a stronger signal than a previous low one and supersedes it.
+    """
     async with AsyncSessionLocal() as db:
         profile = await db.get(UserTasteProfile, user_id)
         if profile:
@@ -182,12 +187,79 @@ async def _update_taste_from_rating(user_id: str, artist_id: str) -> None:
             if artist_id not in existing:
                 merged = [artist_id] + existing
                 profile.liked_artist_ids = json.dumps(merged[:20])
-                profile.updated_at = datetime.utcnow()
+            down: list[str] = json.loads(profile.down_weighted_artist_ids or "[]")
+            if artist_id in down:
+                profile.down_weighted_artist_ids = json.dumps([a for a in down if a != artist_id])
+            profile.updated_at = datetime.utcnow()
         else:
             profile = UserTasteProfile(
                 user_id=user_id,
                 liked_artist_ids=json.dumps([artist_id]),
                 genres=json.dumps([]),
+                onboarding_done=False,
+            )
+            db.add(profile)
+        await db.commit()
+
+
+async def _down_weight_from_rating(user_id: str, artist_id: str) -> None:
+    """
+    Append artist_id to down_weighted_artist_ids on a 1–2 star rating.
+
+    Soft signal: tier 1/2 personalization will skip these artists, but they
+    can still surface from baseline chart tiers — a single low rating
+    shouldn't permanently blackhole an artist (use "Not interested" for that).
+
+    If the artist is in liked_artist_ids, we leave that alone; the discover
+    router resolves the conflict by treating any liked artist as an active
+    seed regardless of whether it's also down-weighted (a recent high rating
+    overwrote it then this newer low rating is recorded — the user is
+    ambivalent and the next refresh will balance it out).
+    """
+    async with AsyncSessionLocal() as db:
+        profile = await db.get(UserTasteProfile, user_id)
+        if profile:
+            existing: list[str] = json.loads(profile.down_weighted_artist_ids or "[]")
+            if artist_id not in existing:
+                merged = [artist_id] + existing
+                profile.down_weighted_artist_ids = json.dumps(merged[:50])
+                profile.updated_at = datetime.utcnow()
+        else:
+            profile = UserTasteProfile(
+                user_id=user_id,
+                liked_artist_ids=json.dumps([]),
+                genres=json.dumps([]),
+                down_weighted_artist_ids=json.dumps([artist_id]),
+                onboarding_done=False,
+            )
+            db.add(profile)
+        await db.commit()
+
+
+async def _record_dislike(user_id: str, artist_id: str) -> None:
+    """
+    Append artist_id to disliked_artist_ids — explicit "Not interested" click.
+
+    Hard signal: every tier excludes the artist. Also removes them from
+    liked_artist_ids if present (the user changed their mind).
+    """
+    async with AsyncSessionLocal() as db:
+        profile = await db.get(UserTasteProfile, user_id)
+        if profile:
+            existing: list[str] = json.loads(profile.disliked_artist_ids or "[]")
+            if artist_id not in existing:
+                merged = [artist_id] + existing
+                profile.disliked_artist_ids = json.dumps(merged[:200])
+            liked: list[str] = json.loads(profile.liked_artist_ids or "[]")
+            if artist_id in liked:
+                profile.liked_artist_ids = json.dumps([a for a in liked if a != artist_id])
+            profile.updated_at = datetime.utcnow()
+        else:
+            profile = UserTasteProfile(
+                user_id=user_id,
+                liked_artist_ids=json.dumps([]),
+                genres=json.dumps([]),
+                disliked_artist_ids=json.dumps([artist_id]),
                 onboarding_done=False,
             )
             db.add(profile)
@@ -221,9 +293,15 @@ async def rate(
                       entity_id=entity_id, value=body.value))
     await db.commit()
 
-    # High rating on a track → update taste profile in background (non-blocking)
-    if body.value >= 4 and body.artist_id and entity_type == "track":
-        asyncio.create_task(_update_taste_from_rating(user_id, body.artist_id))
+    # Update taste profile in background (non-blocking) on track ratings.
+    # 4–5 stars → liked seed.  1–2 stars → soft down-weight.  2.5–3.5 is
+    # neutral and produces no taste signal beyond the per-track exclusion
+    # already handled by Rating itself.
+    if body.artist_id and entity_type == "track":
+        if body.value >= 4:
+            asyncio.create_task(_update_taste_from_rating(user_id, body.artist_id))
+        elif body.value <= 2:
+            asyncio.create_task(_down_weight_from_rating(user_id, body.artist_id))
 
     return {"ok": True, "value": body.value}
 
@@ -430,7 +508,7 @@ async def get_replies(
     return [{
         "id": r.id,
         "body": r.body,
-        "created_at": r.created_at.isoformat(),
+        "created_at": r.created_at.isoformat() + "Z",
         "user": {
             "id": r.user_id,
             "display_name": user_map[r.user_id].display_name if r.user_id in user_map else "Unknown",
