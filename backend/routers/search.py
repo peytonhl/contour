@@ -242,7 +242,13 @@ async def unified_search(
             query_is_multiword = len(words) > 1
 
             if query_is_multiword:
-                # Multi-word → straight to track search, no artist resolution.
+                # Multi-word → straight to title search for albums + tracks, no
+                # artist resolution (avoids the 429-heavy discography endpoint).
+                if need_albums:
+                    try:
+                        spotify_albums = await spotify.search_albums(q_stripped, limit=10)
+                    except Exception:
+                        pass
                 if need_tracks:
                     try:
                         spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
@@ -293,14 +299,30 @@ async def unified_search(
                         except Exception:
                             pass
 
-                elif need_tracks:
-                    # No artist match → treat as track/album title
-                    try:
-                        spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
-                    except Exception:
-                        pass
+                else:
+                    # No artist match → treat the query as a title and search
+                    # both albums and tracks. Previously this branch only
+                    # searched tracks, which broke single-word album titles
+                    # like "donda" or "lemonade" (no Spotify artist match →
+                    # zero albums returned).
+                    if need_albums:
+                        try:
+                            spotify_albums = await spotify.search_albums(q_stripped, limit=10)
+                        except Exception:
+                            pass
+                    if need_tracks:
+                        try:
+                            spotify_tracks = await spotify.search_tracks(q_stripped, limit=10)
+                        except Exception:
+                            pass
 
-    # ── Step 2b: Persist track search results to DB (background) ──────────────
+    # ── Step 2b: Persist search results to DB (background) ───────────────────
+    # Albums fetched via the title-search fallback aren't covered by
+    # _persist_discography (which only runs for confirmed artist matches), so
+    # we persist them here too — otherwise the same query would re-hit Spotify
+    # forever instead of falling into the DB-only fast path on subsequent calls.
+    if spotify_albums:
+        background_tasks.add_task(_persist_albums, spotify_albums)
     if spotify_tracks:
         background_tasks.add_task(_persist_tracks, spotify_tracks)
 
