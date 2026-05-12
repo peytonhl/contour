@@ -120,15 +120,19 @@ export function UserPage() {
 
       {/* ── Hero ── */}
       <div style={{
-        padding: "40px 24px 32px",
-        background: `linear-gradient(180deg, ${ACCENT}12 0%, transparent 100%)`,
-        borderBottom: "1px solid var(--border)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 16,
-        textAlign: "center",
+        paddingTop: 40,
+        background: `linear-gradient(180deg, ${ACCENT}14 0%, transparent 100%)`,
       }}>
+        {/* Centered content (avatar / name / buttons). Kept in its own
+            flex-column wrapper so the StatTabs below can span full width. */}
+        <div style={{
+          padding: "0 24px 24px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 16,
+          textAlign: "center",
+        }}>
         {/* Avatar with gradient ring */}
         <div style={{
           width: 92, height: 92, borderRadius: "50%",
@@ -186,13 +190,15 @@ export function UserPage() {
             <Link to="/" style={{ color: ACCENT }}>Sign in</Link> to follow this user.
           </p>
         )}
+        </div>
+
+        {/* Stat-style tab nav lives inside the hero — its built-in bottom
+            border acts as the seamless separator between hero and content. */}
+        <StatTabs tabs={tabs} active={tab} onChange={setTab} />
       </div>
 
       {/* ── Body ── */}
       <div style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
-
-        {/* Stat-style tab nav — each cell shows count + label and activates a section. */}
-        <StatTabs tabs={tabs} active={tab} onChange={setTab} />
 
         {/* ── Taste ── */}
         {tab === "taste" && <TasteSection userId={id} isOwner={false} />}

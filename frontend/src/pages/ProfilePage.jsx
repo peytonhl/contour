@@ -229,7 +229,7 @@ export function ProfilePage() {
     { key: "ratings",   label: "Ratings",   count: profile?.ratings?.length ?? 0 },
     { key: "reviews",   label: "Reviews",   count: profile?.reviews?.length ?? 0 },
     { key: "lists",     label: "Lists",     count: lists.length },
-    { key: "favorites", label: "Artists",   count: profile?.favorite_artists?.length ?? 0 },
+    { key: "favorites", label: "Favorited", count: profile?.favorite_artists?.length ?? 0 },
     { key: "following", label: "Following", count: following.length },
     { key: "followers", label: "Followers", count: followers.length },
   ];
@@ -239,11 +239,10 @@ export function ProfilePage() {
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <div style={{
-        padding: "36px 28px 32px",
-        background: `linear-gradient(180deg, ${ACCENT}12 0%, transparent 100%)`,
-        borderBottom: "1px solid var(--border)",
+        paddingTop: 36,
+        background: `linear-gradient(180deg, ${ACCENT}14 0%, transparent 100%)`,
       }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 22 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 22, padding: "0 28px 24px" }}>
 
           {/* Avatar */}
           <div style={{ position: "relative", flexShrink: 0 }}>
@@ -377,9 +376,12 @@ export function ProfilePage() {
               </div>
             )}
 
-            {/* Stats are no longer rendered here — they're the tab nav below. */}
           </div>
         </div>
+
+        {/* Stat-style tab nav lives inside the hero — its built-in bottom
+            border acts as the seamless separator between hero and content. */}
+        <StatTabs tabs={tabs} active={tab} onChange={setTab} />
       </div>
 
       {/* Photo editor modal */}
@@ -470,9 +472,6 @@ export function ProfilePage() {
 
         {/* Taste */}
         <TasteSection userId={user.id} isOwner={true} />
-
-        {/* Stat-style tab nav — each cell shows count + label and activates a section. */}
-        <StatTabs tabs={tabs} active={tab} onChange={setTab} />
 
         {/* ── Ratings ── */}
         {tab === "ratings" && (
