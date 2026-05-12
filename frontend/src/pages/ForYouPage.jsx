@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
@@ -209,7 +209,7 @@ function ShareIcon() {
 }
 
 // ── Individual discover card ──────────────────────────────────────────────────
-function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating, cardIndex, totalCards, onNext, onPrev }) {
+function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityClick, userRating, cardIndex, totalCards, onNext, onPrev }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   // Some Spotify/Deezer responses ship a track without album.images populated
@@ -434,28 +434,29 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, userRating
               overflow: "hidden", display: "-webkit-box",
               WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
             }}>
-              {track._source === "deezer" ? (
-                <a href={track.external_url} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none" }}>
-                  {track.name}
-                </a>
-              ) : (
-                <Link to={`/track/${track.id}`} style={{ color: "#fff", textDecoration: "none" }}>
-                  {track.name}
-                </Link>
-              )}
+              {/* Always stay in-app: resolves Deezer tracks to Spotify on
+                  click and navigates to the internal track page. Falls back
+                  to opening Deezer only if no Spotify equivalent exists. */}
+              <a
+                href={track._source === "deezer" ? track.external_url : `/track/${track.id}`}
+                onClick={(e) => { e.preventDefault(); onEntityClick?.(track, "track"); }}
+                style={{ color: "#fff", textDecoration: "none", cursor: "pointer" }}
+              >
+                {track.name}
+              </a>
             </h2>
             {track.explicit && (
               <span style={{ fontSize: 9, background: "rgba(255,255,255,0.15)", borderRadius: 3, padding: "2px 5px", color: "rgba(255,255,255,0.5)", fontWeight: 700, flexShrink: 0, marginTop: 2 }}>E</span>
             )}
           </div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {track._source === "deezer" ? (
-              <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600 }}>{track.artists?.[0]}</span>
-            ) : (
-              <Link to={`/artist/${track.artist_ids?.[0]}`} style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, textDecoration: "none" }}>
-                {track.artists?.[0]}
-              </Link>
-            )}
+            <a
+              href={track._source === "deezer" ? "#" : `/artist/${track.artist_ids?.[0]}`}
+              onClick={(e) => { e.preventDefault(); onEntityClick?.(track, "artist"); }}
+              style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, textDecoration: "none", cursor: "pointer" }}
+            >
+              {track.artists?.[0]}
+            </a>
             {track.album_name && (track._source !== "deezer") && track.album_id && (
               <> · <Link to={`/album/${track.album_id}`} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none" }}>{track.album_name}</Link></>
             )}
@@ -647,6 +648,7 @@ function ColdStartBanner({ ratingCount }) {
 // ── For You scroll feed ───────────────────────────────────────────────────────
 function ForYouFeed() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -921,6 +923,40 @@ function ForYouFeed() {
     }
   }
 
+  /**
+   * Click handler for the title and artist links on every card. The goal is
+   * to keep users in-app: a Deezer-sourced card resolves to its Spotify
+   * counterpart and navigates to the internal /track or /artist page rather
+   * than opening Deezer in a new tab.
+   *
+   * Fallback chain when resolution fails (Spotify circuit open, no match,
+   * track genuinely not on Spotify): open the external Deezer URL so the
+   * user still gets *somewhere*.
+   */
+  async function handleEntityClick(track, entityType) {
+    // Spotify-sourced cards already have a usable internal ID.
+    if (track._source !== "deezer") {
+      const id = entityType === "track" ? track.id : track.artist_ids?.[0];
+      if (id) navigate(`/${entityType}/${id}`);
+      return;
+    }
+    try {
+      const spotifyId = entityType === "track"
+        ? await _resolveSpotifyId(track)
+        : await _resolveSpotifyArtistId(track);
+      // _resolveSpotifyArtistId returns the local (Deezer) ID as fallback
+      // when nothing better is found — only navigate when the ID looks like
+      // a real Spotify ID (22 base62 chars).
+      if (spotifyId && /^[A-Za-z0-9]{22}$/.test(spotifyId)) {
+        navigate(`/${entityType}/${spotifyId}`);
+        return;
+      }
+    } catch { /* fall through to external */ }
+    if (track.external_url) {
+      window.open(track.external_url, "_blank", "noreferrer");
+    }
+  }
+
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "rgba(255,255,255,0.4)" }}>
@@ -1104,6 +1140,7 @@ function ForYouFeed() {
               onRate={handleRate}
               onReview={handleReview}
               onDislike={handleDislike}
+              onEntityClick={handleEntityClick}
               userRating={userRatings[track.id] ?? null}
               cardIndex={i}
               totalCards={tracks.length}

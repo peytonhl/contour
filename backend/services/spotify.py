@@ -62,6 +62,111 @@ def _get_semaphore() -> asyncio.Semaphore:
     return _spotify_semaphore
 
 
+# ── DB write-through ──────────────────────────────────────────────────────────
+# Track / album metadata is immutable post-release, so any time we successfully
+# pay for a Spotify fetch we persist the result to the DB caches as well as
+# Redis. After that, the entity is essentially free forever — survives Redis
+# flushes, deploys, and the Redis TTL. Callers don't need to opt in or
+# remember to upsert themselves.
+#
+# Imports are inline + lazy so this module doesn't introduce a hard dependency
+# on the DB / models from a pure-API-client perspective. Failures here are
+# logged and swallowed — the Spotify call already returned, the user has
+# their data, persistence is best-effort.
+
+async def _persist_track_to_db(meta: dict) -> None:
+    """Write-through a fetched track to TrackCache. Idempotent upsert."""
+    if not meta.get("id"):
+        return
+    try:
+        import json
+        from sqlalchemy import select
+        from database import AsyncSessionLocal
+        from models import TrackCache
+
+        async with AsyncSessionLocal() as session:
+            existing = (await session.execute(
+                select(TrackCache).where(TrackCache.spotify_id == meta["id"])
+            )).scalar_one_or_none()
+            artist_ids_json = json.dumps(meta.get("artist_ids", []))
+            artist_str = ", ".join(meta.get("artists", []))
+            if existing:
+                existing.name = meta.get("name") or existing.name
+                existing.artist = artist_str or existing.artist
+                existing.album_name = meta.get("album_name") or existing.album_name
+                existing.album_id = meta.get("album_id") or existing.album_id
+                existing.release_date = meta.get("release_date") or existing.release_date
+                existing.duration_ms = meta.get("duration_ms") or existing.duration_ms
+                existing.explicit = meta.get("explicit", existing.explicit)
+                existing.popularity = meta.get("popularity")
+                existing.image_url = meta.get("image_url") or existing.image_url
+                existing.external_url = meta.get("external_url") or existing.external_url
+                existing.artist_ids_json = artist_ids_json
+            else:
+                session.add(TrackCache(
+                    spotify_id=meta["id"],
+                    name=meta.get("name") or "",
+                    artist=artist_str,
+                    album_name=meta.get("album_name"),
+                    album_id=meta.get("album_id"),
+                    release_date=meta.get("release_date"),
+                    duration_ms=meta.get("duration_ms"),
+                    explicit=meta.get("explicit", False),
+                    popularity=meta.get("popularity"),
+                    image_url=meta.get("image_url"),
+                    external_url=meta.get("external_url"),
+                    artist_ids_json=artist_ids_json,
+                ))
+            await session.commit()
+    except Exception as exc:
+        _log.warning("[spotify] persist track %s failed: %s", meta.get("id"), exc)
+
+
+async def _persist_album_to_db(meta: dict) -> None:
+    """Write-through a fetched album to AlbumCache. Idempotent upsert.
+
+    Leaves enrichment_status alone on existing rows — the Kworb streams
+    enrichment pipeline owns that field's lifecycle.
+    """
+    if not meta.get("id"):
+        return
+    try:
+        from sqlalchemy import select
+        from database import AsyncSessionLocal
+        from models import AlbumCache
+
+        async with AsyncSessionLocal() as session:
+            existing = (await session.execute(
+                select(AlbumCache).where(AlbumCache.spotify_id == meta["id"])
+            )).scalar_one_or_none()
+            artist_str = ", ".join(meta.get("artists", []))
+            if existing:
+                existing.name = meta.get("name") or existing.name
+                existing.artist = artist_str or existing.artist
+                existing.release_date = meta.get("release_date") or existing.release_date
+                existing.release_date_precision = (
+                    meta.get("release_date_precision") or existing.release_date_precision
+                )
+                existing.label = meta.get("label") or existing.label
+                existing.popularity = meta.get("popularity") or existing.popularity
+                existing.image_url = meta.get("image_url") or existing.image_url
+            else:
+                session.add(AlbumCache(
+                    spotify_id=meta["id"],
+                    name=meta.get("name") or "",
+                    artist=artist_str,
+                    release_date=meta.get("release_date"),
+                    release_date_precision=meta.get("release_date_precision"),
+                    label=meta.get("label"),
+                    popularity=meta.get("popularity"),
+                    image_url=meta.get("image_url"),
+                    enrichment_status="pending",
+                ))
+            await session.commit()
+    except Exception as exc:
+        _log.warning("[spotify] persist album %s failed: %s", meta.get("id"), exc)
+
+
 def _circuit_remaining() -> float:
     """Seconds until the circuit breaker re-closes. 0 when not tripped."""
     if _circuit_open_until == 0.0:
@@ -269,8 +374,9 @@ async def search_tracks(query: str, limit: int = 10) -> list[dict]:
 
 
 async def get_track(track_id: str) -> dict:
-    """Fetch full track metadata by Spotify track ID. Cached 30d — track
-    metadata is immutable post-release and this is one of the hottest endpoints."""
+    """Fetch full track metadata by Spotify track ID. Cached 30d in Redis;
+    also persisted to TrackCache (DB) so every successful fetch survives
+    Redis flushes and is essentially free forever afterward."""
     cache_key = f"spotify:track:{track_id}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
@@ -281,6 +387,9 @@ async def get_track(track_id: str) -> dict:
         resp.raise_for_status()
         result = _parse_track(resp.json())
     await redis_cache.set(cache_key, result, ttl=_TTL_30D)
+    # Fire-and-forget DB write-through — caller doesn't wait, persistence
+    # is best-effort and idempotent.
+    asyncio.create_task(_persist_track_to_db(result))
     return result
 
 
@@ -339,8 +448,9 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 20) -> list[dic
 
 
 async def get_album(album_id: str) -> dict:
-    """Fetch full album metadata by Spotify album ID. Cached 30d — album
-    metadata is immutable post-release."""
+    """Fetch full album metadata by Spotify album ID. Cached 30d in Redis;
+    also persisted to AlbumCache (DB) so every successful fetch survives
+    Redis flushes."""
     cache_key = f"spotify:album:{album_id}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
@@ -351,6 +461,7 @@ async def get_album(album_id: str) -> dict:
         resp.raise_for_status()
         result = _parse_album(resp.json())
     await redis_cache.set(cache_key, result, ttl=_TTL_30D)
+    asyncio.create_task(_persist_album_to_db(result))
     return result
 
 
