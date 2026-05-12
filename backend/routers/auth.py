@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 import httpx
 import jwt
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import select, desc
@@ -94,9 +94,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.get("/login")
-async def login():
-    """Redirect the browser to Google's OAuth authorization page."""
+async def login(from_: str = Query("web", alias="from")):
+    """Redirect the browser to Google's OAuth authorization page.
+
+    The optional ?from query param flags whether the request originated from
+    the native iOS/Android shell. We thread that through Google's `state`
+    parameter (Google echoes it back unchanged on the callback) so /callback
+    knows whether to redirect to the web `/auth/success` page or to the
+    `contour://` URL scheme that wakes the native app back up.
+    """
     s = _get_settings()
+    # Whitelist the values we'll accept back — anything else falls back to web.
+    state = from_ if from_ in {"web", "native"} else "web"
     params = urlencode({
         "client_id": s.google_client_id,
         "redirect_uri": s.google_redirect_uri,
@@ -104,13 +113,22 @@ async def login():
         "scope": "openid email profile",
         "access_type": "online",
         "prompt": "select_account",
+        "state": state,
     })
     return RedirectResponse(f"{GOOGLE_AUTH_URL}?{params}")
 
 
 @router.get("/callback")
-async def callback(code: str, db: AsyncSession = Depends(get_db)):
-    """Handle Google's OAuth callback, create/update user, issue JWT."""
+async def callback(
+    code: str,
+    state: str = "web",
+    db: AsyncSession = Depends(get_db),
+):
+    """Handle Google's OAuth callback, create/update user, issue JWT.
+
+    `state` is the value we set in /login — "native" if the OAuth was kicked
+    off from inside the iOS/Android Capacitor shell, "web" otherwise.
+    """
     s = _get_settings()
 
     async with httpx.AsyncClient() as client:
@@ -176,7 +194,20 @@ async def callback(code: str, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     jwt_token = _make_jwt(user.id)
-    return RedirectResponse(f"{s.frontend_url}/auth/success?token={jwt_token}&provider=google")
+
+    # Native shell: redirect to the contour:// URL scheme. iOS / Android will
+    # intercept this, bring the Contour app back to the foreground, and pass
+    # the URL into the WebView via Capacitor's appUrlOpen event. The web app
+    # extracts the token and finishes login() in the WebView's localStorage.
+    if state == "native":
+        return RedirectResponse(
+            f"contour://auth?token={jwt_token}&provider=google"
+        )
+
+    # Web: standard same-origin redirect to the SPA's /auth/success route.
+    return RedirectResponse(
+        f"{s.frontend_url}/auth/success?token={jwt_token}&provider=google"
+    )
 
 
 # ── Sign in with Apple ────────────────────────────────────────────────────────

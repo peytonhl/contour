@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
 import { userAvatar } from "../utils/userAvatar.js";
 import { AppleSignInButton } from "./AppleSignInButton.jsx";
+import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -121,7 +122,10 @@ export function Layout() {
   const [unread, setUnread] = useState(0);
   const headerRef = useRef(null);
 
-  const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? ""}/auth/login`;
+  // On native, append ?from=native so the OAuth callback redirects via the
+  // contour:// URL scheme — that's what wakes the iOS / Android app out of
+  // external Safari after sign-in. No-op in the browser. See utils/native.js.
+  const LOGIN_URL = withNativeAuthFlag(`${import.meta.env.VITE_API_URL ?? ""}/auth/login`);
 
   // Publish the header's measured height to CSS so descendants can position
   // sticky elements right beneath it. Header height varies with safe-area
@@ -237,7 +241,7 @@ export function Layout() {
             </Link>
           ) : (
             <>
-              <a href={LOGIN_URL} style={{
+              <a href={LOGIN_URL} {...externalLinkProps()} style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "6px 14px", background: "#fff", borderRadius: 20,
                 color: "#3c3c3c", fontSize: 12, fontWeight: 600, textDecoration: "none",
@@ -277,7 +281,7 @@ export function Layout() {
           )}
           {!loading && !user && (
             <>
-              <a href={LOGIN_URL} style={{
+              <a href={LOGIN_URL} {...externalLinkProps()} style={{
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "5px 10px", background: "#fff", borderRadius: 20,
                 color: "#3c3c3c", fontSize: 11, fontWeight: 600, textDecoration: "none",
@@ -344,6 +348,7 @@ export function Layout() {
           ) : (
             <a
               href={LOGIN_URL}
+              {...externalLinkProps()}
               style={{
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center",

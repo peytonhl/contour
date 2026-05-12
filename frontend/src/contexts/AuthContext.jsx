@@ -37,6 +37,12 @@ export function AuthProvider({ children }) {
 
   async function login(token, provider = "google") {
     localStorage.setItem("contour_token", token);
+    // Successful auth supersedes "browse without signing in." Cleared here
+    // (not in SigninGate) so any path into login — Apple popup, /auth/success
+    // page from a Google redirect, or future native deep link — converges on
+    // the same cleanup.
+    try { localStorage.removeItem("contour_guest_mode"); } catch {}
+    try { window.dispatchEvent(new CustomEvent("contour:guest-mode-changed")); } catch {}
     const u = await api.getMe(token);
     setUser(u);
     identify(u.id, { email: u.email });

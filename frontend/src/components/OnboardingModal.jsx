@@ -152,12 +152,29 @@ export function OnboardingModal() {
   const [exiting, setExiting] = useState(false);
   const [selectedGenres, setSelectedGenres] = useState([]);
 
+  // Defer showing until the user has passed the SigninGate — either by
+  // signing in (user becomes non-null) or by opting into guest browse mode.
+  // Otherwise the genre picker stacks behind / fights with the gate on
+  // first launch.
   useEffect(() => {
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      const t = setTimeout(() => setVisible(true), 400);
-      return () => clearTimeout(t);
+    if (localStorage.getItem(STORAGE_KEY)) return;
+    function maybeShow() {
+      const inGuestMode = (() => {
+        try { return localStorage.getItem("contour_guest_mode") === "1"; }
+        catch { return false; }
+      })();
+      if (user || inGuestMode) setVisible(true);
     }
-  }, []);
+    // Initial probe (covers the case where the user was already signed in
+    // when this effect first ran).
+    const t = setTimeout(maybeShow, 400);
+    // Watch for guest-mode flips so we react when SigninGate dismisses.
+    window.addEventListener("contour:guest-mode-changed", maybeShow);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("contour:guest-mode-changed", maybeShow);
+    };
+  }, [user]);
 
   // Replay-tutorial hook: any caller (e.g. profile settings menu) can fire
   // this CustomEvent to re-open the onboarding from step 0 without a reload.

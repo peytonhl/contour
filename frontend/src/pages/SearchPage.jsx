@@ -4,12 +4,15 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { AppleSignInButton } from "../components/AppleSignInButton.jsx";
+import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
 const ACCENT_C = "#fb923c";
 
-const LOGIN_URL = `${import.meta.env.VITE_API_URL ?? ""}/auth/login`;
+// withNativeAuthFlag appends ?from=native inside the Capacitor shell so the
+// backend OAuth callback redirects via the contour:// URL scheme. No-op on web.
+const LOGIN_URL = withNativeAuthFlag(`${import.meta.env.VITE_API_URL ?? ""}/auth/login`);
 const RECENT_KEY = "contour_recent_v1";
 const RECENT_MAX = 8;
 
@@ -346,6 +349,7 @@ export function SearchPage() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
             <a
               href={LOGIN_URL}
+              {...externalLinkProps()}
               style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "8px 16px", background: "#fff", borderRadius: 20,
