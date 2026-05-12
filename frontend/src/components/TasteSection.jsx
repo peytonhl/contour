@@ -169,8 +169,11 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
     timerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await api.search(val.trim());
-        setResults(res.albums || []);
+        // Dedicated album endpoint — DB-first, Spotify title-fallback, no
+        // artist-resolution detour. The picker is album-only, so unified
+        // /search would just throw away its users/tracks results anyway.
+        const res = await api.searchAlbums(val.trim());
+        setResults(res || []);
       } catch {
         setSearchError("Search failed — check your connection and try again.");
         setResults([]);

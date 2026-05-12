@@ -193,10 +193,64 @@ def _artist_id_for_query(q: str) -> Optional[str]:
 # Search
 # ---------------------------------------------------------------------------
 
+_ALBUM_SEARCH_MIN_CHARS = 3
+_ALBUM_SEARCH_DB_SUFFICIENT = 3
+
+
+async def _persist_album_search_results(albums: list[dict]) -> None:
+    """Background-write Spotify album hits into AlbumCache.
+
+    Same idempotent pattern as routers.search._persist_albums but inlined here
+    so /albums/search can be used independently. Uses its own session because
+    the request session is closed by the time background tasks run.
+    """
+    if not albums:
+        return
+    from database import AsyncSessionLocal
+    try:
+        async with AsyncSessionLocal() as session:
+            for a in albums:
+                existing = (await session.execute(
+                    select(AlbumCacheModel).where(AlbumCacheModel.spotify_id == a["id"])
+                )).scalar_one_or_none()
+                if existing is None:
+                    primary_artist = a.get("artists", [""])[0] if a.get("artists") else ""
+                    session.add(AlbumCacheModel(
+                        spotify_id=a["id"],
+                        name=a["name"],
+                        artist=primary_artist,
+                        release_date=a.get("release_date"),
+                        release_date_precision=a.get("release_date_precision"),
+                        popularity=a.get("popularity"),
+                        image_url=a.get("image_url"),
+                        enrichment_status="pending",
+                    ))
+            await session.commit()
+    except Exception as exc:
+        logger.warning("[albums.search] persist failed: %s", exc)
+
+
 @router.get("/search", response_model=List[AlbumResult])
-async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
-    """Legacy endpoint — DB only. All new search goes through GET /search."""
-    pattern = f"%{q}%"
+async def search_albums(
+    q: str = Query(..., min_length=1),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    db: AsyncSession = Depends(get_db),
+):
+    """Album-focused search: DB-first, Spotify title-fallback.
+
+    Mirrors the triage in routers/search.py but skips artist resolution
+    entirely — every Spotify hit goes through /search?type=album. This avoids
+    the "wrong-artist shadows the popular album" failure mode that affects
+    the unified endpoint for queries like "utopia", "renaissance", "yeezus",
+    where Spotify returns an obscure same-named band and its (often empty)
+    discography hides the album the user actually meant.
+
+    Powers the pinned-albums picker on the profile page. The global search
+    bar still uses /search (which needs to mix users / albums / tracks).
+    """
+    q_stripped = q.strip()
+    pattern = f"%{q_stripped}%"
+
     db_rows = (await db.execute(
         select(AlbumCacheModel)
         .where(AlbumCacheModel.name.ilike(pattern) | AlbumCacheModel.artist.ilike(pattern))
@@ -204,24 +258,55 @@ async def search_albums(q: str = Query(..., min_length=1), db: AsyncSession = De
         .limit(10)
     )).scalars().all()
 
+    # If DB returns enough, skip Spotify entirely — same DB_SUFFICIENT gate
+    # the unified search uses.
+    spotify_albums: list = []
+    if len(q_stripped) >= _ALBUM_SEARCH_MIN_CHARS and len(db_rows) < _ALBUM_SEARCH_DB_SUFFICIENT:
+        try:
+            spotify_albums = await spotify.search_albums(q_stripped, limit=10)
+        except Exception:
+            spotify_albums = []
+        if spotify_albums:
+            background_tasks.add_task(_persist_album_search_results, spotify_albums)
+
     seen_ids: set[str] = set()
     merged: list = []
 
+    # Spotify results first — they're the freshest signal for popular albums
+    # and the reason this endpoint exists.
+    for a in spotify_albums:
+        if a["id"] in seen_ids:
+            continue
+        seen_ids.add(a["id"])
+        merged.append(AlbumResult(
+            id=a["id"],
+            name=a["name"],
+            artists=a.get("artists", []),
+            artist_ids=a.get("artist_ids", []),
+            release_date=a.get("release_date", ""),
+            release_date_precision=a.get("release_date_precision", "year"),
+            label=a.get("label"),
+            popularity=a.get("popularity"),
+            image_url=a.get("image_url"),
+            external_url=a.get("external_url"),
+        ))
+
     for row in db_rows:
-        if row.spotify_id not in seen_ids:
-            seen_ids.add(row.spotify_id)
-            merged.append(AlbumResult(
-                id=row.spotify_id,
-                name=row.name,
-                artists=[a.strip() for a in row.artist.split(",")],
-                artist_ids=[],
-                release_date=row.release_date or "",
-                release_date_precision=row.release_date_precision or "year",
-                label=row.label,
-                popularity=row.popularity,
-                image_url=row.image_url,
-                external_url=f"https://open.spotify.com/album/{row.spotify_id}",
-            ))
+        if row.spotify_id in seen_ids:
+            continue
+        seen_ids.add(row.spotify_id)
+        merged.append(AlbumResult(
+            id=row.spotify_id,
+            name=row.name,
+            artists=[a.strip() for a in row.artist.split(",")],
+            artist_ids=[],
+            release_date=row.release_date or "",
+            release_date_precision=row.release_date_precision or "year",
+            label=row.label,
+            popularity=row.popularity,
+            image_url=row.image_url,
+            external_url=f"https://open.spotify.com/album/{row.spotify_id}",
+        ))
 
     return merged[:15]
 
