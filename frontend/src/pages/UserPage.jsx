@@ -7,7 +7,7 @@ import { TasteSection } from "../components/TasteSection.jsx";
 import { BlockButton } from "../components/BlockButton.jsx";
 import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
-import { BadgeChips } from "./FeedPage.jsx";
+import { BadgeChips } from "../components/Badges.jsx";
 
 const ACCENT = "#a78bfa";
 const ACCENT_B = "#34d399";

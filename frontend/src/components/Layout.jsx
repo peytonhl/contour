@@ -131,12 +131,11 @@ export function Layout() {
     return () => clearInterval(interval);
   }, [user]);
 
-  // Primary nav (social-first): Feed → Search → For You → Profile.
-  // Charts/Compare/How It Works remain accessible but as secondary items, after the primaries.
+  // Primary nav: For You is the home — audio swipe, Friends timeline, and
+  // Community reviews all live there as tabs. /feed was retired.
   const desktopNavLinks = [
-    { to: "/feed", label: "Feed" },
-    { to: "/search", label: "Search" },
     { to: "/", label: "For You", end: true },
+    { to: "/search", label: "Search" },
     { to: "/compare", label: "Compare" },
     { to: "/charts", label: "Charts" },
     { to: "/methodology", label: "How It Works" },
@@ -300,11 +299,10 @@ export function Layout() {
         }}
       >
         <div style={{ display: "flex", alignItems: "stretch", height: 56 }}>
-          {/* Social-first: Feed → Search → For You → Profile. Charts demoted to secondary
-              nav (still reachable via desktop top nav and direct URL /charts). */}
-          <BottomTab to="/feed" label="Feed" icon={<CommunityIcon />} />
-          <BottomTab to="/search" label="Search" icon={<SearchIcon />} />
+          {/* For You first — it's the home. Friends + Community live as tabs inside it.
+              Charts/Compare reachable via desktop top nav and direct URL. */}
           <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
+          <BottomTab to="/search" label="Search" icon={<SearchIcon />} />
 
           {user ? (
             <NavLink

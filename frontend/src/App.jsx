@@ -10,7 +10,6 @@ import { ArtistPage } from "./pages/ArtistPage.jsx";
 import { SavedComparisonPage } from "./pages/SavedComparisonPage.jsx";
 import { AuthSuccessPage } from "./pages/AuthSuccessPage.jsx";
 import { UserPage } from "./pages/UserPage.jsx";
-import { FeedPage } from "./pages/FeedPage.jsx";
 import { LeaderboardPage } from "./pages/LeaderboardPage.jsx";
 import { NotificationsPage } from "./pages/NotificationsPage.jsx";
 import { ForYouPage } from "./pages/ForYouPage.jsx";
@@ -36,7 +35,7 @@ export default function App() {
         <Route path="compare/:id" element={<SavedComparisonPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="user/:id" element={<UserPage />} />
-        <Route path="feed" element={<FeedPage />} />
+        {/* /feed retired — Friends timeline now lives as a tab on / (For You). */}
         <Route path="charts" element={<LeaderboardPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="auth/success" element={<AuthSuccessPage />} />

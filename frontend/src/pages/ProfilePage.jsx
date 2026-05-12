@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
-import { BadgeChips } from "./FeedPage.jsx";
+import { BadgeChips } from "../components/Badges.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#a78bfa";
