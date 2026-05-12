@@ -118,6 +118,16 @@ button, a, [role="button"] {
   .hero-page {
     padding: 20px 16px !important;
   }
+
+  /* Tighter hero block + body on entity pages so the rating CTA sits closer
+     to the fold on small screens (Letterboxd-style: ratings above scroll). */
+  .entity-hero {
+    padding: 20px 16px 18px !important;
+  }
+  .entity-body {
+    padding: 18px 16px !important;
+    gap: 18px !important;
+  }
 }
 
 @media (min-width: 641px) {

@@ -97,6 +97,9 @@ function BottomTab({ to, label, icon, end = false }) {
         alignItems: "center",
         justifyContent: "center",
         gap: 3,
+        // 44px is the iOS HIG minimum touch target. The 56px nav bar provides
+        // headroom but min-height makes the contract explicit per tab.
+        minHeight: 44,
         padding: "6px 0",
         textDecoration: "none",
         color: isActive ? ACCENT_A : "var(--text-muted)",
@@ -301,7 +304,7 @@ export function Layout() {
               style={({ isActive }) => ({
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center",
-                gap: 3, padding: "6px 0",
+                gap: 3, minHeight: 44, padding: "6px 0",
                 textDecoration: "none",
                 color: isActive ? ACCENT_A : "var(--text-muted)",
                 transition: "color 0.12s",
@@ -316,7 +319,7 @@ export function Layout() {
               style={{
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center",
-                gap: 3, padding: "6px 0",
+                gap: 3, minHeight: 44, padding: "6px 0",
                 textDecoration: "none", color: "var(--text-muted)",
               }}
             >

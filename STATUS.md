@@ -48,8 +48,41 @@ Verification: production build succeeds (998 KB / 285 KB gzipped — +200 KB fro
 the new SDKs, acceptable for a launch SDK pair).
 
 
-### ⏳ Task 3 — Mobile UX audit and fixes
-Pending.
+### ✅ Task 3 — Mobile UX audit and fixes (code-confident)
+**Shipped:** 2026-05-11
+
+**Fixed:**
+- **Bottom nav tap targets:** explicit `min-height: 44px` on every tab (matches
+  iOS HIG; the 56px bar already cleared it, but inline-style guarantees it per tab).
+- **Above-the-fold rating CTA:** `★ Rate` is now the primary hero action on
+  AlbumPage / TrackPage (purple/accent), Compare demoted to outlined secondary.
+  Clicking smooth-scrolls to the `#rate-section` anchor on the ReviewSection.
+- **Tighter hero/body padding on mobile:** new `.entity-hero` and `.entity-body`
+  CSS classes override the desktop 36px/28px paddings with 20px/18px on viewports
+  ≤ 640px, pulling the rating section ~30–40px closer to the fold.
+- **Search input keyboard polish:** added `type="search"`, `inputMode="search"`,
+  `enterKeyHint="search"`, plus `autoCapitalize`/`autoCorrect`/`spellCheck` off —
+  gives mobile users the "Search" enter key and no autocorrect noise.
+
+**Audited, no change needed:**
+- Onboarding modal — skippable (backdrop click + explicit Skip button), all
+  network calls are `.catch(() => {})` so it never blocks on errors. ✓
+- Star widget — uses PointerEvents with `touchAction: "none"` + `userSelect: "none"`,
+  single onPointerUp / onPointerMove handlers, no double-trigger risk. ✓
+- iOS 16px input zoom prevention — already in place via `index.css` media query. ✓
+- 300ms tap delay — already disabled via `touch-action: manipulation`. ✓
+- Rating tap count — already 1 tap from album/track page to rating saved
+  (excluding navigation onto the page itself). ✓
+
+**Requires device verification (Peyton):**
+- ForYouPage TikTok-style scroll smoothness — no obvious code issue but jank is
+  device-dependent. If it stutters on a real phone, follow-up fix would add
+  `will-change: transform` + `transform: translateZ(0)` to active cards.
+- Search results overlap with keyboard on smaller iPhones — iOS Safari's visual
+  viewport adjustment should handle this, but please confirm typing a query and
+  scrolling the results dropdown feels right.
+- Mobile hero padding tightening — visually verify the new spacing feels
+  balanced; easy to dial in further if it looks cramped.
 
 ### ⏳ Task 4 — Apple Music deep links
 Pending. Will gate on Apple Music developer token (Section A item 8).
