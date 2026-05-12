@@ -56,21 +56,21 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
     return () => { cancelled = true; };
   }, [showSuggestions, items.length]);
 
-  async function handlePromote(albumId) {
+  async function handlePromote(entityType, entityId) {
     // No inline rating picker for v1 — promote with no rating, then navigate
-    // to the album so the user can rate through the normal /ratings flow.
+    // to the entity so the user can rate through the normal /ratings flow.
     try {
-      await api.promoteBacklog(albumId, null);
-      analytics.backlogPromotedToRating(albumId, null);
-      setItems((prev) => prev.filter((i) => i.album_id !== albumId));
-      navigate(`/album/${albumId}#rate-section`);
+      await api.promoteBacklog(entityType, entityId, null);
+      analytics.backlogPromotedToRating(entityId, null);
+      setItems((prev) => prev.filter((i) => !(i.entity_type === entityType && i.entity_id === entityId)));
+      navigate(`/${entityType}/${entityId}#rate-section`);
     } catch {}
   }
 
-  async function handleRemove(albumId) {
+  async function handleRemove(entityType, entityId) {
     try {
-      await api.removeFromBacklog(albumId);
-      setItems((prev) => prev.filter((i) => i.album_id !== albumId));
+      await api.removeFromBacklog(entityType, entityId);
+      setItems((prev) => prev.filter((i) => !(i.entity_type === entityType && i.entity_id === entityId)));
     } catch {}
   }
 
@@ -107,65 +107,78 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
       {!loading && items.length === 0 && (
         <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>
           {isOwner
-            ? "Your backlog is empty. Tap “+ Want to listen” on an album to save it for later."
+            ? "Your backlog is empty. Tap “+ Want to listen” on an album or track to save it for later."
             : "Nothing here yet."}
         </p>
       )}
 
-      {items.map((it) => (
-        <div
-          key={it.id}
-          style={{
-            display: "flex", alignItems: "center", gap: 14,
-            padding: "12px 0", borderBottom: "1px solid var(--border)",
-          }}
-        >
-          <Link to={`/album/${it.album_id}`} style={{ flexShrink: 0 }}>
-            {it.album?.image_url
-              ? <img src={it.album.image_url} alt={it.album?.name ?? ""} style={{ width: 56, height: 56, borderRadius: 6, objectFit: "cover" }} />
-              : <div style={{ width: 56, height: 56, borderRadius: 6, background: "var(--surface2)" }} />
-            }
-          </Link>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Link
-              to={`/album/${it.album_id}`}
-              style={{ color: "var(--text)", fontWeight: 600, textDecoration: "none", fontSize: 14, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-            >
-              {it.album?.name ?? it.album_id}
+      {items.map((it) => {
+        // Back-compat: legacy rows pre-migration may not have entity_type set.
+        const entityType = it.entity_type ?? "album";
+        const entityId = it.entity_id ?? it.album_id;
+        const entity = it.entity ?? it.album ?? {};
+        const linkPath = `/${entityType}/${entityId}`;
+        // Tracks render with a tighter avatar style to visually distinguish.
+        const isTrack = entityType === "track";
+
+        return (
+          <div
+            key={it.id}
+            style={{
+              display: "flex", alignItems: "center", gap: 14,
+              padding: "12px 0", borderBottom: "1px solid var(--border)",
+            }}
+          >
+            <Link to={linkPath} style={{ flexShrink: 0 }}>
+              {entity.image_url
+                ? <img src={entity.image_url} alt={entity.name ?? ""} style={{ width: 56, height: 56, borderRadius: isTrack ? 4 : 6, objectFit: "cover" }} />
+                : <div style={{ width: 56, height: 56, borderRadius: isTrack ? 4 : 6, background: "var(--surface2)" }} />
+              }
             </Link>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {it.album?.artist ?? ""}
-              <span style={{ margin: "0 5px", opacity: 0.4 }}>·</span>
-              added {formatDate(it.added_at)}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Link
+                to={linkPath}
+                style={{ color: "var(--text)", fontWeight: 600, textDecoration: "none", fontSize: 14, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              >
+                {entity.name ?? entityId}
+              </Link>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: isTrack ? ACCENT_B : ACCENT, marginRight: 6 }}>
+                  {isTrack ? "Track" : "Album"}
+                </span>
+                {entity.artist ?? ""}
+                <span style={{ margin: "0 5px", opacity: 0.4 }}>·</span>
+                added {formatDate(it.added_at)}
+              </div>
             </div>
+            {isOwner && (
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <button
+                  onClick={() => handlePromote(entityType, entityId)}
+                  style={{
+                    padding: "6px 12px", borderRadius: 6,
+                    background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT_B})`,
+                    border: "none", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  }}
+                >
+                  Rate it now
+                </button>
+                <button
+                  onClick={() => handleRemove(entityType, entityId)}
+                  title="Remove from backlog"
+                  style={{
+                    padding: "6px 10px", borderRadius: 6,
+                    background: "none", border: "1px solid var(--border)",
+                    color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            )}
           </div>
-          {isOwner && (
-            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-              <button
-                onClick={() => handlePromote(it.album_id)}
-                style={{
-                  padding: "6px 12px", borderRadius: 6,
-                  background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT_B})`,
-                  border: "none", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer",
-                }}
-              >
-                Rate it now
-              </button>
-              <button
-                onClick={() => handleRemove(it.album_id)}
-                title="Remove from backlog"
-                style={{
-                  padding: "6px 10px", borderRadius: 6,
-                  background: "none", border: "1px solid var(--border)",
-                  color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
-                }}
-              >
-                Remove
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
 
       {/* Popular in backlogs — discovery surface for owners only */}
       {showSuggestions && suggestions.length > 0 && (

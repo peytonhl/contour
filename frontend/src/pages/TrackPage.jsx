@@ -6,6 +6,7 @@ import { ReviewSection } from "../components/ReviewSection.jsx";
 import { EraAdjustedStat } from "../components/EraAdjustedStat.jsx";
 import { PreStreamingBanner } from "../components/PreStreamingBanner.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
+import { WantToListenButton } from "../components/WantToListenButton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
@@ -218,6 +219,7 @@ export function TrackPage() {
               >
                 Compare
               </button>
+              <WantToListenButton entityType="track" entityId={id} />
               <ShareButton title={`${track.name} on Contour`} />
               {track.external_url && (
                 <a href={track.external_url} target="_blank" rel="noreferrer"

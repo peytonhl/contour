@@ -178,12 +178,19 @@ async def trending_reviews(db: AsyncSession, window: str, limit: int) -> Trendin
 
 
 async def trending_backlogged(db: AsyncSession, window: str, limit: int) -> TrendingResult:
-    """Albums most-added to backlogs within the window."""
+    """Albums most-added to backlogs within the window.
+
+    Album-only by design: ranking individual tracks by "wants to listen"
+    activity isn't a meaningful surface (people backlog albums, mostly), and
+    mixing the two would produce a noisy hub. Track backlog entries still show
+    on individual profiles — they're just not aggregated here.
+    """
     for w in _windows_to_try(window):
         since = _since(w)
         stmt = (
-            select(BacklogItem.album_id, func.count(BacklogItem.id).label("cnt"))
-            .group_by(BacklogItem.album_id)
+            select(BacklogItem.entity_id, func.count(BacklogItem.id).label("cnt"))
+            .where(BacklogItem.entity_type == "album")
+            .group_by(BacklogItem.entity_id)
             .order_by(func.count(BacklogItem.id).desc())
             .limit(limit)
         )
@@ -191,10 +198,10 @@ async def trending_backlogged(db: AsyncSession, window: str, limit: int) -> Tren
             stmt = stmt.where(BacklogItem.added_at >= since)
         rows = (await db.execute(stmt)).all()
         if len(rows) >= MIN_ITEMS or w == "all":
-            album_ids = [r.album_id for r in rows]
+            album_ids = [r.entity_id for r in rows]
             meta_map = await _album_meta_map(db, album_ids)
             items = [
-                {**_album_to_dict(meta_map.get(r.album_id), r.album_id), "backlog_count": int(r.cnt)}
+                {**_album_to_dict(meta_map.get(r.entity_id), r.entity_id), "backlog_count": int(r.cnt)}
                 for r in rows
             ]
             return TrendingResult(items=items, actual_window_used=w, label=label_for(w))
@@ -229,21 +236,26 @@ async def popular_in_backlogs_excluding(
     tab — discovery via what others are saving. Auto-expands to all-time because
     this is a recommendation surface, not a trend.
     """
+    # Album-only — see note on trending_backlogged.
     own_ids = set((await db.execute(
-        select(BacklogItem.album_id).where(BacklogItem.user_id == exclude_user_id)
+        select(BacklogItem.entity_id).where(
+            BacklogItem.user_id == exclude_user_id,
+            BacklogItem.entity_type == "album",
+        )
     )).scalars().all())
 
     rows = (await db.execute(
-        select(BacklogItem.album_id, func.count(BacklogItem.id).label("cnt"))
-        .group_by(BacklogItem.album_id)
+        select(BacklogItem.entity_id, func.count(BacklogItem.id).label("cnt"))
+        .where(BacklogItem.entity_type == "album")
+        .group_by(BacklogItem.entity_id)
         .order_by(func.count(BacklogItem.id).desc())
         .limit(limit * 3)  # fetch extra so filter doesn't starve us
     )).all()
 
-    filtered = [r for r in rows if r.album_id not in own_ids][:limit]
-    album_ids = [r.album_id for r in filtered]
+    filtered = [r for r in rows if r.entity_id not in own_ids][:limit]
+    album_ids = [r.entity_id for r in filtered]
     meta_map = await _album_meta_map(db, album_ids)
     return [
-        {**_album_to_dict(meta_map.get(r.album_id), r.album_id), "backlog_count": int(r.cnt)}
+        {**_album_to_dict(meta_map.get(r.entity_id), r.entity_id), "backlog_count": int(r.cnt)}
         for r in filtered
     ]

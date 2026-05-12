@@ -214,7 +214,7 @@ export function AlbumPage() {
               >
                 Compare
               </button>
-              <WantToListenButton albumId={id} />
+              <WantToListenButton entityType="album" entityId={id} />
               <ShareButton title={`${album.name} on Contour`} />
               {album.external_url && (
                 <a href={album.external_url} target="_blank" rel="noreferrer"

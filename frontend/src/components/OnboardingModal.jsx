@@ -405,7 +405,7 @@ export function OnboardingModal() {
                 </span>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
                   Tap <strong style={{ color: "var(--text)" }}>+ Want to listen</strong> on
-                  any album. Your backlog lives as a tab on your profile.
+                  any album or track. Your backlog lives as a tab on your profile.
                 </div>
               </div>
 

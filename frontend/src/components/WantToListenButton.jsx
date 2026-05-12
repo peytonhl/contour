@@ -5,19 +5,30 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 
 const ACCENT_B = "#34d399";
 
-export function WantToListenButton({ albumId }) {
+/**
+ * Toggleable "Want to listen" button shown on entity hero rows.
+ *
+ * Accepts either an albumId (back-compat — defaults entityType to "album")
+ * or an explicit entityType + entityId pair so the same component works on
+ * both AlbumPage and TrackPage.
+ */
+export function WantToListenButton({ entityType = "album", entityId, albumId }) {
   const { user } = useAuth();
+  // Back-compat: older call sites passed only `albumId`.
+  const type = entityType;
+  const id = entityId ?? albumId;
+
   const [inBacklog, setInBacklog] = useState(null);  // null = unknown / loading
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    if (!user || !albumId) { setInBacklog(false); return; }
+    if (!user || !id) { setInBacklog(false); return; }
     let cancelled = false;
-    api.checkBacklog(albumId)
+    api.checkBacklog(type, id)
       .then((r) => { if (!cancelled) setInBacklog(r.in_backlog); })
       .catch(() => { if (!cancelled) setInBacklog(false); });
     return () => { cancelled = true; };
-  }, [albumId, user]);
+  }, [type, id, user]);
 
   async function toggle() {
     if (!user) {
@@ -27,19 +38,17 @@ export function WantToListenButton({ albumId }) {
     }
     if (pending) return;
     setPending(true);
-    // Optimistic flip
     const next = !inBacklog;
-    setInBacklog(next);
+    setInBacklog(next);  // optimistic
     try {
       if (next) {
-        await api.addToBacklog(albumId);
-        analytics.backlogAdded(albumId);
+        await api.addToBacklog(type, id);
+        analytics.backlogAdded(id);
       } else {
-        await api.removeFromBacklog(albumId);
+        await api.removeFromBacklog(type, id);
       }
     } catch {
-      // Roll back on failure
-      setInBacklog(!next);
+      setInBacklog(!next);  // roll back on failure
     } finally {
       setPending(false);
     }

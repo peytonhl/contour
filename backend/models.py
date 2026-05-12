@@ -318,12 +318,13 @@ class ImportLog(Base):
 
 
 class BacklogItem(Base):
-    """Albums a user wants to listen to. Always public — surfaces on profile."""
+    """Albums or tracks a user wants to listen to. Always public — surfaces on profile."""
     __tablename__ = "backlog_items"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True)
-    album_id: Mapped[str] = mapped_column(String(64), index=True)  # Spotify album ID
+    entity_type: Mapped[str] = mapped_column(String(16), default="album")  # "album" | "track"
+    entity_id: Mapped[str] = mapped_column(String(64), index=True)  # Spotify album or track ID
     added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

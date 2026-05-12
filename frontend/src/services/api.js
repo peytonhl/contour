@@ -229,13 +229,15 @@ export const api = {
   },
 
   // ── Backlog (Want to listen) ───────────────────────────────────────────────
-  addToBacklog: (albumId, note = null) => post(`/backlog`, { album_id: albumId, note }),
-  removeFromBacklog: (albumId) => del(`/backlog/${albumId}`),
+  // entity_type is "album" or "track".
+  addToBacklog: (entityType, entityId, note = null) =>
+    post(`/backlog`, { entity_type: entityType, entity_id: entityId, note }),
+  removeFromBacklog: (entityType, entityId) => del(`/backlog/${entityType}/${entityId}`),
   getMyBacklog: (sort = "recent") => request(`/backlog?sort=${sort}`),
   getUserBacklog: (userId, sort = "recent") => request(`/backlog/${userId}?sort=${sort}`),
-  checkBacklog: (albumId) => request(`/backlog/check/${albumId}`),
-  promoteBacklog: (albumId, rating = null) =>
-    post(`/backlog/${albumId}/promote`, rating == null ? {} : { rating }),
+  checkBacklog: (entityType, entityId) => request(`/backlog/check/${entityType}/${entityId}`),
+  promoteBacklog: (entityType, entityId, rating = null) =>
+    post(`/backlog/${entityType}/${entityId}/promote`, rating == null ? {} : { rating }),
 
   // ── Trending ───────────────────────────────────────────────────────────────
   getTrendingAlbums: (window = "7d", limit = 20) =>
