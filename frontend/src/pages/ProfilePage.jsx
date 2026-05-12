@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
+import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeChips } from "./FeedPage.jsx";
 
@@ -83,43 +84,6 @@ function EntityRow({ item, right }) {
         </div>
       </div>
       <div style={{ flexShrink: 0 }}>{right}</div>
-    </div>
-  );
-}
-
-// ── Stat block ────────────────────────────────────────────────────────────────
-function Stat({ value, label }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1 }}>{value}</span>
-      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>{label}</span>
-    </div>
-  );
-}
-
-// ── Tab bar ───────────────────────────────────────────────────────────────────
-function TabBar({ tabs, active, onChange }) {
-  return (
-    <div style={{ display: "flex", gap: 4, overflowX: "auto", padding: "2px 0 2px" }}>
-      {tabs.map(({ key, label }) => {
-        const isActive = active === key;
-        return (
-          <button
-            key={key}
-            onClick={() => onChange(key)}
-            style={{
-              padding: "6px 15px", fontSize: 13, fontWeight: isActive ? 700 : 500,
-              whiteSpace: "nowrap", borderRadius: 6, border: "none", cursor: "pointer",
-              background: isActive ? "var(--surface2)" : "transparent",
-              color: isActive ? "var(--text)" : "var(--text-muted)",
-              outline: isActive ? `1px solid var(--border)` : "none",
-              transition: "color 0.12s, background 0.12s",
-            }}
-          >
-            {label}
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -262,12 +226,12 @@ export function ProfilePage() {
   if (loading) return <div style={{ padding: 80, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>Loading…</div>;
 
   const tabs = [
-    { key: "ratings",   label: `Ratings (${profile?.ratings?.length ?? 0})` },
-    { key: "reviews",   label: `Reviews (${profile?.reviews?.length ?? 0})` },
-    { key: "lists",     label: `Lists (${lists.length})` },
-    { key: "favorites", label: `Artists (${profile?.favorite_artists?.length ?? 0})` },
-    { key: "following", label: `Following (${following.length})` },
-    { key: "followers", label: `Followers (${followers.length})` },
+    { key: "ratings",   label: "Ratings",   count: profile?.ratings?.length ?? 0 },
+    { key: "reviews",   label: "Reviews",   count: profile?.reviews?.length ?? 0 },
+    { key: "lists",     label: "Lists",     count: lists.length },
+    { key: "favorites", label: "Artists",   count: profile?.favorite_artists?.length ?? 0 },
+    { key: "following", label: "Following", count: following.length },
+    { key: "followers", label: "Followers", count: followers.length },
   ];
 
   return (
@@ -413,13 +377,7 @@ export function ProfilePage() {
               </div>
             )}
 
-            {/* Stats */}
-            <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
-              <Stat value={profile?.ratings?.length ?? 0} label="Ratings" />
-              <Stat value={profile?.reviews?.length ?? 0} label="Reviews" />
-              <Stat value={following.length} label="Following" />
-              <Stat value={followers.length} label="Followers" />
-            </div>
+            {/* Stats are no longer rendered here — they're the tab nav below. */}
           </div>
         </div>
       </div>
@@ -513,15 +471,8 @@ export function ProfilePage() {
         {/* Taste */}
         <TasteSection userId={user.id} isOwner={true} />
 
-        {/* Divider label */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-muted)" }}>Activity</span>
-          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-        </div>
-
-        {/* Tab bar */}
-        <TabBar tabs={tabs} active={tab} onChange={setTab} />
+        {/* Stat-style tab nav — each cell shows count + label and activates a section. */}
+        <StatTabs tabs={tabs} active={tab} onChange={setTab} />
 
         {/* ── Ratings ── */}
         {tab === "ratings" && (
