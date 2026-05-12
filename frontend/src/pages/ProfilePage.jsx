@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -7,6 +7,7 @@ import { TasteSection } from "../components/TasteSection.jsx";
 import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeChips } from "../components/Badges.jsx";
+import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#a78bfa";
@@ -88,17 +89,90 @@ function EntityRow({ item, right }) {
   );
 }
 
+// ── Settings popover (gear icon) ─────────────────────────────────────────────
+// Lives here rather than in its own file because it's tiny and profile-specific.
+// Click-away dismissal is handled by a transparent fixed backdrop.
+function SettingsMenu({ open, onClose }) {
+  if (!open) return null;
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{ position: "fixed", inset: 0, zIndex: 80 }}
+      />
+      <div style={{
+        position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 81,
+        background: "var(--surface)", border: "1px solid var(--border)",
+        borderRadius: 10, padding: 6, minWidth: 200,
+        boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
+      }}>
+        <Link
+          to="/import"
+          onClick={onClose}
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "10px 12px", borderRadius: 6,
+            color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
+          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          Import ratings
+        </Link>
+        <Link
+          to="/blocks"
+          onClick={onClose}
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "10px 12px", borderRadius: 6,
+            color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
+          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+          </svg>
+          Blocked users
+        </Link>
+      </div>
+    </>
+  );
+}
+
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function ProfilePage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [profile, setProfile] = useState(null);
   const [artistDetails, setArtistDetails] = useState({});
   const [following, setFollowing] = useState([]);
   const [followers, setFollowers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("ratings");
+  // Deep-link support: /profile?tab=backlog opens directly to the Backlog tab.
+  const initialTab = searchParams.get("tab") || "ratings";
+  const [tab, setTab] = useState(initialTab);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Keep ?tab= in sync with state so refresh / share preserves the selection.
+  useEffect(() => {
+    const current = searchParams.get("tab") || "ratings";
+    if (current !== tab) {
+      const next = new URLSearchParams(searchParams);
+      if (tab === "ratings") next.delete("tab");
+      else next.set("tab", tab);
+      setSearchParams(next, { replace: true });
+    }
+  }, [tab]);
 
   const [editingBio, setEditingBio] = useState(false);
   const [bioInput, setBioInput] = useState("");
@@ -232,6 +306,8 @@ export function ProfilePage() {
     { key: "favorites", label: "Favorited", count: profile?.favorite_artists?.length ?? 0 },
     { key: "following", label: "Following", count: following.length },
     { key: "followers", label: "Followers", count: followers.length },
+    // Backlog appended to the end per Task 9 placement rules.
+    { key: "backlog",   label: "Backlog" },
   ];
 
   return (
@@ -284,18 +360,24 @@ export function ProfilePage() {
                 </h1>
                 <BadgeChips badges={badges} userId={user?.id} size="md" />
               </div>
-              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                <Link
-                  to="/blocks"
+              <div style={{ display: "flex", gap: 6, flexShrink: 0, position: "relative" }}>
+                <button
+                  onClick={() => setSettingsOpen((v) => !v)}
+                  aria-label="Settings"
+                  title="Settings"
                   style={{
-                    fontSize: 12, color: "var(--text-muted)", background: "none",
+                    width: 28, height: 28, color: "var(--text-muted)", background: "none",
                     border: "1px solid var(--border)", borderRadius: 6,
-                    textDecoration: "none", padding: "4px 12px",
-                    letterSpacing: "0.01em", display: "inline-flex", alignItems: "center",
+                    cursor: "pointer", display: "inline-flex",
+                    alignItems: "center", justifyContent: "center",
                   }}
                 >
-                  Blocked
-                </Link>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
+                <SettingsMenu open={settingsOpen} onClose={() => setSettingsOpen(false)} />
                 <button
                   onClick={logout}
                   style={{
@@ -662,6 +744,11 @@ export function ProfilePage() {
               </Link>
             ))}
           </div>
+        )}
+
+        {/* ── Backlog ── */}
+        {tab === "backlog" && (
+          <BacklogTabContent userId={user.id} isOwner={true} showSuggestions={true} />
         )}
 
       </div>

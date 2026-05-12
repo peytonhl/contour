@@ -13,6 +13,7 @@ function tierSourceOf(track) {
 
 import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
 import { FollowingTab } from "../components/FollowingTab.jsx";
+import { TrendingCarousel } from "../components/TrendingCarousel.jsx";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -1036,7 +1037,13 @@ export function ForYouPage() {
           its track list or scroll position when the user flips tabs. */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative", background: "var(--bg)" }}>
         <div style={{ display: tab === "foryou" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
-          <ForYouFeed />
+          {/* Trending carousel — small, fixed-height strip above the swipe feed.
+              Hides itself entirely if there's no trending data, so it never
+              steals vertical space without good reason. */}
+          <TrendingCarousel surface="for_you" limit={10} window="7d" />
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <ForYouFeed />
+          </div>
         </div>
         <div style={{ display: tab === "friends" ? "block" : "none", height: "100%", overflowY: "auto" }}>
           <FollowingTab />

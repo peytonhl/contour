@@ -6,6 +6,7 @@ import { ReviewSection } from "../components/ReviewSection.jsx";
 import { EraAdjustedStat } from "../components/EraAdjustedStat.jsx";
 import { PreStreamingBanner } from "../components/PreStreamingBanner.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
+import { WantToListenButton } from "../components/WantToListenButton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
@@ -213,6 +214,7 @@ export function AlbumPage() {
               >
                 Compare
               </button>
+              <WantToListenButton albumId={id} />
               <ShareButton title={`${album.name} on Contour`} />
               {album.external_url && (
                 <a href={album.external_url} target="_blank" rel="noreferrer"
