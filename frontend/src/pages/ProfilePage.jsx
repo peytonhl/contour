@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
+import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
@@ -250,6 +251,7 @@ export function ProfilePage() {
     setCreatingList(true);
     try {
       const created = await api.createList(newListTitle.trim(), newListDesc.trim() || null, newListRanked);
+      analytics.listCreated();
       navigate(`/list/${created.id}`);
     } finally {
       setCreatingList(false);

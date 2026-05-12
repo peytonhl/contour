@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
+import { analytics } from "../services/analytics.js";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#a78bfa";
@@ -309,6 +310,7 @@ export function ReviewSection({ entityType, entityId, user }) {
     setSelectedRating(val);
     setShowForm(true);
     await api.rateEntity(entityType, entityId, val);
+    analytics.ratingSubmitted(entityType, entityId, val);
     const updated = await api.getRatingSummary(entityType, entityId);
     setSummary(updated);
   }
@@ -320,6 +322,7 @@ export function ReviewSection({ entityType, entityId, user }) {
     setError(null);
     try {
       await api.submitReview(entityType, entityId, reviewText, selectedRating);
+      analytics.reviewSubmitted(entityType, reviewText.trim().length);
       setShowForm(false);
       await load(sort);
     } catch (err) {
@@ -332,6 +335,7 @@ export function ReviewSection({ entityType, entityId, user }) {
   async function handleVote(reviewId, value) {
     if (!user) return;
     const res = await api.voteReview(reviewId, value);
+    analytics.reviewVoted(value === 1 ? "up" : "down");
     setReviews((prev) => prev.map((r) =>
       r.id === reviewId
         ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote }

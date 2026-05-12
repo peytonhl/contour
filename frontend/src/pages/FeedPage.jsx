@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
+import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const GOLD = "#f59e0b";
@@ -231,6 +232,7 @@ function SuggestedUser({ u, onFollow }) {
     setLoading(true);
     try {
       await api.toggleFollow(u.id);
+      analytics.followUser();
       setFollowed(true);
       setTimeout(() => onFollow(u.id), 600);
     } finally {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../services/api.js";
+import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
@@ -96,6 +97,7 @@ export function UserPage() {
     setFollowLoading(true);
     try {
       const res = await api.toggleFollow(id);
+      if (res.following) analytics.followUser();
       setProfile((p) => ({ ...p, is_following: res.following, followers_count: p.followers_count + (res.following ? 1 : -1) }));
     } catch {}
     setFollowLoading(false);

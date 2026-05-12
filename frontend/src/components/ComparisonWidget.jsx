@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
+import { analytics } from "../services/analytics.js";
 import { UnifiedSearch } from "./UnifiedSearch.jsx";
 import { AlbumCard } from "./AlbumCard.jsx";
 import { ComparisonChart } from "./ComparisonChart.jsx";
@@ -156,6 +157,7 @@ export function ComparisonWidget({ initialAlbumA = null, initialAlbumB = null, p
         trackIdA: selectionA._type === "track" ? selectionA.id : null,
         trackIdB: selectionB._type === "track" ? selectionB.id : null,
       });
+      analytics.comparisonCreated();
       setComparison(data);
     } catch (e) {
       setError(e.message);

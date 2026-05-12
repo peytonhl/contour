@@ -160,7 +160,7 @@ async def callback(code: str, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     jwt_token = _make_jwt(user.id)
-    return RedirectResponse(f"{s.frontend_url}/auth/success?token={jwt_token}")
+    return RedirectResponse(f"{s.frontend_url}/auth/success?token={jwt_token}&provider=google")
 
 
 @router.get("/me")
