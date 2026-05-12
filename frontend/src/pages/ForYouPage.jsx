@@ -107,27 +107,73 @@ async function shareTrack(track) {
 }
 
 // ── Star rating ───────────────────────────────────────────────────────────────
+// Half-star picker. Mirrors components/StarRating.jsx click-position logic:
+// the left half of each star = N-0.5, the right half = N. SVG with a clipped
+// gold overlay so half-fill renders cleanly even on dark backgrounds.
+function HalfStarSvg({ fill, size = 30 }) {
+  // fill: "full" | "half" | "empty"
+  const empty = "rgba(255,255,255,0.20)";
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" style={{ display: "block" }}>
+      <defs>
+        <clipPath id={`clip-half-${size}`}>
+          <rect x="0" y="0" width="10" height="20" />
+        </clipPath>
+      </defs>
+      {/* Base star (always rendered — provides outline + empty fill) */}
+      <polygon
+        points="10,1 12.9,7 19.5,7.6 14.5,12 16.2,18.5 10,15 3.8,18.5 5.5,12 0.5,7.6 7.1,7"
+        fill={fill === "full" ? GOLD : empty}
+      />
+      {/* Half overlay: only paint the LEFT half gold when fill === "half" */}
+      {fill === "half" && (
+        <polygon
+          points="10,1 12.9,7 19.5,7.6 14.5,12 16.2,18.5 10,15 3.8,18.5 5.5,12 0.5,7.6 7.1,7"
+          fill={GOLD}
+          clipPath={`url(#clip-half-${size})`}
+        />
+      )}
+    </svg>
+  );
+}
+
 function StarPicker({ value, onChange, disabled }) {
   const [hover, setHover] = useState(null);
-  const display = hover ?? value;
+  const display = hover ?? value ?? 0;
+
+  function pick(e, starIndex) {
+    if (disabled) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX ?? e.changedTouches?.[0]?.clientX ?? rect.left + rect.width) - rect.left;
+    const v = x < rect.width / 2 ? starIndex - 0.5 : starIndex;
+    onChange(v);
+  }
+
+  function trackHover(e, starIndex) {
+    if (disabled) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    setHover(x < rect.width / 2 ? starIndex - 0.5 : starIndex);
+  }
+
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          disabled={disabled}
-          onClick={() => onChange(n)}
-          onMouseEnter={() => !disabled && setHover(n)}
-          onMouseLeave={() => !disabled && setHover(null)}
-          style={{
-            fontSize: 28, background: "none", border: "none", padding: "2px 1px",
-            cursor: disabled ? "default" : "pointer",
-            color: display >= n ? GOLD : "rgba(255,255,255,0.25)",
-            transition: "color 0.1s, transform 0.1s",
-            transform: hover === n ? "scale(1.2)" : "scale(1)",
-          }}
-        >★</button>
-      ))}
+    <div
+      style={{ display: "flex", gap: 4, alignItems: "center", cursor: disabled ? "default" : "pointer" }}
+      onMouseLeave={() => setHover(null)}
+    >
+      {[1, 2, 3, 4, 5].map((n) => {
+        const fill = display >= n ? "full" : display >= n - 0.5 ? "half" : "empty";
+        return (
+          <div
+            key={n}
+            onClick={(e) => pick(e, n)}
+            onMouseMove={(e) => trackHover(e, n)}
+            style={{ lineHeight: 0, padding: "2px 1px" }}
+          >
+            <HalfStarSvg fill={fill} size={30} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1011,17 +1057,35 @@ export function ForYouPage() {
     cursor: "pointer", transition: "all 0.15s",
   });
 
+  // Layout's sticky <header> sits above this page in the document, so the
+  // tab strip needs to stick BELOW it. The header is roughly 53px tall
+  // plus the safe-area inset on devices with a notch.
+  const STICKY_TOP = "calc(env(safe-area-inset-top, 0px) + 53px)";
+
+  // For the audio-swipe tab we need a fixed-height container so the swipe
+  // gesture has room to operate. For the scrollable tabs (Friends, Community)
+  // we let the page flow naturally so the document scroll moves them — that's
+  // what allows the tab strip's `position: sticky` to actually stick.
+  const isSwipe = tab === "foryou";
+
   return (
     <div style={{
       display: "flex", flexDirection: "column",
-      height: "calc(100dvh - 56px)",
       background: "#0a0a0a",
-      overflow: "hidden",
+      ...(isSwipe ? { height: "calc(100dvh - 56px)", overflow: "hidden" } : {}),
     }}>
       {/* Three modes — For You (audio swipe), Friends (followed users'
           activity), Community (global review feed). /feed was retired:
-          this is the single home for all three discovery modes. */}
+          this is the single home for all three discovery modes.
+
+          position: sticky pins the strip below Layout's sticky header as the
+          page scrolls (Friends / Community tabs only — the swipe tab has no
+          scroll). zIndex 40 sits under Layout's header (50) so the header
+          remains the topmost layer if anything overlaps. */}
       <div style={{
+        position: "sticky",
+        top: STICKY_TOP,
+        zIndex: 40,
         display: "flex",
         borderBottom: "1px solid rgba(255,255,255,0.1)",
         flexShrink: 0,
@@ -1034,14 +1098,17 @@ export function ForYouPage() {
 
       {/* Content — all three panels stay mounted so ForYouFeed never loses
           its track list or scroll position when the user flips tabs. */}
-      <div style={{ flex: 1, overflow: "hidden", position: "relative", background: "var(--bg)" }}>
+      <div style={{
+        position: "relative", background: "var(--bg)",
+        ...(isSwipe ? { flex: 1, overflow: "hidden" } : {}),
+      }}>
         <div style={{ display: tab === "foryou" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <ForYouFeed />
         </div>
-        <div style={{ display: tab === "friends" ? "block" : "none", height: "100%", overflowY: "auto" }}>
+        <div style={{ display: tab === "friends" ? "block" : "none" }}>
           <FollowingTab />
         </div>
-        <div style={{ display: tab === "community" ? "block" : "none", height: "100%", overflowY: "auto" }}>
+        <div style={{ display: tab === "community" ? "block" : "none" }}>
           <GlobalReviewsFeed />
         </div>
       </div>
