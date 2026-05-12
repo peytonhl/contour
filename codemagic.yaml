@@ -123,9 +123,24 @@ workflows:
           # Xcode project gets pointed at the profile.
           keychain initialize
 
-          # Create + download a Distribution cert and IOS_APP_STORE profile
-          # for this bundle ID. Idempotent: reuses existing artefacts if
-          # they're already in App Store Connect.
+          # FIRST: create a brand-new iOS Distribution certificate that
+          # Codemagic owns the private key for. Without this, fetch-signing-
+          # files finds the orphan cert that already exists in App Store
+          # Connect (whose private key lives on some other machine we don't
+          # have access to) and dies with "Cannot save Signing Certificates
+          # without certificate private key". `--save` persists the new cert
+          # + key into Codemagic's keychain cache for reuse on later builds.
+          #
+          # Apple caps Distribution certs at 2 per team; if this hits the
+          # cap, log into App Store Connect → Users and Access → Keys →
+          # Certificates and revoke the orphan one before retrying.
+          app-store-connect certificates create \
+            --type IOS_DISTRIBUTION \
+            --save
+
+          # Now fetch (or create) the App Store provisioning profile for the
+          # bundle ID. The freshly-created cert above will be the one bound
+          # into this profile.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
