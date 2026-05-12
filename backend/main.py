@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from services.limiter import limiter
 
 from database import init_db, AsyncSessionLocal
-from routers import albums, artists, auth, comparison, discover, featured, feed, leaderboard, lists, notifications, ratings, reviews, saved_comparisons, search, taste, tracks, users
+from routers import albums, apple_music, artists, auth, comparison, discover, featured, feed, leaderboard, lists, notifications, ratings, reviews, saved_comparisons, search, taste, tracks, users
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ app.include_router(notifications.router)
 app.include_router(discover.router)
 app.include_router(lists.router)
 app.include_router(taste.router)
+app.include_router(apple_music.router)
 
 
 # Exact Spotify IDs used on the Compare page "Try these" section.

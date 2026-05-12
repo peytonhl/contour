@@ -247,3 +247,21 @@ class ArtistCache(Base):
     spotify_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(256))
     discography_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class AppleMusicLink(Base):
+    """Cached mapping from a Spotify entity ID to its Apple Music counterpart.
+
+    A row is written even when no match was found (apple_music_id NULL) so we
+    don't retry every page load. Re-matching can be forced by deleting the row.
+    """
+    __tablename__ = "apple_music_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    spotify_id: Mapped[str] = mapped_column(String(64), index=True)
+    entity_type: Mapped[str] = mapped_column(String(16))  # "album" or "track"
+    apple_music_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    storefront: Mapped[str] = mapped_column(String(8), default="us")
+    # "isrc", "text", or "none" (negative cache)
+    match_method: Mapped[str] = mapped_column(String(16), default="none")
+    matched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

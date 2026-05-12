@@ -117,23 +117,29 @@ export function AlbumPage() {
   const [album, setAlbum] = useState(null);
   const [trajectory, setTrajectory] = useState(null);
   const [tracklist, setTracklist] = useState([]);
+  const [appleMusic, setAppleMusic] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
+    setAppleMusic(null);
     api.getAlbum(id)
       .then((albumData) => {
         setAlbum(albumData);
         return Promise.allSettled([
           api.getAlbumTrajectory(id),
           api.getAlbumTracklist(id),
+          api.getAppleMusicLink("album", id),
         ]);
       })
-      .then(([trajResult, trackResult]) => {
+      .then(([trajResult, trackResult, appleResult]) => {
         if (trajResult.status === "fulfilled") setTrajectory(trajResult.value);
         if (trackResult.status === "fulfilled") setTracklist(trackResult.value);
+        // Apple Music match returns 404 when unconfigured or unmatched — that's
+        // the signal to keep the button hidden. Any other failure is silent too.
+        if (appleResult.status === "fulfilled") setAppleMusic(appleResult.value);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -213,6 +219,13 @@ export function AlbumPage() {
                   onClick={() => analytics.spotifyLinkClicked("album")}
                   style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", fontSize: 13, display: "inline-flex", alignItems: "center", letterSpacing: "0.01em" }}>
                   Spotify ↗
+                </a>
+              )}
+              {appleMusic?.url && (
+                <a href={appleMusic.url} target="_blank" rel="noreferrer"
+                  onClick={() => analytics.appleMusicLinkClicked("album")}
+                  style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", fontSize: 13, display: "inline-flex", alignItems: "center", letterSpacing: "0.01em" }}>
+                  Apple Music ↗
                 </a>
               )}
               <a
