@@ -12,47 +12,20 @@ Last updated: 2026-05-12
 - [x] PostHog account created, project provisioned with Product Analytics +
       Web Analytics + Session Replay (Session Replay enabled at project level
       but not wired client-side — see "Optional follow-ups" below).
+- [x] `VITE_POSTHOG_KEY` set in Vercel, events confirmed flowing (saw own
+      usage in PostHog).
+- [x] Vercel Web Analytics framework toggled to "Other".
+- [x] `is_admin` flag flipped on Peyton's user — Admin link in nav, moderation
+      queue accessible at `/admin/reports`.
+- [x] Apple Developer Program membership purchased (awaiting Apple's approval
+      — usually 24–48 hours).
 - [x] UGC reporting + user-blocking flows shipped.
 - [x] Compare gained an optional Side C (overlay up to 3 trajectories);
       "Try these" suggestions removed.
 - [x] Profile pages use the unified StatTabs design.
 - [x] /feed page retired; For You is home with three tabs (For You / Friends / Community).
 - [x] Era-adjustment contextualized everywhere.
-
----
-
-## 🔴 Blocking analytics activation (5 minutes)
-
-- [ ] **Confirm `VITE_POSTHOG_KEY` is in Vercel.** Settings → Environment
-      Variables → all three environments. Value is the `phc_...` token from
-      PostHog Settings → Project.
-- [ ] **Trigger a Vercel redeploy** if Vercel didn't auto-redeploy after you
-      added the env var (Deployments → latest → ⋯ → Redeploy). Vite vars
-      are baked in at build time, so a saved env var alone isn't enough.
-- [ ] **Verify events are flowing.** Open https://contour-rosy.vercel.app in
-      an incognito window, click around a few pages, rate something. In
-      PostHog → Activity tab you should see `$pageview` events within seconds,
-      then named events (`rating_submitted`, `era_adjustment_viewed`, etc.).
-- [ ] **Vercel Web Analytics toggle.** Vercel dashboard → Analytics tab →
-      change the framework dropdown from "Next.js" to **Other**. One toggle,
-      no code changes needed (already wired).
-
----
-
-## 🔴 Blocking admin moderation access (2 minutes after the deploy lands)
-
-- [ ] **Flip your `is_admin` flag.** Once the moderation migration runs on
-      Railway (already deployed), open Railway → Postgres → Data tab → query
-      editor and run:
-
-      ```sql
-      UPDATE users SET is_admin = TRUE WHERE email = 'peyton2117@gmail.com';
-      ```
-
-      Hard-refresh the app. An "Admin" link appears in the desktop top nav,
-      and `/admin/reports` is the moderation queue. (Empty for now, but Apple
-      reviewers WILL file a test report during App Store review — you need
-      this working before submission.)
+- [x] Tagline updated to "Rate. Review. Discover."
 
 ---
 
@@ -60,8 +33,8 @@ Last updated: 2026-05-12
 
 Required for iOS App Store (Guideline 4.8). Not blocking Play Store.
 
-- [ ] **Apple Developer Program membership** ($99/yr) at developer.apple.com.
-- [ ] In Apple Developer portal → Certificates, Identifiers & Profiles → Identifiers → "+"
+- [x] **Apple Developer Program membership** purchased — awaiting approval.
+- [ ] Once approved, in Apple Developer portal → Certificates, Identifiers & Profiles → Identifiers → "+"
   - [ ] Create an **App ID** with bundle ID `com.peytonhl.contour`. Capability:
         Sign in with Apple. (Push Notifications can stay off for v1.)
   - [ ] Create a **Services ID** (e.g. `com.peytonhl.contour.signin`). Configure
