@@ -19,7 +19,13 @@ from services import redis_cache
 
 _BASE = "https://api.deezer.com/search"
 _CHART_URL = "https://api.deezer.com/chart/0/tracks"
-_TIMEOUT = 6.0  # seconds
+# Bumped from 6s → 10s. The For You feed fires N parallel get_preview()
+# calls for Spotify-source tracks missing preview_url (Spotify dropped
+# previews for most tracks late 2023). Under burst load Deezer's response
+# times can climb above 6s, especially cold-cache, and a timeout there
+# silently drops the preview clip — the frontend then has to fall back
+# to a Spotify iframe which has its own UX issues in WKWebView.
+_TIMEOUT = 10.0  # seconds
 
 # Artist names that indicate compilation / karaoke / cover releases — skip them.
 _JUNK_ARTISTS = {

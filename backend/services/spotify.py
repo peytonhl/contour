@@ -43,6 +43,14 @@ _circuit_open_until: float = 0.0
 # limit" responses tend to compound: 30s blocks become 5min blocks become
 # hours if we keep hammering. Failing fast is the cheaper trade.
 _CIRCUIT_BREAKER_THRESHOLD = 10  # seconds
+# Hard upper bound on self-imposed lockout duration. Spotify occasionally
+# returns Retry-After values measured in HOURS (the legendary 11-hour
+# credential-wide block from May 2026 was the canonical case). Respecting
+# those verbatim locks us out for the whole window, even if the actual
+# rate limit recovers in minutes. Instead, cap our self-imposed lockout
+# at 30 min and let the next call probe Spotify naturally — if they're
+# still mad, we'll re-trip briefly; if they recovered, we resume early.
+_MAX_CIRCUIT_OPEN_SECONDS = 1800  # 30 minutes
 
 # Concurrency cap on outbound Spotify HTTP. Spotify rate-limits per rolling
 # window AND per-app burst behavior. A small concurrency cap prevents
@@ -176,15 +184,40 @@ def _circuit_remaining() -> float:
 
 
 def _trip_circuit(retry_after_seconds: int) -> None:
-    """Open the circuit for the supplied duration. No-op if already open longer."""
+    """Open the circuit for the supplied duration, capped at
+    _MAX_CIRCUIT_OPEN_SECONDS. No-op if the circuit is already open longer.
+    """
     global _circuit_open_until
-    new_deadline = time.time() + retry_after_seconds
+    capped = min(retry_after_seconds, _MAX_CIRCUIT_OPEN_SECONDS)
+    new_deadline = time.time() + capped
     if new_deadline > _circuit_open_until:
         _circuit_open_until = new_deadline
-        _log.warning(
-            "[spotify] CIRCUIT OPEN for %ds (until %s). All Spotify calls will short-circuit.",
-            retry_after_seconds, time.strftime("%H:%M:%S", time.localtime(_circuit_open_until)),
+        if capped < retry_after_seconds:
+            _log.warning(
+                "[spotify] CIRCUIT OPEN for %ds — CAPPED from Spotify's request of %ds "
+                "(until %s). Will probe Spotify on next call past the cap regardless of "
+                "their requested duration.",
+                capped, retry_after_seconds,
+                time.strftime("%H:%M:%S", time.localtime(_circuit_open_until)),
+            )
+        else:
+            _log.warning(
+                "[spotify] CIRCUIT OPEN for %ds (until %s). All Spotify calls will short-circuit.",
+                capped, time.strftime("%H:%M:%S", time.localtime(_circuit_open_until)),
+            )
+
+
+def reset_circuit() -> None:
+    """Force-close the circuit. Intended for one-off recovery after a known
+    incident resolves (e.g. via an admin endpoint or a Railway redeploy
+    hook). Safe to call when the circuit isn't open."""
+    global _circuit_open_until
+    if _circuit_open_until > time.time():
+        _log.info(
+            "[spotify] circuit manually reset (was open for %.0fs more)",
+            _circuit_open_until - time.time(),
         )
+    _circuit_open_until = 0.0
 
 
 def _make_synthetic_429(url: str) -> httpx.Response:

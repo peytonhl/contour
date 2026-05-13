@@ -282,17 +282,37 @@ async def get_discover_feed(
     # Only enrich Spotify tracks that are still missing a preview clip.
     no_preview = [t for t in result if not t.get("preview_url") and t.get("_source") != "deezer"]
     if no_preview:
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
         deezer_tasks = [
             deezer_svc.get_preview(t.get("name", ""), (t.get("artists") or [""])[0])
             for t in no_preview
         ]
         deezer_urls = await asyncio.gather(*deezer_tasks, return_exceptions=True)
         url_iter = iter(deezer_urls)
+        filled = 0
         for t in result:
             if not t.get("preview_url") and t.get("_source") != "deezer":
                 url = next(url_iter)
                 if isinstance(url, str) and url:
                     t["preview_url"] = url
+                    filled += 1
+        _log.info(
+            "[discover] Deezer preview enrichment: %d/%d Spotify tracks filled",
+            filled, len(no_preview),
+        )
+
+    # Visibility: log the final preview coverage so we can see at a glance how
+    # many cards in this batch will get the custom HTML5 audio player vs the
+    # Spotify iframe fallback (the latter is buggier in WKWebView).
+    if result:
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+        with_preview = sum(1 for t in result if t.get("preview_url"))
+        _log.info(
+            "[discover] /feed served %d tracks, %d with preview_url (%d will use iframe fallback)",
+            len(result), with_preview, len(result) - with_preview,
+        )
 
     return result
 
