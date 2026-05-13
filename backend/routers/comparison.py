@@ -296,7 +296,7 @@ async def _resolve_streams(
 
         row = await cache.upsert_album(db, meta)
         if cache.needs_enrichment(row):
-            background_tasks.add_task(_enrich_album, sid, meta, db)
+            background_tasks.add_task(_enrich_album, sid, meta)
             any_pending = True
 
         streams = cache.streams_for_album(row)
