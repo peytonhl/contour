@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { ReviewSection } from "../components/ReviewSection.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
 import { SpotifyIcon } from "../components/PlatformIcons.jsx";
+import { EntityHeroSkeleton, RowSkeleton } from "../components/Skeleton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
@@ -211,7 +212,7 @@ export function ArtistPage() {
   const totalEraAdjusted = albums.reduce((sum, a) => sum + (a.era_adjusted_streams ?? a.streams ?? 0), 0);
   const topAlbum = [...albums].sort((a, b) => (b.streams ?? -1) - (a.streams ?? -1))[0];
 
-  if (loading) return <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>;
+  if (loading) return <EntityHeroSkeleton />;
   if (error) return <div style={{ padding: 60, textAlign: "center", color: "var(--danger)" }}>Error: {error}</div>;
   if (!artist) return null;
 
@@ -355,9 +356,7 @@ export function ArtistPage() {
         </div>
 
         {albumsLoading ? (
-          <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
-            Loading discography…
-          </div>
+          <RowSkeleton count={5} />
         ) : albumsEmpty ? (
           <div style={{
             display: "flex", flexDirection: "column", alignItems: "center", gap: 12,

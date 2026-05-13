@@ -8,6 +8,7 @@ import { PreStreamingBanner } from "../components/PreStreamingBanner.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
 import { WantToListenButton } from "../components/WantToListenButton.jsx";
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
+import { EntityHeroSkeleton } from "../components/Skeleton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
@@ -142,7 +143,7 @@ export function TrackPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <div style={{ padding: 80, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>Loading…</div>;
+  if (loading) return <EntityHeroSkeleton />;
   if (error) return <div style={{ padding: 80, textAlign: "center", color: "var(--danger)", fontSize: 14 }}>Error: {error}</div>;
   if (!track) return null;
 

@@ -561,13 +561,36 @@ export function ReviewSection({ entityType, entityId, user }) {
 
   async function handleVote(reviewId, value) {
     if (!user) return;
-    const res = await api.voteReview(reviewId, value);
+    // Optimistic: derive what the new totals look like from the current row
+    // and apply immediately. The user sees their vote register on the same
+    // frame as their tap; the server reconciles on the response. If the
+    // server disagrees (eg. the row was edited since we loaded it), we still
+    // overwrite with the authoritative numbers when the request returns.
+    setReviews((prev) => prev.map((r) => {
+      if (r.id !== reviewId) return r;
+      const prevVote = r.user_vote ?? 0;
+      const nextVote = prevVote === value ? 0 : value;          // tapping the active arrow clears it
+      let up = r.upvotes ?? 0;
+      let down = r.downvotes ?? 0;
+      if (prevVote === 1) up -= 1;
+      if (prevVote === -1) down -= 1;
+      if (nextVote === 1) up += 1;
+      if (nextVote === -1) down += 1;
+      return { ...r, upvotes: Math.max(0, up), downvotes: Math.max(0, down), user_vote: nextVote };
+    }));
     analytics.reviewVoted(value === 1 ? "up" : "down");
-    setReviews((prev) => prev.map((r) =>
-      r.id === reviewId
-        ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote }
-        : r
-    ));
+    try {
+      const res = await api.voteReview(reviewId, value);
+      setReviews((prev) => prev.map((r) =>
+        r.id === reviewId
+          ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote }
+          : r
+      ));
+    } catch {
+      // Server failed — refetch the row's authoritative state by reloading
+      // the whole reviews list. Cheap; vote failures should be rare.
+      api.getReviews(entityType, entityId, sort).then(setReviews).catch(() => {});
+    }
   }
 
   const displayRating = hover ?? selectedRating ?? summary?.average ?? 0;

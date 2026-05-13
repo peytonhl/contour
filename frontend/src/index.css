@@ -42,6 +42,61 @@ button, a, [role="button"] {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;   /* remove 300ms delay */
 }
+button, [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── Global tap / hover feedback ──
+   Every interactive surface gets a tiny visual response on press. The dip is
+   intentionally subtle (88% opacity, 98% scale, 80ms) — anything stronger
+   reads as a separate state rather than acknowledgement. transform-origin
+   center keeps the press from "jumping" off-anchor when buttons span a row.
+   Elements that opt out (e.g. drag handles, swipe cards) can override with
+   their own :active styles. */
+button:not(:disabled):active,
+a:active,
+[role="button"]:active {
+  transform: scale(0.98);
+  opacity: 0.88;
+  transition: transform 60ms ease-out, opacity 60ms ease-out;
+}
+button, a, [role="button"] {
+  transition: transform 140ms ease, opacity 140ms ease;
+  transform-origin: center;
+}
+
+/* ── Page transitions ──
+   Outlet swaps the matched route component on navigation; that element is
+   our direct child, so a CSS animation on .page-content > * fires once per
+   navigation without any JS coordination. Opacity-only so we don't fight
+   intrinsic layout/transform animations inside pages. */
+.page-content > * {
+  animation: page-in 180ms ease both;
+}
+@keyframes page-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Skeleton shimmer ──
+   Used by <Skeleton /> primitive. Gradient sweeps L→R every 1.4s; muted
+   enough that several stacked skeletons don't strobe. */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--surface2) 40%,
+    var(--surface) 80%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s linear infinite;
+  border-radius: 6px;
+}
 
 /* Prevent iOS from zooming into inputs */
 @media (max-width: 640px) {
