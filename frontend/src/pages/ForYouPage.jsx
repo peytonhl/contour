@@ -1191,11 +1191,14 @@ function ForYouFeed() {
   }
   function handleTouchEnd(e) {
     const start = touchStartRef.current;
-    if (!start) {
-      setDragging(false);
-      setDragOffset(0);
-      return;
-    }
+    // No pending drag → don't touch state. This is the path taken when
+    // a touchstart was skipped (transition in flight, multi-touch, etc.).
+    // The previous version reset dragOffset here, which interrupted any
+    // in-flight snap animation — the user would see the wrapper bounce
+    // back to 0 and then jump to the next card when the commit timer
+    // fired 290ms later. That was the "jumping back and forth that
+    // doesn't stop" jitter when fingers grazed the screen mid-swipe.
+    if (!start) return;
     touchStartRef.current = null;
 
     const endY = e.changedTouches[0].clientY;
@@ -1235,19 +1238,23 @@ function ForYouFeed() {
     setDragging(false);                                 // enable CSS transition
     setDragOffset(direction === 1 ? -cardHeight : cardHeight);
     setTimeout(() => {
-      setDragging(true);                                // disable transition for the reset
+      // Atomic commit: dragging=true disables transition, activeIdx + dragOffset
+      // change in the same React batch. The wrapper's combined transform value
+      // is identical before and after (calc(-N*100% + -cardHeight) ==
+      // calc(-(N+1)*100% + 0)), so the swap is invisible. transitioning
+      // clears in the same batch so future drags can fire immediately.
+      // (Previous version split this across a rAF, which left a one-frame
+      // window where transitioning was true but the state had already
+      // committed — fuel for the touchend-during-transition jitter.)
+      setDragging(true);
       setActiveIdx(target);
       setDragOffset(0);
+      setTransitioning(false);
       // Prefetch when getting close to the end so the next batch arrives
       // before the user runs out.
       if (direction === 1 && target >= tracks.length - 4) {
         fetchBatch(true);
       }
-      // Re-enable transition next frame so subsequent drags animate.
-      requestAnimationFrame(() => {
-        setDragging(false);
-        setTransitioning(false);
-      });
     }, 290);                                            // matches CSS transition duration + 10ms slack
   }
 
@@ -1694,6 +1701,11 @@ function ForYouFeed() {
           overflow: "hidden",
           overscrollBehavior: "none",
           touchAction: "pan-y",
+          // Defensive: during a snap animation, nothing inside the deck
+          // should accept pointer events. Belt-and-suspenders with the
+          // `if (transitioning) return` early-out in handleTouchStart —
+          // ensures even a tap mid-animation can't kick off a handler.
+          pointerEvents: transitioning ? "none" : "auto",
         }}
       >
         <div
