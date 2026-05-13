@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { ReplyThread } from "./ReviewSection.jsx";
+import { ShareButton } from "./ShareButton.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT_A = "#a78bfa";
@@ -24,7 +26,92 @@ function timeAgo(iso) {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+// ── Action row: vote / share / reply on review items ─────────────────────────
+// Sits inside the FollowingItem column for `type === "review"`. Vote/reply
+// require auth (buttons render but no-op when signed out, mirroring how the
+// album-page ReviewSection behaves); share works for everyone since the
+// payload is just the review snippet + entity deep link.
+function ReviewActionRow({ item, viewer }) {
+  const [upvotes, setUpvotes] = useState(item.upvotes ?? 0);
+  const [downvotes, setDownvotes] = useState(item.downvotes ?? 0);
+  const [userVote, setUserVote] = useState(item.user_vote ?? null);
+  const [voting, setVoting] = useState(false);
+
+  async function handleVote(value) {
+    if (!viewer || voting) return;
+    setVoting(true);
+    try {
+      const res = await api.voteReview(item.id, value);
+      setUpvotes(res.upvotes);
+      setDownvotes(res.downvotes);
+      setUserVote(res.user_vote);
+      analytics.reviewVoted(value === 1 ? "up" : "down");
+    } catch {
+      // Vote failed — leave UI as-is so the user can retry.
+    } finally {
+      setVoting(false);
+    }
+  }
+
+  // Build a share payload that captures the three pieces the user asked for:
+  // who reviewed (display_name), what they reviewed (entity + artists), and
+  // what they said (snippet of the body). The URL deep-links to the entity
+  // page where the full review thread lives.
+  const userName = item.user?.display_name ?? "Someone";
+  const entityName = item.entity_name ?? `this ${item.entity_type}`;
+  const artists = item.entity_artists?.slice(0, 2).join(", ");
+  const bodyExcerpt = item.body && item.body.length > 200
+    ? `${item.body.slice(0, 200)}…`
+    : item.body;
+  const shareTitle = `${userName}'s review on Contour`;
+  const shareText = [
+    `${userName} reviewed ${entityName}${artists ? ` by ${artists}` : ""}`,
+    bodyExcerpt && `"${bodyExcerpt}"`,
+  ].filter(Boolean).join("\n");
+  const shareUrl = `${window.location.origin}/${item.entity_type}/${item.entity_id}`;
+
+  function voteBtn(value, label, count) {
+    const active = userVote === value;
+    return (
+      <button
+        onClick={() => handleVote(value)}
+        disabled={!viewer || voting}
+        title={viewer ? (active ? "Remove vote" : value === 1 ? "Upvote" : "Downvote") : "Sign in to vote"}
+        style={{
+          background: "none",
+          border: "none",
+          padding: "4px 8px",
+          fontSize: 13,
+          color: active ? ACCENT_A : "var(--text-muted)",
+          fontWeight: active ? 700 : 400,
+          cursor: viewer ? "pointer" : "default",
+        }}
+      >
+        {label} {count > 0 ? count : ""}
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
+        {voteBtn(1, "▲", upvotes)}
+        {voteBtn(-1, "▼", downvotes)}
+        <ShareButton
+          title={shareTitle}
+          text={shareText}
+          url={shareUrl}
+          style={{ padding: "4px 10px", fontSize: 12 }}
+        />
+      </div>
+      <ReplyThread reviewId={item.id} user={viewer} initialCount={item.replies_count ?? 0} />
+    </>
+  );
+}
+
+
 function FollowingItem({ item }) {
+  const { user: viewer } = useAuth();
   const entityPath = `/${item.entity_type}/${item.entity_id}`;
   const userPath = `/user/${item.user?.id}`;
   const isReview = item.type === "review";
@@ -61,6 +148,9 @@ function FollowingItem({ item }) {
           </p>
         )}
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{timeAgo(item.created_at)}</span>
+        {isReview && item.id != null && (
+          <ReviewActionRow item={item} viewer={viewer} />
+        )}
       </div>
       {item.entity_image_url && (
         <Link to={entityPath} style={{ flexShrink: 0 }}>

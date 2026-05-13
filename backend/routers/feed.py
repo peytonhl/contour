@@ -4,11 +4,14 @@ import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Rating, Review, User, UserFollow, AlbumCache, TrackCache
+from models import (
+    Rating, Review, ReviewReply, ReviewVote,
+    User, UserFollow, AlbumCache, TrackCache,
+)
 from routers.moderation import blocked_user_ids
 from routers.auth import decode_jwt
 from services import spotify
@@ -99,6 +102,33 @@ async def get_feed(
         for (et, eid), data in zip(unique, enriched_list)
     }
 
+    # Vote counts + viewer's vote + reply counts for review items — mirrors the
+    # batching in ratings._enrich_reviews so the Friends tab can render the
+    # same vote/reply affordances as the album-page review section.
+    vote_map: dict[int, dict] = {}        # review_id -> {"up": int, "down": int}
+    user_vote_map: dict[int, int] = {}    # review_id -> caller's vote (1, -1)
+    reply_counts: dict[int, int] = {}
+    review_ids = [r.id for r in reviews]
+    if review_ids:
+        vote_rows = (await db.execute(
+            select(ReviewVote).where(ReviewVote.review_id.in_(review_ids))
+        )).scalars().all()
+        for v in vote_rows:
+            vm = vote_map.setdefault(v.review_id, {"up": 0, "down": 0})
+            if v.value == 1:
+                vm["up"] += 1
+            elif v.value == -1:
+                vm["down"] += 1
+            if v.user_id == user_id:
+                user_vote_map[v.review_id] = v.value
+
+        reply_rows = (await db.execute(
+            select(ReviewReply.review_id, func.count(ReviewReply.id))
+            .where(ReviewReply.review_id.in_(review_ids))
+            .group_by(ReviewReply.review_id)
+        )).all()
+        reply_counts = {row[0]: row[1] for row in reply_rows}
+
     # Build feed items
     items = []
     for r in ratings:
@@ -116,8 +146,12 @@ async def get_feed(
         })
     for r in reviews:
         meta = entity_map.get((r.entity_type, r.entity_id), {})
+        votes = vote_map.get(r.id, {"up": 0, "down": 0})
         items.append({
             "type": "review",
+            # review_id is what /ratings/reviews/{id}/vote and /reply need —
+            # keyed as "id" to match the shape ReviewSection.jsx consumes.
+            "id": r.id,
             "user": user_map.get(r.user_id),
             "entity_type": r.entity_type,
             "entity_id": r.entity_id,
@@ -125,6 +159,10 @@ async def get_feed(
             "entity_image_url": meta.get("image_url"),
             "entity_artists": meta.get("artists", []),
             "body": r.body,
+            "upvotes": votes["up"],
+            "downvotes": votes["down"],
+            "user_vote": user_vote_map.get(r.id),
+            "replies_count": reply_counts.get(r.id, 0),
             "created_at": r.created_at.isoformat() + "Z",
         })
 

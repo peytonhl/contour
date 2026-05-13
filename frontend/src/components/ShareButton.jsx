@@ -14,22 +14,35 @@ function UploadIcon() {
 
 /**
  * On mobile: opens the native OS share sheet via Web Share API.
- * On desktop: copies the URL to clipboard and briefly shows "Copied!".
+ * On desktop: copies the URL (or text + URL) to clipboard and briefly shows "Copied!".
+ *
+ * Props:
+ *   title — share-sheet headline
+ *   text  — optional body shown by native share sheets (snippet of the review,
+ *           tweet-style summary, etc). On desktop fallback we prepend it to the
+ *           clipboard payload so the recipient gets context, not a bare URL.
+ *   url   — optional target. Defaults to window.location.href so existing call
+ *           sites (album page, comparison page) keep working unchanged.
  */
-export function ShareButton({ title, style }) {
+export function ShareButton({ title, text, url, style }) {
   const [copied, setCopied] = useState(false);
 
   async function handleShare() {
-    const url = window.location.href;
+    const shareUrl = url ?? window.location.href;
     if (navigator.share) {
       try {
-        await navigator.share({ title, url });
+        // Web Share API ignores undefined fields, so passing text only when set
+        // keeps the share sheet clean on calls that just want title + url.
+        const payload = { title, url: shareUrl };
+        if (text) payload.text = text;
+        await navigator.share(payload);
       } catch {
         // user cancelled — ignore
       }
     } else {
       try {
-        await navigator.clipboard.writeText(url);
+        const clipboardPayload = text ? `${text}\n${shareUrl}` : shareUrl;
+        await navigator.clipboard.writeText(clipboardPayload);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch {

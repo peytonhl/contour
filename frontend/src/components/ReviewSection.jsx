@@ -68,7 +68,9 @@ const SORTS = [
 ];
 
 // ── Inline reply thread ───────────────────────────────────────────────────────
-function ReplyThread({ reviewId, user, initialCount }) {
+// Exported so the Friends tab (FollowingTab.jsx) can render replies under
+// followed users' reviews using the same UX as the album-page review section.
+export function ReplyThread({ reviewId, user, initialCount }) {
   const [replies, setReplies] = useState(null); // null = not loaded
   const [expanded, setExpanded] = useState(false);
   const [showForm, setShowForm] = useState(false);
