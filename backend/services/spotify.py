@@ -416,7 +416,14 @@ async def get_track(track_id: str) -> dict:
         return cached
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await _spotify_get(client, f"https://api.spotify.com/v1/tracks/{track_id}", token)
+        # market="US" — same reason as get_album. Without it, /v1/tracks/{id}
+        # can 404 for region-restricted catalogs.
+        resp = await _spotify_get(
+            client,
+            f"https://api.spotify.com/v1/tracks/{track_id}",
+            token,
+            params={"market": "US"},
+        )
         resp.raise_for_status()
         result = _parse_track(resp.json())
     await redis_cache.set(cache_key, result, ttl=_TTL_30D)
@@ -483,14 +490,27 @@ async def get_artist_albums_limited(artist_id: str, limit: int = 20) -> list[dic
 async def get_album(album_id: str) -> dict:
     """Fetch full album metadata by Spotify album ID. Cached 30d in Redis;
     also persisted to AlbumCache (DB) so every successful fetch survives
-    Redis flushes."""
+    Redis flushes.
+
+    market="US" is required: Spotify's /v1/albums/{id} returns 404 without
+    a market parameter for many albums (region-restricted catalogs, recent
+    releases). Confirmed in production: folklore, UTOPIA, and similar
+    high-profile albums 404'd via this endpoint until market was added.
+    All other endpoints in this file already pass market — this one was
+    the gap.
+    """
     cache_key = f"spotify:album:{album_id}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
         return cached
     async with httpx.AsyncClient() as client:
         token = await _get_token(client)
-        resp = await _spotify_get(client, f"https://api.spotify.com/v1/albums/{album_id}", token)
+        resp = await _spotify_get(
+            client,
+            f"https://api.spotify.com/v1/albums/{album_id}",
+            token,
+            params={"market": "US"},
+        )
         resp.raise_for_status()
         result = _parse_album(resp.json())
     await redis_cache.set(cache_key, result, ttl=_TTL_30D)

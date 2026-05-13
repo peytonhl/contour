@@ -135,6 +135,14 @@ async def startup():
     # Running as a task so startup isn't blocked if Spotify is slow.
     asyncio.create_task(_seed_compare_page_albums())
 
+    # Enrichment safety-net sweeper — picks up any AlbumCache rows stuck on
+    # pending/failed status and re-runs the enrichment pipeline against them.
+    # Pairs with the inline asyncio.create_task(_enrich_album(...)) in
+    # routers/albums.py: the inline path handles fresh views, the sweeper
+    # guarantees nothing gets permanently stuck if an inline task drops.
+    from services import enrichment_sweeper
+    asyncio.create_task(enrichment_sweeper.run_forever())
+
     # One-time cleanup: delete ratings/reviews whose entity_id is a pure numeric
     # string (Deezer IDs that leaked in via the /review endpoint before validation
     # was added).  Idempotent — safe to run on every startup until rows are gone.
