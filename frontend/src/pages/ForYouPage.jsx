@@ -1123,6 +1123,60 @@ function ForYouFeed() {
     if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [tracks.length]);
 
+  // TikTok-style: any deliberate vertical swipe on the discover feed advances
+  // exactly one card, regardless of how far they actually dragged. CSS scroll-
+  // snap on its own requires the user to drag past ~50% of card height — too
+  // unforgiving for a swipe-and-rate feed. The handler below overrides on
+  // touchend whenever the outer container actually moved (so inner scrolls
+  // like the review textarea aren't hijacked).
+  const touchStartRef = useRef(null);
+  function handleTouchStart(e) {
+    if (e.touches.length !== 1) return;
+    const container = containerRef.current;
+    if (!container) return;
+    touchStartRef.current = {
+      y: e.touches[0].clientY,
+      t: Date.now(),
+      scrollTop: container.scrollTop,
+    };
+  }
+  function handleTouchEnd(e) {
+    const start = touchStartRef.current;
+    const container = containerRef.current;
+    if (!start || !container) return;
+    touchStartRef.current = null;
+
+    // If the outer container's scroll position barely moved, the gesture was
+    // absorbed by an inner scroll (textarea, metadata strip overflow) or was
+    // just a tap. Don't hijack those.
+    const outerDelta = container.scrollTop - start.scrollTop;
+    if (Math.abs(outerDelta) < 4) return;
+
+    const endY = e.changedTouches[0].clientY;
+    const dy = endY - start.y;
+    const dt = Math.max(1, Date.now() - start.t);
+    const velocity = Math.abs(dy / dt);
+
+    const cardHeight = container.clientHeight;
+    const startIdx = Math.round(start.scrollTop / cardHeight);
+
+    // Low threshold: any deliberate swipe counts. Velocity catches the
+    // case where the finger barely traveled but the flick was fast.
+    const SWIPE_PX = 15;
+    const FLICK_VEL = 0.3;
+    const isSwipe = Math.abs(dy) >= SWIPE_PX || velocity >= FLICK_VEL;
+
+    if (!isSwipe) {
+      // Small unintentional drift — snap back to where we started.
+      goToCard(startIdx);
+      return;
+    }
+
+    const direction = dy < 0 ? 1 : -1;  // swipe up = next card
+    const target = Math.max(0, Math.min(startIdx + direction, tracks.length - 1));
+    goToCard(target);
+  }
+
   // Keyboard arrow navigation
   useEffect(() => {
     function onKey(e) {
@@ -1531,13 +1585,15 @@ function ForYouFeed() {
           mandatory only snaps when the swipe reaches the outer container. */}
       <div
         ref={containerRef}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         style={{
           flex: 1,
           overflowY: "scroll",
           scrollSnapType: "y mandatory",
           scrollBehavior: "smooth",
           WebkitOverflowScrolling: "touch",
-          overscrollBehavior: "contain",
+          overscrollBehavior: "none",
         }}
       >
         {tracks.map((track, i) => (

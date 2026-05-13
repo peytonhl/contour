@@ -106,6 +106,14 @@ h1, h2, h3, h4, h5, h6 {
 
 body {
   min-height: 100vh;
+  /* Kill iOS rubber-band on the document. Without this, scrolling up past
+     the top bounces the whole document down and exposes a dark band where
+     the header's safe-area-inset padding lives — reads as a "stuck header"
+     artifact on mobile. */
+  overscroll-behavior: none;
+}
+html {
+  overscroll-behavior: none;
 }
 
 a {
