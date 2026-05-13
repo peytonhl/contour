@@ -17,7 +17,7 @@ from database import get_db
 from services import spotify
 from services import album_cache as cache
 from services.normalization import build_trajectory, riaa_milestones, parse_release_date
-from routers.albums import _enrich_album
+from routers.albums import _enrich_album, spawn_enrichment
 from routers.tracks import _enrich_track
 
 router = APIRouter(prefix="/compare", tags=["comparison"])
@@ -297,7 +297,7 @@ async def _resolve_streams(
 
         row = await cache.upsert_album(db, meta)
         if cache.needs_enrichment(row):
-            asyncio.create_task(_enrich_album(sid, meta))
+            spawn_enrichment(sid, meta)
             any_pending = True
 
         streams = cache.streams_for_album(row)

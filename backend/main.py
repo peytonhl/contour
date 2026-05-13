@@ -137,9 +137,9 @@ async def startup():
 
     # Enrichment safety-net sweeper — picks up any AlbumCache rows stuck on
     # pending/failed status and re-runs the enrichment pipeline against them.
-    # Pairs with the inline asyncio.create_task(_enrich_album(...)) in
-    # routers/albums.py: the inline path handles fresh views, the sweeper
-    # guarantees nothing gets permanently stuck if an inline task drops.
+    # Pairs with the inline spawn_enrichment() in routers/albums.py: the
+    # inline path handles fresh views, the sweeper guarantees nothing gets
+    # permanently stuck if an inline task drops.
     from services import enrichment_sweeper
     asyncio.create_task(enrichment_sweeper.run_forever())
 
