@@ -1120,21 +1120,28 @@ function ForYouFeed() {
     return () => observer.disconnect();
   }, [tracks.length]);
 
+  // Tracks the most recently REQUESTED card index. Touch handler uses this as
+  // its base (rather than deriving from scrollTop) so rapid sequential swipes
+  // chain correctly: 0 → 1 → 2 → 3 even if the smooth-scroll animations are
+  // still in flight. Deriving from scrollTop mid-animation gives a fractional
+  // value that Math.round can flip the wrong way, which was the back-and-
+  // forth jitter the user was seeing after a few swipes.
+  const targetIdxRef = useRef(0);
+
   // Programmatic card navigation
   const goToCard = useCallback((idx) => {
     if (idx < 0 || idx >= tracks.length) return;
     const container = containerRef.current;
     if (!container) return;
+    targetIdxRef.current = idx;
     const card = container.querySelector(`[data-card="${idx}"]`);
     if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [tracks.length]);
 
-  // TikTok-style: any deliberate vertical swipe on the discover feed advances
-  // exactly one card, regardless of how far they actually dragged. CSS scroll-
-  // snap on its own requires the user to drag past ~50% of card height — too
-  // unforgiving for a swipe-and-rate feed. The handler below overrides on
-  // touchend whenever the outer container actually moved (so inner scrolls
-  // like the review textarea aren't hijacked).
+  // TikTok-style: any deliberate vertical swipe advances exactly one card.
+  // CSS scroll-snap was previously layered on top of this and caused jitter
+  // — two systems racing to set the final scroll position — so it's removed
+  // on the container. This handler is now the sole source of snap.
   const touchStartRef = useRef(null);
   function handleTouchStart(e) {
     if (e.touches.length !== 1) return;
@@ -1144,6 +1151,7 @@ function ForYouFeed() {
       y: e.touches[0].clientY,
       t: Date.now(),
       scrollTop: container.scrollTop,
+      baseIdx: targetIdxRef.current,
     };
   }
   function handleTouchEnd(e) {
@@ -1163,23 +1171,18 @@ function ForYouFeed() {
     const dt = Math.max(1, Date.now() - start.t);
     const velocity = Math.abs(dy / dt);
 
-    const cardHeight = container.clientHeight;
-    const startIdx = Math.round(start.scrollTop / cardHeight);
-
-    // Low threshold: any deliberate swipe counts. Velocity catches the
-    // case where the finger barely traveled but the flick was fast.
     const SWIPE_PX = 15;
     const FLICK_VEL = 0.3;
     const isSwipe = Math.abs(dy) >= SWIPE_PX || velocity >= FLICK_VEL;
 
     if (!isSwipe) {
-      // Small unintentional drift — snap back to where we started.
-      goToCard(startIdx);
+      // Small unintentional drift — re-anchor to wherever we were heading.
+      goToCard(start.baseIdx);
       return;
     }
 
     const direction = dy < 0 ? 1 : -1;  // swipe up = next card
-    const target = Math.max(0, Math.min(startIdx + direction, tracks.length - 1));
+    const target = Math.max(0, Math.min(start.baseIdx + direction, tracks.length - 1));
     goToCard(target);
   }
 
@@ -1580,15 +1583,13 @@ function ForYouFeed() {
         </div>
       )}
 
-      {/* Scroll container — TikTok/Reels-style snap.
-          "mandatory" forces every scroll release to settle on a card boundary,
-          and "scroll-snap-stop: always" on each card means a fast swipe still
-          advances exactly one card instead of blowing past it. "overscroll-
-          behavior: contain" stops the swipe from bubbling to the page-level
-          scroll (which would also pull the address bar in/out on mobile).
-          The metadata strip inside each card keeps its own `overflow-y:
-          auto`, so a long textarea or scrolled-down review still works —
-          mandatory only snaps when the swipe reaches the outer container. */}
+      {/* Scroll container — JS handles all snap behaviour now (see the
+          handleTouchStart / handleTouchEnd handlers above). CSS scroll-snap
+          previously layered on top and the two systems competed during
+          rapid swipes, producing a back-and-forth jitter once the user had
+          scrolled past a few cards. Inner content (review textarea, metadata
+          strip overflow) keeps its own scroll because the handler checks
+          whether the OUTER container actually moved before hijacking. */}
       <div
         ref={containerRef}
         onTouchStart={handleTouchStart}
@@ -1596,7 +1597,6 @@ function ForYouFeed() {
         style={{
           flex: 1,
           overflowY: "scroll",
-          scrollSnapType: "y mandatory",
           scrollBehavior: "smooth",
           WebkitOverflowScrolling: "touch",
           overscrollBehavior: "none",
@@ -1608,8 +1608,6 @@ function ForYouFeed() {
             data-card={i}
             style={{
               height: "100%",
-              scrollSnapAlign: "start",
-              scrollSnapStop: "always",
               flexShrink: 0,
             }}
           >
