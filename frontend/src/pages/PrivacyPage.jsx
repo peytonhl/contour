@@ -45,7 +45,7 @@ export function PrivacyPage() {
           <li><strong style={{ color: "var(--text)" }}>Email address</strong>: used only for account identification, never for marketing</li>
         </ul>
         <p style={{ marginTop: 10 }}>
-          We also store content you create on Contour: ratings, reviews, favorite artists,
+          We also store content you create on Contour: ratings, reviews, lists,
           and who you follow.
         </p>
       </Section>

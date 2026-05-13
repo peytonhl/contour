@@ -91,15 +91,6 @@ class ReviewReply(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-class ArtistFavorite(Base):
-    __tablename__ = "artist_favorites"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String(64), index=True)
-    artist_id: Mapped[str] = mapped_column(String(64), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
 class SavedComparison(Base):
     __tablename__ = "saved_comparisons"
 

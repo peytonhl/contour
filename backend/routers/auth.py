@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pydantic import BaseModel
 from database import get_db
-from models import ArtistFavorite, Rating, Review, User, AlbumCache, TrackCache
+from models import Rating, Review, User, AlbumCache, TrackCache
 from services import spotify
 from services import apple_auth
 
@@ -329,7 +329,7 @@ async def get_profile(
     authorization: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return the current user's ratings, reviews, and favorited artists."""
+    """Return the current user's ratings and reviews."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -354,13 +354,6 @@ async def get_profile(
         .limit(50)
     )
     reviews = reviews_result.scalars().all()
-
-    favs_result = await db.execute(
-        select(ArtistFavorite)
-        .where(ArtistFavorite.user_id == user_id)
-        .order_by(desc(ArtistFavorite.created_at))
-    )
-    favorites = favs_result.scalars().all()
 
     unique_entities = (
         {(r.entity_type, r.entity_id) for r in ratings}
@@ -446,7 +439,6 @@ async def get_profile(
             }
             for r in reviews
         ],
-        "favorite_artists": [f.artist_id for f in favorites],
     }
 
 

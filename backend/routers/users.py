@@ -9,7 +9,7 @@ from sqlalchemy import select, func, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import User, UserFollow, Rating, Review, ReviewVote, ArtistFavorite, UserList, UserListItem, AlbumCache, TrackCache
+from models import User, UserFollow, Rating, Review, ReviewVote, UserList, UserListItem, AlbumCache, TrackCache
 from routers.auth import decode_jwt, optional_user_id
 from routers.notifications import create_notification
 from services import spotify

@@ -10,13 +10,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy import delete, select
 from database import get_db
-from models import ArtistFavorite
 from services import spotify
 from services import album_cache as cache
 from routers.albums import _enrich_album
-from routers.auth import optional_user_id
 from services.normalization import parse_release_date
 from data.spotify_mau import get_mau_for_date
 
@@ -186,51 +183,3 @@ async def get_artist_albums(
     return results
 
 
-@router.get("/{artist_id}/favorite")
-async def get_favorite(
-    artist_id: str,
-    db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(optional_user_id),
-):
-    if not user_id:
-        return {"favorited": False}
-    result = await db.execute(
-        select(ArtistFavorite).where(
-            ArtistFavorite.user_id == user_id,
-            ArtistFavorite.artist_id == artist_id,
-        )
-    )
-    return {"favorited": result.scalar_one_or_none() is not None}
-
-
-@router.post("/{artist_id}/favorite")
-async def toggle_favorite(
-    artist_id: str,
-    db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(optional_user_id),
-):
-    if not user_id:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=401, detail="Sign in to favorite artists")
-
-    result = await db.execute(
-        select(ArtistFavorite).where(
-            ArtistFavorite.user_id == user_id,
-            ArtistFavorite.artist_id == artist_id,
-        )
-    )
-    existing = result.scalar_one_or_none()
-    if existing:
-        await db.execute(
-            delete(ArtistFavorite).where(
-                ArtistFavorite.user_id == user_id,
-                ArtistFavorite.artist_id == artist_id,
-            )
-        )
-        favorited = False
-    else:
-        db.add(ArtistFavorite(user_id=user_id, artist_id=artist_id))
-        favorited = True
-
-    await db.commit()
-    return {"favorited": favorited}

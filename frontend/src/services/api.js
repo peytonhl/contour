@@ -81,8 +81,6 @@ export const api = {
   getArtist: (id) => request(`/artists/${id}`),
   getArtistAlbums: (id) => request(`/artists/${id}/albums`),
   getArtistTopTracks: (id) => request(`/artists/${id}/top-tracks`),
-  getArtistFavorite: (id) => request(`/artists/${id}/favorite`),
-  toggleArtistFavorite: (id) => post(`/artists/${id}/favorite`, {}),
 
   // Compare — Side C optional. Pass idC=null for a 2-way comparison.
   compare: (idA, idB, idC = null, {
