@@ -536,10 +536,21 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
           (transform-translate centering was causing sub-pixel anti-alias
           blur on iOS). Backdrop and bottom vignette stay absolute and don't
           participate in flex. decoding="async" + fetchpriority="high" hint
-          the browser to commit GPU resources to this image early. */}
+          the browser to commit GPU resources to this image early.
+
+          paddingTop reserves a clean band at the top of the art region for
+          the floating chrome (gear button on the page container, "···"
+          overflow on the card). Without it those buttons sat right on top
+          of the cover image. Absolute children inside this region are
+          positioned from the padding-box, so their `top:` values are
+          measured from the actual top of the card — but the cover itself
+          is flex-centered in the area BELOW the padding, so it's pushed
+          down by ~half the padding amount. Net: chrome sits in a clear
+          band, cover doesn't get covered. */}
       <div style={{
         flex: "0 0 65%", position: "relative", overflow: "hidden",
         display: "flex", alignItems: "center", justifyContent: "center",
+        paddingTop: 48,
       }}>
         {coverImage
           ? <>
@@ -1296,7 +1307,7 @@ function ForYouFeed() {
       if (direction === 1 && target >= tracks.length - 4) {
         fetchBatch(true);
       }
-    }, 290);                                            // matches CSS transition duration + 10ms slack
+    }, 250);                                            // matches CSS transition duration (240ms) + 10ms slack
   }
 
   // Programmatic navigation (keyboard arrows, deep-link, etc.). One-step
@@ -1762,8 +1773,17 @@ function ForYouFeed() {
             // pixel discrepancy at the commit moment was the "snaps too low
             // first, then auto-adjusts higher" jump the user reported.
             transform: `translate3d(0, ${-activeIdx * 100 + dragOffset}%, 0)`,
-            transition: dragging ? "none" : "transform 280ms cubic-bezier(0.2, 0, 0, 1)",
+            // Snappier ease-out curve (cubic-bezier-iOS-style) + shorter
+            // duration so the snap feels closer to Tinder / TikTok's native
+            // animation. The previous (0.2, 0, 0, 1) was a linear-snappy
+            // curve that lingered slightly at the end; this one decelerates
+            // hard from peak velocity for a clean "lock-in" feel.
+            transition: dragging ? "none" : "transform 240ms cubic-bezier(0.16, 1, 0.3, 1)",
             willChange: "transform",
+            // contain isolates the deck's rendering from the rest of the
+            // page — the compositor can promote it to its own layer with
+            // no surprise repaints from outside.
+            contain: "layout paint",
           }}
         >
           {tracks.map((track, i) => {
