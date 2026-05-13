@@ -588,9 +588,9 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
           </div>
         </div>
 
-        {/* Card position indicator */}
+        {/* Card position indicator — sits below the floating gear (top:8, 30px tall). */}
         <div style={{
-          position: "absolute", top: 14, left: 14,
+          position: "absolute", top: 48, left: 14,
           fontSize: 10, color: "rgba(255,255,255,0.35)",
           fontWeight: 600, letterSpacing: "0.05em",
         }}>
@@ -1395,17 +1395,16 @@ function ForYouFeed() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", position: "relative" }}>
-      {/* Floating settings gear (top-right). Previously lived in its own
-          horizontal strip below the tab bar, which read as an empty black
-          band between the tab strip and the first track card — wasted
-          vertical space. Floating it on top of the card keeps it
-          accessible without consuming a row. */}
+      {/* Floating settings gear. Lives top-LEFT: the top-right of every card
+          is owned by the Share button + three platform-link icons, and the
+          gear used to overlap the YouTube pill on first load. The position
+          indicator (cardIndex/totalCards) shifts down to make room. */}
       <button
         onClick={() => setSettingsOpen(o => !o)}
         title="Feed settings"
         aria-label="Feed settings"
         style={{
-          position: "absolute", top: 8, right: 10, zIndex: 5,
+          position: "absolute", top: 8, left: 10, zIndex: 5,
           fontSize: 15, lineHeight: 1,
           width: 30, height: 30, borderRadius: 16, padding: 0,
           background: "rgba(0,0,0,0.55)",

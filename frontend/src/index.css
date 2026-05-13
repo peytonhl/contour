@@ -112,6 +112,19 @@ button, a, [role="button"] {
     justify-content: center !important;
   }
 
+  /* "Listen on" pill row on entity pages: force the label onto its own
+     centered row above the three platform pills, so YouTube doesn't get
+     orphaned on a wrapped second line while Spotify + Apple Music fit
+     beside the label. */
+  .hero-listen-row {
+    justify-content: center !important;
+  }
+  .hero-listen-row > span:first-child {
+    width: 100% !important;
+    text-align: center !important;
+    margin-right: 0 !important;
+  }
+
   /* Stat blocks: wrap tighter */
   .stat-row {
     gap: 16px !important;

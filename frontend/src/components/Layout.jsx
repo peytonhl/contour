@@ -281,11 +281,9 @@ export function Layout() {
               )}
             </Link>
           )}
-          {!loading && user && (
-            <NavLink to="/profile" style={{ display: "flex", alignItems: "center", padding: "12px 0" }}>
-              <img src={userAvatar(user, 56)} alt={user.display_name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
-            </NavLink>
-          )}
+          {/* Mobile avatar removed: /profile is already a primary bottom-nav
+              destination, and the header copy was a non-functional dupe. The
+              bell stays — /notifications is a distinct surface. */}
           {!loading && !user && (
             <>
               <a href={LOGIN_URL} {...externalLinkProps()} style={{
