@@ -124,14 +124,38 @@ workflows:
           # opaque so these are effectively a fallback for any Android
           # density that wants the solid background.
           npx capacitor-assets generate --ios \
-            --iconBackgroundColor "#0d0d0f" \
-            --iconBackgroundColorDark "#0d0d0f" \
-            --splashBackgroundColor "#0d0d0f" \
-            --splashBackgroundColorDark "#0d0d0f"
+            --iconBackgroundColor "#08080a" \
+            --iconBackgroundColorDark "#08080a" \
+            --splashBackgroundColor "#08080a" \
+            --splashBackgroundColorDark "#08080a"
 
           echo ">>> Confirming icon variants landed in AppIcon.appiconset:"
           ls -la ios/App/App/Assets.xcassets/AppIcon.appiconset/ || \
             (echo "FATAL: AppIcon.appiconset missing — capacitor-assets failed silently" && exit 1)
+
+      - name: Override LaunchScreen.storyboard with Contour wordmark
+        script: |
+          set -ex
+          # `capacitor-assets generate` produces a launch screen with
+          # icon-only.png centered on a dark bg. That reads as a black
+          # screen to users because the icon contrast on the bg is low —
+          # they perceive ~1-2s of black before the WebView paints the
+          # JS-side splash. Overriding with a hand-crafted storyboard
+          # that shows the "Contour" wordmark in solid white on the same
+          # bg gives an immediately recognisable native splash, matching
+          # the web boot splash visually so the transition is continuous.
+          SRC="frontend/assets/ios/LaunchScreen.storyboard"
+          DEST="frontend/ios/App/App/Base.lproj/LaunchScreen.storyboard"
+          if [ ! -f "$SRC" ]; then
+            echo "FATAL: $SRC missing — cannot override LaunchScreen.storyboard" >&2
+            exit 1
+          fi
+          if [ ! -f "$DEST" ]; then
+            echo "FATAL: $DEST missing — capacitor-assets generate did not create the expected storyboard path" >&2
+            exit 1
+          fi
+          cp "$SRC" "$DEST"
+          echo ">>> Replaced auto-generated LaunchScreen.storyboard with branded version."
 
       - name: Set Info.plist values
         script: |
