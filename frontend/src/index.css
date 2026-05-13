@@ -368,6 +368,20 @@ button, a, [role="button"] {
   body.foryou-swipe-mode .page-content {
     padding-bottom: 0 !important;
   }
+  /* Lock the document while the swipe deck is mounted — `overscroll-behavior:
+     none` on body+html is not sufficient on iOS WKWebView when a child has
+     `touch-action: pan-y`. Pinning body to `position: fixed` removes it from
+     the scroll model entirely, so iOS has no document to rubber-band when
+     the user drags down past the first card. */
+  body.foryou-swipe-mode {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+  html:has(body.foryou-swipe-mode) {
+    overflow: hidden;
+  }
 
   /* Route-based fallback that fires regardless of whether ForYouPage's
      useEffect has run yet — Layout adds this class to the header on the
