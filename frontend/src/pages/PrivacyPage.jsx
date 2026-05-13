@@ -212,7 +212,7 @@ export function PrivacyPage() {
           You have the right to access, correct, or delete your personal data at
           any time. To request deletion of your account and all associated data,
           email us at{" "}
-          <a href="mailto:privacy@contour.app" style={{ color: ACCENT_A }}>privacy@contour.app</a>.
+          <a href="mailto:contour.app.demo@gmail.com" style={{ color: ACCENT_A }}>contour.app.demo@gmail.com</a>.
           We will process deletion requests within 30 days.
         </p>
       </Section>
@@ -236,7 +236,7 @@ export function PrivacyPage() {
       <Section title="12. Contact">
         <p>
           Questions about this policy? Reach us at{" "}
-          <a href="mailto:privacy@contour.app" style={{ color: ACCENT_A }}>privacy@contour.app</a>.
+          <a href="mailto:contour.app.demo@gmail.com" style={{ color: ACCENT_A }}>contour.app.demo@gmail.com</a>.
         </p>
       </Section>
 
