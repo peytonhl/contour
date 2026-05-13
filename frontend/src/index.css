@@ -345,6 +345,14 @@ button, a, [role="button"] {
     padding-bottom: 0 !important;
   }
 
+  /* Route-based fallback that fires regardless of whether ForYouPage's
+     useEffect has run yet — Layout adds this class to the header on the
+     `/` route synchronously during render. Together with the body-class
+     rule above, this is belt-and-suspenders for the Discover surface. */
+  .app-header.hide-on-home-mobile {
+    display: none !important;
+  }
+
   /* When the header is non-sticky on mobile, the For You sub-tab strip
      (For You / Friends / Community) becomes the *only* element that
      should pin to the viewport top during scroll. The desktop offset

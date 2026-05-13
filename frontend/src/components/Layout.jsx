@@ -168,6 +168,21 @@ export function Layout() {
     ...(user?.is_admin ? [{ to: "/admin/reports", label: "Admin" }] : []),
   ];
 
+  // On mobile, hide the Layout header on the For You home route entirely.
+  // The For You page is a full-bleed swipe surface and wants the full
+  // viewport for media — the Contour wordmark + bell row consumes ~100px
+  // of vertical real estate that's better spent on the album cover.
+  //
+  // This used to be done via a body class + CSS rule but the user kept
+  // reporting the header visible despite the rule shipping; the most
+  // foolproof fix is just not rendering the component in JSX. Bell
+  // remains accessible from /profile (and we'll surface notifications
+  // elsewhere as a follow-up — direct path from the bottom-nav, e.g.).
+  //
+  // Desktop keeps the header on every route; this only fires when the
+  // CSS media query for mobile would otherwise apply.
+  const hideHeaderOnHomeMobile = location.pathname === "/";
+
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
 
@@ -178,8 +193,15 @@ export function Layout() {
           Contour wordmark + bell + avatar aren't worth the vertical real
           estate to keep pinned on a phone-sized viewport. Inner For You
           sub-tab strip becomes the sole pinned strip on mobile via its
-          own CSS override (.foryou-tabs-strip top: 0). */}
-      <header ref={headerRef} className="app-header glass" style={{
+          own CSS override (.foryou-tabs-strip top: 0).
+
+          On `/` route + mobile viewport, the header doesn't render at all
+          (see hideHeaderOnHomeMobile + the .hide-on-home-mobile class
+          handled by index.css). */}
+      <header
+        ref={headerRef}
+        className={`app-header glass${hideHeaderOnHomeMobile ? " hide-on-home-mobile" : ""}`}
+        style={{
         padding: "0 var(--space-4)",
         paddingTop: "env(safe-area-inset-top, 0px)",  /* iPhone Dynamic Island / notch */
         display: "flex",
