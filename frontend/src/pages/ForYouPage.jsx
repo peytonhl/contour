@@ -1520,25 +1520,36 @@ function ForYouFeed() {
         </div>
       )}
 
-      {/* Scroll container
-          "proximity" snaps when close to a boundary but doesn't trap scroll
-          events inside a card, so inner elements (textarea, review section)
-          stay scrollable. "mandatory" was causing the lockout. */}
+      {/* Scroll container — TikTok/Reels-style snap.
+          "mandatory" forces every scroll release to settle on a card boundary,
+          and "scroll-snap-stop: always" on each card means a fast swipe still
+          advances exactly one card instead of blowing past it. "overscroll-
+          behavior: contain" stops the swipe from bubbling to the page-level
+          scroll (which would also pull the address bar in/out on mobile).
+          The metadata strip inside each card keeps its own `overflow-y:
+          auto`, so a long textarea or scrolled-down review still works —
+          mandatory only snaps when the swipe reaches the outer container. */}
       <div
         ref={containerRef}
         style={{
           flex: 1,
           overflowY: "scroll",
-          scrollSnapType: "y proximity",
+          scrollSnapType: "y mandatory",
           scrollBehavior: "smooth",
           WebkitOverflowScrolling: "touch",
+          overscrollBehavior: "contain",
         }}
       >
         {tracks.map((track, i) => (
           <div
             key={`${track.id}-${i}`}
             data-card={i}
-            style={{ height: "100%", scrollSnapAlign: "start", flexShrink: 0 }}
+            style={{
+              height: "100%",
+              scrollSnapAlign: "start",
+              scrollSnapStop: "always",
+              flexShrink: 0,
+            }}
           >
             <DiscoverCard
               track={track}
@@ -1556,7 +1567,9 @@ function ForYouFeed() {
           </div>
         ))}
         {loadingMore && (
-          <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center", scrollSnapAlign: "start" }}>
+          // No snap-align here — we don't want the loader to be a snap point,
+          // it should sit beneath the last card and never become a "destination".
+          <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>Loading more…</span>
           </div>
         )}
