@@ -76,13 +76,18 @@ class ReviewVote(Base):
 
 
 class ReviewReply(Base):
-    """Replies to reviews."""
+    """Replies to reviews. Threaded — `parent_reply_id` lets a reply target
+    another reply (Reddit-style); NULL means top-level reply to the review."""
     __tablename__ = "review_replies"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     review_id: Mapped[int] = mapped_column(Integer, index=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True)
     body: Mapped[str] = mapped_column(Text)
+    # Nullable: NULL = top-level reply (directly under the review). Non-null
+    # points at another ReviewReply.id within the same review_id (validated
+    # at the API layer). Indexed for fast tree-build queries.
+    parent_reply_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

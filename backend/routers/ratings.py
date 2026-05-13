@@ -70,6 +70,11 @@ class VoteIn(BaseModel):
 
 class ReplyIn(BaseModel):
     body: str = Field(..., min_length=1, max_length=2000)
+    # Optional — when set, reply targets another reply (threaded). When null,
+    # reply is top-level (directly under the review). The POST endpoint
+    # validates the parent belongs to the same review so a client can't
+    # cross-thread replies.
+    parent_reply_id: Optional[int] = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -535,6 +540,10 @@ async def get_replies(
     return [{
         "id": r.id,
         "body": r.body,
+        # NULL = top-level reply under the review; non-null = threaded reply
+        # pointing at another reply in the same review. Frontend uses this to
+        # build the tree client-side.
+        "parent_reply_id": r.parent_reply_id,
         "created_at": r.created_at.isoformat() + "Z",
         "user": {
             "id": r.user_id,
@@ -560,9 +569,31 @@ async def post_reply(
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
 
-    db.add(ReviewReply(review_id=review_id, user_id=user_id, body=body.body.strip()))
-    await create_notification(db, user_id=review.user_id, type="reply",
-                              actor_id=user_id, review_id=review_id)
+    # When parent_reply_id is set, the parent must (a) exist and (b) belong
+    # to this same review. Without the second check a malicious client could
+    # graft a reply onto a totally different thread by forging the ID.
+    if body.parent_reply_id is not None:
+        parent = (await db.execute(
+            select(ReviewReply).where(ReviewReply.id == body.parent_reply_id)
+        )).scalar_one_or_none()
+        if not parent or parent.review_id != review_id:
+            raise HTTPException(status_code=400, detail="Invalid parent_reply_id")
+
+    db.add(ReviewReply(
+        review_id=review_id,
+        user_id=user_id,
+        body=body.body.strip(),
+        parent_reply_id=body.parent_reply_id,
+    ))
+    # Notify the review author for top-level replies; for threaded replies
+    # notify the parent reply's author instead so the right person hears
+    # about it. Skip self-notifies (replying to yourself shouldn't notify).
+    notify_user_id = review.user_id
+    if body.parent_reply_id is not None and parent.user_id != user_id:
+        notify_user_id = parent.user_id
+    if notify_user_id != user_id:
+        await create_notification(db, user_id=notify_user_id, type="reply",
+                                  actor_id=user_id, review_id=review_id)
     await db.commit()
     return {"ok": True}
 

@@ -109,7 +109,11 @@ export const api = {
   getReviews: (entityType, entityId, sort = "recent") => request(`/ratings/${entityType}/${entityId}/reviews?sort=${sort}`),
   voteReview: (reviewId, value) => post(`/ratings/reviews/${reviewId}/vote`, { value }),
   getReplies: (reviewId) => request(`/ratings/reviews/${reviewId}/replies`),
-  postReply: (reviewId, body) => post(`/ratings/reviews/${reviewId}/reply`, { body }),
+  // parent_reply_id is optional — when set, the reply is threaded under
+  // another reply (Reddit-style). Null/omitted = top-level reply on the
+  // review itself.
+  postReply: (reviewId, body, parent_reply_id = null) =>
+    post(`/ratings/reviews/${reviewId}/reply`, { body, parent_reply_id }),
 
   // Global reviews feed
   getGlobalReviews: (sort = "recent", entityType = "all") =>

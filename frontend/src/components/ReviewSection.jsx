@@ -67,57 +67,239 @@ const SORTS = [
   { key: "controversial", label: "Controversial" },
 ];
 
-// ── Inline reply thread ───────────────────────────────────────────────────────
-// Exported so the Friends tab (FollowingTab.jsx) can render replies under
-// followed users' reviews using the same UX as the album-page review section.
-export function ReplyThread({ reviewId, user, initialCount }) {
-  const [replies, setReplies] = useState(null); // null = not loaded
-  const [expanded, setExpanded] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+// ── Threaded reply system ─────────────────────────────────────────────────────
+// Reddit-style nested replies: each reply can target another reply via
+// parent_reply_id. The backend returns a flat list; we build the tree here
+// and render recursively. Visual indent caps at depth 4 so deeply nested
+// threads stay readable on narrow viewports.
+//
+// Used by:
+//   - ReviewCard below (album/track/artist page review section)
+//   - FollowingTab (Friends tab — followed users' reviews)
+//   - GlobalReviewsFeed (Community tab — every public review)
+// One source of truth for the reply UX across the platform.
+
+// Max visual indent depth. Deeper replies still nest in the tree but stop
+// pushing further right so threads don't disappear off the side of a phone.
+const MAX_REPLY_INDENT_DEPTH = 4;
+
+function buildReplyTree(flat) {
+  const byId = new Map();
+  for (const r of flat) byId.set(r.id, { ...r, children: [] });
+  const roots = [];
+  for (const r of flat) {
+    const node = byId.get(r.id);
+    if (r.parent_reply_id != null && byId.has(r.parent_reply_id)) {
+      byId.get(r.parent_reply_id).children.push(node);
+    } else {
+      // Orphans (parent missing — shouldn't happen, but be defensive) fall
+      // through to roots so they don't silently disappear from the UI.
+      roots.push(node);
+    }
+  }
+  return roots;
+}
+
+function countDescendants(node) {
+  let n = 0;
+  for (const c of node.children) n += 1 + countDescendants(c);
+  return n;
+}
+
+function ReplyForm({ onSubmit, onCancel, autoFocus = false, placeholder = "Write a reply…" }) {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
+  async function submit(e) {
+    e.preventDefault();
+    if (!text.trim()) return;
+    setSaving(true);
+    try {
+      await onSubmit(text.trim());
+      setText("");
+    } catch { /* parent handles refresh; keep text so user can retry */ }
+    setSaving(false);
+  }
+  return (
+    <form onSubmit={submit} style={{ marginTop: 10, display: "flex", gap: 8 }}>
+      <input
+        autoFocus={autoFocus}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          flex: 1, padding: "8px 12px", background: "var(--surface2)",
+          border: "1px solid var(--border)", borderRadius: 7,
+          color: "var(--text)", fontSize: 13, outline: "none",
+        }}
+      />
+      <button
+        type="submit"
+        disabled={saving || !text.trim()}
+        style={{
+          padding: "8px 14px", background: ACCENT, border: "none",
+          borderRadius: 7, color: "#000", fontWeight: 700, fontSize: 12,
+          opacity: saving || !text.trim() ? 0.5 : 1, cursor: "pointer",
+        }}
+      >
+        {saving ? "…" : "Post"}
+      </button>
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            padding: "8px 10px", background: "none",
+            border: "1px solid var(--border)", borderRadius: 7,
+            color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      )}
+    </form>
+  );
+}
+
+function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitReply, collapsedIds, onToggleCollapse, onReport }) {
+  const indent = Math.min(depth, MAX_REPLY_INDENT_DEPTH) * 16;
+  const isCollapsed = collapsedIds.has(node.id);
+  const hasChildren = node.children.length > 0;
+  const descendants = hasChildren ? countDescendants(node) : 0;
+
+  return (
+    <div style={{ marginTop: 10, paddingLeft: indent, borderLeft: depth > 0 ? "2px solid var(--border)" : "none" }}>
+      <div style={{ display: "flex", gap: 10 }}>
+        <Link to={`/user/${node.user.id}`} style={{ flexShrink: 0 }}>
+          {node.user.image_url
+            ? <img src={node.user.image_url} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
+            : <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--surface2)" }} />
+          }
+        </Link>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
+            {hasChildren && (
+              <button
+                onClick={() => onToggleCollapse(node.id)}
+                title={isCollapsed ? `Show ${descendants} ${descendants === 1 ? "reply" : "replies"}` : "Collapse thread"}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 11, padding: 0, minWidth: 16 }}
+              >
+                {isCollapsed ? "[+]" : "[−]"}
+              </button>
+            )}
+            <Link to={`/user/${node.user.id}`} style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textDecoration: "none" }}>
+              {node.user.display_name}
+            </Link>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{timeAgo(node.created_at)}</span>
+            {user && user.id !== node.user.id && (
+              <button
+                onClick={() => onReport(node.id)}
+                title="Report this reply"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 11, padding: 0, marginLeft: "auto" }}
+              >
+                ⚐
+              </button>
+            )}
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>{node.body}</p>
+          <div style={{ display: "flex", gap: 12, marginTop: 4, alignItems: "center" }}>
+            {user && (
+              <button
+                onClick={() => onSetReplyingTo(replyingTo === node.id ? null : node.id)}
+                style={{ background: "none", border: "none", fontSize: 11, color: replyingTo === node.id ? ACCENT : "var(--text-muted)", cursor: "pointer", padding: 0, fontWeight: replyingTo === node.id ? 700 : 400 }}
+              >
+                Reply
+              </button>
+            )}
+            {isCollapsed && hasChildren && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {descendants} hidden
+              </span>
+            )}
+          </div>
+          {replyingTo === node.id && user && (
+            <ReplyForm
+              autoFocus
+              placeholder={`Reply to ${node.user.display_name}…`}
+              onSubmit={(text) => onSubmitReply(node.id, text)}
+              onCancel={() => onSetReplyingTo(null)}
+            />
+          )}
+        </div>
+      </div>
+      {!isCollapsed && hasChildren && node.children.map((child) => (
+        <ReplyNode
+          key={child.id}
+          node={child}
+          depth={depth + 1}
+          user={user}
+          replyingTo={replyingTo}
+          onSetReplyingTo={onSetReplyingTo}
+          onSubmitReply={onSubmitReply}
+          collapsedIds={collapsedIds}
+          onToggleCollapse={onToggleCollapse}
+          onReport={onReport}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Exported so the Friends tab (FollowingTab.jsx) and Community tab
+// (GlobalReviewsFeed.jsx) render replies with the same UX as the
+// album-page review section.
+export function ReplyThread({ reviewId, user, initialCount }) {
+  const [flatReplies, setFlatReplies] = useState(null); // null = not loaded
+  const [expanded, setExpanded] = useState(false);
+  // replyingTo: null = no form open, "root" = top-level reply form (replies
+  // to the review itself), <id> = form is open under that specific reply.
+  const [replyingTo, setReplyingTo] = useState(null);
   const [count, setCount] = useState(initialCount);
+  const [collapsedIds, setCollapsedIds] = useState(() => new Set());
   const [reportingReplyId, setReportingReplyId] = useState(null);
 
   async function load() {
     const data = await api.getReplies(reviewId);
-    setReplies(data);
+    setFlatReplies(data);
+    setCount(data.length);
     setExpanded(true);
   }
 
   async function toggle() {
     if (!expanded) {
-      if (!replies) await load();
+      if (!flatReplies) await load();
       else setExpanded(true);
     } else {
       setExpanded(false);
     }
   }
 
-  async function submit(e) {
-    e.preventDefault();
-    if (!text.trim()) return;
-    setSaving(true);
-    try {
-      await api.postReply(reviewId, text.trim());
-      setText("");
-      setShowForm(false);
-      const fresh = await api.getReplies(reviewId);
-      setReplies(fresh);
-      setExpanded(true);
-      setCount(fresh.length);
-    } catch { /* silently fail */ }
-    setSaving(false);
+  async function submitReply(parentReplyId, text) {
+    await api.postReply(reviewId, text, parentReplyId);
+    const fresh = await api.getReplies(reviewId);
+    setFlatReplies(fresh);
+    setCount(fresh.length);
+    setExpanded(true);
+    setReplyingTo(null);
   }
+
+  function toggleCollapse(replyId) {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(replyId)) next.delete(replyId);
+      else next.add(replyId);
+      return next;
+    });
+  }
+
+  const tree = flatReplies ? buildReplyTree(flatReplies) : [];
 
   return (
     <div style={{ marginTop: 6 }}>
-      {/* Reply / expand controls */}
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
         {user && (
           <button
-            onClick={() => setShowForm((f) => !f)}
-            style={{ background: "none", border: "none", fontSize: 12, color: "var(--text-muted)", cursor: "pointer", padding: 0 }}
+            onClick={() => setReplyingTo(replyingTo === "root" ? null : "root")}
+            style={{ background: "none", border: "none", fontSize: 12, color: replyingTo === "root" ? ACCENT : "var(--text-muted)", cursor: "pointer", padding: 0, fontWeight: replyingTo === "root" ? 700 : 400 }}
           >
             Reply
           </button>
@@ -132,62 +314,29 @@ export function ReplyThread({ reviewId, user, initialCount }) {
         )}
       </div>
 
-      {/* Reply form */}
-      {showForm && user && (
-        <form onSubmit={submit} style={{ marginTop: 10, display: "flex", gap: 8 }}>
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Write a reply…"
-            style={{
-              flex: 1, padding: "8px 12px", background: "var(--surface2)",
-              border: "1px solid var(--border)", borderRadius: 7,
-              color: "var(--text)", fontSize: 13, outline: "none",
-            }}
-          />
-          <button
-            type="submit"
-            disabled={saving || !text.trim()}
-            style={{
-              padding: "8px 14px", background: ACCENT, border: "none",
-              borderRadius: 7, color: "#000", fontWeight: 700, fontSize: 12,
-              opacity: saving || !text.trim() ? 0.5 : 1, cursor: "pointer",
-            }}
-          >
-            {saving ? "…" : "Post"}
-          </button>
-        </form>
+      {replyingTo === "root" && user && (
+        <ReplyForm
+          autoFocus
+          onSubmit={(text) => submitReply(null, text)}
+          onCancel={() => setReplyingTo(null)}
+        />
       )}
 
-      {/* Replies */}
-      {expanded && replies?.map((r) => (
-        <div key={r.id} style={{ marginTop: 10, paddingLeft: 16, borderLeft: "2px solid var(--border)", display: "flex", gap: 10 }}>
-          <Link to={`/user/${r.user.id}`} style={{ flexShrink: 0 }}>
-            {r.user.image_url
-              ? <img src={r.user.image_url} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
-              : <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--surface2)" }} />
-            }
-          </Link>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
-              <Link to={`/user/${r.user.id}`} style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textDecoration: "none" }}>
-                {r.user.display_name}
-              </Link>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{timeAgo(r.created_at)}</span>
-              {user && user.id !== r.user.id && (
-                <button
-                  onClick={() => setReportingReplyId(r.id)}
-                  title="Report this reply"
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 11, padding: 0, marginLeft: "auto" }}
-                >
-                  ⚐
-                </button>
-              )}
-            </div>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>{r.body}</p>
-          </div>
-        </div>
+      {expanded && tree.map((node) => (
+        <ReplyNode
+          key={node.id}
+          node={node}
+          depth={0}
+          user={user}
+          replyingTo={replyingTo}
+          onSetReplyingTo={setReplyingTo}
+          onSubmitReply={submitReply}
+          collapsedIds={collapsedIds}
+          onToggleCollapse={toggleCollapse}
+          onReport={setReportingReplyId}
+        />
       ))}
+
       <ReportModal
         open={reportingReplyId !== null}
         onClose={() => setReportingReplyId(null)}

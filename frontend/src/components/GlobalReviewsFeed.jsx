@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { BadgeChips, BadgeLeaderboard } from "./Badges.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
+import { ShareButton } from "./ShareButton.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT_A = "#a78bfa";
@@ -49,20 +50,22 @@ function RatingBadge({ value }) {
 
 // One review card — clickable through to the entity page, anchor scrolls to the review.
 function ReviewCardItem({ item, user, onVote, badges }) {
-  const [copiedShare, setCopiedShare] = useState(false);
-
-  async function handleShare() {
-    const url = `${window.location.origin}/${item.entity_type}/${item.entity_id}#review-${item.id}`;
-    if (navigator.share) {
-      try { await navigator.share({ url }); } catch { /* cancelled */ }
-    } else {
-      try {
-        await navigator.clipboard.writeText(url);
-        setCopiedShare(true);
-        setTimeout(() => setCopiedShare(false), 2000);
-      } catch { /* blocked */ }
-    }
-  }
+  // Share payload mirrors the Friends-tab review share so the two
+  // surfaces produce consistent messages and both fire content_shared.
+  // Anchor (#review-{id}) lands the recipient on the exact review when
+  // they open the link on the album page.
+  const userName = item.user?.display_name ?? "Someone";
+  const entityName = item.entity_name ?? `this ${item.entity_type}`;
+  const artists = item.entity_artists?.slice(0, 2).join(", ");
+  const bodyExcerpt = item.body && item.body.length > 200
+    ? `${item.body.slice(0, 200)}…`
+    : item.body;
+  const shareTitle = `${userName}'s review on Contour`;
+  const shareText = [
+    `${userName} reviewed ${entityName}${artists ? ` by ${artists}` : ""}`,
+    bodyExcerpt && `"${bodyExcerpt}"`,
+  ].filter(Boolean).join("\n");
+  const shareUrl = `${window.location.origin}/${item.entity_type}/${item.entity_id}#review-${item.id}`;
 
   return (
     <div style={{ padding: "16px 0", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -116,10 +119,13 @@ function ReviewCardItem({ item, user, onVote, badges }) {
           <svg width="11" height="11" viewBox="0 0 24 24" fill={item.user_vote === -1 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           {item.downvotes > 0 ? item.downvotes : ""}
         </button>
-        <button onClick={handleShare}
-          style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 12, color: copiedShare ? ACCENT_B : "var(--text-muted)", cursor: "pointer", padding: "2px 4px" }}>
-          {copiedShare ? "✓ Copied" : "↗ Share"}
-        </button>
+        <ShareButton
+          surface="review"
+          title={shareTitle}
+          text={shareText}
+          url={shareUrl}
+          style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 12 }}
+        />
       </div>
 
       {/* Inline reply thread — same component the album-page review section
