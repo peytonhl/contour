@@ -158,12 +158,37 @@ export function SearchPage() {
 
       {/* Search bar — the hero */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <p style={{
-          fontSize: 13, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
-          color: "var(--text-muted)", margin: 0,
-        }}>
-          Contour · Rate. Review. Discover.
-        </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <p style={{
+            fontSize: 13, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
+            color: "var(--text-muted)", margin: 0,
+          }}>
+            Contour · Rate. Review. Discover.
+          </p>
+          {/* Compare entry point — the bottom-nav slot was removed to keep
+              mobile chrome at 3 tabs. Search is the conceptually-closest
+              surface ("find a thing" → "find two things side-by-side"), so
+              the affordance lives here. Keeps /compare reachable for
+              users who knew about it via desktop top nav / direct URL. */}
+          <Link
+            to="/compare"
+            style={{
+              fontSize: 12, fontWeight: 600,
+              padding: "6px 12px", borderRadius: 16,
+              background: "var(--surface)", border: "1px solid var(--border)",
+              color: "var(--text-muted)", textDecoration: "none",
+              display: "inline-flex", alignItems: "center", gap: 6,
+              whiteSpace: "nowrap",
+            }}
+            title="Side-by-side streaming trajectory comparison"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3L4 7l4 4" /><path d="M4 7h16" />
+              <path d="M16 21l4-4-4-4" /><path d="M20 17H4" />
+            </svg>
+            Compare two albums
+          </Link>
+        </div>
         <div style={{ position: "relative" }}>
           <div style={{
             display: "flex", background: "var(--surface)", border: "1px solid var(--border)",

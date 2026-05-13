@@ -332,14 +332,16 @@ export function Layout() {
         }}
       >
         <div style={{ display: "flex", alignItems: "stretch", height: 56 }}>
-          {/* For You first — it's the home. Friends + Community live as tabs inside it.
-              Compare is a signature feature so it earns a top-level mobile slot
-              (previously only reachable via desktop top nav / direct URL —
-              mobile users had no way to discover it). Charts still reachable
-              via direct URL + desktop top nav; lower frequency-of-use. */}
+          {/* For You first — it's the home. Discover / Friends / Community
+              live as sub-tabs inside it.
+              Compare consolidated into Search page (light integration —
+              "Compare two albums" affordance near the search bar) so
+              mobile nav stays at 3 tabs and Compare gains discoverability
+              through the conceptually-adjacent Search surface. /compare
+              still works as a direct URL. Charts reachable via desktop
+              top nav + direct URL (lower frequency-of-use). */}
           <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
           <BottomTab to="/search" label="Search" icon={<SearchIcon />} />
-          <BottomTab to="/compare" label="Compare" icon={<CompareIcon />} />
 
           {user ? (
             <NavLink
