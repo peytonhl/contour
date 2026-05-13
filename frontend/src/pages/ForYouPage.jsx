@@ -1127,96 +1127,142 @@ function ForYouFeed() {
     return () => { cancelled = true; clearTimeout(handle); };
   }, [user?.id]);
 
-  // Track which card is in view
+  // ── Tinder-style swipe deck ─────────────────────────────────────────────
+  // Cards are absolutely positioned at -100% / 0 / 100% of the container
+  // height. During a drag, all three translate together by dragOffset px;
+  // on release with a sufficient swipe, the deck animates to ±cardHeight
+  // and then commits an activeIdx change with the transition momentarily
+  // disabled, so the swap is visually seamless and only ONE card occupies
+  // the viewport at any settled time. Replaces the previous scroll-based
+  // implementation, which always showed a seam between adjacent cards
+  // mid-transition (the "Write a review / Not interested" peek-through
+  // the user reported).
+  const [dragOffset, setDragOffset] = useState(0);
+  // `dragging` true → CSS transition disabled (finger follow + atomic commit
+  // reset). False → 280ms ease for the snap animation.
+  const [dragging, setDragging] = useState(false);
+  // Latched true while the snap animation is running so new touchstarts
+  // don't interrupt mid-flight.
+  const [transitioning, setTransitioning] = useState(false);
+  const cardHeightRef = useRef(0);
+
+  // Measure card height on mount and on resize so the snap distance matches
+  // the visible viewport (account for the mobile address bar collapsing).
   useEffect(() => {
-    if (!containerRef.current) return;
-    const cards = containerRef.current.querySelectorAll("[data-card]");
-    if (!cards.length) return;
+    const measure = () => {
+      if (containerRef.current) cardHeightRef.current = containerRef.current.clientHeight;
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const idx = parseInt(entry.target.dataset.card);
-            setActiveIdx(idx);
-            // Prefetch the next batch while the user is still 4 cards from the
-            // end so it arrives before the loading spinner ever shows.
-            if (idx >= tracks.length - 4) fetchBatch(true);
-          }
-        });
-      },
-      { root: containerRef.current, threshold: 0.6 },
-    );
+  // Treat touches starting on textareas/inputs as native interactions
+  // (focus, scroll inside the textarea) — never as deck swipes.
+  function isInteractiveTarget(el) {
+    let node = el;
+    while (node && node !== containerRef.current) {
+      const tag = node.tagName;
+      if (tag === "TEXTAREA" || tag === "INPUT") return true;
+      node = node.parentElement;
+    }
+    return false;
+  }
 
-    cards.forEach((c) => observer.observe(c));
-    return () => observer.disconnect();
-  }, [tracks.length]);
-
-  // Tracks the most recently REQUESTED card index. Touch handler uses this as
-  // its base (rather than deriving from scrollTop) so rapid sequential swipes
-  // chain correctly: 0 → 1 → 2 → 3 even if the smooth-scroll animations are
-  // still in flight. Deriving from scrollTop mid-animation gives a fractional
-  // value that Math.round can flip the wrong way, which was the back-and-
-  // forth jitter the user was seeing after a few swipes.
-  const targetIdxRef = useRef(0);
-
-  // Programmatic card navigation
-  const goToCard = useCallback((idx) => {
-    if (idx < 0 || idx >= tracks.length) return;
-    const container = containerRef.current;
-    if (!container) return;
-    targetIdxRef.current = idx;
-    const card = container.querySelector(`[data-card="${idx}"]`);
-    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [tracks.length]);
-
-  // TikTok-style: any deliberate vertical swipe advances exactly one card.
-  // CSS scroll-snap was previously layered on top of this and caused jitter
-  // — two systems racing to set the final scroll position — so it's removed
-  // on the container. This handler is now the sole source of snap.
   const touchStartRef = useRef(null);
   function handleTouchStart(e) {
+    if (transitioning) return;
     if (e.touches.length !== 1) return;
-    const container = containerRef.current;
-    if (!container) return;
-    touchStartRef.current = {
-      y: e.touches[0].clientY,
-      t: Date.now(),
-      scrollTop: container.scrollTop,
-      baseIdx: targetIdxRef.current,
-    };
+    if (isInteractiveTarget(e.target)) return;
+    touchStartRef.current = { y: e.touches[0].clientY, t: Date.now() };
+    setDragging(true);
+  }
+  function handleTouchMove(e) {
+    const start = touchStartRef.current;
+    if (!start) return;
+    let dy = e.touches[0].clientY - start.y;
+    // Resistance at the start/end of the deck so the user feels the
+    // boundary without it hard-stopping their gesture.
+    if (activeIdx === 0 && dy > 0) dy *= 0.35;
+    if (activeIdx >= tracks.length - 1 && dy < 0) dy *= 0.35;
+    setDragOffset(dy);
   }
   function handleTouchEnd(e) {
     const start = touchStartRef.current;
-    const container = containerRef.current;
-    if (!start || !container) return;
+    if (!start) {
+      setDragging(false);
+      setDragOffset(0);
+      return;
+    }
     touchStartRef.current = null;
-
-    // If the outer container's scroll position barely moved, the gesture was
-    // absorbed by an inner scroll (textarea, metadata strip overflow) or was
-    // just a tap. Don't hijack those.
-    const outerDelta = container.scrollTop - start.scrollTop;
-    if (Math.abs(outerDelta) < 4) return;
 
     const endY = e.changedTouches[0].clientY;
     const dy = endY - start.y;
     const dt = Math.max(1, Date.now() - start.t);
     const velocity = Math.abs(dy / dt);
 
-    const SWIPE_PX = 15;
-    const FLICK_VEL = 0.3;
-    const isSwipe = Math.abs(dy) >= SWIPE_PX || velocity >= FLICK_VEL;
+    const SWIPE_PX = 50;
+    const FLICK_VEL = 0.35;
 
-    if (!isSwipe) {
-      // Small unintentional drift — re-anchor to wherever we were heading.
-      goToCard(start.baseIdx);
+    if (dy < -SWIPE_PX || (dy < 0 && velocity >= FLICK_VEL)) {
+      advance(1);
+    } else if (dy > SWIPE_PX || (dy > 0 && velocity >= FLICK_VEL)) {
+      advance(-1);
+    } else {
+      // Sub-threshold — animate back to 0.
+      setDragging(false);
+      setDragOffset(0);
+    }
+  }
+
+  // Animate the deck off-screen by one card-height in the given direction,
+  // then atomically commit activeIdx + reset dragOffset to 0 with transition
+  // disabled so the swap is visually instant (the old "next" card is now
+  // at the same screen coordinates it was during the animation, just under
+  // a different `top:` value).
+  function advance(direction) {
+    if (transitioning) return;
+    const target = activeIdx + direction;
+    if (target < 0 || target >= tracks.length) {
+      setDragging(false);
+      setDragOffset(0);
       return;
     }
-
-    const direction = dy < 0 ? 1 : -1;  // swipe up = next card
-    const target = Math.max(0, Math.min(start.baseIdx + direction, tracks.length - 1));
-    goToCard(target);
+    const cardHeight = cardHeightRef.current || (containerRef.current?.clientHeight ?? 800);
+    setTransitioning(true);
+    setDragging(false);                                 // enable CSS transition
+    setDragOffset(direction === 1 ? -cardHeight : cardHeight);
+    setTimeout(() => {
+      setDragging(true);                                // disable transition for the reset
+      setActiveIdx(target);
+      setDragOffset(0);
+      // Prefetch when getting close to the end so the next batch arrives
+      // before the user runs out.
+      if (direction === 1 && target >= tracks.length - 4) {
+        fetchBatch(true);
+      }
+      // Re-enable transition next frame so subsequent drags animate.
+      requestAnimationFrame(() => {
+        setDragging(false);
+        setTransitioning(false);
+      });
+    }, 290);                                            // matches CSS transition duration + 10ms slack
   }
+
+  // Programmatic navigation (keyboard arrows, deep-link, etc.). One-step
+  // moves use the same animation as a swipe; multi-step jumps skip the
+  // animation entirely so they don't feel like a long swipe.
+  const goToCard = useCallback((idx) => {
+    if (idx < 0 || idx >= tracks.length) return;
+    if (transitioning) return;
+    if (idx === activeIdx) return;
+    if (Math.abs(idx - activeIdx) > 1) {
+      setActiveIdx(idx);
+      return;
+    }
+    advance(idx > activeIdx ? 1 : -1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIdx, tracks.length, transitioning]);
 
   // Keyboard arrow navigation
   useEffect(() => {
@@ -1615,56 +1661,60 @@ function ForYouFeed() {
         </div>
       )}
 
-      {/* Scroll container — JS handles all snap behaviour now (see the
-          handleTouchStart / handleTouchEnd handlers above). CSS scroll-snap
-          previously layered on top and the two systems competed during
-          rapid swipes, producing a back-and-forth jitter once the user had
-          scrolled past a few cards. Inner content (review textarea, metadata
-          strip overflow) keeps its own scroll because the handler checks
-          whether the OUTER container actually moved before hijacking. */}
+      {/* Swipe deck — only three cards mounted at a time (prev/current/next).
+          Each is absolutely positioned at -100% / 0 / +100% of the container
+          and all share the same dragOffset translateY, so they move together
+          under the finger. On release the deck animates ±cardHeight to settle,
+          then activeIdx commits and dragOffset resets atomically with the
+          transition momentarily disabled — visually a clean discrete swap
+          rather than the scrolling-seam behaviour the previous list had.
+          overflow: hidden on the container is what keeps the off-screen
+          neighbours from ever being visible mid-transition. */}
       <div
         ref={containerRef}
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
           flex: 1,
-          overflowY: "scroll",
-          scrollBehavior: "smooth",
-          WebkitOverflowScrolling: "touch",
+          position: "relative",
+          overflow: "hidden",
           overscrollBehavior: "none",
+          touchAction: "pan-y",
         }}
       >
-        {tracks.map((track, i) => (
-          <div
-            key={`${track.id}-${i}`}
-            data-card={i}
-            style={{
-              height: "100%",
-              flexShrink: 0,
-            }}
-          >
-            <DiscoverCard
-              track={track}
-              isActive={activeIdx === i}
-              onRate={handleRate}
-              onReview={handleReview}
-              onDislike={handleDislike}
-              onEntityClick={handleEntityClick}
-              userRating={userRatings[track.id] ?? null}
-              cardIndex={i}
-              totalCards={tracks.length}
-              onNext={() => goToCard(i + 1)}
-              onPrev={() => goToCard(i - 1)}
-            />
-          </div>
-        ))}
-        {loadingMore && (
-          // No snap-align here — we don't want the loader to be a snap point,
-          // it should sit beneath the last card and never become a "destination".
-          <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>Loading more…</span>
-          </div>
-        )}
+        {[-1, 0, 1].map((offset) => {
+          const idx = activeIdx + offset;
+          if (idx < 0 || idx >= tracks.length) return null;
+          const track = tracks[idx];
+          return (
+            <div
+              key={`${track.id}-${idx}`}
+              data-card={idx}
+              style={{
+                position: "absolute", left: 0, right: 0,
+                top: `${offset * 100}%`, height: "100%",
+                transform: `translate3d(0, ${dragOffset}px, 0)`,
+                transition: dragging ? "none" : "transform 280ms cubic-bezier(0.2, 0, 0, 1)",
+                willChange: "transform",
+              }}
+            >
+              <DiscoverCard
+                track={track}
+                isActive={offset === 0 && !transitioning}
+                onRate={handleRate}
+                onReview={handleReview}
+                onDislike={handleDislike}
+                onEntityClick={handleEntityClick}
+                userRating={userRatings[track.id] ?? null}
+                cardIndex={idx}
+                totalCards={tracks.length}
+                onNext={() => goToCard(idx + 1)}
+                onPrev={() => goToCard(idx - 1)}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
