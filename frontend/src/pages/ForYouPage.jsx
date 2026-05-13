@@ -56,15 +56,142 @@ function loadHistory() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; }
 }
 
-function recordRating(trackId, artistId, rating) {
+/**
+ * Record a rating in local history. Schema (v1 → v1.5 implicit upgrade):
+ *   { trackId, artistId, rating, ts,
+ *     name?, artist?, source?, synced? }
+ *
+ * The `name`, `artist`, `source` fields are new — captured so a Deezer-
+ * sourced rating that initially failed to resolve to a Spotify ID can be
+ * retried later (the retry needs a name+artist to search Spotify again).
+ *
+ * `synced` is set to true once the backend has confirmed the rating
+ * landed in the DB. The orphan-backfill flow in syncOrphanedRatings()
+ * uses this to skip entries that don't need re-submission.
+ */
+function recordRating(trackId, artistId, rating, track = null) {
   const prev = loadHistory();
   const idx = prev.findIndex((h) => h.trackId === trackId);
+  const enriched = track ? {
+    name: track.name,
+    artist: track.artists?.[0],
+    source: track._source || "spotify",
+  } : {};
   if (idx >= 0) {
-    prev[idx] = { ...prev[idx], rating, ts: Date.now() };
+    prev[idx] = { ...prev[idx], ...enriched, rating, ts: Date.now(), synced: false };
   } else {
-    prev.unshift({ trackId, artistId, rating, ts: Date.now() });
+    prev.unshift({ trackId, artistId, rating, ts: Date.now(), synced: false, ...enriched });
   }
   localStorage.setItem(HISTORY_KEY, JSON.stringify(prev.slice(0, 300)));
+}
+
+/** Mark a previously-recorded rating as synced to the backend.
+ *  Called from handleRate after a successful api.rateEntity. */
+function markRatingSynced(trackId, syncedId = null) {
+  const prev = loadHistory();
+  const idx = prev.findIndex((h) => h.trackId === trackId);
+  if (idx < 0) return;
+  prev[idx] = { ...prev[idx], synced: true, ...(syncedId ? { syncedSpotifyId: syncedId } : {}) };
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(prev));
+}
+
+const SPOTIFY_ID_RE = /^[A-Za-z0-9]{22}$/;
+
+/**
+ * Find ratings the user made locally that never reached the backend (the
+ * old "Saved ✓ but actually nothing happened" failures from before the
+ * lenient _resolveSpotifyId fix) and re-submit them.
+ *
+ * Two paths:
+ *   - Spotify-formatted local IDs: re-submit directly. Backend upserts so
+ *     a duplicate is a no-op.
+ *   - Deezer-formatted local IDs: only retryable if we captured the track's
+ *     name + artist at rate time (new in this commit — old entries don't
+ *     have them and stay orphaned).
+ *
+ * Runs in the background once per session. Capped at 30 attempts to keep
+ * the load bounded; remaining orphans drain next session.
+ *
+ * Returns the count of ratings successfully synced (for analytics / debug).
+ */
+async function syncOrphanedRatings({ resolveSpotifyId, api, setRatingCount }) {
+  const history = loadHistory().filter((h) => h.rating !== null && !h.synced);
+  if (!history.length) return 0;
+
+  // Diff against backend so we don't waste calls on ratings that ARE on
+  // the server (just missing the synced flag because they were rated
+  // before this code shipped).
+  let savedIds = new Set();
+  try {
+    const profile = await api.getProfile();
+    savedIds = new Set((profile?.ratings || [])
+      .filter((r) => r.entity_type === "track")
+      .map((r) => r.entity_id));
+  } catch {
+    // Can't reach the backend — skip this session, retry next.
+    return 0;
+  }
+
+  // Mark anything already on the server as synced so future runs skip it.
+  for (const h of history) {
+    if (savedIds.has(h.trackId)) markRatingSynced(h.trackId);
+    if (h.syncedSpotifyId && savedIds.has(h.syncedSpotifyId)) markRatingSynced(h.trackId);
+  }
+
+  // Find genuine orphans: in local history, not on backend.
+  const orphans = history.filter((h) => {
+    if (savedIds.has(h.trackId)) return false;
+    if (h.syncedSpotifyId && savedIds.has(h.syncedSpotifyId)) return false;
+    // Spotify-format IDs are directly retryable.
+    if (SPOTIFY_ID_RE.test(h.trackId)) return true;
+    // Non-Spotify IDs (Deezer numeric) need captured name+artist to retry.
+    return Boolean(h.name && h.artist);
+  }).slice(0, 30);
+
+  if (!orphans.length) return 0;
+
+  let synced = 0;
+  for (const o of orphans) {
+    let spotifyId = null;
+    try {
+      if (SPOTIFY_ID_RE.test(o.trackId)) {
+        // Direct path — local ID is already a Spotify ID.
+        spotifyId = o.trackId;
+      } else if (o.name && o.artist) {
+        // Deezer path — resolve via name + artist.
+        const fakeTrack = {
+          id: o.trackId,
+          name: o.name,
+          artists: [o.artist],
+          _source: "deezer",
+        };
+        spotifyId = await resolveSpotifyId(fakeTrack);
+      }
+      if (!spotifyId) continue;
+      await api.rateEntity("track", spotifyId, o.rating, o.artistId ?? null);
+      markRatingSynced(o.trackId, spotifyId);
+      synced++;
+    } catch {
+      // Skip individual failures; try again next session.
+    }
+    // Space out calls so we don't burst the Spotify rate limit on retries.
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  // If we synced anything, refresh the cold-start banner count.
+  if (synced > 0 && setRatingCount) {
+    try {
+      const token = localStorage.getItem("contour_token");
+      if (token) {
+        const me = await fetch(`${import.meta.env.VITE_API_URL ?? ""}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((r) => r.ok ? r.json() : null);
+        if (me?.rating_count !== undefined) setRatingCount(me.rating_count);
+      }
+    } catch { /* ignore */ }
+  }
+
+  return synced;
 }
 
 /** Artist IDs the user has given 4–5 stars, deduped, max 5. */
@@ -805,6 +932,30 @@ function ForYouFeed() {
 
   useEffect(() => { fetchBatch(); }, []);
 
+  // Background backfill of orphaned ratings — see syncOrphanedRatings().
+  // Runs once per mount after a short delay so the initial feed render
+  // isn't competing for network with the backfill API calls. Capped at
+  // 30 attempts per session inside the helper.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      if (cancelled) return;
+      try {
+        const synced = await syncOrphanedRatings({
+          resolveSpotifyId: _resolveSpotifyId,
+          api,
+          setRatingCount,
+        });
+        if (synced > 0) {
+          // eslint-disable-next-line no-console
+          console.info(`[contour] Backfilled ${synced} orphaned rating${synced === 1 ? "" : "s"} to server.`);
+        }
+      } catch { /* ignore — try next session */ }
+    }, 3000);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [user?.id]);
+
   // Track which card is in view
   useEffect(() => {
     if (!containerRef.current) return;
@@ -945,7 +1096,10 @@ function ForYouFeed() {
     // rating — that drives the user-facing "Saved ✓" vs "Couldn't save"
     // badge so we don't silently lie about server state.
     setUserRatings((prev) => ({ ...prev, [track.id]: value }));
-    recordRating(track.id, track.artist_ids?.[0], value);
+    // Pass the full track so name/artist/source land in history — that's
+    // what makes Deezer-source ratings backfill-able if the resolution
+    // fails this session (see syncOrphanedRatings).
+    recordRating(track.id, track.artist_ids?.[0], value, track);
     const tier = tierSourceOf(track);
     analytics.forYouRated(tier, value);
     try {
@@ -955,6 +1109,9 @@ function ForYouFeed() {
       // Pass artist_id so the server auto-updates the taste profile on high ratings
       await api.rateEntity("track", spotifyId, value, track.artist_ids?.[0] ?? null);
       analytics.ratingSubmitted("track", spotifyId, value);
+      // Mark this local entry as synced so future syncOrphanedRatings runs
+      // skip it. Stash the resolved Spotify ID too — useful for the diff.
+      markRatingSynced(track.id, spotifyId);
 
       // Optimistic increment so the cold-start banner reflects the new
       // rating without waiting for the next /auth/me round-trip. Skipped
