@@ -899,10 +899,21 @@ function ForYouFeed() {
       // profile dislikes are still applied — but the nuclear-fallback tier
       // on the backend handles that case.)
       const dislikedArtists = attempt === 0 ? loadDisliked() : [];
+      // Tell the backend which tracks we've already shown in this scroll
+      // session so the next prefetch doesn't repeat them. Only pass on
+      // append — a non-append fetch is a deliberate reset (e.g. toggling
+      // englishOnly) where we want a fresh batch. Cap at 80 IDs to keep
+      // the URL well under any reasonable length limit; that's ~8 batches
+      // of memory, far more than needed to mask the Deezer chart cache
+      // (which now expires every ~15 min after the signed-URL TTL fix).
+      const sessionExclude = append
+        ? tracks.slice(-80).map((t) => t.id).filter(Boolean)
+        : [];
       const batch = await api.getDiscoverFeed({
         genres: genresRef.current.slice(0, 3),
         liked_artists: likedArtists,
         disliked_artists: dislikedArtists,
+        exclude: sessionExclude,
         english_only: englishOnlyRef.current,
         limit: 10,
       });

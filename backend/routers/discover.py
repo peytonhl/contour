@@ -82,6 +82,25 @@ def _is_likely_english(text: str) -> bool:
     return (non_ascii / len(text)) < 0.3
 
 
+def _flatten_shuffle_add(results: list, adder) -> None:
+    """
+    Flatten per-query results from an asyncio.gather() call, shuffle as a
+    single pool, and add to the batch.
+
+    Why: without this, results cluster by source query — all 15 "pop hits"
+    in a row, then 15 "indie pop", etc. The feed feels monotone at the top
+    even when upstream diversity is healthy.
+
+    Pairs with the removal of the post-slice random.shuffle(result) at the
+    end of /feed: tier order is now stable (tier 1 personalized first,
+    tier 3 chart baseline later), so within-tier shuffle is what supplies
+    the variety the post-slice shuffle used to (badly) provide.
+    """
+    flat = [t for res in results if isinstance(res, list) for t in res]
+    random.shuffle(flat)
+    adder(flat)
+
+
 @router.get("/feed")
 @limiter.limit("60/minute")
 async def get_discover_feed(
@@ -89,6 +108,7 @@ async def get_discover_feed(
     genres: Optional[str] = Query(None, description="Comma-separated genre slugs from client prefs (logged-out fallback)"),
     liked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs rated 4–5 stars (logged-out fallback)"),
     disliked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs marked 'not interested' (logged-out fallback; logged-in users use server profile)"),
+    exclude: Optional[str] = Query(None, description="Comma-separated track IDs already shown to this user in the current scroll session — excluded from the batch so prefetches don't repeat tracks from earlier batches"),
     english_only: bool = Query(True, description="Filter to tracks with Latin/English titles and artist names"),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
@@ -110,6 +130,13 @@ async def get_discover_feed(
             )
         )).scalars().all()
         exclude_ids.update(rated_ids)
+
+    # Client-supplied session exclusion list — track IDs the user has
+    # already seen this scroll session. Prevents prefetch batches from
+    # repeating tracks from earlier batches when the same Deezer chart
+    # response is still warm in cache.
+    if exclude:
+        exclude_ids.update(e.strip() for e in exclude.split(",") if e.strip())
 
     # ── Resolve preferences from server profile or client fallback ───────────
     genre_list: list[str] = []
@@ -198,9 +225,7 @@ async def get_discover_feed(
                 spotify.search_tracks_by_genre(g, limit=15)
                 for g in seed_genres
             ], return_exceptions=True)
-            for res in seed_genre_results:
-                if isinstance(res, list):
-                    add_personalized(res)
+            _flatten_shuffle_add(seed_genre_results, add_personalized)
             logger.info(
                 "discover: tier1 (seed-artist genre pivot) → %d tracks (genres=%s)",
                 len(tracks) - tier1_added_before, seed_genres,
@@ -212,9 +237,7 @@ async def get_discover_feed(
             spotify.search_tracks_by_genre(g, limit=15)
             for g in genre_list[:3]
         ], return_exceptions=True)
-        for res in genre_results:
-            if isinstance(res, list):
-                add_personalized(res)
+        _flatten_shuffle_add(genre_results, add_personalized)
 
     # ── Tier 3: Deezer chart baseline ────────────────────────────────────────
     # Uses Deezer's /chart/0/tracks endpoint (actual chart data) instead of
@@ -233,11 +256,7 @@ async def get_discover_feed(
             deezer_svc.search_tracks(q, limit=15)
             for q in _DEEZER_NEW_QUERIES
         ], return_exceptions=True)
-        for res in new_results:
-            if isinstance(res, list):
-                add_baseline(res)
-            if len(tracks) >= limit:
-                break
+        _flatten_shuffle_add(new_results, add_baseline)
 
     # ── Tier 5: Deezer keyword fallbacks — always produces results ────────────
     if len(tracks) < limit:
@@ -245,11 +264,7 @@ async def get_discover_feed(
             deezer_svc.search_tracks(q, limit=10)
             for q in _DEEZER_FALLBACK_QUERIES
         ], return_exceptions=True)
-        for res in fallback_results:
-            if isinstance(res, list):
-                add_baseline(res)
-            if len(tracks) >= limit:
-                break
+        _flatten_shuffle_add(fallback_results, add_baseline)
 
     # ── Tier 5.5: Nuclear fallback — ignore even hard dislikes ───────────────
     # Only triggers when every tier above produced zero. Keeps the feed alive
@@ -274,8 +289,13 @@ async def get_discover_feed(
         logger.error("discover: all tiers failed — returning empty feed")
         return []
 
+    # Preserve tier order — tier 1 (most personalized) first, tier 3
+    # (chart baseline) last. Within each tier _flatten_shuffle_add has
+    # already shuffled to keep genres/queries from clustering.
+    # An earlier random.shuffle(result) here was clobbering this and
+    # routinely surfacing generic chart hits above tier-1 personalized
+    # results — i.e. the user got the algorithm's worst guesses first.
     result = tracks[:limit]
-    random.shuffle(result)
 
     # ── Deezer preview enrichment (Spotify tracks only) ───────────────────────
     # Deezer-sourced tracks already carry preview_url from the search response.
