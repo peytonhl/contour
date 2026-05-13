@@ -48,7 +48,14 @@
          page-bg colour and the wordmark splash on the very first paint, before
          the JS bundle has even started downloading. Without this the user
          stares at a system-default white/black void for 1-2s on cold start
-         (Capacitor WebView → fetch HTML → fetch JS bundle → parse → mount). -->
+         (Capacitor WebView → fetch HTML → fetch JS bundle → parse → mount).
+
+         The splash lives OUTSIDE #root so React doesn't replace it on mount —
+         after the service worker landed, JS was loading from disk so fast
+         that mount happened before the splash even painted. Now main.jsx
+         adds the `boot-splash--done` class after createRoot.render(), which
+         fades the overlay out. Guarantees the wordmark is visible for at
+         least one paint frame regardless of how fast the JS arrives. -->
     <style>
       html, body {
         margin: 0;
@@ -64,8 +71,12 @@
         justify-content: center;
         background: #08080a;
         z-index: 9999;
-        /* Fades in over 120ms so it doesn't pop on slow WebView paints. */
-        animation: boot-splash-in 120ms ease both;
+        opacity: 1;
+        pointer-events: none;
+        transition: opacity 280ms ease 120ms;
+      }
+      .boot-splash--done {
+        opacity: 0;
       }
       .boot-splash__wordmark {
         font-size: 38px;
@@ -77,19 +88,16 @@
         -webkit-text-fill-color: transparent;
         color: transparent;
       }
-      @keyframes boot-splash-in {
-        from { opacity: 0; }
-        to   { opacity: 1; }
-      }
     </style>
   </head>
   <body>
-    <div id="root">
-      <!-- Initial paint placeholder — React replaces this on mount. -->
-      <div class="boot-splash" aria-hidden="true">
-        <div class="boot-splash__wordmark">Contour</div>
-      </div>
+    <!-- Wordmark splash. Lives outside #root so React's mount doesn't replace
+         it; main.jsx adds the --done class after the app renders, fading it
+         out and leaving the app visible underneath. -->
+    <div id="boot-splash" class="boot-splash" aria-hidden="true">
+      <div class="boot-splash__wordmark">Contour</div>
     </div>
+    <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

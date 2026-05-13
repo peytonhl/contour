@@ -25,3 +25,13 @@ createRoot(document.getElementById("root")).render(
     </BrowserRouter>
   </StrictMode>
 );
+
+// Fade out the inline HTML boot splash now that React has mounted. The
+// splash lives outside #root (see index.html) so React doesn't replace it
+// on mount — instead we add a class here that runs the opacity transition
+// in CSS. Done in a microtask so React's first paint commits BEFORE the
+// fade starts; otherwise the splash could vanish before the app's first
+// frame is on screen and the user sees a brief flash of empty bg.
+queueMicrotask(() => {
+  document.getElementById("boot-splash")?.classList.add("boot-splash--done");
+});
