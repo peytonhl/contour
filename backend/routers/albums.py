@@ -1,5 +1,6 @@
 """Album search, metadata, edition discovery, and async enrichment endpoints."""
 
+import asyncio
 import logging
 from typing import List, Optional
 
@@ -405,7 +406,13 @@ async def get_streams(
     row = await cache.upsert_album(db, meta)
 
     if cache.needs_enrichment(row):
-        background_tasks.add_task(_enrich_album, album_id, meta)
+        # Fire-and-forget via asyncio.create_task — matches the working
+        # pattern in services/spotify.py:_persist_album_to_db. FastAPI's
+        # BackgroundTasks proved unreliable in the Railway environment
+        # (tasks were registered but never dispatched), leaving rows stuck
+        # in "pending" forever. asyncio.create_task schedules immediately
+        # on the running event loop, before the response is finalized.
+        asyncio.create_task(_enrich_album(album_id, meta))
 
     return StreamStatus(
         spotify_id=album_id,
@@ -431,7 +438,7 @@ async def bulk_streams(
             meta = await spotify.get_album(album_id)
             row = await cache.upsert_album(db, meta)
             if cache.needs_enrichment(row):
-                background_tasks.add_task(_enrich_album, album_id, meta)
+                asyncio.create_task(_enrich_album(album_id, meta))
             results.append(StreamStatus(
                 spotify_id=album_id,
                 streams=cache.streams_for_album(row),
@@ -465,7 +472,7 @@ async def get_album_trajectory(
 
     row = await cache.upsert_album(db, meta)
     if cache.needs_enrichment(row):
-        background_tasks.add_task(_enrich_album, album_id, meta)
+        asyncio.create_task(_enrich_album(album_id, meta))
 
     streams = cache.streams_for_album(row)
 

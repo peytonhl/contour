@@ -5,6 +5,7 @@ Stream counts come from Kworb (populated async). If a cache entry is missing,
 the trajectory is empty and enrichment_pending is set so the frontend can retry.
 """
 
+import asyncio
 from datetime import date
 from typing import Dict, List, Optional
 
@@ -296,7 +297,7 @@ async def _resolve_streams(
 
         row = await cache.upsert_album(db, meta)
         if cache.needs_enrichment(row):
-            background_tasks.add_task(_enrich_album, sid, meta)
+            asyncio.create_task(_enrich_album(sid, meta))
             any_pending = True
 
         streams = cache.streams_for_album(row)
