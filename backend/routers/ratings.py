@@ -14,6 +14,7 @@ from models import Rating, Review, ReviewLike, ReviewVote, ReviewReply, User, Us
 from routers.auth import optional_user_id
 from routers.moderation import blocked_user_ids
 from routers.notifications import create_notification
+from services import spotify
 
 SPOTIFY_ID_RE = re.compile(r'^[A-Za-z0-9]{22}$')
 VALID_ENTITY_TYPES = {"album", "track", "artist"}
@@ -177,9 +178,27 @@ async def _update_taste_from_rating(user_id: str, artist_id: str) -> None:
     """
     Prepend artist_id to the user's liked_artist_ids in UserTasteProfile.
 
-    Also removes the artist from down_weighted_artist_ids if present — a high
-    rating is a stronger signal than a previous low one and supersedes it.
+    Also:
+      • Removes the artist from down_weighted_artist_ids if present — a high
+        rating supersedes any previous low one.
+      • Merges the artist's Spotify genres into profile.genres so tier 2 of
+        the For You feed reflects evolving taste rather than staying frozen
+        at the onboarding picks. We take up to 2 genres per rated artist,
+        prepend, dedupe, cap at 20.
+
+    Spotify failure is non-fatal — the artist-level update still proceeds so
+    a flaky Spotify call doesn't lose the rating's primary signal.
     """
+    # Fetch the artist's genres before the DB session — spotify.get_artist is
+    # Redis-cached 30d so this is usually a hash hit, but a cold miss can
+    # take a beat and we don't want to hold a DB transaction open across it.
+    new_genres: list[str] = []
+    try:
+        meta = await spotify.get_artist(artist_id)
+        new_genres = list((meta.get("genres") or [])[:2])
+    except Exception:
+        pass  # non-fatal — genre evolution stalls this cycle, retries next 4–5★
+
     async with AsyncSessionLocal() as db:
         profile = await db.get(UserTasteProfile, user_id)
         if profile:
@@ -190,12 +209,20 @@ async def _update_taste_from_rating(user_id: str, artist_id: str) -> None:
             down: list[str] = json.loads(profile.down_weighted_artist_ids or "[]")
             if artist_id in down:
                 profile.down_weighted_artist_ids = json.dumps([a for a in down if a != artist_id])
+            if new_genres:
+                existing_genres: list[str] = json.loads(profile.genres or "[]")
+                merged_genres = list(dict.fromkeys(new_genres + existing_genres))[:20]
+                if merged_genres != existing_genres:
+                    profile.genres = json.dumps(merged_genres)
             profile.updated_at = datetime.utcnow()
         else:
+            # Seed a fresh profile with both the artist and any genres we
+            # could fetch — gives tier 2 something to work with even before
+            # the user opens the onboarding genre picker.
             profile = UserTasteProfile(
                 user_id=user_id,
                 liked_artist_ids=json.dumps([artist_id]),
-                genres=json.dumps([]),
+                genres=json.dumps(new_genres[:20]),
                 onboarding_done=False,
             )
             db.add(profile)

@@ -44,11 +44,13 @@ On top of the analytics, Contour is a place to rate albums and tracks, write rev
 
 **Discovery**
 - For You feed: TikTok-style track preview scroll, personalized by your ratings and genre picks
-  - Tier 1: related-artist tracks from artists you've rated 4–5 stars
-  - Tier 2: genre-filtered search from your learned genre profile
+  - Tier 1: seed-artist genre pivot — searches the genres of artists you've rated 4–5 stars
+  - Tier 2: profile-genre search — your onboarding picks, auto-extended every time you rate a track 4–5 stars
   - Tier 3: Deezer chart tracks baseline (real chart data, no API key required)
   - Tier 4: Deezer new music search
   - Tier 5: genre keyword fallbacks — always returns something
+  - Tier order is preserved end-to-end: the most personalized matches appear at the top of every batch
+  - Cross-batch dedupe: prefetches exclude the last ~80 tracks already shown so the same chart hits don't recur
   - Rate ~10 tracks and the feed actively adapts — genre, era, vibe
 - Onboarding for new users: value prop explanation → genre picker → taste profile seeded immediately
 - Global reviews feed sorted by Recent / Top / Controversial — no account needed
@@ -72,7 +74,7 @@ On top of the analytics, Contour is a place to rate albums and tracks, write rev
 | Mobile | Capacitor (iOS/Android — in progress) |
 | Backend | Python 3.12 / FastAPI |
 | Database | PostgreSQL (Railway) + SQLAlchemy async |
-| Cache | Redis (Railway) — 24h TTL on hot Spotify API calls |
+| Cache | Redis (Railway) — 24h TTL on hot Spotify API calls; Deezer preview URLs capped at signed-URL expiry (~15 min) |
 | Rate limiting | slowapi — per-IP, Railway proxy-aware via `X-Forwarded-For` |
 | Auth | Google OAuth 2.0 + JWT |
 | Data | Spotify Web API, Last.fm, Kworb.net (artist pages), Wayback Machine, Deezer (preview fallback) |

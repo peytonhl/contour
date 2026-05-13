@@ -110,6 +110,15 @@ frontend/
 - Wayback Machine → trajectory anchor points (one-time fetch per entity)
 - Deezer → For You feed baseline tiers (no API key, always has preview URLs);
   use `get_chart_tracks()` for popular tracks, NOT `search_tracks("top hits")`
+- **Deezer preview URLs are Akamai-signed and short-lived** — they carry an
+  `hdnea=exp=<unix_ts>` query parameter with a ~15-min lifetime. The CDN
+  returns `403 + text/html` for expired URLs, which browsers surface as
+  `MEDIA_ERR_SRC_NOT_SUPPORTED` ("media resource not suitable"). Any Redis
+  cache holding preview URLs MUST cap its TTL at the signed-URL expiry —
+  use `services/deezer.py:_signed_url_ttl()` (parses `exp=`, returns
+  `exp − now − 60s` floor 60s). All three Deezer cache writes
+  (`get_preview`, `search_tracks`, `get_chart_tracks`) already do this;
+  any new cache write storing a preview URL must follow the same pattern.
 
 ### Spotify API rules — read carefully
 Spotify rate limits are the #1 source of production incidents. Follow these:
@@ -143,12 +152,32 @@ Spotify rate limits are the #1 source of production incidents. Follow these:
 3. Spotify API — last resort
 
 ### For You feed tiers (discover.py)
-1. Related-artist tracks (Spotify, most personalized)
-2. Genre-filtered search (Spotify)
+1. Seed-artist genre pivot — Spotify, most personalized. Fetches the genres
+   of the user's 3 most-recently 4–5★'d artists and searches those. (Replaced
+   Spotify's `/related-artists` endpoint, which was deprecated for non-Extended-
+   Access apps in late 2024 and now always returns 0.)
+2. Profile-genre search — Spotify search across `UserTasteProfile.genres`.
+   The genres list is seeded by onboarding AND auto-extended on every 4–5★
+   rating (taking the rated artist's Spotify genres, prepending, deduping,
+   cap 20). A user who skipped onboarding still gets tier 2 working after
+   a few high ratings.
 3. Deezer chart tracks — `get_chart_tracks()`, NOT text search
 4. Deezer new music search
 5. Deezer keyword fallbacks
 6. Nuclear fallback — chart tracks ignoring disliked filter
+
+**Tier-ordering rule:** tier order is stable — tier 1 results land at the
+top of every batch, tier 5 at the bottom. **Do not add a post-slice
+`random.shuffle(result)`** — an earlier version did this and it routinely
+buried tier-1 personalized results under generic chart hits. Within-tier
+variety comes from `_flatten_shuffle_add()` which shuffles each tier's
+gathered results as a single pool before adding to the batch.
+
+**Cross-batch dedupe:** the `/feed` endpoint honors an `exclude` query
+parameter (comma-separated track IDs). The frontend passes the last ~80
+shown track IDs on prefetch (append-only — not on deliberate resets like
+toggling `english_only`). Any new caller of `/feed` should pass this too,
+or accept that successive batches may repeat tracks from the chart cache.
 
 ### Frontend conventions
 - React functional components only, no class components
