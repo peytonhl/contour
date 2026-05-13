@@ -405,7 +405,7 @@ async def get_streams(
     row = await cache.upsert_album(db, meta)
 
     if cache.needs_enrichment(row):
-        background_tasks.add_task(_enrich_album, album_id, meta, db)
+        background_tasks.add_task(_enrich_album, album_id, meta)
 
     return StreamStatus(
         spotify_id=album_id,
@@ -431,7 +431,7 @@ async def bulk_streams(
             meta = await spotify.get_album(album_id)
             row = await cache.upsert_album(db, meta)
             if cache.needs_enrichment(row):
-                background_tasks.add_task(_enrich_album, album_id, meta, db)
+                background_tasks.add_task(_enrich_album, album_id, meta)
             results.append(StreamStatus(
                 spotify_id=album_id,
                 streams=cache.streams_for_album(row),
@@ -465,7 +465,7 @@ async def get_album_trajectory(
 
     row = await cache.upsert_album(db, meta)
     if cache.needs_enrichment(row):
-        background_tasks.add_task(_enrich_album, album_id, meta, db)
+        background_tasks.add_task(_enrich_album, album_id, meta)
 
     streams = cache.streams_for_album(row)
 
@@ -525,9 +525,15 @@ async def get_album_tracklist(album_id: str):
 # Background enrichment task
 # ---------------------------------------------------------------------------
 
-async def _enrich_album(album_id: str, meta: dict, db: AsyncSession) -> None:
+async def _enrich_album(album_id: str, meta: dict) -> None:
     """
     Fetch play count for an album, then cache result.
+
+    Opens its own AsyncSessionLocal — must not accept a request-scoped session.
+    FastAPI tears down `Depends(get_db)` sessions when the request finishes,
+    which is *before* a BackgroundTask runs. Writing through a request session
+    here would crash on the first execute() and the row would stay "pending"
+    forever (see `_persist_album_search_results` for the same pattern).
 
     Strategy (in priority order):
       1. Kworb artist albums page — most accurate (Spotify streams), but only
@@ -535,12 +541,13 @@ async def _enrich_album(album_id: str, meta: dict, db: AsyncSession) -> None:
       2. Last.fm album.getInfo — reliable REST API, returns lifetime scrobbles.
          Slightly different scale than Spotify streams but suitable for ranking
          and era-adjustment comparisons.
-      3. (NEW) For multi-artist albums: try each credited artist for Kworb,
-         not just the first. The first artist isn't always the one with the
-         primary Kworb page entry — e.g. a collab where the second-listed
-         artist has the better Kworb data.
+      3. For multi-artist albums: try each credited artist for Kworb, not just
+         the first. The first artist isn't always the one with the primary
+         Kworb page entry — e.g. a collab where the second-listed artist has
+         the better Kworb data.
     """
     import logging as _logging
+    from database import AsyncSessionLocal
     _log = _logging.getLogger(__name__)
 
     artist_ids = meta.get("artist_ids", [])
@@ -584,4 +591,8 @@ async def _enrich_album(album_id: str, meta: dict, db: AsyncSession) -> None:
             name, artists, artist_ids,
         )
 
-    await cache.save_kworb_streams(db, album_id, streams)
+    try:
+        async with AsyncSessionLocal() as db:
+            await cache.save_kworb_streams(db, album_id, streams)
+    except Exception as exc:
+        _log.warning("enrichment: DB write failed for %s — %s", album_id, exc)
