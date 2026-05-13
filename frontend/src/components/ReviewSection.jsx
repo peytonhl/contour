@@ -120,14 +120,22 @@ function ReplyForm({ onSubmit, onCancel, autoFocus = false, placeholder = "Write
     setSaving(false);
   }
   return (
-    <form onSubmit={submit} style={{ marginTop: 10, display: "flex", gap: 8 }}>
+    // flexWrap lets Cancel drop below the input/Post row on narrow phones
+    // instead of squeezing the input to nothing. On desktop everything still
+    // fits on one row.
+    <form onSubmit={submit} style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
       <input
         autoFocus={autoFocus}
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={placeholder}
         style={{
-          flex: 1, padding: "8px 12px", background: "var(--surface2)",
+          // minWidth 0 + flex: 1 keeps the input from forcing horizontal
+          // overflow when its content (long placeholder) exceeds the parent.
+          // flexBasis 200px gives it a sensible starting width before flex
+          // takes over.
+          flex: "1 1 200px", minWidth: 0,
+          padding: "10px 12px", background: "var(--surface2)",
           border: "1px solid var(--border)", borderRadius: 7,
           color: "var(--text)", fontSize: 13, outline: "none",
         }}
@@ -181,7 +189,10 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
               <button
                 onClick={() => onToggleCollapse(node.id)}
                 title={isCollapsed ? `Show ${descendants} ${descendants === 1 ? "reply" : "replies"}` : "Collapse thread"}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 11, padding: 0, minWidth: 16 }}
+                // Padded hit target so a fingertip can land on it on mobile.
+                // Inline-flex keeps the visible glyph in a clean box without
+                // disturbing the surrounding row's alignment.
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: "4px 6px", minWidth: 30, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
               >
                 {isCollapsed ? "[+]" : "[−]"}
               </button>
@@ -201,15 +212,26 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
             )}
           </div>
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>{node.body}</p>
-          <div style={{ display: "flex", gap: 12, marginTop: 4, alignItems: "center" }}>
-            {user && (
-              <button
-                onClick={() => onSetReplyingTo(replyingTo === node.id ? null : node.id)}
-                style={{ background: "none", border: "none", fontSize: 11, color: replyingTo === node.id ? ACCENT : "var(--text-muted)", cursor: "pointer", padding: 0, fontWeight: replyingTo === node.id ? 700 : 400 }}
-              >
-                Reply
-              </button>
-            )}
+          <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
+            {/* Per-node Reply button: visible to everyone for consistency
+                with the top-level Reply and the platform's vote buttons.
+                Signed-out users get a tooltip; clicking is a no-op. */}
+            <button
+              onClick={() => {
+                if (!user) return;
+                onSetReplyingTo(replyingTo === node.id ? null : node.id);
+              }}
+              title={user ? `Reply to ${node.user.display_name}` : "Sign in to reply"}
+              style={{
+                background: "none", border: "none", fontSize: 12,
+                color: replyingTo === node.id ? ACCENT : "var(--text-muted)",
+                cursor: user ? "pointer" : "default",
+                padding: "6px 10px",
+                fontWeight: replyingTo === node.id ? 700 : 400,
+              }}
+            >
+              Reply
+            </button>
             {isCollapsed && hasChildren && (
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 {descendants} hidden
@@ -295,19 +317,35 @@ export function ReplyThread({ reviewId, user, initialCount }) {
 
   return (
     <div style={{ marginTop: 6 }}>
-      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-        {user && (
-          <button
-            onClick={() => setReplyingTo(replyingTo === "root" ? null : "root")}
-            style={{ background: "none", border: "none", fontSize: 12, color: replyingTo === "root" ? ACCENT : "var(--text-muted)", cursor: "pointer", padding: 0, fontWeight: replyingTo === "root" ? 700 : 400 }}
-          >
-            Reply
-          </button>
-        )}
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        {/* Visible to everyone — signed-out users see the affordance with
+            a "Sign in to reply" tooltip and the click is a no-op. Mirrors
+            the existing vote-button pattern and keeps the action discoverable
+            on the iOS Capacitor shell, where the Reply button was previously
+            invisible to non-authenticated browsers of the Community feed. */}
+        <button
+          onClick={() => {
+            if (!user) return;
+            setReplyingTo(replyingTo === "root" ? null : "root");
+          }}
+          title={user ? "Reply to this review" : "Sign in to reply"}
+          style={{
+            background: "none", border: "none", fontSize: 12,
+            color: replyingTo === "root" ? ACCENT : "var(--text-muted)",
+            cursor: user ? "pointer" : "default",
+            // ~30px tall hit target — well above the previous ~14px and
+            // close enough to iOS's 44pt guideline when the line-height
+            // of surrounding rows is included.
+            padding: "6px 10px",
+            fontWeight: replyingTo === "root" ? 700 : 400,
+          }}
+        >
+          Reply
+        </button>
         {count > 0 && (
           <button
             onClick={toggle}
-            style={{ background: "none", border: "none", fontSize: 12, color: ACCENT, cursor: "pointer", padding: 0 }}
+            style={{ background: "none", border: "none", fontSize: 12, color: ACCENT, cursor: "pointer", padding: "6px 10px" }}
           >
             {expanded ? "▴ Hide" : `▾ ${count} ${count === 1 ? "reply" : "replies"}`}
           </button>
