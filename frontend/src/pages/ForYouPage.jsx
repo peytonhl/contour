@@ -428,12 +428,29 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
         setProgress(cur / 30);
       };
       audioRef.current.onended = () => { setPlaying(false); setProgress(0); };
+      // Surface decode / load failures. Without this the failure mode is
+      // a swallowed play() promise rejection — no UI feedback, no console
+      // log — which is exactly what made the Deezer signed-URL-expiry bug
+      // invisible until users complained.
+      audioRef.current.onerror = () => {
+        const err = audioRef.current?.error;
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[contour] preview audio failed to load:",
+          { code: err?.code, message: err?.message, src: audioRef.current?.src },
+        );
+        setPlaying(false);
+      };
     }
     if (playing) {
       audioRef.current.pause();
       setPlaying(false);
     } else {
-      audioRef.current.play();
+      audioRef.current.play().catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn("[contour] audio.play() rejected:", err?.name, err?.message);
+        setPlaying(false);
+      });
       setPlaying(true);
       analytics.forYouTrackPlayed(tierSourceOf(track));
     }

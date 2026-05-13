@@ -12,6 +12,8 @@ as a preview-URL enrichment fallback for Spotify tracks.
 
 import asyncio
 import hashlib
+import re
+import time
 
 import httpx
 
@@ -26,6 +28,40 @@ _CHART_URL = "https://api.deezer.com/chart/0/tracks"
 # silently drops the preview clip — the frontend then has to fall back
 # to a Spotify iframe which has its own UX issues in WKWebView.
 _TIMEOUT = 10.0  # seconds
+
+# Deezer preview URLs are Akamai-signed and short-lived: the URL carries
+# an `hdnea=exp=<unix_ts>` parameter and the CDN returns HTTP 403 +
+# text/html once that timestamp has passed. Browsers surface the 403
+# as MEDIA_ERR_SRC_NOT_SUPPORTED ("media resource not suitable").
+#
+# We must therefore cap any Redis TTL at the signed-URL lifetime. A 60s
+# safety margin keeps us from handing out a URL that expires mid-flight
+# while the browser is still buffering.
+_SIGNED_URL_TTL_SAFETY_MARGIN = 60
+# Fallback TTL when a preview URL has no parseable `exp=` — short enough
+# that a misparse doesn't reintroduce the 30-day-stale-URL bug.
+_UNSIGNED_URL_FALLBACK_TTL = 600  # 10 min
+_HDNEA_EXP_RE = re.compile(r"hdnea=[^&]*?exp=(\d+)")
+
+
+def _signed_url_ttl(url: str | None) -> int:
+    """
+    Return how long a Deezer preview URL is safe to cache, in seconds.
+
+    Parses the `hdnea=exp=<unix_ts>` Akamai signature parameter and
+    returns `exp - now - safety_margin`, floored at 60s. URLs without a
+    parseable expiry fall back to a short default.
+    """
+    if not url:
+        return _UNSIGNED_URL_FALLBACK_TTL
+    m = _HDNEA_EXP_RE.search(url)
+    if not m:
+        return _UNSIGNED_URL_FALLBACK_TTL
+    try:
+        remaining = int(m.group(1)) - int(time.time()) - _SIGNED_URL_TTL_SAFETY_MARGIN
+    except ValueError:
+        return _UNSIGNED_URL_FALLBACK_TTL
+    return max(60, remaining)
 
 # Artist names that indicate compilation / karaoke / cover releases — skip them.
 _JUNK_ARTISTS = {
@@ -77,7 +113,12 @@ async def search_tracks(query: str, limit: int = 20) -> list[dict]:
             and (t.get("artist") or {}).get("name", "").lower() not in _JUNK_ARTISTS
         ]
         if result:
-            await redis_cache.set(cache_key, result, ttl=21_600)  # 6 h
+            # Cap the TTL at the shortest signed-URL lifetime across the
+            # batch. Caching longer than that would resurrect the bug
+            # where the browser receives an expired URL and rejects the
+            # response as "media resource not suitable".
+            ttl = min(_signed_url_ttl(t["preview_url"]) for t in result)
+            await redis_cache.set(cache_key, result, ttl=ttl)
         return result
     except Exception:
         return []
@@ -106,7 +147,10 @@ async def get_chart_tracks(limit: int = 50) -> list[dict]:
             and (t.get("artist") or {}).get("name", "").lower() not in _JUNK_ARTISTS
         ]
         if result:
-            await redis_cache.set(cache_key, result, ttl=86_400)  # 24 h
+            # Same constraint as search_tracks — chart data changes
+            # slowly but the embedded preview URLs expire fast.
+            ttl = min(_signed_url_ttl(t["preview_url"]) for t in result)
+            await redis_cache.set(cache_key, result, ttl=ttl)
         return result
     except Exception:
         return []
@@ -139,7 +183,11 @@ async def get_preview(track_name: str, artist_name: str) -> str | None:
     except Exception:
         pass
 
-    # Store hits for 30d; store negative results (empty string) for 7d so we
+    # Hits are capped at the signed-URL expiry (Deezer issues Akamai-signed
+    # URLs valid for ~15-30 min — caching longer would hand the browser an
+    # expired URL that returns 403 + text/html, surfacing as
+    # MEDIA_ERR_SRC_NOT_SUPPORTED). Negative results stay cached 7d so we
     # don't keep retrying broken matches but eventually re-check.
-    await redis_cache.set(cache_key, result or "", ttl=2_592_000 if result else 604_800)
+    ttl = _signed_url_ttl(result) if result else 604_800
+    await redis_cache.set(cache_key, result or "", ttl=ttl)
     return result
