@@ -129,24 +129,41 @@ async def get_feed(
         )).all()
         reply_counts = {row[0]: row[1] for row in reply_rows}
 
-    # Build feed items
-    items = []
+    # Consolidate rating + review pairs.
+    #
+    # A Review and a Rating from the same user on the same entity are one
+    # logical event — typically the user does both in the same flow on the
+    # album page, but even when temporally split (rate now, review later)
+    # they describe the same opinion. Showing them as two feed items makes
+    # the Friends tab look like everyone is doing everything twice.
+    #
+    # Rule: each Review absorbs the matching Rating's value. Any Rating
+    # without a matching Review still ships as a bare "rating" item.
+    rating_by_entity: dict = {}
     for r in ratings:
-        meta = entity_map.get((r.entity_type, r.entity_id), {})
-        items.append({
-            "type": "rating",
-            "user": user_map.get(r.user_id),
-            "entity_type": r.entity_type,
-            "entity_id": r.entity_id,
-            "entity_name": meta.get("name"),
-            "entity_image_url": meta.get("image_url"),
-            "entity_artists": meta.get("artists", []),
-            "value": r.value,
-            "created_at": r.created_at.isoformat() + "Z",
-        })
+        # ratings query is ordered created_at DESC, so the first hit per
+        # (user, entity) is the most recent — keep that one if there are
+        # somehow duplicates from older data.
+        key = (r.user_id, r.entity_type, r.entity_id)
+        rating_by_entity.setdefault(key, r)
+
+    consumed_rating_keys: set = set()
+    items = []
+
+    # Reviews first — each may absorb the matching rating's value
     for r in reviews:
         meta = entity_map.get((r.entity_type, r.entity_id), {})
         votes = vote_map.get(r.id, {"up": 0, "down": 0})
+        rating = rating_by_entity.get((r.user_id, r.entity_type, r.entity_id))
+        if rating is not None:
+            consumed_rating_keys.add((rating.user_id, rating.entity_type, rating.entity_id))
+        # Use the more recent of review.created_at and rating.created_at so
+        # the consolidated item re-bubbles to the top of the feed whenever
+        # either action is fresh — matches what "recent activity" means to
+        # the user.
+        created_at = r.created_at
+        if rating is not None and rating.created_at > created_at:
+            created_at = rating.created_at
         items.append({
             "type": "review",
             # review_id is what /ratings/reviews/{id}/vote and /reply need —
@@ -158,11 +175,32 @@ async def get_feed(
             "entity_name": meta.get("name"),
             "entity_image_url": meta.get("image_url"),
             "entity_artists": meta.get("artists", []),
+            # Stars from the consolidated Rating; null when the user wrote
+            # a body-only review (rare but possible via direct API).
+            "value": rating.value if rating is not None else None,
             "body": r.body,
             "upvotes": votes["up"],
             "downvotes": votes["down"],
             "user_vote": user_vote_map.get(r.id),
             "replies_count": reply_counts.get(r.id, 0),
+            "created_at": created_at.isoformat() + "Z",
+        })
+
+    # Then bare ratings (not absorbed by any review)
+    for r in ratings:
+        key = (r.user_id, r.entity_type, r.entity_id)
+        if key in consumed_rating_keys:
+            continue
+        meta = entity_map.get((r.entity_type, r.entity_id), {})
+        items.append({
+            "type": "rating",
+            "user": user_map.get(r.user_id),
+            "entity_type": r.entity_type,
+            "entity_id": r.entity_id,
+            "entity_name": meta.get("name"),
+            "entity_image_url": meta.get("image_url"),
+            "entity_artists": meta.get("artists", []),
+            "value": r.value,
             "created_at": r.created_at.isoformat() + "Z",
         })
 

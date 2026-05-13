@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { BadgeChips, BadgeLeaderboard } from "./Badges.jsx";
+import { ReplyThread } from "./ReviewSection.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT_A = "#a78bfa";
@@ -49,7 +50,6 @@ function RatingBadge({ value }) {
 // One review card — clickable through to the entity page, anchor scrolls to the review.
 function ReviewCardItem({ item, user, onVote, badges }) {
   const [copiedShare, setCopiedShare] = useState(false);
-  const entityPath = `/${item.entity_type}/${item.entity_id}#review-${item.id}`;
 
   async function handleShare() {
     const url = `${window.location.origin}/${item.entity_type}/${item.entity_id}#review-${item.id}`;
@@ -116,16 +116,17 @@ function ReviewCardItem({ item, user, onVote, badges }) {
           <svg width="11" height="11" viewBox="0 0 24 24" fill={item.user_vote === -1 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           {item.downvotes > 0 ? item.downvotes : ""}
         </button>
-        {item.replies_count > 0 && (
-          <Link to={entityPath} style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none" }}>
-            {item.replies_count} {item.replies_count === 1 ? "reply" : "replies"}
-          </Link>
-        )}
         <button onClick={handleShare}
           style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 12, color: copiedShare ? ACCENT_B : "var(--text-muted)", cursor: "pointer", padding: "2px 4px" }}>
           {copiedShare ? "✓ Copied" : "↗ Share"}
         </button>
       </div>
+
+      {/* Inline reply thread — same component the album-page review section
+          and the Friends tab use, so the reply UX is identical across all
+          surfaces (collapsible thread, inline form, report flow). Replaces
+          the older affordance that linked out to the entity page. */}
+      <ReplyThread reviewId={item.id} user={user} initialCount={item.replies_count ?? 0} />
     </div>
   );
 }
