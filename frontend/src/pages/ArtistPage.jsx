@@ -157,8 +157,6 @@ export function ArtistPage() {
   const [albums, setAlbums] = useState([]);
   const [topTracks, setTopTracks] = useState([]);
   const [sort, setSort] = useState("date");
-  const [favorited, setFavorited] = useState(false);
-  const [favLoading, setFavLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [albumsLoading, setAlbumsLoading] = useState(true);
@@ -186,15 +184,13 @@ export function ArtistPage() {
     setAlbumsLoading(true);
     setAlbumsEmpty(false);
 
-    // Load artist info + favorites + top tracks together (these rarely fail)
+    // Load artist info + top tracks together (these rarely fail)
     Promise.all([
       api.getArtist(id),
-      api.getArtistFavorite(id),
       api.getArtistTopTracks(id).catch(() => []),
     ])
-      .then(([artistData, favData, tracksData]) => {
+      .then(([artistData, tracksData]) => {
         setArtist(artistData);
-        setFavorited(favData.favorited);
         setTopTracks(tracksData);
       })
       .catch((e) => setError(e.message))
@@ -203,17 +199,6 @@ export function ArtistPage() {
     // Albums fetch is independent — has its own loading/retry state
     loadAlbums();
   }, [id]);
-
-  async function handleToggleFavorite() {
-    if (!user) return;
-    setFavLoading(true);
-    try {
-      const res = await api.toggleArtistFavorite(id);
-      setFavorited(res.favorited);
-    } finally {
-      setFavLoading(false);
-    }
-  }
 
   const sorted = [...albums].sort((a, b) => {
     if (sort === "streams") return (b.streams ?? -1) - (a.streams ?? -1);
@@ -286,23 +271,6 @@ export function ArtistPage() {
 
           {/* Action buttons */}
           <div className="hero-actions" style={{ display: "flex", gap: 10, marginTop: 2, flexWrap: "wrap" }}>
-            {user && (
-              <button
-                onClick={handleToggleFavorite}
-                disabled={favLoading}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "8px 18px", borderRadius: 7, fontSize: 13, fontWeight: 600,
-                  background: favorited ? "rgba(167,139,250,0.15)" : "var(--surface2)",
-                  border: `1px solid ${favorited ? ACCENT_A : "var(--border)"}`,
-                  color: favorited ? ACCENT_A : "var(--text-muted)",
-                  cursor: favLoading ? "default" : "pointer",
-                  transition: "all 0.15s",
-                }}
-              >
-                {favorited ? "♥ Favorited" : "♡ Add to Favorites"}
-              </button>
-            )}
             <ShareButton surface="artist" title={`${artist.name} on Contour`} />
             {artist.external_url && (
               <a href={artist.external_url} target="_blank" rel="noreferrer"

@@ -82,15 +82,6 @@ function HeadphonesIcon() {
     </svg>
   );
 }
-function UploadIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-  );
-}
 function BookmarkIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -117,7 +108,7 @@ const VALUE_PROPS = [
     Icon: HeadphonesIcon,
     color: ACCENT_C,
     title: "Find music made for you",
-    body: "Rate 10 tracks in the feed and Contour learns your taste: genre, era, vibe. Every rating sharpens what comes next.",
+    body: "Rate a few tracks in the feed and Contour learns your taste: genre, era, vibe. Every rating sharpens what comes next.",
   },
 ];
 
@@ -142,8 +133,12 @@ function Dots({ total, active }) {
 // Steps:
 //   0 — value prop
 //   1 — genre picker
-//   2 — RYM import upsell (optional, skippable)
-//   3 — Backlog explainer (informational, skippable)
+//   2 — Backlog explainer (informational, skippable)
+//
+// The RYM import upsell that used to sit at step 2 was cut — putting a
+// CSV-import workflow 30 seconds into a casual user's first run contradicted
+// the low-friction positioning. The /import route is still reachable from
+// the profile settings menu for the rare power user migrating from RYM.
 export function OnboardingModal() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -200,7 +195,7 @@ export function OnboardingModal() {
   }
 
   // Save genres ASAP (after step 1) so that progress isn't lost if the user
-  // bails on the import/backlog explainer steps.
+  // bails on the backlog explainer step.
   async function saveGenresAndAdvance() {
     if (selectedGenres.length > 0) {
       localStorage.setItem(GENRES_KEY, JSON.stringify(selectedGenres));
@@ -216,19 +211,6 @@ export function OnboardingModal() {
     setSelectedGenres((prev) =>
       prev.includes(slug) ? prev.filter((g) => g !== slug) : [...prev, slug]
     );
-  }
-
-  function goToImport() {
-    analytics.onboardingStepCompleted("import", false);
-    // Mark onboarding done BEFORE navigating — the next visit shouldn't replay it.
-    localStorage.setItem(STORAGE_KEY, "1");
-    setVisible(false);
-    navigate("/import");
-  }
-
-  function skipImport() {
-    analytics.onboardingStepCompleted("import", true);
-    setStep(3);
   }
 
   function finishBacklogStep(deepLink) {
@@ -323,7 +305,7 @@ export function OnboardingModal() {
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={4} active={0} />
+                <Dots total={3} active={0} />
               </div>
 
               <button onClick={() => { analytics.onboardingStepCompleted("value_prop", false); setStep(1); }} style={{
@@ -366,7 +348,7 @@ export function OnboardingModal() {
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={4} active={1} />
+                <Dots total={3} active={1} />
               </div>
 
               <div style={{ display: "flex", gap: 10 }}>
@@ -388,68 +370,8 @@ export function OnboardingModal() {
             </>
           )}
 
-          {/* ── Step 2: RYM import upsell ── */}
+          {/* ── Step 2: Backlog explainer ── */}
           {step === 2 && (
-            <>
-              <div style={{ textAlign: "center", marginBottom: 20 }}>
-                <h2 style={{
-                  fontSize: 22, fontWeight: 800, margin: "0 0 8px",
-                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-                }}>
-                  Already rate music elsewhere?
-                </h2>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>
-                  Bring your ratings from Rate Your Music. We'll match them to
-                  albums on Contour so you don't start from scratch.
-                </p>
-              </div>
-
-              <div style={{
-                background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: 12, padding: "14px 16px", marginBottom: 20,
-                display: "flex", alignItems: "center", gap: 12,
-              }}>
-                <span style={{
-                  width: 36, height: 36, flexShrink: 0,
-                  borderRadius: 8, background: `${ACCENT_A}18`,
-                  border: `1px solid ${ACCENT_A}35`,
-                  color: ACCENT_A,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <UploadIcon />
-                </span>
-                <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  Export your data from RYM and upload the CSV. Every rated
-                  album is matched on Spotify and saved to your Contour profile.
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 18 }}>
-                <Dots total={4} active={2} />
-              </div>
-
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={skipImport} style={{
-                  flex: 1, padding: "12px 0", borderRadius: 12,
-                  background: "none", border: "1px solid var(--border)",
-                  color: "var(--text-muted)", fontSize: 14, cursor: "pointer",
-                }}>
-                  Skip for now
-                </button>
-                <button onClick={goToImport} style={{
-                  flex: 2, padding: "12px 0", borderRadius: 12,
-                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                  border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
-                }}>
-                  Import from RYM →
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* ── Step 3: Backlog explainer ── */}
-          {step === 3 && (
             <>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h2 style={{
@@ -497,7 +419,7 @@ export function OnboardingModal() {
               </button>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={4} active={3} />
+                <Dots total={3} active={2} />
               </div>
 
               <button onClick={() => finishBacklogStep(false)} style={{

@@ -37,7 +37,11 @@ function saveEnglishOnly(val) {
 // Soft ramp threshold — past this many ratings we hide the "rate to personalize"
 // banner. Personalization itself kicks in from rating #1; this number only
 // controls the banner UI, NOT whether the backend sees the user's signals.
-const PERSONALIZATION_RAMP = 5;
+//
+// Was 5 — dropped to 3 so the user sees real momentum (and a real reward
+// for finishing) within the first minute, matching the "Rate a few tracks"
+// copy in OnboardingModal's value-prop card.
+const PERSONALIZATION_RAMP = 3;
 
 // ── Genre prefs ───────────────────────────────────────────────────────────────
 function loadGenres() {
@@ -836,12 +840,20 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
 // ── Personalization-ramp progress banner ──────────────────────────────────────
 // The feed adapts from rating #1; this banner just lets users see that more
 // ratings = a stronger signal until they hit the ramp threshold.
+//
+// Segmented bar (one chunk per remaining rating) instead of a continuous fill
+// because discrete chunks read as "I'm 1 of 3 done" rather than "the bar is
+// 33% full" — the unit of progress matches the unit of action (one rating =
+// one chunk lights up). The lit chunks carry a soft accent glow so a newly
+// filled chunk reads as a small reward, not a passive state change.
 function ColdStartBanner({ ratingCount }) {
   if (ratingCount >= PERSONALIZATION_RAMP) return null;
-  const pct = (ratingCount / PERSONALIZATION_RAMP) * 100;
+  const remaining = PERSONALIZATION_RAMP - ratingCount;
   const label = ratingCount === 0
-    ? "Rate a track to start personalizing"
-    : `${ratingCount} of ${PERSONALIZATION_RAMP} — feed gets sharper as you rate`;
+    ? "Rate a track to tune your feed"
+    : remaining === 1
+      ? "One more — almost dialed in"
+      : `${ratingCount} of ${PERSONALIZATION_RAMP} — feed is sharpening`;
 
   return (
     <div style={{
@@ -853,15 +865,26 @@ function ColdStartBanner({ ratingCount }) {
       display: "flex", alignItems: "center", gap: 10,
       flexShrink: 0,
     }}>
-      {/* Progress bar */}
-      <div style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.1)", overflow: "hidden" }}>
-        <div style={{
-          height: "100%", borderRadius: 2,
-          background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-          width: `${pct}%`, transition: "width 0.4s ease",
-        }} />
+      {/* Segmented progress — one chunk per rating up to the ramp */}
+      <div style={{ flex: 1, display: "flex", gap: 4, height: 5 }}>
+        {Array.from({ length: PERSONALIZATION_RAMP }, (_, i) => {
+          const filled = i < ratingCount;
+          return (
+            <div
+              key={i}
+              style={{
+                flex: 1, borderRadius: 3,
+                background: filled
+                  ? `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`
+                  : "rgba(255,255,255,0.1)",
+                boxShadow: filled ? `0 0 6px ${ACCENT_A}80` : "none",
+                transition: "background 0.35s ease, box-shadow 0.35s ease",
+              }}
+            />
+          );
+        })}
       </div>
-      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap", flexShrink: 0 }}>
+      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap", flexShrink: 0, fontWeight: 600 }}>
         {label}
       </span>
     </div>

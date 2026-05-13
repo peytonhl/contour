@@ -215,7 +215,6 @@ export function ProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [profile, setProfile] = useState(null);
-  const [artistDetails, setArtistDetails] = useState({});
   const [following, setFollowing] = useState([]);
   const [followers, setFollowers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -273,17 +272,6 @@ export function ProfilePage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [user]);
-
-  useEffect(() => {
-    if (!profile?.favorite_artists?.length) return;
-    profile.favorite_artists.forEach(async (artistId) => {
-      if (artistDetails[artistId]) return;
-      try {
-        const a = await api.getArtist(artistId);
-        setArtistDetails((prev) => ({ ...prev, [artistId]: a }));
-      } catch {}
-    });
-  }, [profile?.favorite_artists]);
 
   async function handleSaveBio() {
     setSavingBio(true);
@@ -364,7 +352,6 @@ export function ProfilePage() {
     { key: "ratings",   label: "Ratings",   count: profile?.ratings?.length ?? 0 },
     { key: "reviews",   label: "Reviews",   count: profile?.reviews?.length ?? 0 },
     { key: "lists",     label: "Lists",     count: lists.length },
-    { key: "favorites", label: "Favorited", count: profile?.favorite_artists?.length ?? 0 },
     { key: "following", label: "Following", count: following.length },
     { key: "followers", label: "Followers", count: followers.length },
     // Backlog appended to the end per Task 9 placement rules.
@@ -739,46 +726,6 @@ export function ProfilePage() {
                 </div>
               </Link>
             ))}
-          </div>
-        )}
-
-        {/* ── Favorite artists ── */}
-        {tab === "favorites" && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
-            {!profile?.favorite_artists?.length && (
-              <p style={{ color: "var(--text-muted)", fontSize: 14, gridColumn: "1/-1", padding: "20px 0" }}>No favorite artists yet.</p>
-            )}
-            {profile?.favorite_artists?.map((artistId) => {
-              const a = artistDetails[artistId];
-              return (
-                <Link key={artistId} to={`/artist/${artistId}`} style={{ textDecoration: "none", color: "var(--text)" }}>
-                  <div
-                    style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden", transition: "border-color 0.15s, transform 0.15s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; }}
-                  >
-                    {a?.image_url
-                      ? <img src={a.image_url} alt={a.name} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
-                      : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-                          </svg>
-                        </div>
-                    }
-                    <div style={{ padding: "10px 12px" }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {a?.name ?? "Loading…"}
-                      </div>
-                      {a?.genres?.[0] && (
-                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, textTransform: "capitalize" }}>
-                          {a.genres[0]}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
           </div>
         )}
 

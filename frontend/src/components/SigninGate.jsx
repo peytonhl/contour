@@ -132,7 +132,7 @@ export function SigninGate() {
         </div>
 
         {/* ── Sign-in buttons ── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <a href={LOGIN_URL} {...externalLinkProps()} style={{
             display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
             padding: "13px 20px", borderRadius: 28,
@@ -146,30 +146,46 @@ export function SigninGate() {
           <AppleSignInButton />
         </div>
 
-        {/* ── Guest mode opt-out ── */}
-        <div style={{ textAlign: "center", marginTop: 8 }}>
-          <button
-            onClick={continueAsGuest}
-            style={{
-              background: "none", border: "none", padding: "10px 14px",
-              color: "rgba(255,255,255,0.55)", fontSize: 13, fontWeight: 500,
-              cursor: "pointer", textDecoration: "underline",
-              textDecorationColor: "rgba(255,255,255,0.25)",
-              textUnderlineOffset: "3px",
-            }}
-          >
-            Browse without signing in
-          </button>
+        {/* ── "or" divider ──
+            Promotes the guest path to equal visual weight with the OAuth
+            buttons so a casual visitor reads "browsing is a first-class
+            option," not "fallback link buried under sign-in." Rating still
+            requires sign-in — the footer note + per-action signed-out
+            prompts elsewhere enforce that. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0" }}>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.12)" }} />
+          <span style={{
+            fontSize: 11, color: "rgba(255,255,255,0.4)",
+            letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600,
+          }}>or</span>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.12)" }} />
         </div>
+
+        <button
+          onClick={continueAsGuest}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "13px 20px", borderRadius: 28,
+            background: "transparent",
+            color: "rgba(255,255,255,0.9)",
+            fontSize: 14, fontWeight: 700,
+            border: "1px solid rgba(255,255,255,0.25)",
+            cursor: "pointer",
+            width: "100%",
+          }}
+        >
+          Browse without signing in
+        </button>
 
         {/* ── Footer note ── */}
         <p style={{
-          textAlign: "center", margin: "32px 0 0",
-          fontSize: 11, color: "rgba(255,255,255,0.35)",
+          textAlign: "center", margin: "24px 0 0",
+          fontSize: 11, color: "rgba(255,255,255,0.4)",
           lineHeight: 1.6,
         }}>
-          Without an account you can browse albums, charts, and reviews — but you
-          won't be able to rate or write reviews of your own.
+          Browse albums, charts, and reviews freely. Sign in any time to start
+          rating, reviewing, and saving your taste — ratings only count when
+          you're signed in.
         </p>
 
       </div>
