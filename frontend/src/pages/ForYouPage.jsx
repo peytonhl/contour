@@ -561,7 +561,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                   backdropFilter: "blur(4px)",
                 }}
               >
-                Music ↗
+                Apple Music ↗
               </a>
             )}
             <a
