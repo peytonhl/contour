@@ -23,6 +23,27 @@
     <!-- Description for sharing -->
     <meta name="description" content="Rate, review, and discover music with friends. Half-star ratings, written reviews, side-by-side streaming comparison, and a personalized For You feed." />
 
+    <!-- ── Connection prefly ──
+         Open TCP + TLS connections to every origin we'll hit during the
+         first render, in parallel with the HTML parse. DNS, TLS, and TCP
+         handshake all happen BEFORE the JS bundle finishes downloading,
+         so when fetch() actually fires the connection is already warm.
+         Each one shaves ~150-400ms off the first request to that origin
+         on cellular / cold network.
+
+         crossorigin is required on these so the browser uses the same
+         credentials mode it will later use for the actual request. -->
+    <link rel="preconnect" href="https://contour-production.up.railway.app" crossorigin />
+    <link rel="dns-prefetch" href="https://contour-production.up.railway.app" />
+    <!-- Spotify image CDN — all album covers without an Apple Music match -->
+    <link rel="preconnect" href="https://i.scdn.co" crossorigin />
+    <link rel="dns-prefetch" href="https://i.scdn.co" />
+    <!-- Apple Music image CDN — covers with an Apple Music match (preferred when available) -->
+    <link rel="preconnect" href="https://is1-ssl.mzstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://is1-ssl.mzstatic.com" />
+    <!-- Spotify embed iframe — only for tracks without preview_url, but warm in case -->
+    <link rel="dns-prefetch" href="https://open.spotify.com" />
+
     <!-- Boot styling. Inline (not via .css link) so the HTML parser paints the
          page-bg colour and the wordmark splash on the very first paint, before
          the JS bundle has even started downloading. Without this the user
