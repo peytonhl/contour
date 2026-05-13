@@ -50,7 +50,10 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
 
   if (variant === "hero") {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+      <div style={{
+        display: "flex", flexDirection: "column", gap: "var(--space-2)",
+        alignItems: "center", textAlign: "center",
+      }}>
         <span style={{
           fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em",
           textTransform: "uppercase", color: "var(--text-dim)",
