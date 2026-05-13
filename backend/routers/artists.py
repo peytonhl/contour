@@ -150,7 +150,7 @@ async def get_artist_albums(
     for album in albums:
         row = await cache.upsert_album(db, album)
         if cache.needs_enrichment(row):
-            background_tasks.add_task(_enrich_album, album["id"], album, db)
+            background_tasks.add_task(_enrich_album, album["id"], album)
 
         streams = cache.streams_for_album(row)
         era_adjusted = None
