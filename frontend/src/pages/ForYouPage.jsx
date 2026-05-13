@@ -415,18 +415,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
   function togglePlay() {
     if (!track.preview_url) return;
     if (!audioRef.current) {
-      // Route external preview URLs (Deezer / Spotify CDN) through our
-      // /audio-proxy endpoint. Deezer's CDN started refusing direct
-      // cross-origin playback with "media resource not suitable" errors;
-      // the proxy serves the bytes from our own origin with a clean
-      // audio/mpeg Content-Type so the browser accepts them. URLs that
-      // are already same-origin (or some future direct-playable case)
-      // are passed through unchanged.
-      const API_BASE = import.meta.env.VITE_API_URL ?? "";
-      const proxied = /(dzcdn\.net|scdn\.co)/i.test(track.preview_url)
-        ? `${API_BASE}/audio-proxy?url=${encodeURIComponent(track.preview_url)}`
-        : track.preview_url;
-      audioRef.current = new Audio(proxied);
+      audioRef.current = new Audio(track.preview_url);
       audioRef.current.ontimeupdate = () => {
         const cur = audioRef.current?.currentTime ?? 0;
         // Cap at 30 s in case browser somehow loads more than the preview
@@ -439,30 +428,12 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
         setProgress(cur / 30);
       };
       audioRef.current.onended = () => { setPlaying(false); setProgress(0); };
-      // Surface decode / load failures into the console so we can
-      // diagnose the next time something breaks (previously the
-      // "media resource not suitable" exception was swallowed by the
-      // implicit play() promise — nothing showed up in the UI and
-      // there were no logs to chase).
-      audioRef.current.onerror = (ev) => {
-        const err = audioRef.current?.error;
-        // eslint-disable-next-line no-console
-        console.warn(
-          "[contour] preview audio failed to load:",
-          { code: err?.code, message: err?.message, src: audioRef.current?.src },
-        );
-        setPlaying(false);
-      };
     }
     if (playing) {
       audioRef.current.pause();
       setPlaying(false);
     } else {
-      audioRef.current.play().catch((err) => {
-        // eslint-disable-next-line no-console
-        console.warn("[contour] audio.play() rejected:", err?.name, err?.message);
-        setPlaying(false);
-      });
+      audioRef.current.play();
       setPlaying(true);
       analytics.forYouTrackPlayed(tierSourceOf(track));
     }
