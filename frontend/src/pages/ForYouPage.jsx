@@ -1432,6 +1432,23 @@ function ForYouFeed() {
   );
 }
 
+// ── localStorage keys for tab discoverability features ───────────────────────
+// `LAST_VIEW_*`: timestamp the user last opened that tab. Used to compute
+// "is there new activity since the user last looked here?" → drives the
+// purple-dot activity badge.
+// `TABS_HINT_SEEN`: flag set after the user dismisses the first-launch
+// coachmark pointing at the Friends + Community tabs.
+const LAST_VIEW_FRIENDS = "contour_lastview_friends_v1";
+const LAST_VIEW_COMMUNITY = "contour_lastview_community_v1";
+const TABS_HINT_SEEN = "contour_tabs_hint_v1";
+
+function readTs(key) {
+  try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
+}
+function writeTs(key, v = Date.now()) {
+  try { localStorage.setItem(key, String(v)); } catch {}
+}
+
 // ── Page shell with tabs ──────────────────────────────────────────────────────
 export function ForYouPage() {
   // Internal state values are "discover" / "friends" / "community" — the
@@ -1441,14 +1458,92 @@ export function ForYouPage() {
   const [tab, setTab] = useState("discover");
   const { user } = useAuth();
 
+  // Activity badges + first-launch hint state.
+  // `hasNewFriends` / `hasNewCommunity` drive the small purple dot on
+  // each tab — set true when the latest activity timestamp on that
+  // surface is newer than the user's last viewed-at timestamp (stored
+  // in localStorage). Clearing the dot updates the stored timestamp.
+  const [hasNewFriends, setHasNewFriends] = useState(false);
+  const [hasNewCommunity, setHasNewCommunity] = useState(false);
+  const [showTabsHint, setShowTabsHint] = useState(false);
+
+  // First-launch hint: show once per device until dismissed. Don't show
+  // for signed-out users (the social features require sign-in anyway).
+  useEffect(() => {
+    if (!user) return;
+    try {
+      if (!localStorage.getItem(TABS_HINT_SEEN)) {
+        // Small delay so it appears after the page settles, not in the
+        // initial render flash. Auto-dismissed when the user taps any
+        // tab OR the explicit X.
+        const t = setTimeout(() => setShowTabsHint(true), 1500);
+        return () => clearTimeout(t);
+      }
+    } catch {}
+  }, [user]);
+  function dismissTabsHint() {
+    setShowTabsHint(false);
+    try { localStorage.setItem(TABS_HINT_SEEN, "1"); } catch {}
+  }
+
+  // Probe Friends + Community feeds for newer-than-last-viewed activity.
+  // Lightweight — pulls the top entry off each endpoint and compares its
+  // created_at to the stored "last opened this tab" timestamp.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const feed = await api.getFeed?.();
+        if (cancelled) return;
+        const newest = feed?.[0]?.created_at ? new Date(feed[0].created_at).getTime() : 0;
+        setHasNewFriends(newest > readTs(LAST_VIEW_FRIENDS));
+      } catch {}
+      try {
+        const reviews = await api.getGlobalReviews?.("recent", "all");
+        if (cancelled) return;
+        const newest = reviews?.[0]?.created_at ? new Date(reviews[0].created_at).getTime() : 0;
+        setHasNewCommunity(newest > readTs(LAST_VIEW_COMMUNITY));
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // Wrapped setTab that also: stamps the last-viewed timestamp and
+  // clears the activity badge for the destination tab, plus dismisses
+  // the first-launch hint on any tab interaction.
+  function selectTab(next) {
+    if (showTabsHint) dismissTabsHint();
+    if (next === "friends") {
+      writeTs(LAST_VIEW_FRIENDS);
+      setHasNewFriends(false);
+    } else if (next === "community") {
+      writeTs(LAST_VIEW_COMMUNITY);
+      setHasNewCommunity(false);
+    }
+    setTab(next);
+  }
+
   const tabStyle = (active) => ({
-    flex: 1, padding: "12px 0", fontSize: 14,
+    flex: 1, padding: "12px 0", fontSize: 14, position: "relative",
     fontWeight: active ? 700 : 400,
     background: "none", border: "none",
     borderBottom: active ? `2px solid ${ACCENT_A}` : "2px solid transparent",
     color: active ? "#fff" : "rgba(255,255,255,0.45)",
     cursor: "pointer", transition: "all 0.15s",
   });
+
+  // Small purple dot rendered top-right of a tab when there's unseen
+  // activity. Absolute-positioned relative to the parent button which
+  // is now position: relative (added to tabStyle above).
+  const activityDot = (
+    <span style={{
+      position: "absolute", top: 8, right: "calc(50% - 26px)",
+      width: 7, height: 7, borderRadius: "50%",
+      background: ACCENT_A,
+      boxShadow: `0 0 0 2px #0a0a0a`,
+    }} />
+  );
 
   // Layout publishes its measured header height as --layout-header-h via
   // ResizeObserver — survives safe-area inset changes, address-bar
@@ -1498,10 +1593,50 @@ export function ForYouPage() {
         // descendant stacking-context shenanigans.
         isolation: "isolate",
       }}>
-        <button style={tabStyle(tab === "discover")} onClick={() => setTab("discover")}>Discover</button>
-        <button style={tabStyle(tab === "friends")} onClick={() => setTab("friends")}>Friends</button>
-        <button style={tabStyle(tab === "community")} onClick={() => setTab("community")}>Community</button>
+        <button style={tabStyle(tab === "discover")} onClick={() => selectTab("discover")}>Discover</button>
+        <button style={tabStyle(tab === "friends")} onClick={() => selectTab("friends")}>
+          Friends
+          {hasNewFriends && tab !== "friends" && activityDot}
+        </button>
+        <button style={tabStyle(tab === "community")} onClick={() => selectTab("community")}>
+          Community
+          {hasNewCommunity && tab !== "community" && activityDot}
+        </button>
       </div>
+
+      {/* First-launch coachmark — points users at the Friends + Community
+          tabs which were previously easy to overlook ("everything I want
+          is on Discover, what are these other tabs for?"). Auto-dismisses
+          on any tab interaction; explicit X for impatient users. */}
+      {showTabsHint && (
+        <div style={{
+          position: "relative",
+          margin: "8px 14px 0",
+          padding: "10px 36px 10px 14px",
+          background: "rgba(167,139,250,0.12)",
+          border: "1px solid rgba(167,139,250,0.35)",
+          borderRadius: 10,
+          fontSize: 12.5, lineHeight: 1.45,
+          color: "rgba(255,255,255,0.85)",
+        }}>
+          <span style={{ fontWeight: 700, color: ACCENT_A }}>Tip:</span>{" "}
+          tap <strong>Friends</strong> to see what people you follow are rating,
+          or <strong>Community</strong> for the global review feed.
+          <button
+            onClick={dismissTabsHint}
+            aria-label="Dismiss tip"
+            style={{
+              position: "absolute", top: 6, right: 8,
+              width: 22, height: 22, borderRadius: 11,
+              background: "none", border: "none", cursor: "pointer",
+              color: "rgba(255,255,255,0.5)", fontSize: 14, lineHeight: 1,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Content — all three panels stay mounted so ForYouFeed never loses
           its track list or scroll position when the user flips tabs.
