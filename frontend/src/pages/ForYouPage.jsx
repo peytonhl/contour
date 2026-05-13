@@ -1956,27 +1956,35 @@ export function ForYouPage() {
     <div style={{
       display: "flex", flexDirection: "column",
       background: "#0a0a0a",
-      // In swipe mode, pin the whole page between the Layout header and the
-      // bottom-nav via position: fixed. Previously we used height:
-      // calc(100dvh - 56px) which only accounted for the bottom-nav — the
-      // layout header (~53px) and page-content's padding-bottom (~94px on
-      // iOS with safe-area) weren't subtracted, so the document overflowed
-      // the viewport by ~90px. That overflow let iOS scroll the document
-      // and the Layout header would slide off, dragging the deck up under
-      // the status bar (where the gear/··· buttons ended up overlapping
-      // the iOS clock/signal icons). It also let the "extended header
-      // black bar" overscroll-bounce expose page bg.
+      // In swipe mode, pin the page to cover the whole viewport below the
+      // iOS status bar and above the bottom-nav. The Layout header
+      // (Contour wordmark + bell) is intentionally COVERED on this page —
+      // the For You feed wants the full-bleed media surface mobile users
+      // expect from TikTok / Spotify Discover, with the layout header
+      // available again as soon as they switch to Friends/Community.
       //
-      // position: fixed takes ForYouPage out of document flow entirely so
-      // there's nothing to overflow. Layout header stays put, deck stays
-      // in its band between header and bottom-nav, no rubber-band possible.
+      // Why not `top: var(--layout-header-h)` like before: on iPhone with
+      // safe-area-inset-top, the header is ~95-105px tall. Anchoring the
+      // page below it puts the deck and its top chrome (gear, "···") way
+      // below the status bar, which read as "locked too far low" — the
+      // buttons felt buried. Anchoring to env(safe-area-inset-top, 0px)
+      // puts them just below the status bar where they're tap-able
+      // without iOS's status-bar-tap-scroll-to-top affordance interfering.
+      //
+      // Layout header keeps rendering in document flow underneath this
+      // fixed layer — it appears normally when the user switches away
+      // from the Discover tab (which goes back to normal flow).
       ...(isSwipe ? {
         position: "fixed",
-        top: "var(--layout-header-h, 53px)",
+        top: "env(safe-area-inset-top, 0px)",
         left: 0,
         right: 0,
         bottom: "calc(56px + env(safe-area-inset-bottom, 0px))",
         overflow: "hidden",
+        // z 60 puts us ABOVE Layout's header (z 50) so the swipe page can
+        // cover it. The bottom-nav (z 50) is outside our `bottom:` clamp so
+        // there's no overlap to fight over.
+        zIndex: 60,
       } : {}),
     }}>
       {/* Three modes — Discover (audio swipe), Friends (followed users'
