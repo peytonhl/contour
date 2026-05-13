@@ -73,7 +73,11 @@
         z-index: 9999;
         opacity: 1;
         pointer-events: none;
-        transition: opacity 280ms ease 120ms;
+        /* Visible for ~700ms minimum (delay), then 320ms fade. The
+           previous 120ms delay was so short the splash felt like a flicker
+           on fast-boot devices. ~1s total visibility gives a substantive
+           branded moment without making the app feel slow. */
+        transition: opacity 320ms ease 700ms;
       }
       .boot-splash--done {
         opacity: 0;

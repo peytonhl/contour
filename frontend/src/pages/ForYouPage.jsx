@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -1150,12 +1150,25 @@ function ForYouFeed() {
   // mismatch was causing a 0.5-1px snap at the commit moment, perceived as
   // a tiny jitter between songs. With pure pixel arithmetic the wrapper's
   // pre-commit and post-commit transform values are bitwise identical.
-  const [cardHeight, setCardHeight] = useState(0);
+  //
+  // Initialize with a sensible estimate (full viewport height) so the very
+  // first render isn't computed against cardHeight=0 — that produced an
+  // ugly cascade where (a) all three cards stacked at y=0 making the user
+  // briefly see the LAST-rendered card (card 1) instead of the active card
+  // (card 0), and (b) the cover img sized from maxHeight: 94% of 0 = 0 and
+  // then grew to full size once cardHeight was measured ("picture enlarges
+  // visibly"). The useLayoutEffect below refines the estimate to the actual
+  // measured container height before paint.
+  const [cardHeight, setCardHeight] = useState(() => (
+    typeof window !== "undefined" ? window.innerHeight : 800
+  ));
   const cardHeightRef = useRef(0);
 
-  // Measure card height on mount and on resize so the snap distance matches
-  // the visible viewport (account for the mobile address bar collapsing).
-  useEffect(() => {
+  // Measure card height before paint. useLayoutEffect (not useEffect) is
+  // critical here — it fires synchronously between the React commit and
+  // the browser paint, so the user never sees a frame computed against
+  // the initial estimate vs the precise measurement.
+  useLayoutEffect(() => {
     const measure = () => {
       if (containerRef.current) {
         const h = containerRef.current.clientHeight;
