@@ -148,6 +148,10 @@ export function TrackPage() {
   if (!track) return null;
 
   const topCert = trajectory?.riaa_milestones?.at(-1);
+  // Prefer Apple Music's 1200×1200 cover when matched — sharper than
+  // Spotify's 640×640 ceiling on high-DPR mobile. Falls back to Spotify
+  // until the Apple Music lookup resolves (or stays Spotify if no match).
+  const heroImage = appleMusic?.artwork_url || track.image_url;
 
   return (
     <div className="hero-page" style={{ maxWidth: 1000, margin: "0 auto", display: "flex", flexDirection: "column" }}>
@@ -158,11 +162,11 @@ export function TrackPage() {
         padding: "var(--space-7) var(--space-5) var(--space-5)",
         overflow: "hidden",
       }}>
-        {track.image_url && (
+        {heroImage && (
           <>
             <div aria-hidden style={{
               position: "absolute", inset: -40, zIndex: 0,
-              backgroundImage: `url(${track.image_url})`,
+              backgroundImage: `url(${heroImage})`,
               backgroundSize: "cover", backgroundPosition: "center",
               filter: "blur(60px) saturate(1.5) brightness(0.55)",
               transform: "scale(1.3)",
@@ -178,8 +182,8 @@ export function TrackPage() {
           position: "relative", zIndex: 2,
           display: "flex", gap: "var(--space-5)", alignItems: "flex-end",
         }}>
-          {track.image_url
-            ? <img src={track.image_url} alt={track.name} className="hero-img" style={{
+          {heroImage
+            ? <img src={heroImage} alt={track.name} className="hero-img" decoding="async" fetchpriority="high" style={{
                 width: 200, height: 200, borderRadius: "var(--radius-lg)",
                 objectFit: "cover", flexShrink: 0,
                 boxShadow: "var(--shadow-hero)",

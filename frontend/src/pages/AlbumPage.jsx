@@ -153,6 +153,10 @@ export function AlbumPage() {
   if (!album) return null;
 
   const topCert = trajectory?.riaa_milestones?.at(-1);
+  // Prefer the Apple Music 1200×1200 render when matched — sharper than
+  // Spotify's 640×640 ceiling on high-DPR mobile. Falls back to Spotify
+  // until the Apple Music lookup resolves (or stays Spotify if no match).
+  const heroImage = appleMusic?.artwork_url || album.image_url;
 
   return (
     <div className="hero-page" style={{ maxWidth: 1000, margin: "0 auto", display: "flex", flexDirection: "column" }}>
@@ -167,11 +171,11 @@ export function AlbumPage() {
         padding: "var(--space-7) var(--space-5) var(--space-5)",
         overflow: "hidden",
       }}>
-        {album.image_url && (
+        {heroImage && (
           <>
             <div aria-hidden style={{
               position: "absolute", inset: -40, zIndex: 0,
-              backgroundImage: `url(${album.image_url})`,
+              backgroundImage: `url(${heroImage})`,
               backgroundSize: "cover", backgroundPosition: "center",
               filter: "blur(60px) saturate(1.5) brightness(0.55)",
               transform: "scale(1.3)",
@@ -187,8 +191,8 @@ export function AlbumPage() {
           position: "relative", zIndex: 2,
           display: "flex", gap: "var(--space-5)", alignItems: "flex-end",
         }}>
-          {album.image_url
-            ? <img src={album.image_url} alt={album.name} className="hero-img" style={{
+          {heroImage
+            ? <img src={heroImage} alt={album.name} className="hero-img" decoding="async" fetchpriority="high" style={{
                 width: 200, height: 200, borderRadius: "var(--radius-lg)",
                 objectFit: "cover", flexShrink: 0,
                 boxShadow: "var(--shadow-hero)",

@@ -94,12 +94,14 @@ async def _persist(
     storefront: str,
     apple_music_id: Optional[str],
     match_method: str,
+    artwork_url: Optional[str] = None,
 ) -> AppleMusicLink:
     row = AppleMusicLink(
         spotify_id=spotify_id,
         entity_type=entity_type,
         storefront=storefront,
         apple_music_id=apple_music_id,
+        artwork_url=artwork_url,
         match_method=match_method,
         matched_at=datetime.utcnow(),
     )
@@ -131,11 +133,30 @@ async def match_entity(
     if not force:
         cached = await _cached_link(db, spotify_id, entity_type, storefront)
         if cached and cached.apple_music_id:
+            # Lazy backfill for rows that predate the artwork_url column.
+            # One Apple API call on the next hit fills it in; subsequent
+            # hits are free DB reads. Backfill failures are swallowed so a
+            # transient Apple outage never blocks the deep-link response.
+            artwork_url = cached.artwork_url
+            if not artwork_url and apple_music.is_configured():
+                try:
+                    artwork_url = await apple_music.fetch_artwork_for_id(
+                        cached.apple_music_id, entity_type, storefront,
+                    )
+                    if artwork_url:
+                        cached.artwork_url = artwork_url
+                        await db.commit()
+                except Exception as exc:
+                    logger.warning(
+                        "apple_music artwork backfill failed for %s/%s: %s",
+                        entity_type, spotify_id, exc,
+                    )
             return {
                 "spotify_id": spotify_id,
                 "entity_type": entity_type,
                 "apple_music_id": cached.apple_music_id,
                 "url": apple_music.deep_link(entity_type, cached.apple_music_id, storefront),
+                "artwork_url": artwork_url,
                 "storefront": storefront,
                 "match_method": cached.match_method,
                 "cached": True,
@@ -150,6 +171,7 @@ async def match_entity(
     # Cold cache + service enabled → try matching now.
     apple_music_id: Optional[str] = None
     match_method = "none"
+    artwork_url: Optional[str] = None
 
     try:
         if entity_type == "track":
@@ -167,15 +189,18 @@ async def match_entity(
                 match = await apple_music.match_track_by_isrc(isrc, storefront)
                 if match and match.get("track_id"):
                     apple_music_id = match["track_id"]
+                    artwork_url = match.get("artwork_url")
                     match_method = "isrc"
             if not apple_music_id and track_meta.get("name"):
-                apple_music_id = await apple_music.search_by_text(
+                search = await apple_music.search_by_text(
                     name=track_meta.get("name", ""),
                     artist=(track_meta.get("artists") or [""])[0],
                     entity_type="track",
                     storefront=storefront,
                 )
-                if apple_music_id:
+                if search and search.get("id"):
+                    apple_music_id = search["id"]
+                    artwork_url = search.get("artwork_url")
                     match_method = "text"
         else:  # album
             album_data = await _get_album_meta(spotify_id, db)
@@ -188,15 +213,20 @@ async def match_entity(
                 match = await apple_music.match_track_by_isrc(isrc, storefront)
                 if match and match.get("album_id"):
                     apple_music_id = match["album_id"]
+                    # The ISRC search hits /songs; song artwork == album cover
+                    # on Apple Music, so we get the right image for free.
+                    artwork_url = match.get("artwork_url")
                     match_method = "isrc"
             if not apple_music_id and album_data.get("name"):
-                apple_music_id = await apple_music.search_by_text(
+                search = await apple_music.search_by_text(
                     name=album_data.get("name", ""),
                     artist=(album_data.get("artists") or [""])[0],
                     entity_type="album",
                     storefront=storefront,
                 )
-                if apple_music_id:
+                if search and search.get("id"):
+                    apple_music_id = search["id"]
+                    artwork_url = search.get("artwork_url")
                     match_method = "text"
     except Exception as exc:
         logger.warning("apple_music match failed for %s/%s: %s", entity_type, spotify_id, exc)
@@ -210,11 +240,15 @@ async def match_entity(
         existing = await _cached_link(db, spotify_id, entity_type, storefront)
         if existing is not None:
             existing.apple_music_id = apple_music_id
+            existing.artwork_url = artwork_url
             existing.match_method = match_method
             existing.matched_at = datetime.utcnow()
             await db.commit()
         else:
-            await _persist(db, spotify_id, entity_type, storefront, apple_music_id, match_method)
+            await _persist(
+                db, spotify_id, entity_type, storefront,
+                apple_music_id, match_method, artwork_url,
+            )
     else:
         raise HTTPException(status_code=404, detail="No Apple Music match")
 
@@ -223,6 +257,7 @@ async def match_entity(
         "entity_type": entity_type,
         "apple_music_id": apple_music_id,
         "url": apple_music.deep_link(entity_type, apple_music_id, storefront),
+        "artwork_url": artwork_url,
         "storefront": storefront,
         "match_method": match_method,
         "cached": False,

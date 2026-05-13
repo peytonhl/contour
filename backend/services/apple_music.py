@@ -95,8 +95,34 @@ async def _apple_get(client: httpx.AsyncClient, path: str, **params) -> Optional
     return resp.json()
 
 
+# Apple Music's CDN serves templated URLs of the form
+# https://is1-ssl.mzstatic.com/.../{w}x{h}bb.jpg — we substitute a fixed
+# render size. 1200×1200 comfortably covers the largest mobile usage
+# (~3x DPR at a ~400 CSS-px hero) without bloating the payload. Apple's
+# upper bound is typically 3000 if a source is needed for desktop later.
+_ARTWORK_RENDER_SIZE = 1200
+
+
+def _extract_artwork_url(item: dict, size: int = _ARTWORK_RENDER_SIZE) -> Optional[str]:
+    """Pull a sized Apple Music artwork URL from an item's attributes.artwork.
+
+    The CDN treats `{w}` / `{h}` as substitution tokens; replacing both with
+    `size` returns a JPEG at that resolution. Returns None when no artwork
+    is present (rare — usually only on unreleased / region-locked items).
+    """
+    artwork = (item.get("attributes") or {}).get("artwork") or {}
+    template = artwork.get("url")
+    if not template:
+        return None
+    return template.replace("{w}", str(size)).replace("{h}", str(size))
+
+
 async def match_track_by_isrc(isrc: str, storefront: str = DEFAULT_STOREFRONT) -> Optional[dict]:
-    """Resolve a Spotify track to an Apple Music song by ISRC."""
+    """Resolve a Spotify track to an Apple Music song by ISRC.
+
+    Returns {track_id, album_id, artwork_url} — artwork_url is the album
+    cover (Apple songs use the album image), sized to _ARTWORK_RENDER_SIZE.
+    """
     if not isrc:
         return None
     async with httpx.AsyncClient() as client:
@@ -115,7 +141,11 @@ async def match_track_by_isrc(isrc: str, storefront: str = DEFAULT_STOREFRONT) -
     rels = (song.get("relationships") or {}).get("albums", {}).get("data") or []
     if rels:
         album_id = rels[0].get("id")
-    return {"track_id": song["id"], "album_id": album_id}
+    return {
+        "track_id": song["id"],
+        "album_id": album_id,
+        "artwork_url": _extract_artwork_url(song),
+    }
 
 
 async def search_by_text(
@@ -123,8 +153,8 @@ async def search_by_text(
     artist: str,
     entity_type: str,
     storefront: str = DEFAULT_STOREFRONT,
-) -> Optional[str]:
-    """Text fallback. Returns the first matching apple_music_id or None."""
+) -> Optional[dict]:
+    """Text fallback. Returns {id, artwork_url} for the first match, or None."""
     if not name:
         return None
     types = "albums" if entity_type == "album" else "songs"
@@ -143,7 +173,36 @@ async def search_by_text(
     items = results.get("data") or []
     if not items:
         return None
-    return items[0].get("id")
+    item = items[0]
+    if not item.get("id"):
+        return None
+    return {
+        "id": item.get("id"),
+        "artwork_url": _extract_artwork_url(item),
+    }
+
+
+async def fetch_artwork_for_id(
+    apple_music_id: str,
+    entity_type: str,
+    storefront: str = DEFAULT_STOREFRONT,
+) -> Optional[str]:
+    """Look up artwork URL by Apple Music ID. Used to backfill existing
+    cache rows that predate the artwork_url column on AppleMusicLink.
+
+    One Apple API call per backfilled entity. Cheap and one-shot — once
+    the row gets its URL, future hits return from the cache."""
+    if not apple_music_id:
+        return None
+    resource = "albums" if entity_type == "album" else "songs"
+    async with httpx.AsyncClient() as client:
+        body = await _apple_get(client, f"/catalog/{storefront}/{resource}/{apple_music_id}")
+    if not body:
+        return None
+    data = body.get("data") or []
+    if not data:
+        return None
+    return _extract_artwork_url(data[0])
 
 
 def deep_link(entity_type: str, apple_music_id: str, storefront: str = DEFAULT_STOREFRONT) -> str:

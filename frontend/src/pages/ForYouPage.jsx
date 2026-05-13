@@ -372,22 +372,32 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
     return () => { cancelled = true; };
   }, [track.id, track.image_url, track.album_id]);
 
-  // Apple Music deep-link match — fetched lazily, 404 means no match / service
-  // unconfigured, in which case we just don't render the button.
+  // Apple Music deep-link + hi-res artwork — fetched lazily. 404 means no
+  // match / service unconfigured, in which case we just don't render the
+  // button (and fall back to the Spotify image for the cover).
   //
   // For You feed tracks can come from Deezer (Spotify dropped preview URLs
   // for most tracks late 2023), in which case `track.id` is a Deezer
   // numeric ID, not a Spotify ID — and the backend's DB cache + Spotify
   // lookup both fail. We pass name + first-artist as hints so the backend
   // can still complete the match via Apple Music's text search endpoint.
+  //
+  // Backend now returns artwork_url alongside the deep-link URL: a 1200×1200
+  // Apple Music CDN render that's noticeably sharper than Spotify's 640×640
+  // ceiling on high-DPR phones. We prefer it as the cover image when
+  // available, falling back to the Spotify image when not.
   const [appleMusicUrl, setAppleMusicUrl] = useState(null);
+  const [appleArtworkUrl, setAppleArtworkUrl] = useState(null);
   useEffect(() => {
     setAppleMusicUrl(null);
+    setAppleArtworkUrl(null);
     if (!track.id) return;
     let cancelled = false;
     const hint = { name: track.name, artist: track.artists?.[0] };
     api.getAppleMusicLink("track", track.id, "us", hint).then((data) => {
-      if (!cancelled && data?.url) setAppleMusicUrl(data.url);
+      if (cancelled) return;
+      if (data?.url) setAppleMusicUrl(data.url);
+      if (data?.artwork_url) setAppleArtworkUrl(data.artwork_url);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [track.id, track.name, track.artists]);
@@ -505,6 +515,13 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
 
   const year = track.release_date?.slice(0, 4);
 
+  // Prefer Apple Music's 1200×1200 render when we have it (sharper on
+  // high-DPR phones than Spotify's 640×640 ceiling). Falls back to the
+  // Spotify image immediately so the card paints something while Apple's
+  // match request is in flight; the swap-on-arrival is a no-op visually
+  // since both URLs point at the same cover.
+  const coverImage = appleArtworkUrl || effectiveImage;
+
   return (
     <div style={{
       height: "100%",
@@ -524,17 +541,17 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
         flex: "0 0 65%", position: "relative", overflow: "hidden",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>
-        {effectiveImage
+        {coverImage
           ? <>
               <div aria-hidden style={{
                 position: "absolute", inset: "-20px",
-                backgroundImage: `url(${effectiveImage})`,
+                backgroundImage: `url(${coverImage})`,
                 backgroundSize: "cover", backgroundPosition: "center",
                 filter: "blur(40px) saturate(1.5) brightness(0.45)",
                 transform: "scale(1.1)",
               }} />
               <img
-                src={effectiveImage}
+                src={coverImage}
                 alt={track.album_name}
                 decoding="async"
                 fetchpriority="high"
