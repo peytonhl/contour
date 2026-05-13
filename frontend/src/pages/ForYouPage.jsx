@@ -412,41 +412,25 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
     setCopied(false);
   }, [track.id]);
 
+  // Preview playback uses a real <audio> DOM element controlled via ref —
+  // see the JSX below. Previously we created the audio element in JS via
+  // `new Audio(...)` on first tap, but iOS WKWebView (the Capacitor shell)
+  // silently rejects play() on detached audio elements: WebKit doesn't
+  // treat them as user-visible media so they don't inherit the user's
+  // tap gesture, even when play() runs synchronously inside an onClick.
+  // Symptom on iOS: tap Play → nothing happens, no error, no console log.
+  //
+  // Putting a real <audio> in the DOM avoids the whole class of problem.
+  // React owns the element's lifecycle so we drop the manual cleanup
+  // useEffect that used to null out audioRef on track.id change.
   function togglePlay() {
-    if (!track.preview_url) return;
-    if (!audioRef.current) {
-      audioRef.current = new Audio(track.preview_url);
-      audioRef.current.ontimeupdate = () => {
-        const cur = audioRef.current?.currentTime ?? 0;
-        // Cap at 30 s in case browser somehow loads more than the preview
-        if (cur >= 30) {
-          audioRef.current.pause();
-          setPlaying(false);
-          setProgress(1);
-          return;
-        }
-        setProgress(cur / 30);
-      };
-      audioRef.current.onended = () => { setPlaying(false); setProgress(0); };
-      // Surface decode / load failures. Without this the failure mode is
-      // a swallowed play() promise rejection — no UI feedback, no console
-      // log — which is exactly what made the Deezer signed-URL-expiry bug
-      // invisible until users complained.
-      audioRef.current.onerror = () => {
-        const err = audioRef.current?.error;
-        // eslint-disable-next-line no-console
-        console.warn(
-          "[contour] preview audio failed to load:",
-          { code: err?.code, message: err?.message, src: audioRef.current?.src },
-        );
-        setPlaying(false);
-      };
-    }
+    const audio = audioRef.current;
+    if (!audio) return;
     if (playing) {
-      audioRef.current.pause();
+      audio.pause();
       setPlaying(false);
     } else {
-      audioRef.current.play().catch((err) => {
+      audio.play().catch((err) => {
         // eslint-disable-next-line no-console
         console.warn("[contour] audio.play() rejected:", err?.name, err?.message);
         setPlaying(false);
@@ -455,13 +439,6 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
       analytics.forYouTrackPlayed(tierSourceOf(track));
     }
   }
-
-  // Cleanup audio on unmount / track change
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-    };
-  }, [track.id]);
 
   async function handleRate(value) {
     setRatedValue(value);
@@ -663,6 +640,43 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
             can't restrict that without violating Spotify's TOS). */}
         {track.preview_url ? (
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* Real <audio> element keyed on track.id so React fully
+                replaces it when the user swipes to a new card. iOS
+                WKWebView reliably plays DOM-attached audio elements
+                triggered by a user tap; the previous `new Audio()`
+                pattern silently failed on iOS because detached audio
+                elements don't inherit user-gesture privileges.
+                preload="none" keeps us from fetching the audio until
+                the user actually plays it — saves bandwidth on the
+                ~9 unplayed cards in every 10-card batch. */}
+            <audio
+              key={track.id}
+              ref={audioRef}
+              src={track.preview_url}
+              preload="none"
+              playsInline
+              onTimeUpdate={(e) => {
+                const cur = e.currentTarget.currentTime;
+                // Cap at 30 s in case the file is longer than the preview window
+                if (cur >= 30) {
+                  e.currentTarget.pause();
+                  setPlaying(false);
+                  setProgress(1);
+                  return;
+                }
+                setProgress(cur / 30);
+              }}
+              onEnded={() => { setPlaying(false); setProgress(0); }}
+              onError={(e) => {
+                const err = e.currentTarget.error;
+                // eslint-disable-next-line no-console
+                console.warn(
+                  "[contour] preview audio failed to load:",
+                  { code: err?.code, message: err?.message, src: e.currentTarget.src },
+                );
+                setPlaying(false);
+              }}
+            />
             <button
               onClick={togglePlay}
               style={{
