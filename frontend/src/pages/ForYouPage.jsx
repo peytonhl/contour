@@ -1956,7 +1956,28 @@ export function ForYouPage() {
     <div style={{
       display: "flex", flexDirection: "column",
       background: "#0a0a0a",
-      ...(isSwipe ? { height: "calc(100dvh - 56px)", overflow: "hidden" } : {}),
+      // In swipe mode, pin the whole page between the Layout header and the
+      // bottom-nav via position: fixed. Previously we used height:
+      // calc(100dvh - 56px) which only accounted for the bottom-nav — the
+      // layout header (~53px) and page-content's padding-bottom (~94px on
+      // iOS with safe-area) weren't subtracted, so the document overflowed
+      // the viewport by ~90px. That overflow let iOS scroll the document
+      // and the Layout header would slide off, dragging the deck up under
+      // the status bar (where the gear/··· buttons ended up overlapping
+      // the iOS clock/signal icons). It also let the "extended header
+      // black bar" overscroll-bounce expose page bg.
+      //
+      // position: fixed takes ForYouPage out of document flow entirely so
+      // there's nothing to overflow. Layout header stays put, deck stays
+      // in its band between header and bottom-nav, no rubber-band possible.
+      ...(isSwipe ? {
+        position: "fixed",
+        top: "var(--layout-header-h, 53px)",
+        left: 0,
+        right: 0,
+        bottom: "calc(56px + env(safe-area-inset-bottom, 0px))",
+        overflow: "hidden",
+      } : {}),
     }}>
       {/* Three modes — Discover (audio swipe), Friends (followed users'
           activity), Community (global review feed). /feed was retired:
