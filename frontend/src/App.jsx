@@ -1,29 +1,39 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { Layout } from "./components/Layout.jsx";
 import { OnboardingModal } from "./components/OnboardingModal.jsx";
 import { SigninGate } from "./components/SigninGate.jsx";
 import { isNativePlatform } from "./utils/native.js";
-import { SearchPage } from "./pages/SearchPage.jsx";
-import { ComparePage } from "./pages/ComparePage.jsx";
-import { ProfilePage } from "./pages/ProfilePage.jsx";
-import { AlbumPage } from "./pages/AlbumPage.jsx";
-import { TrackPage } from "./pages/TrackPage.jsx";
-import { ArtistPage } from "./pages/ArtistPage.jsx";
-import { SavedComparisonPage } from "./pages/SavedComparisonPage.jsx";
-import { AuthSuccessPage } from "./pages/AuthSuccessPage.jsx";
-import { UserPage } from "./pages/UserPage.jsx";
-import { LeaderboardPage } from "./pages/LeaderboardPage.jsx";
-import { NotificationsPage } from "./pages/NotificationsPage.jsx";
+// ForYouPage is the landing route — keep it eager so the cold-start path
+// has no async chunk fetch. Everything else lazy-loads on first navigation.
+// Before this change, the initial bundle included Recharts (~150KB gzip
+// pulled in via AlbumPage/TrackPage/ComparePage), Methodology, all admin
+// + import surfaces, etc. — none of which the user sees on launch.
 import { ForYouPage } from "./pages/ForYouPage.jsx";
-import { Methodology } from "./components/Methodology.jsx";
-import { PrivacyPage } from "./pages/PrivacyPage.jsx";
-import { ListDetailPage } from "./pages/ListDetailPage.jsx";
-import { BlocksPage } from "./pages/BlocksPage.jsx";
-import { DislikedArtistsPage } from "./pages/DislikedArtistsPage.jsx";
-import { AdminReportsPage } from "./pages/AdminReportsPage.jsx";
-import { ImportPage } from "./pages/ImportPage.jsx";
-import { TrendingPage } from "./pages/TrendingPage.jsx";
+
+// Helper: React.lazy expects a default export, but pages use named exports.
+// This thunks the dynamic import to remap the named export to default.
+const lazyNamed = (loader, name) => lazy(() => loader().then((m) => ({ default: m[name] })));
+
+const SearchPage         = lazyNamed(() => import("./pages/SearchPage.jsx"),         "SearchPage");
+const ComparePage        = lazyNamed(() => import("./pages/ComparePage.jsx"),        "ComparePage");
+const ProfilePage        = lazyNamed(() => import("./pages/ProfilePage.jsx"),        "ProfilePage");
+const AlbumPage          = lazyNamed(() => import("./pages/AlbumPage.jsx"),          "AlbumPage");
+const TrackPage          = lazyNamed(() => import("./pages/TrackPage.jsx"),          "TrackPage");
+const ArtistPage         = lazyNamed(() => import("./pages/ArtistPage.jsx"),         "ArtistPage");
+const SavedComparisonPage = lazyNamed(() => import("./pages/SavedComparisonPage.jsx"), "SavedComparisonPage");
+const AuthSuccessPage    = lazyNamed(() => import("./pages/AuthSuccessPage.jsx"),    "AuthSuccessPage");
+const UserPage           = lazyNamed(() => import("./pages/UserPage.jsx"),           "UserPage");
+const LeaderboardPage    = lazyNamed(() => import("./pages/LeaderboardPage.jsx"),    "LeaderboardPage");
+const NotificationsPage  = lazyNamed(() => import("./pages/NotificationsPage.jsx"),  "NotificationsPage");
+const Methodology        = lazyNamed(() => import("./components/Methodology.jsx"),   "Methodology");
+const PrivacyPage        = lazyNamed(() => import("./pages/PrivacyPage.jsx"),        "PrivacyPage");
+const ListDetailPage     = lazyNamed(() => import("./pages/ListDetailPage.jsx"),     "ListDetailPage");
+const BlocksPage         = lazyNamed(() => import("./pages/BlocksPage.jsx"),         "BlocksPage");
+const DislikedArtistsPage = lazyNamed(() => import("./pages/DislikedArtistsPage.jsx"), "DislikedArtistsPage");
+const AdminReportsPage   = lazyNamed(() => import("./pages/AdminReportsPage.jsx"),   "AdminReportsPage");
+const ImportPage         = lazyNamed(() => import("./pages/ImportPage.jsx"),         "ImportPage");
+const TrendingPage       = lazyNamed(() => import("./pages/TrendingPage.jsx"),       "TrendingPage");
 
 /**
  * Listens for Capacitor `appUrlOpen` events — fired when iOS / Android
@@ -82,31 +92,37 @@ export default function App() {
     <NativeDeepLinkHandler />
     <SigninGate />
     <OnboardingModal />
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<ForYouPage />} />
-        <Route path="search" element={<SearchPage />} />
-        <Route path="compare" element={<ComparePage />} />
-        <Route path="methodology" element={<Methodology />} />
-        <Route path="album/:id" element={<AlbumPage />} />
-        <Route path="track/:id" element={<TrackPage />} />
-        <Route path="artist/:id" element={<ArtistPage />} />
-        <Route path="compare/:id" element={<SavedComparisonPage />} />
-        <Route path="profile" element={<ProfilePage />} />
-        <Route path="user/:id" element={<UserPage />} />
-        {/* /feed retired — Friends timeline now lives as a tab on / (For You). */}
-        <Route path="charts" element={<LeaderboardPage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="auth/success" element={<AuthSuccessPage />} />
-        <Route path="privacy" element={<PrivacyPage />} />
-        <Route path="list/:id" element={<ListDetailPage />} />
-        <Route path="blocks" element={<BlocksPage />} />
-        <Route path="disliked-artists" element={<DislikedArtistsPage />} />
-        <Route path="admin/reports" element={<AdminReportsPage />} />
-        <Route path="import" element={<ImportPage />} />
-        <Route path="trending" element={<TrendingPage />} />
-      </Route>
-    </Routes>
+    {/* Lazy-loaded routes need a Suspense boundary. Fallback is just a
+        bg-coloured div so the previous route's content fades out into
+        an empty page-bg surface rather than flashing white while the
+        chunk downloads. */}
+    <Suspense fallback={<div style={{ minHeight: "100vh", background: "var(--bg)" }} />}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<ForYouPage />} />
+          <Route path="search" element={<SearchPage />} />
+          <Route path="compare" element={<ComparePage />} />
+          <Route path="methodology" element={<Methodology />} />
+          <Route path="album/:id" element={<AlbumPage />} />
+          <Route path="track/:id" element={<TrackPage />} />
+          <Route path="artist/:id" element={<ArtistPage />} />
+          <Route path="compare/:id" element={<SavedComparisonPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="user/:id" element={<UserPage />} />
+          {/* /feed retired — Friends timeline now lives as a tab on / (For You). */}
+          <Route path="charts" element={<LeaderboardPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="auth/success" element={<AuthSuccessPage />} />
+          <Route path="privacy" element={<PrivacyPage />} />
+          <Route path="list/:id" element={<ListDetailPage />} />
+          <Route path="blocks" element={<BlocksPage />} />
+          <Route path="disliked-artists" element={<DislikedArtistsPage />} />
+          <Route path="admin/reports" element={<AdminReportsPage />} />
+          <Route path="import" element={<ImportPage />} />
+          <Route path="trending" element={<TrendingPage />} />
+        </Route>
+      </Routes>
+    </Suspense>
     </>
   );
 }

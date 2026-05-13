@@ -512,16 +512,19 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
       position: "relative", overflow: "hidden",
       background: "#0a0a0a",
     }}>
-      {/* Album art — top portion. Bumped from 44% to 58% so the art dominates
-          the card the way TikTok / Spotify Discover cards do. Cover image
-          sized up to 94% of the section, drop-shadow softened because the
-          blurred backdrop is now doing the depth work. A bottom-edge
-          vignette fades the art into the metadata strip below so the seam
-          between the two regions disappears. */}
-      <div style={{ flex: "0 0 58%", position: "relative", overflow: "hidden" }}>
+      {/* Album art — top portion. Section is flex-centered so the cover img
+          renders at integer pixel positions (the previous transform-translate
+          centering was causing sub-pixel anti-alias blur on iOS). Backdrop
+          and bottom vignette stay absolute and don't participate in flex.
+          decoding="async" + fetchpriority="high" hint the browser to commit
+          GPU resources to this image early — it's the page's focal element. */}
+      <div style={{
+        flex: "0 0 58%", position: "relative", overflow: "hidden",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
         {effectiveImage
           ? <>
-              <div style={{
+              <div aria-hidden style={{
                 position: "absolute", inset: "-20px",
                 backgroundImage: `url(${effectiveImage})`,
                 backgroundSize: "cover", backgroundPosition: "center",
@@ -531,13 +534,15 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
               <img
                 src={effectiveImage}
                 alt={track.album_name}
+                decoding="async"
+                fetchpriority="high"
                 style={{
-                  position: "absolute", top: "50%", left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  height: "94%", width: "auto", maxWidth: "94%",
+                  maxHeight: "94%", maxWidth: "94%",
+                  width: "auto", height: "auto",
                   borderRadius: "var(--radius-lg)",
                   boxShadow: "var(--shadow-hero)",
                   objectFit: "cover",
+                  position: "relative", zIndex: 1,
                 }}
               />
               {/* Bottom vignette — fades the art into the metadata strip
@@ -547,6 +552,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                 height: 80,
                 background: "linear-gradient(to bottom, transparent 0%, #0a0a0a 100%)",
                 pointerEvents: "none",
+                zIndex: 2,
               }} />
             </>
           : <div style={{ width: "100%", height: "100%", background: "var(--surface2)" }} />
