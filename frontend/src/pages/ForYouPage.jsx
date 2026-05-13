@@ -1219,7 +1219,14 @@ function ForYouFeed() {
     // Tinder behaves the same: at the end of the stack, drag does nothing.
     if (activeIdx === 0 && dy > 0) dy = 0;
     if (activeIdx >= tracks.length - 1 && dy < 0) dy = 0;
-    setDragOffset(dy);
+    // Convert finger-px to %-of-cardHeight at touchmove time so the wrapper
+    // transform can be pure %. Mixing % and px in the calc() expression
+    // caused a subpixel mismatch: `100%` resolves to the wrapper's rendered
+    // (potentially fractional) height, while JS-measured cardHeight is the
+    // integer clientHeight. The 0.5px gap was the "snaps too low / auto-
+    // adjusts higher" overshoot at the commit moment.
+    const h = cardHeightRef.current || containerRef.current?.clientHeight || 800;
+    setDragOffset((dy / h) * 100);
   }
   function handleTouchEnd(e) {
     const start = touchStartRef.current;
@@ -1265,10 +1272,12 @@ function ForYouFeed() {
       setDragOffset(0);
       return;
     }
-    const cardHeight = cardHeightRef.current || (containerRef.current?.clientHeight ?? 800);
     setTransitioning(true);
     setDragging(false);                                 // enable CSS transition
-    setDragOffset(direction === 1 ? -cardHeight : cardHeight);
+    // dragOffset is now a PERCENT of cardHeight (not pixels). One full card
+    // height = 100%. Combined with the wrapper transform using pure %,
+    // there's no unit mismatch at the commit boundary.
+    setDragOffset(direction === 1 ? -100 : 100);
     setTimeout(() => {
       // Atomic commit: dragging=true disables transition, activeIdx + dragOffset
       // change in the same React batch. The wrapper's combined transform value
@@ -1743,18 +1752,16 @@ function ForYouFeed() {
         <div
           style={{
             position: "absolute", inset: 0,
-            // Hybrid transform: percent for the activeIdx offset (browser
-            // resolves to wrapper-height exactly, which equals card-height),
-            // pixels for the drag delta. 100% of the wrapper === 100% of
-            // a card === cardHeight, so the math at the commit boundary
-            //   pre:  calc(-N*100% + -cardHeight px)
-            //   post: calc(-(N+1)*100% + 0px)
-            // is exact AND independent of cardHeight state, so we don't
-            // re-render every card on every viewport resize (which was
-            // the source of the aggressive jitter in the pixel-only
-            // version — resize → cardHeight state change → all transforms
-            // recomputed simultaneously while a transition was in flight).
-            transform: `translate3d(0, calc(${-activeIdx * 100}% + ${dragOffset}px), 0)`,
+            // Pure-percent transform. dragOffset is stored as %-of-cardHeight
+            // (touchmove handler converts the finger's px delta on the way in),
+            // so the whole expression resolves consistently against the
+            // wrapper's own height. The previous hybrid form `calc(-N*100% +
+            // dragOffset_px)` mixed two units; `100%` resolves to the
+            // wrapper's rendered (potentially subpixel) height, while
+            // dragOffset_px was JS clientHeight (integer), and the half-
+            // pixel discrepancy at the commit moment was the "snaps too low
+            // first, then auto-adjusts higher" jump the user reported.
+            transform: `translate3d(0, ${-activeIdx * 100 + dragOffset}%, 0)`,
             transition: dragging ? "none" : "transform 280ms cubic-bezier(0.2, 0, 0, 1)",
             willChange: "transform",
           }}
