@@ -1181,10 +1181,12 @@ function ForYouFeed() {
     const start = touchStartRef.current;
     if (!start) return;
     let dy = e.touches[0].clientY - start.y;
-    // Resistance at the start/end of the deck so the user feels the
-    // boundary without it hard-stopping their gesture.
-    if (activeIdx === 0 && dy > 0) dy *= 0.35;
-    if (activeIdx >= tracks.length - 1 && dy < 0) dy *= 0.35;
+    // Hard clamp at the deck boundaries — letting dragOffset go positive
+    // at the first card would reveal page-bg above the first card (the
+    // "extended header black bar" the user reported); same at the end.
+    // Tinder behaves the same: at the end of the stack, drag does nothing.
+    if (activeIdx === 0 && dy > 0) dy = 0;
+    if (activeIdx >= tracks.length - 1 && dy < 0) dy = 0;
     setDragOffset(dy);
   }
   function handleTouchEnd(e) {
@@ -1661,15 +1663,26 @@ function ForYouFeed() {
         </div>
       )}
 
-      {/* Swipe deck — only three cards mounted at a time (prev/current/next).
-          Each is absolutely positioned at -100% / 0 / +100% of the container
-          and all share the same dragOffset translateY, so they move together
-          under the finger. On release the deck animates ±cardHeight to settle,
-          then activeIdx commits and dragOffset resets atomically with the
-          transition momentarily disabled — visually a clean discrete swap
-          rather than the scrolling-seam behaviour the previous list had.
-          overflow: hidden on the container is what keeps the off-screen
-          neighbours from ever being visible mid-transition. */}
+      {/* Swipe deck — single-wrapper transform model.
+          The OUTER wrapper translates by `calc(-activeIdx * 100% + dragOffset px)`.
+          INNER cards each sit at top:0 with a STATIC transform of
+          `translateY(i * 100%)` based on their absolute track index. So
+          activeIdx 0 with dragOffset 0 → wrapper at 0%, card[0] at 0%, card[1]
+          at 100% (off-screen below).
+
+          Why a single wrapper instead of three cards each with their own
+          top:/transform: at the moment of commit (when activeIdx advances
+          and dragOffset resets), the combined transform value is mathematically
+          identical before and after — outer goes from -N*100% + -cardHeight to
+          -(N+1)*100% + 0, which is the same translateY. The swap is invisible
+          to the eye AND to the GPU compositor because nothing animates.
+          Solves both the back-and-forth jitter AND the seam-peek issues from
+          the multi-card approach.
+
+          Hard clamp on dragOffset at the deck boundaries prevents the wrapper
+          from ever exposing page-bg above card 0 or below card N — that was
+          the "extended header black bar" reported when swiping back from
+          the first card. */}
       <div
         ref={containerRef}
         onTouchStart={handleTouchStart}
@@ -1683,38 +1696,45 @@ function ForYouFeed() {
           touchAction: "pan-y",
         }}
       >
-        {[-1, 0, 1].map((offset) => {
-          const idx = activeIdx + offset;
-          if (idx < 0 || idx >= tracks.length) return null;
-          const track = tracks[idx];
-          return (
-            <div
-              key={`${track.id}-${idx}`}
-              data-card={idx}
-              style={{
-                position: "absolute", left: 0, right: 0,
-                top: `${offset * 100}%`, height: "100%",
-                transform: `translate3d(0, ${dragOffset}px, 0)`,
-                transition: dragging ? "none" : "transform 280ms cubic-bezier(0.2, 0, 0, 1)",
-                willChange: "transform",
-              }}
-            >
-              <DiscoverCard
-                track={track}
-                isActive={offset === 0 && !transitioning}
-                onRate={handleRate}
-                onReview={handleReview}
-                onDislike={handleDislike}
-                onEntityClick={handleEntityClick}
-                userRating={userRatings[track.id] ?? null}
-                cardIndex={idx}
-                totalCards={tracks.length}
-                onNext={() => goToCard(idx + 1)}
-                onPrev={() => goToCard(idx - 1)}
-              />
-            </div>
-          );
-        })}
+        <div
+          style={{
+            position: "absolute", inset: 0,
+            transform: `translate3d(0, calc(${-activeIdx * 100}% + ${dragOffset}px), 0)`,
+            transition: dragging ? "none" : "transform 280ms cubic-bezier(0.2, 0, 0, 1)",
+            willChange: "transform",
+          }}
+        >
+          {tracks.map((track, i) => {
+            // Only mount neighbours — render budget stays bounded as the
+            // user works through hundreds of swipes.
+            if (Math.abs(i - activeIdx) > 1) return null;
+            return (
+              <div
+                key={`${track.id}-${i}`}
+                data-card={i}
+                style={{
+                  position: "absolute", top: 0, left: 0, right: 0, height: "100%",
+                  transform: `translate3d(0, ${i * 100}%, 0)`,
+                  willChange: "transform",
+                }}
+              >
+                <DiscoverCard
+                  track={track}
+                  isActive={i === activeIdx && !transitioning}
+                  onRate={handleRate}
+                  onReview={handleReview}
+                  onDislike={handleDislike}
+                  onEntityClick={handleEntityClick}
+                  userRating={userRatings[track.id] ?? null}
+                  cardIndex={i}
+                  totalCards={tracks.length}
+                  onNext={() => goToCard(i + 1)}
+                  onPrev={() => goToCard(i - 1)}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1813,12 +1833,14 @@ export function ForYouPage() {
   }
 
   const tabStyle = (active) => ({
-    flex: 1, padding: "12px 0", fontSize: 14, position: "relative",
-    fontWeight: active ? 700 : 400,
+    flex: 1, padding: "15px 0", fontSize: 14, position: "relative",
+    fontWeight: active ? 700 : 500,
     background: "none", border: "none",
     borderBottom: active ? `2px solid ${ACCENT_A}` : "2px solid transparent",
-    color: active ? "#fff" : "rgba(255,255,255,0.45)",
+    color: active ? "#fff" : "rgba(255,255,255,0.55)",
     cursor: "pointer", transition: "all 0.15s",
+    // Touch target ≥ 44px (iOS HIG). 15px + 14px + 15px = 44 minimum.
+    minHeight: 44,
   });
 
   // Small purple dot rendered top-right of a tab when there's unseen
@@ -1867,7 +1889,7 @@ export function ForYouPage() {
 
           zIndex 40 stays under Layout's header (50) in both modes. */}
       <div
-        className="foryou-tabs-strip"
+        className="foryou-tabs-strip glass"
         style={{
         position: isSwipe ? "relative" : "sticky",
         top: isSwipe ? undefined : STICKY_TOP,
@@ -1875,7 +1897,6 @@ export function ForYouPage() {
         display: "flex",
         borderBottom: "1px solid rgba(255,255,255,0.1)",
         flexShrink: 0,
-        background: "#0a0a0a",
         // Belt-and-suspenders: force the strip onto its own GPU layer so
         // nothing in the content panel paints above it regardless of
         // descendant stacking-context shenanigans.
