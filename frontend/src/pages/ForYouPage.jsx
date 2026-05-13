@@ -556,8 +556,16 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                 decoding="async"
                 fetchpriority="high"
                 style={{
+                  // aspect-ratio: 1 reserves a square layout box BEFORE the
+                  // image bytes load, so the browser doesn't render the IMG
+                  // at intrinsic-pixel-zero on first paint and then re-flow
+                  // it to full size when bytes arrive. Without this the
+                  // cover visibly "enlarges" the first time a card mounts.
+                  // Combined with maxHeight: 94% the image sizes to 94% of
+                  // the art region height, square.
+                  aspectRatio: "1 / 1",
                   maxHeight: "94%", maxWidth: "94%",
-                  width: "auto", height: "auto",
+                  height: "auto", width: "auto",
                   borderRadius: "var(--radius-lg)",
                   boxShadow: "var(--shadow-hero)",
                   objectFit: "cover",
@@ -1735,16 +1743,18 @@ function ForYouFeed() {
         <div
           style={{
             position: "absolute", inset: 0,
-            // PIXEL-BASED transform — no calc(% + px). On iOS WebView, percent
-            // transforms can resolve to a fractional value that differs from
-            // the JS-measured clientHeight by 0.5-1px, causing a tiny snap at
-            // the commit moment. With both terms in pixels using the same
-            // measured cardHeight, the pre-commit value
-            //   `-activeIdx * cardHeight + (-cardHeight)`
-            // equals the post-commit value
-            //   `-(activeIdx+1) * cardHeight + 0`
-            // bitwise. No snap.
-            transform: `translate3d(0, ${(-activeIdx * cardHeight) + dragOffset}px, 0)`,
+            // Hybrid transform: percent for the activeIdx offset (browser
+            // resolves to wrapper-height exactly, which equals card-height),
+            // pixels for the drag delta. 100% of the wrapper === 100% of
+            // a card === cardHeight, so the math at the commit boundary
+            //   pre:  calc(-N*100% + -cardHeight px)
+            //   post: calc(-(N+1)*100% + 0px)
+            // is exact AND independent of cardHeight state, so we don't
+            // re-render every card on every viewport resize (which was
+            // the source of the aggressive jitter in the pixel-only
+            // version — resize → cardHeight state change → all transforms
+            // recomputed simultaneously while a transition was in flight).
+            transform: `translate3d(0, calc(${-activeIdx * 100}% + ${dragOffset}px), 0)`,
             transition: dragging ? "none" : "transform 280ms cubic-bezier(0.2, 0, 0, 1)",
             willChange: "transform",
           }}
@@ -1759,7 +1769,10 @@ function ForYouFeed() {
                 data-card={i}
                 style={{
                   position: "absolute", top: 0, left: 0, right: 0, height: "100%",
-                  transform: `translate3d(0, ${i * cardHeight}px, 0)`,
+                  // Static % offset based on track index — doesn't depend on
+                  // any state, so cards don't re-render when dragOffset
+                  // changes (huge perf win on touchmove).
+                  transform: `translate3d(0, ${i * 100}%, 0)`,
                   willChange: "transform",
                 }}
               >
