@@ -331,6 +331,20 @@ button, a, [role="button"] {
     top: auto !important;
   }
 
+  /* While the Discover sub-tab is active (ForYouPage publishes this body
+     class), the Layout header is fully hidden and page-content's
+     padding-bottom (60 + safe-area) is removed. ForYouPage covers the
+     viewport edge-to-edge in swipe mode and doesn't need either chrome
+     to exist underneath it; leaving them in flow was causing both the
+     "Contour banner appearing on scroll" and the residual document
+     overflow that let the page rubber-band. */
+  body.foryou-swipe-mode .app-header {
+    display: none !important;
+  }
+  body.foryou-swipe-mode .page-content {
+    padding-bottom: 0 !important;
+  }
+
   /* When the header is non-sticky on mobile, the For You sub-tab strip
      (For You / Friends / Community) becomes the *only* element that
      should pin to the viewport top during scroll. The desktop offset

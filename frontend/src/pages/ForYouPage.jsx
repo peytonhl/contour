@@ -1270,11 +1270,15 @@ function ForYouFeed() {
     }
   }
 
-  // Animate the deck off-screen by one card-height in the given direction,
-  // then atomically commit activeIdx + reset dragOffset to 0 with transition
-  // disabled so the swap is visually instant (the old "next" card is now
-  // at the same screen coordinates it was during the animation, just under
-  // a different `top:` value).
+  // Ref on the wrapper element so we can listen for its transitionend
+  // event and commit at the exact moment the snap animation completes —
+  // setTimeout-based commit was firing at ~95-98% of the animation, so
+  // the React commit was applying its end-state value while the CSS
+  // animation hadn't quite reached its end. iOS WebView then snapped
+  // the wrapper from where it was to the commit value, which the user
+  // perceived as "card undershoots then settles back."
+  const wrapperRef = useRef(null);
+
   function advance(direction) {
     if (transitioning) return;
     const target = activeIdx + direction;
@@ -1289,25 +1293,46 @@ function ForYouFeed() {
     // height = 100%. Combined with the wrapper transform using pure %,
     // there's no unit mismatch at the commit boundary.
     setDragOffset(direction === 1 ? -100 : 100);
-    setTimeout(() => {
-      // Atomic commit: dragging=true disables transition, activeIdx + dragOffset
-      // change in the same React batch. The wrapper's combined transform value
-      // is identical before and after (calc(-N*100% + -cardHeight) ==
-      // calc(-(N+1)*100% + 0)), so the swap is invisible. transitioning
-      // clears in the same batch so future drags can fire immediately.
-      // (Previous version split this across a rAF, which left a one-frame
-      // window where transitioning was true but the state had already
-      // committed — fuel for the touchend-during-transition jitter.)
+
+    // Commit atomically when the transition actually finishes — not on a
+    // pre-set timer. transitionend fires the frame the wrapper's transform
+    // reaches its target value, so there's no animated-but-incomplete
+    // state to interrupt.
+    let committed = false;
+    const commit = () => {
+      if (committed) return;
+      committed = true;
       setDragging(true);
       setActiveIdx(target);
       setDragOffset(0);
       setTransitioning(false);
-      // Prefetch when getting close to the end so the next batch arrives
-      // before the user runs out.
       if (direction === 1 && target >= tracks.length - 4) {
         fetchBatch(true);
       }
-    }, 250);                                            // matches CSS transition duration (240ms) + 10ms slack
+    };
+
+    const wrapper = wrapperRef.current;
+    if (wrapper) {
+      const onEnd = (e) => {
+        // Only commit on the wrapper's own transform transitionend —
+        // ignore events from descendant elements that happen to bubble.
+        if (e.target !== wrapper) return;
+        if (e.propertyName !== "transform") return;
+        wrapper.removeEventListener("transitionend", onEnd);
+        commit();
+      };
+      wrapper.addEventListener("transitionend", onEnd);
+      // Safety fallback in case transitionend never fires (transition got
+      // cancelled by an intervening style change, etc.). 400ms is comfortably
+      // longer than the 240ms transition so it only kicks in on edge cases.
+      setTimeout(() => {
+        wrapper.removeEventListener("transitionend", onEnd);
+        commit();
+      }, 400);
+    } else {
+      // Fallback for the very first render before the ref is wired up.
+      setTimeout(commit, 300);
+    }
   }
 
   // Programmatic navigation (keyboard arrows, deep-link, etc.). One-step
@@ -1761,6 +1786,7 @@ function ForYouFeed() {
         }}
       >
         <div
+          ref={wrapperRef}
           style={{
             position: "absolute", inset: 0,
             // Pure-percent transform. dragOffset is stored as %-of-cardHeight
@@ -1951,6 +1977,28 @@ export function ForYouPage() {
   // we let the page flow naturally so the document scroll moves them — that's
   // what allows the tab strip's `position: sticky` to actually stick.
   const isSwipe = tab === "discover";
+
+  // While the Discover sub-tab is active, hide the Layout header and zero
+  // out the page-content's padding-bottom (both come from CSS rules keyed
+  // on this body class). Reasons:
+  //   - The Layout header was still rendering in document flow underneath
+  //     the position:fixed swipe page; on devices where z-index + stacking
+  //     context didn't behave as expected, the user could see a "Contour
+  //     banner" line above the swipe content.
+  //   - The page-content's padding-bottom (60px + safe-area) was making
+  //     the document taller than the viewport even though the swipe page
+  //     itself was fixed-position. That residual overflow gave iOS room
+  //     to rubber-band-scroll the document and expose page-bg.
+  // Removing both via CSS class is structurally cleaner than fighting
+  // z-index and layout math.
+  useEffect(() => {
+    if (isSwipe) {
+      document.body.classList.add("foryou-swipe-mode");
+    } else {
+      document.body.classList.remove("foryou-swipe-mode");
+    }
+    return () => document.body.classList.remove("foryou-swipe-mode");
+  }, [isSwipe]);
 
   return (
     <div style={{
