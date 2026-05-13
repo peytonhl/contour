@@ -79,6 +79,14 @@ async def sweep_once(
             logger.warning(
                 "sweeper: spotify fetch failed for %s — %s", row.spotify_id, exc
             )
+            # Mark the row as failed with current timestamp so this same
+            # broken ID isn't re-picked every sweep cycle. Without this,
+            # any row whose Spotify ID is permanently 404 (delisted album,
+            # wrong ID stored, regional block) sits at the top of the
+            # priority queue forever and burns the entire batch budget on
+            # the same handful of rows. Failed rows get retried after
+            # FAILED_RETRY_HOURS, so transient Spotify hiccups self-heal.
+            await _mark_failed(row.spotify_id)
             continue
 
         try:
@@ -92,6 +100,20 @@ async def sweep_once(
         await asyncio.sleep(PACING_SEC)
 
     return processed
+
+
+async def _mark_failed(spotify_id: str) -> None:
+    """Stamp a row as failed with the current timestamp. Used by the sweeper
+    when an album can't even be fetched from Spotify (404 / persistent error)
+    so the same broken ID doesn't dominate every batch."""
+    from database import AsyncSessionLocal
+    from services import album_cache as cache
+
+    try:
+        async with AsyncSessionLocal() as db:
+            await cache.save_kworb_streams(db, spotify_id, None)
+    except Exception as exc:
+        logger.warning("sweeper: failed to mark %s as failed — %s", spotify_id, exc)
 
 
 async def run_forever() -> None:

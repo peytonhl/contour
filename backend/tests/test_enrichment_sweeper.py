@@ -210,9 +210,11 @@ async def test_sweeper_no_work_returns_zero(shared_engine_and_session, patch_ext
 
 
 @pytest.mark.asyncio
-async def test_sweeper_continues_when_one_row_fails(shared_engine_and_session, monkeypatch):
-    """If Spotify fetch fails for one row, the sweeper should log and move
-    on, not abort the whole batch."""
+async def test_sweeper_marks_spotify_failure_as_failed(shared_engine_and_session, monkeypatch):
+    """If Spotify fetch fails for a row, the sweeper should log AND mark the
+    row as failed — otherwise the same broken ID sits at the top of the
+    priority queue and burns the batch budget on it every cycle (this was
+    the actual bug observed in production after the first A+B deploy)."""
     _, SessionLocal = shared_engine_and_session
 
     async with SessionLocal() as s:
@@ -246,7 +248,7 @@ async def test_sweeper_continues_when_one_row_fails(shared_engine_and_session, m
 
     from services import enrichment_sweeper
     processed = await enrichment_sweeper.sweep_once()
-    assert processed == 1  # alb-ok succeeded; alb-broken skipped
+    assert processed == 1  # alb-ok succeeded; alb-broken was marked failed
 
     async with SessionLocal() as s:
         ok_row = (await s.execute(
@@ -256,5 +258,7 @@ async def test_sweeper_continues_when_one_row_fails(shared_engine_and_session, m
             select(AlbumCache).where(AlbumCache.spotify_id == "alb-broken")
         )).scalar_one()
         assert ok_row.enrichment_status == "done"
-        # broken row was skipped — still pending, untouched
-        assert broken_row.enrichment_status == "pending"
+        # Critical: broken row is no longer pending — it's failed with a
+        # fresh timestamp, so it won't be re-picked for FAILED_RETRY_HOURS.
+        assert broken_row.enrichment_status == "failed"
+        assert broken_row.enriched_at is not None
