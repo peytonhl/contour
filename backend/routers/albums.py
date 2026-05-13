@@ -406,13 +406,13 @@ async def get_streams(
     row = await cache.upsert_album(db, meta)
 
     if cache.needs_enrichment(row):
-        # Fire-and-forget via asyncio.create_task — matches the working
-        # pattern in services/spotify.py:_persist_album_to_db. FastAPI's
-        # BackgroundTasks proved unreliable in the Railway environment
-        # (tasks were registered but never dispatched), leaving rows stuck
-        # in "pending" forever. asyncio.create_task schedules immediately
-        # on the running event loop, before the response is finalized.
-        asyncio.create_task(_enrich_album(album_id, meta))
+        # Fire-and-forget via spawn_enrichment (asyncio.create_task + a
+        # module-level strong-ref set to prevent GC mid-flight). FastAPI's
+        # BackgroundTasks proved unreliable here, and bare
+        # asyncio.create_task without a held reference can be silently
+        # garbage-collected before completion (asyncio docs note). See
+        # _inflight_enrichments for the implementation.
+        spawn_enrichment(album_id, meta)
 
     return StreamStatus(
         spotify_id=album_id,
@@ -438,7 +438,7 @@ async def bulk_streams(
             meta = await spotify.get_album(album_id)
             row = await cache.upsert_album(db, meta)
             if cache.needs_enrichment(row):
-                asyncio.create_task(_enrich_album(album_id, meta))
+                spawn_enrichment(album_id, meta)
             results.append(StreamStatus(
                 spotify_id=album_id,
                 streams=cache.streams_for_album(row),
@@ -472,7 +472,7 @@ async def get_album_trajectory(
 
     row = await cache.upsert_album(db, meta)
     if cache.needs_enrichment(row):
-        asyncio.create_task(_enrich_album(album_id, meta))
+        spawn_enrichment(album_id, meta)
 
     streams = cache.streams_for_album(row)
 
@@ -532,6 +532,26 @@ async def get_album_tracklist(album_id: str):
 # Background enrichment task
 # ---------------------------------------------------------------------------
 
+# Strong reference set for in-flight enrichment tasks.
+# Python's asyncio docs warn that fire-and-forget tasks created via
+# asyncio.create_task can be garbage-collected mid-flight if no strong
+# reference is held — the event loop only keeps weak references. Holding
+# tasks in this module-level set and discarding them via a done callback
+# keeps them alive until completion. This is the documented best practice
+# and a likely contributor to inline enrichment dropping silently before.
+_inflight_enrichments: set[asyncio.Task] = set()
+
+
+def spawn_enrichment(album_id: str, meta: dict) -> asyncio.Task:
+    """Schedule background enrichment for an album. Returns the task so
+    callers can ignore it (fire-and-forget) — the task is GC-safe via the
+    module-level reference set."""
+    task = asyncio.create_task(_enrich_album(album_id, meta))
+    _inflight_enrichments.add(task)
+    task.add_done_callback(_inflight_enrichments.discard)
+    return task
+
+
 async def _enrich_album(album_id: str, meta: dict) -> None:
     """
     Fetch play count for an album, then cache result.
@@ -552,6 +572,11 @@ async def _enrich_album(album_id: str, meta: dict) -> None:
          the first. The first artist isn't always the one with the primary
          Kworb page entry — e.g. a collab where the second-listed artist has
          the better Kworb data.
+
+    Every invocation emits START + DONE log lines bracketing the work so
+    production logs can be greppped to confirm a row was processed at all
+    (the absence of either line points to GC / cancellation; the absence of
+    DONE alone points to an exception in the body).
     """
     import logging as _logging
     from database import AsyncSessionLocal
@@ -562,6 +587,11 @@ async def _enrich_album(album_id: str, meta: dict) -> None:
     name = meta.get("name", "")
     streams: int | None = None
     source: str = "none"
+
+    _log.info(
+        "enrichment: START %s name=%r artists=%s artist_ids=%s",
+        album_id, name, artists, artist_ids,
+    )
 
     # 1. Kworb — try each credited artist in order until one returns a hit.
     #    For collab / feature-heavy albums (think Donda with its many credited
@@ -603,3 +633,10 @@ async def _enrich_album(album_id: str, meta: dict) -> None:
             await cache.save_kworb_streams(db, album_id, streams)
     except Exception as exc:
         _log.warning("enrichment: DB write failed for %s — %s", album_id, exc)
+        _log.info("enrichment: DONE %s status=error source=%s streams=%s", album_id, source, streams)
+        return
+
+    _log.info(
+        "enrichment: DONE %s status=%s source=%s streams=%s",
+        album_id, "done" if streams is not None else "failed", source, streams,
+    )

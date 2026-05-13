@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from services import spotify
 from services import album_cache as cache
-from routers.albums import _enrich_album
+from routers.albums import _enrich_album, spawn_enrichment
 from services.normalization import parse_release_date
 from data.spotify_mau import get_mau_for_date
 
@@ -151,7 +151,7 @@ async def get_artist_albums(
     for album in albums:
         row = await cache.upsert_album(db, album)
         if cache.needs_enrichment(row):
-            asyncio.create_task(_enrich_album(album["id"], album))
+            spawn_enrichment(album["id"], album)
 
         streams = cache.streams_for_album(row)
         era_adjusted = None

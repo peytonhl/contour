@@ -189,6 +189,122 @@ async def test_enrich_album_signature_does_not_accept_db(shared_engine_and_sessi
 
 
 @pytest.mark.asyncio
+async def test_spawn_enrichment_holds_strong_reference(shared_engine_and_session, monkeypatch):
+    """spawn_enrichment must keep the task in a strong-reference set so the
+    asyncio event loop doesn't GC it mid-flight. This is the documented
+    asyncio gotcha — bare create_task without a held reference can vanish
+    silently. The set should contain the task while it's running and be
+    emptied when it completes."""
+    _, SessionLocal = shared_engine_and_session
+
+    async with SessionLocal() as s:
+        s.add(AlbumCache(
+            spotify_id="ref-test",
+            name="Test",
+            artist="Artist",
+            enrichment_status="pending",
+        ))
+        await s.commit()
+
+    async def slow_kworb(artist_id, name):
+        # Yield control so we can inspect _inflight_enrichments mid-flight.
+        import asyncio
+        await asyncio.sleep(0.05)
+        return 42
+
+    monkeypatch.setattr("services.kworb.get_album_streams", slow_kworb)
+
+    from routers.albums import spawn_enrichment, _inflight_enrichments
+
+    assert _inflight_enrichments == set()
+
+    task = spawn_enrichment("ref-test", {
+        "id": "ref-test",
+        "name": "Test",
+        "artists": ["Artist"],
+        "artist_ids": ["aid"],
+    })
+
+    # While the task is running, it must be tracked.
+    assert task in _inflight_enrichments
+
+    await task
+
+    # After completion, the done callback discards it.
+    assert task not in _inflight_enrichments
+    assert _inflight_enrichments == set()
+
+
+@pytest.mark.asyncio
+async def test_enrich_album_logs_start_and_done(shared_engine_and_session, monkeypatch):
+    """Every _enrich_album invocation must emit a START and DONE log line
+    bracketing the work, so production logs can be grepped to confirm a
+    row was processed at all. Missing START → task was never invoked.
+    Missing DONE → exception in the body.
+
+    Patches the logger directly rather than relying on caplog, because
+    main.py's `logging.basicConfig(..., force=True)` runs at import time
+    and interacts badly with caplog handler injection when other tests
+    run first (passes in isolation, fails in the suite).
+    """
+    _, SessionLocal = shared_engine_and_session
+
+    async with SessionLocal() as s:
+        s.add(AlbumCache(
+            spotify_id="log-test",
+            name="Test Log",
+            artist="Artist",
+            enrichment_status="pending",
+        ))
+        await s.commit()
+
+    async def kworb_hit(artist_id, name):
+        return 12345
+
+    monkeypatch.setattr("services.kworb.get_album_streams", kworb_hit)
+
+    # Capture log calls by patching the module-level logger.info method.
+    import routers.albums as albums_mod
+    info_calls: list[str] = []
+
+    def capture(msg, *args, **kwargs):
+        # Match real logger.info: render the format string with args.
+        try:
+            info_calls.append(msg % args if args else msg)
+        except Exception:
+            info_calls.append(str(msg))
+
+    # The function does `_log = _logging.getLogger(__name__)` internally,
+    # so we patch logging.getLogger to return a stub for that name.
+    import logging as _logging
+    real_get_logger = _logging.getLogger
+
+    class StubLogger:
+        info = staticmethod(capture)
+        def warning(self, *a, **kw): pass
+        def debug(self, *a, **kw): pass
+        def error(self, *a, **kw): pass
+
+    def get_logger_patched(name=None):
+        if name == "routers.albums":
+            return StubLogger()
+        return real_get_logger(name)
+
+    monkeypatch.setattr(_logging, "getLogger", get_logger_patched)
+
+    from routers.albums import _enrich_album
+    await _enrich_album("log-test", {
+        "id": "log-test",
+        "name": "Test Log",
+        "artists": ["Artist"],
+        "artist_ids": ["aid"],
+    })
+
+    assert any("enrichment: START log-test" in m for m in info_calls), info_calls
+    assert any("enrichment: DONE log-test" in m and "status=done" in m for m in info_calls), info_calls
+
+
+@pytest.mark.asyncio
 async def test_enrich_album_tries_each_credited_artist(shared_engine_and_session, monkeypatch):
     """For multi-artist albums, _enrich_album should try up to 3 credited
     artists for Kworb before falling back. The first hit wins."""

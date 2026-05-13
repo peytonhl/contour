@@ -1,17 +1,25 @@
 """Periodic safety net for album stream enrichment.
 
-Defense-in-depth behind the inline asyncio.create_task(_enrich_album(...))
-that fires on user views. The inline path covers the common case; this
-sweeper guarantees nothing gets stuck if a task is cancelled at shutdown,
-an external (Kworb/Last.fm) is briefly unreachable, or the inline call
-otherwise drops on the floor.
+Defense-in-depth behind the inline spawn_enrichment() that fires on user
+views. The inline path covers the common case; this sweeper guarantees
+nothing gets stuck if a task is cancelled at shutdown, an external is
+briefly unreachable, or the inline call otherwise drops on the floor.
 
-Steady-state behavior: when no rows are stuck, sweep_once() returns 0 and
-does nothing. Zero pressure on Spotify/Kworb. Only kicks in to repair.
+Importantly: the sweeper builds enrichment meta DIRECTLY FROM THE
+AlbumCache ROW — it does not call spotify.get_album. Spotify's
+/v1/albums/{id} endpoint has been intermittently 404'ing for our
+credential (folklore, UTOPIA, and other valid albums hit this), so
+making the sweeper depend on it means real albums sit pending forever.
+Resolving artist names through the hardcoded _ARTIST_IDS map gets us
+Kworb access for the popular long tail; the unknown rest falls through
+to Last.fm with just the artist name.
 
-Tunables are module-level so a test can monkeypatch them — the run_forever
-loop is the one bit that's not directly testable (infinite loop), so we
-keep it as thin as possible and unit-test sweep_once() instead.
+Steady-state behavior: when no rows are stuck, sweep_once() returns 0
+and does nothing. Zero pressure on Kworb / Last.fm. Only kicks in to
+repair.
+
+Tunables are module-level so a test can monkeypatch them — run_forever
+is a thin loop around sweep_once; we unit-test sweep_once instead.
 """
 from __future__ import annotations
 
@@ -30,18 +38,44 @@ FAILED_RETRY_HOURS = 6   # don't retry failed rows more often than this
 PACING_SEC = 0.5         # gentle delay between rows within a batch
 
 
+def _row_to_meta(row, artist_ids_map: dict[str, str]) -> dict:
+    """Synthesize an enrichment meta dict from an AlbumCache row + the
+    hardcoded artist-name → Spotify-ID map. Mirrors the shape of what
+    spotify.get_album would have returned, minus fields we don't need.
+
+    Empty artist_ids is fine — _enrich_album just skips Kworb and falls
+    through to Last.fm using artist names.
+    """
+    artist_names = (
+        [a.strip() for a in row.artist.split(",") if a.strip()]
+        if row.artist
+        else []
+    )
+    artist_ids: list[str] = []
+    for name in artist_names:
+        aid = artist_ids_map.get(name.lower())
+        if aid:
+            artist_ids.append(aid)
+
+    return {
+        "id": row.spotify_id,
+        "name": row.name,
+        "artists": artist_names,
+        "artist_ids": artist_ids,
+    }
+
+
 async def sweep_once(
     *,
     batch_size: int = BATCH_SIZE,
     failed_retry_hours: int = FAILED_RETRY_HOURS,
 ) -> int:
-    """Run one sweep cycle. Returns the number of rows processed."""
+    """Run one sweep cycle. Returns the number of rows enriched."""
     # Local imports keep this module importable from anywhere without
     # pulling the FastAPI app into the import graph eagerly.
     from database import AsyncSessionLocal
     from models import AlbumCache
-    from routers.albums import _enrich_album
-    from services import spotify as spotify_svc
+    from routers.albums import _ARTIST_IDS, _enrich_album
 
     cutoff = datetime.utcnow() - timedelta(hours=failed_retry_hours)
 
@@ -70,25 +104,7 @@ async def sweep_once(
 
     processed = 0
     for row in rows:
-        # Fetch meta from Spotify (Redis-cached 30d in normal operation, so
-        # this is almost always free). We need fresh artist_ids — the
-        # AlbumCache row doesn't store them.
-        try:
-            meta = await spotify_svc.get_album(row.spotify_id)
-        except Exception as exc:
-            logger.warning(
-                "sweeper: spotify fetch failed for %s — %s", row.spotify_id, exc
-            )
-            # Mark the row as failed with current timestamp so this same
-            # broken ID isn't re-picked every sweep cycle. Without this,
-            # any row whose Spotify ID is permanently 404 (delisted album,
-            # wrong ID stored, regional block) sits at the top of the
-            # priority queue forever and burns the entire batch budget on
-            # the same handful of rows. Failed rows get retried after
-            # FAILED_RETRY_HOURS, so transient Spotify hiccups self-heal.
-            await _mark_failed(row.spotify_id)
-            continue
-
+        meta = _row_to_meta(row, _ARTIST_IDS)
         try:
             await _enrich_album(row.spotify_id, meta)
             processed += 1
@@ -96,24 +112,9 @@ async def sweep_once(
             logger.warning(
                 "sweeper: _enrich_album crashed for %s — %s", row.spotify_id, exc
             )
-
         await asyncio.sleep(PACING_SEC)
 
     return processed
-
-
-async def _mark_failed(spotify_id: str) -> None:
-    """Stamp a row as failed with the current timestamp. Used by the sweeper
-    when an album can't even be fetched from Spotify (404 / persistent error)
-    so the same broken ID doesn't dominate every batch."""
-    from database import AsyncSessionLocal
-    from services import album_cache as cache
-
-    try:
-        async with AsyncSessionLocal() as db:
-            await cache.save_kworb_streams(db, spotify_id, None)
-    except Exception as exc:
-        logger.warning("sweeper: failed to mark %s as failed — %s", spotify_id, exc)
 
 
 async def run_forever() -> None:
