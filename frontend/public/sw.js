@@ -22,7 +22,7 @@
  * stub on next launch and self-uninstall.
  */
 
-const CACHE_VERSION = 'contour-v1';
+const CACHE_VERSION = 'contour-v2';
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
