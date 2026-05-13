@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ReviewSection } from "../components/ReviewSection.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
+import { SpotifyIcon } from "../components/PlatformIcons.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
@@ -275,8 +276,8 @@ export function ArtistPage() {
             {artist.external_url && (
               <a href={artist.external_url} target="_blank" rel="noreferrer"
                 onClick={() => analytics.spotifyLinkClicked("artist")}
-                style={{ display: "inline-flex", alignItems: "center", padding: "8px 18px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13 }}>
-                Open in Spotify ↗
+                style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 18px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13, textDecoration: "none" }}>
+                <SpotifyIcon size={14} /> Open in Spotify
               </a>
             )}
           </div>

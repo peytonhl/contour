@@ -7,6 +7,7 @@ import { EraAdjustedStat } from "../components/EraAdjustedStat.jsx";
 import { PreStreamingBanner } from "../components/PreStreamingBanner.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
 import { WantToListenButton } from "../components/WantToListenButton.jsx";
+import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
@@ -228,23 +229,23 @@ export function AlbumPage() {
                 {album.external_url && (
                   <a href={album.external_url} target="_blank" rel="noreferrer"
                     onClick={() => analytics.spotifyLinkClicked("album")}
-                    style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-                    Spotify ↗
+                    style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <SpotifyIcon /> Spotify
                   </a>
                 )}
                 {appleMusic?.url && (
                   <a href={appleMusic.url} target="_blank" rel="noreferrer"
                     onClick={() => analytics.appleMusicLinkClicked("album")}
-                    style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-                    Apple Music ↗
+                    style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <AppleMusicIcon /> Apple Music
                   </a>
                 )}
                 <a
                   href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${album.name} ${album.artists?.[0] ?? ""}`)}`}
                   target="_blank" rel="noreferrer"
-                  style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+                  style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}
                 >
-                  YouTube ↗
+                  <YouTubeIcon /> YouTube
                 </a>
               </div>
             )}

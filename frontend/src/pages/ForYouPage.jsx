@@ -13,6 +13,7 @@ function tierSourceOf(track) {
 
 import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
 import { FollowingTab } from "../components/FollowingTab.jsx";
+import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 
 const ACCENT_A = "#a78bfa";
 const ACCENT_B = "#34d399";
@@ -526,7 +527,9 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
             <ShareIcon />
             {copied ? "Copied!" : "Share"}
           </button>
-          {/* Platform links — works regardless of which service the user has */}
+          {/* Platform links — icon-only on this surface; horizontal room is tight
+              and the album art behind the pills already establishes "open this track".
+              Title attrs cover hover + screen-reader labelling. */}
           <div style={{ display: "flex", gap: 6 }}>
             {track.external_url && (
               <a
@@ -535,14 +538,16 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                 rel="noreferrer"
                 onClick={() => analytics.spotifyLinkClicked("track")}
                 title="Open in Spotify"
+                aria-label="Open in Spotify"
                 style={{
-                  fontSize: 11, color: "rgba(255,255,255,0.6)",
-                  background: "rgba(0,0,0,0.4)", borderRadius: 20,
-                  padding: "4px 10px", textDecoration: "none",
+                  color: "rgba(255,255,255,0.7)",
+                  background: "rgba(0,0,0,0.45)", borderRadius: 999,
+                  width: 28, height: 28, textDecoration: "none",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
                   backdropFilter: "blur(4px)",
                 }}
               >
-                Spotify ↗
+                <SpotifyIcon size={16} />
               </a>
             )}
             {appleMusicUrl && (
@@ -552,14 +557,16 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                 rel="noreferrer"
                 onClick={() => analytics.appleMusicLinkClicked("track")}
                 title="Open in Apple Music"
+                aria-label="Open in Apple Music"
                 style={{
-                  fontSize: 11, color: "rgba(255,255,255,0.6)",
-                  background: "rgba(0,0,0,0.4)", borderRadius: 20,
-                  padding: "4px 10px", textDecoration: "none",
+                  color: "rgba(255,255,255,0.7)",
+                  background: "rgba(0,0,0,0.45)", borderRadius: 999,
+                  width: 28, height: 28, textDecoration: "none",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
                   backdropFilter: "blur(4px)",
                 }}
               >
-                Apple Music ↗
+                <AppleMusicIcon size={16} />
               </a>
             )}
             <a
@@ -567,14 +574,16 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
               target="_blank"
               rel="noreferrer"
               title="Search on YouTube"
+              aria-label="Search on YouTube"
               style={{
-                fontSize: 11, color: "rgba(255,255,255,0.6)",
-                background: "rgba(0,0,0,0.4)", borderRadius: 20,
-                padding: "4px 10px", textDecoration: "none",
+                color: "rgba(255,255,255,0.7)",
+                background: "rgba(0,0,0,0.45)", borderRadius: 999,
+                width: 28, height: 28, textDecoration: "none",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
                 backdropFilter: "blur(4px)",
               }}
             >
-              YT ↗
+              <YouTubeIcon size={14} />
             </a>
           </div>
         </div>
