@@ -340,6 +340,19 @@ function ShareIcon() {
   );
 }
 
+// Row used inside the overflow action sheet. Background-only hover so taps
+// feel responsive without competing with the dropdown's own glass surface.
+const actionRowStyle = {
+  display: "flex", alignItems: "center", gap: "var(--space-3)",
+  padding: "10px 14px",
+  fontSize: "var(--text-sm)", color: "rgba(255,255,255,0.85)",
+  background: "transparent", border: "none",
+  borderRadius: "var(--radius)",
+  cursor: "pointer", textDecoration: "none",
+  textAlign: "left",
+  transition: "background var(--motion-fast) var(--ease)",
+};
+
 // ── Individual discover card ──────────────────────────────────────────────────
 function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityClick, userRating, cardIndex, totalCards, onNext, onPrev }) {
   const audioRef = useRef(null);
@@ -394,6 +407,25 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
   //   "failed"  — backend rejected / network error
   const [ratingStatus, setRatingStatus] = useState(userRating != null ? "saved" : "idle");
   const [copied, setCopied] = useState(false);
+  // Single overflow menu replaces the previous 4-button chrome row. Closed by
+  // default — keeps the cover art uncluttered. Tap-outside to dismiss.
+  const [showActions, setShowActions] = useState(false);
+  const actionsRef = useRef(null);
+  useEffect(() => {
+    if (!showActions) return;
+    function onDocClick(e) {
+      if (actionsRef.current && !actionsRef.current.contains(e.target)) setShowActions(false);
+    }
+    function onEsc(e) { if (e.key === "Escape") setShowActions(false); }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("touchstart", onDocClick);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("touchstart", onDocClick);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [showActions]);
   const { user } = useAuth();
 
   // Stop audio when card leaves view
@@ -480,15 +512,21 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
       position: "relative", overflow: "hidden",
       background: "#0a0a0a",
     }}>
-      {/* Album art — top portion (44% leaves room for all controls below) */}
-      <div style={{ flex: "0 0 44%", position: "relative", overflow: "hidden" }}>
+      {/* Album art — top portion. Bumped from 44% to 58% so the art dominates
+          the card the way TikTok / Spotify Discover cards do. Cover image
+          sized up to 94% of the section, drop-shadow softened because the
+          blurred backdrop is now doing the depth work. A bottom-edge
+          vignette fades the art into the metadata strip below so the seam
+          between the two regions disappears. */}
+      <div style={{ flex: "0 0 58%", position: "relative", overflow: "hidden" }}>
         {effectiveImage
           ? <>
               <div style={{
                 position: "absolute", inset: "-20px",
                 backgroundImage: `url(${effectiveImage})`,
                 backgroundSize: "cover", backgroundPosition: "center",
-                filter: "blur(20px) brightness(0.4)",
+                filter: "blur(40px) saturate(1.5) brightness(0.45)",
+                transform: "scale(1.1)",
               }} />
               <img
                 src={effectiveImage}
@@ -496,105 +534,115 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                 style={{
                   position: "absolute", top: "50%", left: "50%",
                   transform: "translate(-50%, -50%)",
-                  height: "86%", width: "auto", maxWidth: "86%",
-                  borderRadius: 12,
-                  boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
+                  height: "94%", width: "auto", maxWidth: "94%",
+                  borderRadius: "var(--radius-lg)",
+                  boxShadow: "var(--shadow-hero)",
                   objectFit: "cover",
                 }}
               />
+              {/* Bottom vignette — fades the art into the metadata strip
+                  so the section seam disappears. */}
+              <div aria-hidden style={{
+                position: "absolute", left: 0, right: 0, bottom: 0,
+                height: 80,
+                background: "linear-gradient(to bottom, transparent 0%, #0a0a0a 100%)",
+                pointerEvents: "none",
+              }} />
             </>
           : <div style={{ width: "100%", height: "100%", background: "var(--surface2)" }} />
         }
 
-        {/* Top-right action row: Share + Spotify */}
-        <div style={{
-          position: "absolute", top: 14, right: 14,
-          display: "flex", gap: 8, alignItems: "center",
+        {/* Top-right: single overflow button. Tap reveals an action sheet with
+            Share + platform deep-links. Defaulting to one button instead of a
+            row of four keeps the cover art uncluttered — the primary action
+            on this surface is the rate gesture below, not these chrome links.
+            Position indicator was here too; it's been removed (TikTok / Reels
+            don't show one — swipe just flows). */}
+        <div ref={actionsRef} style={{
+          position: "absolute", top: 14, right: 14, zIndex: 6,
         }}>
           <button
-            onClick={handleShare}
-            title="Share this track"
+            onClick={() => setShowActions(o => !o)}
+            title="More actions"
+            aria-label="More actions"
+            aria-expanded={showActions}
+            className="glass"
             style={{
-              fontSize: 11, color: copied ? ACCENT_B : "rgba(255,255,255,0.7)",
-              background: "rgba(0,0,0,0.45)", borderRadius: 20,
-              padding: "4px 10px", border: "none", cursor: "pointer",
-              backdropFilter: "blur(4px)",
-              display: "flex", alignItems: "center", gap: 5,
-              fontWeight: copied ? 700 : 400,
-              transition: "color 0.2s",
+              width: 32, height: 32, borderRadius: "50%",
+              border: "none", cursor: "pointer",
+              color: showActions ? "var(--accent)" : "rgba(255,255,255,0.85)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 0,
             }}
           >
-            <ShareIcon />
-            {copied ? "Copied!" : "Share"}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="5" cy="12" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="19" cy="12" r="2" />
+            </svg>
           </button>
-          {/* Platform links — icon-only on this surface; horizontal room is tight
-              and the album art behind the pills already establishes "open this track".
-              Title attrs cover hover + screen-reader labelling. */}
-          <div style={{ display: "flex", gap: 6 }}>
-            {track.external_url && (
-              <a
-                href={track.external_url}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => analytics.spotifyLinkClicked("track")}
-                title="Open in Spotify"
-                aria-label="Open in Spotify"
-                style={{
-                  color: "rgba(255,255,255,0.7)",
-                  background: "rgba(0,0,0,0.45)", borderRadius: 999,
-                  width: 28, height: 28, textDecoration: "none",
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  backdropFilter: "blur(4px)",
-                }}
-              >
-                <SpotifyIcon size={16} />
-              </a>
-            )}
-            {appleMusicUrl && (
-              <a
-                href={appleMusicUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => analytics.appleMusicLinkClicked("track")}
-                title="Open in Apple Music"
-                aria-label="Open in Apple Music"
-                style={{
-                  color: "rgba(255,255,255,0.7)",
-                  background: "rgba(0,0,0,0.45)", borderRadius: 999,
-                  width: 28, height: 28, textDecoration: "none",
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  backdropFilter: "blur(4px)",
-                }}
-              >
-                <AppleMusicIcon size={16} />
-              </a>
-            )}
-            <a
-              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.name} ${track.artists?.[0] ?? ""}`)}`}
-              target="_blank"
-              rel="noreferrer"
-              title="Search on YouTube"
-              aria-label="Search on YouTube"
+
+          {showActions && (
+            <div
+              role="menu"
+              className="glass"
               style={{
-                color: "rgba(255,255,255,0.7)",
-                background: "rgba(0,0,0,0.45)", borderRadius: 999,
-                width: 28, height: 28, textDecoration: "none",
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                backdropFilter: "blur(4px)",
+                position: "absolute", top: "calc(100% + 8px)", right: 0,
+                minWidth: 200,
+                borderRadius: "var(--radius-lg)",
+                padding: "var(--space-1)",
+                boxShadow: "var(--shadow-2)",
+                display: "flex", flexDirection: "column",
+                animation: "page-in 140ms ease both",
               }}
             >
-              <YouTubeIcon size={14} />
-            </a>
-          </div>
-        </div>
-
-        {/* Card position indicator — sits below the floating gear (top:8, 30px tall). */}
-        <div style={{
-          position: "absolute", top: 48, left: 14,
-          fontSize: 10, color: "rgba(255,255,255,0.35)",
-          fontWeight: 600, letterSpacing: "0.05em",
-        }}>
-          {cardIndex + 1} / {totalCards}
+              <button
+                onClick={() => { handleShare(); setShowActions(false); }}
+                style={actionRowStyle}
+                role="menuitem"
+              >
+                <ShareIcon />
+                <span>{copied ? "Copied!" : "Share"}</span>
+              </button>
+              {track.external_url && (
+                <a
+                  href={track.external_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => { analytics.spotifyLinkClicked("track"); setShowActions(false); }}
+                  style={actionRowStyle}
+                  role="menuitem"
+                >
+                  <SpotifyIcon size={16} />
+                  <span>Open in Spotify</span>
+                </a>
+              )}
+              {appleMusicUrl && (
+                <a
+                  href={appleMusicUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => { analytics.appleMusicLinkClicked("track"); setShowActions(false); }}
+                  style={actionRowStyle}
+                  role="menuitem"
+                >
+                  <AppleMusicIcon size={16} />
+                  <span>Open in Apple Music</span>
+                </a>
+              )}
+              <a
+                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.name} ${track.artists?.[0] ?? ""}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setShowActions(false)}
+                style={actionRowStyle}
+                role="menuitem"
+              >
+                <YouTubeIcon size={16} />
+                <span>Search on YouTube</span>
+              </a>
+            </div>
+          )}
         </div>
       </div>
 
@@ -715,15 +763,26 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
             </div>
           </div>
         ) : (
-          <iframe
-            src={`https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0`}
-            width="100%"
-            height="70"
-            style={{ borderRadius: 10, border: "none", display: "block" }}
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            loading="lazy"
-            title={`${track.name} preview`}
-          />
+          // Spotify's embed renders its own dark-themed player UI we can't restyle
+          // (cross-origin). Wrapping it in a rounded container with our tokens at
+          // least snaps the corners to the rest of the card's radius vocabulary,
+          // and gives the widget a tiny breathing margin so it doesn't read as
+          // crammed against the rating row below.
+          <div style={{
+            borderRadius: "var(--radius)",
+            overflow: "hidden",
+            background: "rgba(255,255,255,0.04)",
+          }}>
+            <iframe
+              src={`https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0`}
+              width="100%"
+              height="70"
+              style={{ border: "none", display: "block" }}
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+              title={`${track.name} preview`}
+            />
+          </div>
         )}
 
         {/* Rating */}
@@ -1395,10 +1454,11 @@ function ForYouFeed() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", position: "relative" }}>
-      {/* Floating settings gear. Lives top-LEFT: the top-right of every card
-          is owned by the Share button + three platform-link icons, and the
-          gear used to overlap the YouTube pill on first load. The position
-          indicator (cardIndex/totalCards) shifts down to make room. */}
+      {/* Floating settings gear. Lives top-LEFT to keep the card's top-right
+          clear for the per-card "···" overflow menu (Share / Open in Spotify
+          / Apple Music / YouTube). The card-position indicator was removed
+          when we consolidated the chrome — feed UIs like TikTok / Reels
+          don't show one either. */}
       <button
         onClick={() => setSettingsOpen(o => !o)}
         title="Feed settings"
