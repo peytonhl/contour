@@ -512,14 +512,16 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
       position: "relative", overflow: "hidden",
       background: "#0a0a0a",
     }}>
-      {/* Album art — top portion. Section is flex-centered so the cover img
-          renders at integer pixel positions (the previous transform-translate
-          centering was causing sub-pixel anti-alias blur on iOS). Backdrop
-          and bottom vignette stay absolute and don't participate in flex.
-          decoding="async" + fetchpriority="high" hint the browser to commit
-          GPU resources to this image early — it's the page's focal element. */}
+      {/* Album art — top portion. Bumped to 65% of the viewport so the cover
+          dominates the page and reads as the visual center, rather than
+          sitting in the top half with empty space below. Section is flex-
+          centered so the cover img renders at integer pixel positions
+          (transform-translate centering was causing sub-pixel anti-alias
+          blur on iOS). Backdrop and bottom vignette stay absolute and don't
+          participate in flex. decoding="async" + fetchpriority="high" hint
+          the browser to commit GPU resources to this image early. */}
       <div style={{
-        flex: "0 0 58%", position: "relative", overflow: "hidden",
+        flex: "0 0 65%", position: "relative", overflow: "hidden",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>
         {effectiveImage
@@ -543,6 +545,11 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                   boxShadow: "var(--shadow-hero)",
                   objectFit: "cover",
                   position: "relative", zIndex: 1,
+                  // Sharper upscale on Safari. Spotify's source images cap at
+                  // 640×640 and on high-DPR phones (3x) the cover renders at
+                  // ~1200px target, which means the browser is upsampling.
+                  // optimize-contrast nudges Safari toward a sharper filter.
+                  imageRendering: "-webkit-optimize-contrast",
                 }}
               />
               {/* Bottom vignette — fades the art into the metadata strip
@@ -882,8 +889,16 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
           </div>
         )}
 
-        {/* Not interested */}
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 2 }}>
+        {/* Bottom-pinned group: "Not interested" + swipe hint. marginTop:
+            auto pushes the whole group to the bottom of the metadata strip,
+            so on tall phones the dead space sits BETWEEN the rating row and
+            this group rather than below it — and the swipe hint visually
+            anchors to the bottom-nav above it. */}
+        <div style={{
+          marginTop: "auto",
+          display: "flex", flexDirection: "column", gap: 6,
+          alignItems: "center",
+        }}>
           <button
             onClick={() => onDislike(track)}
             style={{
@@ -897,15 +912,15 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
           >
             Not interested in {track.artists?.[0]}
           </button>
-        </div>
 
-        {/* Swipe hint — shown on first card only */}
-        {cardIndex === 0 && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 4, opacity: 0.28 }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-            <span style={{ fontSize: 11, color: "#fff", letterSpacing: "0.03em" }}>Swipe up for next</span>
-          </div>
-        )}
+          {/* Swipe hint — shown on first card only */}
+          {cardIndex === 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, opacity: 0.28 }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+              <span style={{ fontSize: 11, color: "#fff", letterSpacing: "0.03em" }}>Swipe up for next</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
