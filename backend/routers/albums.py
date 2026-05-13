@@ -388,6 +388,9 @@ async def get_editions(album_id: str):
 # Stream count — returns cached value + enrichment status
 # ---------------------------------------------------------------------------
 
+_INLINE_ENRICHMENT_TIMEOUT_SEC = 8.0
+
+
 @router.get("/{album_id}/streams", response_model=StreamStatus)
 async def get_streams(
     album_id: str,
@@ -395,8 +398,18 @@ async def get_streams(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Return cached stream count. If enrichment is pending or stale,
-    kicks off a background Kworb scrape.
+    Return cached stream count, enriching synchronously if needed.
+
+    Why synchronous: in this production environment, fire-and-forget
+    background tasks (FastAPI BackgroundTasks, bare asyncio.create_task,
+    and asyncio.create_task with a strong-ref set) all proved unreliable —
+    no log lines emit, rows stay pending forever. Awaiting with a tight
+    timeout makes the user-facing /streams endpoint deterministic at the
+    cost of ~3-5s extra latency on first view of an uncached album. All
+    subsequent views are instant from the row cache.
+
+    On timeout the row stays pending and the periodic sweeper will retry
+    on its next cycle, so the request never blocks past the cap.
     """
     try:
         meta = await spotify.get_album(album_id)
@@ -406,13 +419,22 @@ async def get_streams(
     row = await cache.upsert_album(db, meta)
 
     if cache.needs_enrichment(row):
-        # Fire-and-forget via spawn_enrichment (asyncio.create_task + a
-        # module-level strong-ref set to prevent GC mid-flight). FastAPI's
-        # BackgroundTasks proved unreliable here, and bare
-        # asyncio.create_task without a held reference can be silently
-        # garbage-collected before completion (asyncio docs note). See
-        # _inflight_enrichments for the implementation.
-        spawn_enrichment(album_id, meta)
+        try:
+            await asyncio.wait_for(
+                _enrich_album(album_id, meta),
+                timeout=_INLINE_ENRICHMENT_TIMEOUT_SEC,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "enrichment: inline timeout for %s after %.1fs — sweeper will retry",
+                album_id, _INLINE_ENRICHMENT_TIMEOUT_SEC,
+            )
+        except Exception as exc:
+            logger.warning("enrichment: inline crashed for %s — %s", album_id, exc)
+
+        # _enrich_album commits via its own session. Reload our session's
+        # view of the row so the response reflects the new state.
+        await db.refresh(row)
 
     return StreamStatus(
         spotify_id=album_id,

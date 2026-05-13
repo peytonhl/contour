@@ -31,8 +31,8 @@ from sqlalchemy import and_, or_, select
 
 logger = logging.getLogger(__name__)
 
-INITIAL_DELAY_SEC = 60   # let startup tasks settle before first sweep
-INTERVAL_SEC = 60        # sweep every minute
+INITIAL_DELAY_SEC = 10   # short — let migrations finish, then start working
+INTERVAL_SEC = 30        # sweep twice a minute to drain the backlog quickly
 BATCH_SIZE = 10          # max rows per sweep — keeps pressure bounded
 FAILED_RETRY_HOURS = 6   # don't retry failed rows more often than this
 PACING_SEC = 0.5         # gentle delay between rows within a batch
@@ -123,16 +123,19 @@ async def run_forever() -> None:
     Launch from app startup:
         asyncio.create_task(enrichment_sweeper.run_forever())
     """
+    # Log immediately on spawn so production confirms the task exists, then
+    # again when first sweep is about to run. Two distinct lines so we can
+    # tell "spawned but stuck on initial sleep" from "running but no work".
+    logger.info("enrichment sweeper: spawned (initial_delay=%ds)", INITIAL_DELAY_SEC)
     await asyncio.sleep(INITIAL_DELAY_SEC)
     logger.info(
-        "enrichment sweeper: starting (interval=%ds batch=%d)",
+        "enrichment sweeper: starting first cycle (interval=%ds batch=%d)",
         INTERVAL_SEC, BATCH_SIZE,
     )
     while True:
         try:
             count = await sweep_once()
-            if count > 0:
-                logger.info("enrichment sweeper: processed %d row(s)", count)
+            logger.info("enrichment sweeper: cycle complete, processed=%d", count)
         except Exception as exc:
             logger.warning("enrichment sweeper: cycle error — %s", exc)
         await asyncio.sleep(INTERVAL_SEC)
