@@ -1434,7 +1434,11 @@ function ForYouFeed() {
 
 // ── Page shell with tabs ──────────────────────────────────────────────────────
 export function ForYouPage() {
-  const [tab, setTab] = useState("foryou");
+  // Internal state values are "discover" / "friends" / "community" — the
+  // user-facing rename from "For You" → "Discover" lets the bottom-nav
+  // "For You" label keep its meaning of "go to home" without colliding
+  // with the home-page sub-tab name.
+  const [tab, setTab] = useState("discover");
   const { user } = useAuth();
 
   const tabStyle = (active) => ({
@@ -1456,7 +1460,7 @@ export function ForYouPage() {
   // gesture has room to operate. For the scrollable tabs (Friends, Community)
   // we let the page flow naturally so the document scroll moves them — that's
   // what allows the tab strip's `position: sticky` to actually stick.
-  const isSwipe = tab === "foryou";
+  const isSwipe = tab === "discover";
 
   return (
     <div style={{
@@ -1464,12 +1468,12 @@ export function ForYouPage() {
       background: "#0a0a0a",
       ...(isSwipe ? { height: "calc(100dvh - 56px)", overflow: "hidden" } : {}),
     }}>
-      {/* Three modes — For You (audio swipe), Friends (followed users'
+      {/* Three modes — Discover (audio swipe), Friends (followed users'
           activity), Community (global review feed). /feed was retired:
           this is the single home for all three discovery modes.
 
           Positioning model:
-          - Swipe mode (For You): the outer div has fixed height + overflow:hidden.
+          - Swipe mode (Discover): the outer div has fixed height + overflow:hidden.
             position: sticky degrades to relative-like behavior inside a
             non-scrolling parent on some iOS WebKit configs, occasionally
             allowing inner content to paint above the strip. Use explicit
@@ -1494,7 +1498,7 @@ export function ForYouPage() {
         // descendant stacking-context shenanigans.
         isolation: "isolate",
       }}>
-        <button style={tabStyle(tab === "foryou")} onClick={() => setTab("foryou")}>For You</button>
+        <button style={tabStyle(tab === "discover")} onClick={() => setTab("discover")}>Discover</button>
         <button style={tabStyle(tab === "friends")} onClick={() => setTab("friends")}>Friends</button>
         <button style={tabStyle(tab === "community")} onClick={() => setTab("community")}>Community</button>
       </div>
@@ -1508,7 +1512,7 @@ export function ForYouPage() {
         isolation: "isolate",
         ...(isSwipe ? { flex: 1, overflow: "hidden", minHeight: 0 } : {}),
       }}>
-        <div style={{ display: tab === "foryou" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
+        <div style={{ display: tab === "discover" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <ForYouFeed />
         </div>
         <div style={{ display: tab === "friends" ? "block" : "none" }}>
