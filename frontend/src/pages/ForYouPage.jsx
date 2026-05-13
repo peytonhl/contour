@@ -252,7 +252,15 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
   const [submitted, setSubmitted] = useState(false);
   const [reviewError, setReviewError] = useState("");
   const [ratedValue, setRatedValue] = useState(userRating ?? null);
-  const [ratingDone, setRatingDone] = useState(!!userRating);
+  // Replaces the previous boolean `ratingDone`. Tracks actual save state
+  // end-to-end so we stop lying with an instant "Saved ✓" badge that
+  // fires before the backend round-trip — which silently fails for
+  // Deezer-source tracks that we can't resolve to a Spotify ID.
+  //   "idle"    — never been rated by this user
+  //   "saved"   — backend confirms the rating exists (or pre-existed)
+  //   "saving"  — backend call in flight
+  //   "failed"  — backend rejected / network error
+  const [ratingStatus, setRatingStatus] = useState(userRating != null ? "saved" : "idle");
   const [copied, setCopied] = useState(false);
   const { user } = useAuth();
 
@@ -273,7 +281,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
     setSubmitted(false);
     setReviewError("");
     setRatedValue(userRating ?? null);
-    setRatingDone(!!userRating);
+    setRatingStatus(userRating != null ? "saved" : "idle");
     setCopied(false);
   }, [track.id]);
 
@@ -313,8 +321,9 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
 
   async function handleRate(value) {
     setRatedValue(value);
-    setRatingDone(true);
-    await onRate(track, value);
+    setRatingStatus("saving");
+    const ok = await onRate(track, value);
+    setRatingStatus(ok ? "saved" : "failed");
   }
 
   async function handleSubmitReview() {
@@ -550,13 +559,29 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {!user ? (
             <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: 0 }}>Sign in to rate</p>
-          ) : ratingDone ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <StarPicker value={ratedValue} onChange={handleRate} disabled={false} />
-              <span style={{ fontSize: 12, color: ACCENT_B, fontWeight: 700 }}>Saved ✓</span>
-            </div>
           ) : (
-            <StarPicker value={ratedValue} onChange={handleRate} disabled={false} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <StarPicker value={ratedValue} onChange={handleRate} disabled={ratingStatus === "saving"} />
+              {ratingStatus === "saving" && (
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Saving…</span>
+              )}
+              {ratingStatus === "saved" && (
+                <span style={{ fontSize: 12, color: ACCENT_B, fontWeight: 700 }}>Saved ✓</span>
+              )}
+              {ratingStatus === "failed" && (
+                <button
+                  onClick={() => handleRate(ratedValue)}
+                  title="The backend didn't accept this rating — tap to retry"
+                  style={{
+                    fontSize: 12, fontWeight: 600, color: "#fb7185",
+                    background: "rgba(251,113,133,0.1)", border: "1px solid rgba(251,113,133,0.3)",
+                    borderRadius: 6, padding: "3px 9px", cursor: "pointer",
+                  }}
+                >
+                  Couldn't save · Retry
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -856,18 +881,35 @@ function ForYouFeed() {
     const artistLower = cleanArtist.toLowerCase();
 
     // Verify a candidate actually fetches from our backend. With Redis caching
-    // tracks for 30d, repeated verifications of the same ID are free.
+    // tracks for 30d, repeated verifications of the same ID are free. Used
+    // only for fuzzy matches — exact matches skip this to avoid getting
+    // tanked by Spotify rate-limit flakiness on the verify call.
     async function verify(id) {
       if (!id) return false;
       try { await api.getTrack(id); return true; } catch { return false; }
     }
 
-    // Strategy 1: name + artist. Exact-name match (case-insensitive) AND
-    // some artist overlap. Take up to 3 candidates and return the first
-    // one that verifies.
+    // Strategy 1: name + artist search.
+    // 1a) If a result has EXACT name AND EXACT artist match, trust it
+    //     immediately — no verify round-trip needed. This is the high-
+    //     confidence path that unblocks most popular tracks even when
+    //     Spotify is being flaky on get_track.
+    // 1b) Otherwise fall back to fuzzy match (substring artist overlap)
+    //     and use verify to confirm.
     try {
       const q1 = `${trackName} ${cleanArtist}`.trim();
-      const candidates = (await api.searchTracks(q1) ?? []).filter((t) => {
+      const results = (await api.searchTracks(q1) ?? []);
+
+      // 1a — exact name + exact-or-strong artist match wins outright.
+      const exact = results.find((t) => {
+        if (t.name?.toLowerCase() !== trackLower) return false;
+        if (!artistLower) return false;
+        return (t.artists || []).some((a) => (a || "").toLowerCase() === artistLower);
+      });
+      if (exact?.id) return exact.id;
+
+      // 1b — fuzzy candidates with verify fallback.
+      const candidates = results.filter((t) => {
         if (t.name?.toLowerCase() !== trackLower) return false;
         if (!artistLower) return true;
         return (t.artists || []).some((a) => {
@@ -882,6 +924,7 @@ function ForYouFeed() {
 
     // Strategy 2: name only, for exotic / new artists where the artist
     // string itself breaks the search. Still requires exact-name match.
+    // No exact-artist check possible here, so we keep verify.
     try {
       const candidates = (await api.searchTracks(trackName) ?? [])
         .filter((t) => t.name?.toLowerCase() === trackLower)
@@ -895,18 +938,31 @@ function ForYouFeed() {
   }
 
   async function handleRate(track, value) {
+    // Local cache update happens first so the For You feed's "rate ten
+    // tracks" cold-start UX continues to feel responsive even when the
+    // backend call hasn't completed yet. The returned boolean tells the
+    // caller (DiscoverCard) whether the BACKEND actually accepted the
+    // rating — that drives the user-facing "Saved ✓" vs "Couldn't save"
+    // badge so we don't silently lie about server state.
     setUserRatings((prev) => ({ ...prev, [track.id]: value }));
     recordRating(track.id, track.artist_ids?.[0], value);
-    setRatingCount(getRatingCount());
     const tier = tierSourceOf(track);
     analytics.forYouRated(tier, value);
     try {
       const spotifyId = await _resolveSpotifyId(track);
-      if (!spotifyId) return; // Deezer-only track not on Spotify — skip silently
+      if (!spotifyId) return false;  // Deezer-only track we can't match — surfaces as "Retry"
 
       // Pass artist_id so the server auto-updates the taste profile on high ratings
       await api.rateEntity("track", spotifyId, value, track.artist_ids?.[0] ?? null);
       analytics.ratingSubmitted("track", spotifyId, value);
+
+      // Optimistic increment so the cold-start banner reflects the new
+      // rating without waiting for the next /auth/me round-trip. Skipped
+      // when the user is just updating an existing rating (no row added).
+      if (!userRatings[track.id]) {
+        setRatingCount((prev) => prev + 1);
+      }
+
       // Also update local genre cache for logged-out / cold-start scenarios
       if (value >= 4 && track.artist_ids?.[0]) {
         api.getArtist(track.artist_ids[0]).then((artist) => {
@@ -916,7 +972,10 @@ function ForYouFeed() {
           });
         }).catch(() => {});
       }
-    } catch { }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function handleReview(track, body, ratingValue) {
