@@ -303,7 +303,7 @@ export function ArtistPage() {
                 {favorited ? "♥ Favorited" : "♡ Add to Favorites"}
               </button>
             )}
-            <ShareButton title={`${artist.name} on Contour`} />
+            <ShareButton surface="artist" title={`${artist.name} on Contour`} />
             {artist.external_url && (
               <a href={artist.external_url} target="_blank" rel="noreferrer"
                 onClick={() => analytics.spotifyLinkClicked("artist")}

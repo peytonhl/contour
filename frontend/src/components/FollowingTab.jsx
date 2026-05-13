@@ -98,6 +98,7 @@ function ReviewActionRow({ item, viewer }) {
         {voteBtn(1, "▲", upvotes)}
         {voteBtn(-1, "▼", downvotes)}
         <ShareButton
+          surface="review"
           title={shareTitle}
           text={shareText}
           url={shareUrl}

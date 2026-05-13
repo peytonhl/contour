@@ -216,7 +216,7 @@ export function AlbumPage() {
               >
                 Compare
               </button>
-              <ShareButton title={`${album.name} on Contour`} />
+              <ShareButton surface="album" title={`${album.name} on Contour`} />
             </div>
 
             {/* Listen on — deemphasized; one-tap link to wherever the user streams. */}

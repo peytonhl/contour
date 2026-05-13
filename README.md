@@ -330,6 +330,7 @@ Two telemetry layers, both opt-in via env vars and both no-op when unconfigured:
 | `for_you_rated` | `tier_source`, `rating_value` | A track is rated from within the For You feed |
 | `apple_music_link_clicked` | `entity_type` | A "Play on Apple Music" button is clicked |
 | `spotify_link_clicked` | `entity_type` (`album` / `track` / `artist`) | An open-in-Spotify link is clicked |
+| `content_shared` | `surface` (`album` / `track` / `artist` / `review`), `method` (`native` / `clipboard`) | A `ShareButton` completed a share — fired on resolved native share sheet OR successful clipboard write, NOT on cancellation. `surface` attributes share volume to a feature; `method` distinguishes mobile (native share sheet) vs desktop (clipboard fallback). |
 
 To add a new event, define a helper on the `analytics` object in
 `frontend/src/services/analytics.js` and call it from the relevant component.

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { analytics } from "../services/analytics.js";
 
 function UploadIcon() {
   return (
@@ -17,14 +18,23 @@ function UploadIcon() {
  * On desktop: copies the URL (or text + URL) to clipboard and briefly shows "Copied!".
  *
  * Props:
- *   title — share-sheet headline
- *   text  — optional body shown by native share sheets (snippet of the review,
- *           tweet-style summary, etc). On desktop fallback we prepend it to the
- *           clipboard payload so the recipient gets context, not a bare URL.
- *   url   — optional target. Defaults to window.location.href so existing call
- *           sites (album page, comparison page) keep working unchanged.
+ *   surface — required. Where the share originated (e.g. "album", "track",
+ *             "artist", "review"). Fed into the content_shared analytics
+ *             event so we can attribute share volume by feature.
+ *   title   — share-sheet headline
+ *   text    — optional body shown by native share sheets (snippet of the
+ *             review, tweet-style summary, etc). On desktop fallback we
+ *             prepend it to the clipboard payload so the recipient gets
+ *             context, not a bare URL.
+ *   url     — optional target. Defaults to window.location.href so existing
+ *             call sites (album page, comparison page) keep working unchanged.
+ *
+ * Analytics: fires `content_shared` ONLY on success — native share sheet
+ * completed without throwing, or clipboard write resolved. Cancellations
+ * and clipboard failures don't fire so the funnel reflects intent that
+ * actually shipped, not intent that bounced.
  */
-export function ShareButton({ title, text, url, style }) {
+export function ShareButton({ surface, title, text, url, style }) {
   const [copied, setCopied] = useState(false);
 
   async function handleShare() {
@@ -36,6 +46,7 @@ export function ShareButton({ title, text, url, style }) {
         const payload = { title, url: shareUrl };
         if (text) payload.text = text;
         await navigator.share(payload);
+        analytics.contentShared(surface, "native");
       } catch {
         // user cancelled — ignore
       }
@@ -45,6 +56,7 @@ export function ShareButton({ title, text, url, style }) {
         await navigator.clipboard.writeText(clipboardPayload);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+        analytics.contentShared(surface, "clipboard");
       } catch {
         // clipboard blocked — silently fail
       }

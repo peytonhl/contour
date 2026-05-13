@@ -61,6 +61,14 @@ export const analytics = {
     track("apple_music_link_clicked", { entity_type }),
   spotifyLinkClicked: (entity_type) =>
     track("spotify_link_clicked", { entity_type }),
+  // ShareButton clicks that completed (native share sheet did not throw, OR
+  // clipboard write succeeded). Cancellations and clipboard failures don't
+  // fire — we want to measure shares the user actually committed to. The
+  // `method` property lets us see whether mobile (native sheet) or desktop
+  // (clipboard) is driving the volume, and `surface` tells us which feature
+  // is generating shares (review vs entity page).
+  contentShared: (surface, method) =>
+    track("content_shared", { surface, method }),
 
   // ── Conversion / discovery (Task 9) ──────────────────────────────────────
   importCompleted: (source, matched_count, unmatched_count) =>

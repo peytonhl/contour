@@ -221,7 +221,7 @@ export function TrackPage() {
               >
                 Compare
               </button>
-              <ShareButton title={`${track.name} on Contour`} />
+              <ShareButton surface="track" title={`${track.name} on Contour`} />
             </div>
 
             {/* Listen on — deemphasized; one-tap link to wherever the user streams. */}
