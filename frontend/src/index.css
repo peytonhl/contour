@@ -5,22 +5,103 @@
 }
 
 :root {
-  --bg: #0d0d0f;
-  --surface: #18181b;
-  --surface2: #27272a;
-  --border: #3f3f46;
+  /* ── Surface palette ──
+     Slightly retuned from the previous (#0d/#18/#27) trio: deeper base,
+     softer surface lift, dedicated tier-3 for interactive surfaces. This
+     gives us enough tonal separation to remove most borders without
+     surfaces merging into the bg. */
+  --bg: #08080a;
+  --surface: #141418;       /* Tier 1: cards, hero sections */
+  --surface2: #1f1f25;      /* Tier 2: nested cards, raised surfaces */
+  --surface3: #2a2a32;      /* Tier 3: interactive (pills, buttons, hover) */
+  --border: #2a2a32;        /* Used sparingly — most surfaces now rely on tonal lift */
+  --border-faint: rgba(255, 255, 255, 0.06);
   --text: #fafafa;
   --text-muted: #a1a1aa;
-  --accent-a: #a78bfa;   /* violet — album A */
-  --accent-b: #34d399;   /* emerald — album B */
+  --text-dim: #71717a;
+  --accent: #a78bfa;        /* Primary brand accent (alias for --accent-a) */
+  --accent-a: #a78bfa;      /* violet — album A */
+  --accent-b: #34d399;      /* emerald — album B */
   --accent-a-dim: rgba(167, 139, 250, 0.15);
   --accent-b-dim: rgba(52, 211, 153, 0.15);
   --gold: #f59e0b;
   --danger: #f87171;
+
+  /* ── Type scale ──
+     8 steps. Stick to these — avoid arbitrary px values in components.
+     Base (15px) matches the previous default. */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 38px;
+  --text-5xl: 48px;
+
+  /* ── Spacing scale ──
+     Strict 4-based scale. No 5/7/11/13/etc — those break rhythm. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+
+  /* ── Radii ── */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* ── Elevation shadows ── */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-2: 0 6px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 16px 48px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-hero: 0 24px 80px rgba(0, 0, 0, 0.55);
+
+  /* ── Motion ──
+     Linear-inspired snappy ease. Use --motion-fast for press feedback,
+     --motion-base for most UI transitions, --motion-slow for page-scale
+     reveals. */
+  --motion-fast: 80ms;
+  --motion-base: 160ms;
+  --motion-slow: 280ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 15px;
+  font-size: var(--text-base);
   color: var(--text);
   background: var(--bg);
+}
+
+/* ── Glass / backdrop-blur helper ──
+   For sticky headers, bottom nav, floating overlays. Falls back to a more
+   opaque solid bg when backdrop-filter isn't supported (older Android
+   WebView etc), so content stays legible. */
+.glass {
+  background: rgba(8, 8, 10, 0.72);
+  backdrop-filter: blur(14px) saturate(1.6);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass {
+    background: rgba(8, 8, 10, 0.96);
+  }
+}
+
+/* ── Typography helpers ──
+   Predefined size+weight combos for headings. Use these as className OR
+   inline style references — they keep type rhythm consistent across pages. */
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 
 body {
@@ -160,11 +241,21 @@ button, a, [role="button"] {
     text-align: center !important;
   }
   .hero-row img, .hero-row .hero-img {
-    width: 120px !important;
-    height: 120px !important;
+    width: 220px !important;
+    height: 220px !important;
   }
   .hero-actions {
     justify-content: center !important;
+  }
+
+  /* Center-align the celebrated stat blocks that sit outside .hero-row on
+     entity pages (Album/Track/Artist). Without this they'd hug the left
+     edge while the cover and title above are centered. */
+  .entity-hero > div {
+    align-items: center;
+  }
+  .entity-hero > div[style*="flex-direction: column"] {
+    align-items: center !important;
   }
 
   /* "Listen on" pill row on entity pages: force the label onto its own

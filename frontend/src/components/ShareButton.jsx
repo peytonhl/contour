@@ -67,15 +67,15 @@ export function ShareButton({ surface, title, text, url, style }) {
     <button
       onClick={handleShare}
       style={{
-        display: "inline-flex", alignItems: "center", gap: 6,
-        padding: "8px 18px",
-        background: "var(--surface2)",
-        border: "1px solid var(--border)",
-        borderRadius: 7,
+        display: "inline-flex", alignItems: "center", gap: "var(--space-1)",
+        padding: "var(--space-3) var(--space-4)",
+        background: "var(--surface3)",
+        border: "none",
+        borderRadius: "var(--radius-pill)",
         color: copied ? "var(--accent-b)" : "var(--text-muted)",
-        fontSize: 13, fontWeight: 600,
+        fontSize: "var(--text-sm)", fontWeight: 600,
         cursor: "pointer",
-        transition: "color 0.15s, border-color 0.15s",
+        transition: "color var(--motion-base) var(--ease), background var(--motion-base) var(--ease)",
         ...style,
       }}
     >

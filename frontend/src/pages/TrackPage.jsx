@@ -154,114 +154,217 @@ export function TrackPage() {
 
       {/* ── Hero ── */}
       <div className="entity-hero" style={{
-        padding: "36px 28px 32px",
-        background: `linear-gradient(180deg, ${ACCENT}10 0%, transparent 100%)`,
-        borderBottom: "1px solid var(--border)",
+        position: "relative",
+        padding: "var(--space-7) var(--space-5) var(--space-5)",
+        overflow: "hidden",
       }}>
-        <div className="hero-row" style={{ display: "flex", gap: 28, alignItems: "flex-start" }}>
+        {track.image_url && (
+          <>
+            <div aria-hidden style={{
+              position: "absolute", inset: -40, zIndex: 0,
+              backgroundImage: `url(${track.image_url})`,
+              backgroundSize: "cover", backgroundPosition: "center",
+              filter: "blur(60px) saturate(1.5) brightness(0.55)",
+              transform: "scale(1.3)",
+            }} />
+            <div aria-hidden style={{
+              position: "absolute", inset: 0, zIndex: 1,
+              background: "linear-gradient(180deg, rgba(8,8,10,0.18) 0%, rgba(8,8,10,0.55) 55%, var(--bg) 100%)",
+            }} />
+          </>
+        )}
+
+        <div className="hero-row" style={{
+          position: "relative", zIndex: 2,
+          display: "flex", gap: "var(--space-5)", alignItems: "flex-end",
+        }}>
           {track.image_url
-            ? <img src={track.image_url} alt={track.name} className="hero-img" style={{ width: 172, height: 172, borderRadius: 10, objectFit: "cover", flexShrink: 0, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }} />
-            : <div className="hero-img" style={{ width: 172, height: 172, borderRadius: 10, background: "var(--surface2)", flexShrink: 0 }} />
+            ? <img src={track.image_url} alt={track.name} className="hero-img" style={{
+                width: 200, height: 200, borderRadius: "var(--radius-lg)",
+                objectFit: "cover", flexShrink: 0,
+                boxShadow: "var(--shadow-hero)",
+              }} />
+            : <div className="hero-img" style={{
+                width: 200, height: 200, borderRadius: "var(--radius-lg)",
+                background: "var(--surface2)", flexShrink: 0,
+              }} />
           }
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1, minWidth: 0 }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 }}>Track</div>
-              <h1 style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.15, letterSpacing: "-0.02em", marginBottom: 6 }}>
-                {track.name}
-                {track.explicit && <span style={{ marginLeft: 10, fontSize: 10, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 3, padding: "2px 6px", color: "var(--text-muted)", verticalAlign: "middle", fontWeight: 700, letterSpacing: "0.06em" }}>E</span>}
-              </h1>
-              <div style={{ fontSize: 15, color: "var(--text-muted)" }}>
-                {track.artists?.map((artist, i) => (
-                  <span key={i}>
-                    {i > 0 && ", "}
-                    {track.artist_ids?.[i]
-                      ? <Link to={`/artist/${track.artist_ids[i]}`} style={{ color: ACCENT, fontWeight: 600 }}>{artist}</Link>
-                      : <span style={{ fontWeight: 600 }}>{artist}</span>}
-                  </span>
-                ))}
-              </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.1em",
+              textTransform: "uppercase", color: "var(--text-dim)",
+            }}>Track</div>
+
+            <h1 style={{
+              fontSize: "var(--text-4xl)", fontWeight: 800,
+              lineHeight: 1.05, letterSpacing: "-0.025em",
+              margin: 0,
+            }}>
+              {track.name}
+              {track.explicit && <span style={{ marginLeft: 10, fontSize: "var(--text-xs)", background: "var(--surface3)", borderRadius: 4, padding: "2px 6px", color: "var(--text-muted)", verticalAlign: "middle", fontWeight: 700, letterSpacing: "0.06em" }}>E</span>}
+            </h1>
+
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", fontWeight: 600 }}>
+              {track.artists?.map((artist, i) => (
+                <span key={i}>
+                  {i > 0 && ", "}
+                  {track.artist_ids?.[i]
+                    ? <Link to={`/artist/${track.artist_ids[i]}`} style={{ color: "var(--text)" }}>{artist}</Link>
+                    : <span style={{ color: "var(--text)" }}>{artist}</span>}
+                </span>
+              ))}
             </div>
 
-            <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
-              <StatBlock label="Album" value={
-                track.album_id
-                  ? <Link to={`/album/${track.album_id}`} style={{ color: "var(--accent-a)", fontWeight: 600 }}>{track.album_name}</Link>
-                  : track.album_name
-              } />
-              <StatBlock label="Released" value={formatReleaseDate(track.release_date)} />
-              <StatBlock label="Duration" value={formatDuration(track.duration_ms)} />
-              <EraAdjustedStat
-                eraContext={trajectory?.era_context}
-                totalStreams={trajectory?.total_streams}
-                onOpen={() => analytics.eraAdjustmentViewed("track")}
-              />
+            {/* Meta row: album · release · duration · RIAA */}
+            <div style={{
+              display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap",
+              fontSize: "var(--text-sm)", color: "var(--text-muted)",
+              marginTop: "var(--space-1)",
+            }}>
+              {track.album_name && (
+                <>
+                  {track.album_id
+                    ? <Link to={`/album/${track.album_id}`} style={{ color: "var(--text-muted)" }}>{track.album_name}</Link>
+                    : <span>{track.album_name}</span>}
+                  <span style={{ opacity: 0.4 }}>·</span>
+                </>
+              )}
+              <span>{formatReleaseDate(track.release_date)}</span>
+              {track.duration_ms && (
+                <>
+                  <span style={{ opacity: 0.4 }}>·</span>
+                  <span>{formatDuration(track.duration_ms)}</span>
+                </>
+              )}
               {topCert && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>RIAA</span>
+                <>
+                  <span style={{ opacity: 0.4 }}>·</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ color: "var(--gold)", fontWeight: 700 }}>RIAA {topCert.label}</span>
                     <RiaaTooltip />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 4, background: "rgba(245,158,11,0.12)", color: "var(--gold)", border: "1px solid rgba(245,158,11,0.25)", alignSelf: "flex-start" }}>
-                    {topCert.label}
                   </span>
-                </div>
+                </>
               )}
-            </div>
-
-            {/* Primary actions — high-intent, things to do *here*. */}
-            <div className="hero-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
-              <button
-                onClick={() => document.getElementById("rate-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                style={{ padding: "8px 18px", background: ACCENT, border: "none", borderRadius: 6, color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer", letterSpacing: "0.01em" }}
-              >
-                ★ Rate
-              </button>
-              <WantToListenButton entityType="track" entityId={id} />
-              <button
-                onClick={() => navigate("/compare")}
-                style={{ padding: "8px 16px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", fontSize: 13, cursor: "pointer", letterSpacing: "0.01em" }}
-              >
-                Compare
-              </button>
-              <ShareButton surface="track" title={`${track.name} on Contour`} />
-            </div>
-
-            {/* Listen on — deemphasized; one-tap link to wherever the user streams. */}
-            <div className="hero-listen-row" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 2 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)", marginRight: 4 }}>
-                Listen on
-              </span>
-              {track.external_url && (
-                <a href={track.external_url} target="_blank" rel="noreferrer"
-                  onClick={() => analytics.spotifyLinkClicked("track")}
-                  style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
-                  <SpotifyIcon /> Spotify
-                </a>
-              )}
-              {appleMusic?.url && (
-                <a href={appleMusic.url} target="_blank" rel="noreferrer"
-                  onClick={() => analytics.appleMusicLinkClicked("track")}
-                  style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
-                  <AppleMusicIcon /> Apple Music
-                </a>
-              )}
-              <a
-                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.name} ${track.artists?.[0] ?? ""}`)}`}
-                target="_blank" rel="noreferrer"
-                style={{ padding: "4px 10px", background: "transparent", border: "1px solid var(--border)", borderRadius: 14, color: "var(--text-muted)", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}
-              >
-                <YouTubeIcon /> YouTube
-              </a>
             </div>
           </div>
+        </div>
+
+        {/* Celebrated stat */}
+        <div style={{ position: "relative", zIndex: 2, marginTop: "var(--space-5)" }}>
+          <EraAdjustedStat
+            eraContext={trajectory?.era_context}
+            totalStreams={trajectory?.total_streams}
+            onOpen={() => analytics.eraAdjustmentViewed("track")}
+            variant="hero"
+          />
+        </div>
+
+        {/* Primary action row */}
+        <div className="hero-actions" style={{
+          position: "relative", zIndex: 2,
+          display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap",
+          marginTop: "var(--space-5)",
+        }}>
+          <button
+            onClick={() => document.getElementById("rate-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            style={{
+              padding: "var(--space-3) var(--space-5)",
+              background: "var(--accent)", border: "none",
+              borderRadius: "var(--radius-pill)",
+              color: "#000", fontWeight: 700, fontSize: "var(--text-sm)",
+              cursor: "pointer", letterSpacing: "0.01em",
+              display: "inline-flex", alignItems: "center", gap: "var(--space-1)",
+            }}
+          >
+            ★ Rate
+          </button>
+          <WantToListenButton entityType="track" entityId={id} />
+          <button
+            onClick={() => navigate("/compare")}
+            style={{
+              padding: "var(--space-3) var(--space-4)",
+              background: "var(--surface3)", border: "none",
+              borderRadius: "var(--radius-pill)",
+              color: "var(--text-muted)", fontSize: "var(--text-sm)",
+              cursor: "pointer", letterSpacing: "0.01em",
+            }}
+          >
+            Compare
+          </button>
+          <ShareButton surface="track" title={`${track.name} on Contour`} />
+        </div>
+
+        {/* Listen on row */}
+        <div className="hero-listen-row" style={{
+          position: "relative", zIndex: 2,
+          display: "flex", gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center",
+          marginTop: "var(--space-3)",
+        }}>
+          <span style={{
+            fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em",
+            textTransform: "uppercase", color: "var(--text-dim)",
+            marginRight: "var(--space-1)",
+          }}>
+            Listen on
+          </span>
+          {track.external_url && (
+            <a href={track.external_url} target="_blank" rel="noreferrer"
+              onClick={() => analytics.spotifyLinkClicked("track")}
+              style={{
+                padding: "var(--space-1) var(--space-3)",
+                background: "var(--surface3)", border: "none",
+                borderRadius: "var(--radius-pill)",
+                color: "var(--text-muted)", fontSize: "var(--text-xs)",
+                textDecoration: "none",
+                display: "inline-flex", alignItems: "center", gap: 5,
+              }}>
+              <SpotifyIcon /> Spotify
+            </a>
+          )}
+          {appleMusic?.url && (
+            <a href={appleMusic.url} target="_blank" rel="noreferrer"
+              onClick={() => analytics.appleMusicLinkClicked("track")}
+              style={{
+                padding: "var(--space-1) var(--space-3)",
+                background: "var(--surface3)", border: "none",
+                borderRadius: "var(--radius-pill)",
+                color: "var(--text-muted)", fontSize: "var(--text-xs)",
+                textDecoration: "none",
+                display: "inline-flex", alignItems: "center", gap: 5,
+              }}>
+              <AppleMusicIcon /> Apple Music
+            </a>
+          )}
+          <a
+            href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.name} ${track.artists?.[0] ?? ""}`)}`}
+            target="_blank" rel="noreferrer"
+            style={{
+              padding: "var(--space-1) var(--space-3)",
+              background: "var(--surface3)", border: "none",
+              borderRadius: "var(--radius-pill)",
+              color: "var(--text-muted)", fontSize: "var(--text-xs)",
+              textDecoration: "none",
+              display: "inline-flex", alignItems: "center", gap: 5,
+            }}
+          >
+            <YouTubeIcon /> YouTube
+          </a>
         </div>
       </div>
 
       {/* ── Body ── */}
-      <div className="entity-body" style={{ padding: "28px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <div className="entity-body" style={{
+        padding: "var(--space-6) var(--space-5)",
+        display: "flex", flexDirection: "column", gap: "var(--space-5)",
+      }}>
         <PreStreamingBanner releaseDate={track.release_date} />
 
-        <div id="rate-section" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px", scrollMarginTop: 70 }}>
+        <div id="rate-section" style={{
+          background: "var(--surface)",
+          borderRadius: "var(--radius-lg)",
+          padding: "var(--space-5) var(--space-5)",
+          scrollMarginTop: 70,
+        }}>
           <ReviewSection entityType="track" entityId={id} user={user} />
         </div>
 

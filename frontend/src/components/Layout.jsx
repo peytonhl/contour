@@ -179,16 +179,14 @@ export function Layout() {
           estate to keep pinned on a phone-sized viewport. Inner For You
           sub-tab strip becomes the sole pinned strip on mobile via its
           own CSS override (.foryou-tabs-strip top: 0). */}
-      <header ref={headerRef} className="app-header" style={{
-        borderBottom: "1px solid var(--border)",
-        padding: "0 16px",
+      <header ref={headerRef} className="app-header glass" style={{
+        padding: "0 var(--space-4)",
         paddingTop: "env(safe-area-inset-top, 0px)",  /* iPhone Dynamic Island / notch */
         display: "flex",
         alignItems: "stretch",
         position: "sticky",
         top: 0,
         zIndex: 50,
-        background: "var(--bg)",
       }}>
         {/* Logo */}
         <NavLink to="/" style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px 14px 0", textDecoration: "none", flexShrink: 0 }}>
@@ -320,11 +318,9 @@ export function Layout() {
 
       {/* ── Mobile bottom tab bar ── */}
       <nav
-        className="bottom-nav"
+        className="bottom-nav glass"
         style={{
           position: "fixed", bottom: 0, left: 0, right: 0,
-          background: "var(--bg)",
-          borderTop: "1px solid var(--border)",
           zIndex: 50,
           paddingBottom: "env(safe-area-inset-bottom, 0px)",
         }}

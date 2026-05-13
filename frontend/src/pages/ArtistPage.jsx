@@ -217,79 +217,147 @@ export function ArtistPage() {
   if (!artist) return null;
 
   return (
-    <div className="hero-page" style={{ maxWidth: 1000, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 32 }}>
+    <div className="hero-page" style={{ maxWidth: 1000, margin: "0 auto", display: "flex", flexDirection: "column" }}>
 
-      {/* ── Hero ── */}
-      <div className="hero-row" style={{ display: "flex", gap: 28, alignItems: "center" }}>
-        {/* Photo */}
-        {artist.image_url
-          ? <img src={artist.image_url} alt={artist.name} style={{ width: 140, height: 140, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-          : <div style={{ width: 140, height: 140, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
-        }
+      {/* ── Hero ──
+          Mirrors Album/Track treatment: blurred artist photo as backdrop,
+          big name, celebrated stat (total catalog streams), single primary
+          action row. */}
+      <div className="entity-hero" style={{
+        position: "relative",
+        padding: "var(--space-7) var(--space-5) var(--space-5)",
+        overflow: "hidden",
+      }}>
+        {artist.image_url && (
+          <>
+            <div aria-hidden style={{
+              position: "absolute", inset: -40, zIndex: 0,
+              backgroundImage: `url(${artist.image_url})`,
+              backgroundSize: "cover", backgroundPosition: "center",
+              filter: "blur(60px) saturate(1.5) brightness(0.55)",
+              transform: "scale(1.3)",
+            }} />
+            <div aria-hidden style={{
+              position: "absolute", inset: 0, zIndex: 1,
+              background: "linear-gradient(180deg, rgba(8,8,10,0.18) 0%, rgba(8,8,10,0.55) 55%, var(--bg) 100%)",
+            }} />
+          </>
+        )}
 
-        {/* Info */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minWidth: 0 }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 4 }}>Artist</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <h1 style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1 }}>{artist.name}</h1>
-              {totalEraAdjusted > totalStreams * 1.1 && totalEraAdjusted > 0 && (
-                <span
-                  title="Era Score: combined catalog streams adjusted for Spotify's user base at each release's era"
-                  style={{
-                    fontSize: 11, fontWeight: 700,
-                    padding: "3px 10px", borderRadius: 999,
-                    background: "rgba(167,139,250,0.12)",
-                    color: ACCENT_A,
-                    border: `1px solid rgba(167,139,250,0.35)`,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Era Score: {formatStreams(totalEraAdjusted)}
+        <div className="hero-row" style={{
+          position: "relative", zIndex: 2,
+          display: "flex", gap: "var(--space-5)", alignItems: "flex-end",
+        }}>
+          {artist.image_url
+            ? <img src={artist.image_url} alt={artist.name} className="hero-img" style={{
+                width: 200, height: 200, borderRadius: "50%",
+                objectFit: "cover", flexShrink: 0,
+                boxShadow: "var(--shadow-hero)",
+              }} />
+            : <div className="hero-img" style={{
+                width: 200, height: 200, borderRadius: "50%",
+                background: "var(--surface2)", flexShrink: 0,
+              }} />
+          }
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.1em",
+              textTransform: "uppercase", color: "var(--text-dim)",
+            }}>Artist</div>
+
+            <h1 style={{
+              fontSize: "var(--text-4xl)", fontWeight: 800,
+              lineHeight: 1.05, letterSpacing: "-0.025em",
+              margin: 0,
+            }}>{artist.name}</h1>
+
+            {/* Followers + genres line */}
+            <div style={{
+              display: "flex", gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center",
+              fontSize: "var(--text-sm)", color: "var(--text-muted)",
+              marginTop: "var(--space-1)",
+            }}>
+              {formatFollowers(artist.followers) && (
+                <span>
+                  <strong style={{ color: "var(--text)" }}>{formatFollowers(artist.followers)}</strong> Spotify followers
                 </span>
               )}
+              {artist.genres?.slice(0, 3).map((g, i) => (
+                <span key={g} style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}>
+                  {(i > 0 || formatFollowers(artist.followers)) && <span style={{ opacity: 0.4 }}>·</span>}
+                  <span>{g}</span>
+                </span>
+              ))}
             </div>
-          </div>
-
-          {/* Followers + genres */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            {formatFollowers(artist.followers) && (
-              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                <strong style={{ color: "var(--text)" }}>{formatFollowers(artist.followers)}</strong> Spotify followers
-              </span>
-            )}
-            {artist.genres?.slice(0, 3).map((g) => (
-              <span key={g} style={{ fontSize: 12, padding: "2px 10px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 20, color: "var(--text-muted)" }}>{g}</span>
-            ))}
-          </div>
-
-          {/* Total streams */}
-          {totalStreams > 0 && (
-            <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
-              <strong style={{ color: ACCENT_A, fontSize: 16 }}>{formatStreams(totalStreams)}</strong>
-              {" "}combined catalog streams · {albums.length} release{albums.length !== 1 ? "s" : ""}
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div className="hero-actions" style={{ display: "flex", gap: 10, marginTop: 2, flexWrap: "wrap" }}>
-            <ShareButton surface="artist" title={`${artist.name} on Contour`} />
-            {artist.external_url && (
-              <a href={artist.external_url} target="_blank" rel="noreferrer"
-                onClick={() => analytics.spotifyLinkClicked("artist")}
-                style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 18px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13, textDecoration: "none" }}>
-                <SpotifyIcon size={14} /> Open in Spotify
-              </a>
-            )}
           </div>
         </div>
+
+        {/* Celebrated stat — total catalog streams */}
+        {totalStreams > 0 && (
+          <div style={{
+            position: "relative", zIndex: 2,
+            marginTop: "var(--space-5)",
+            display: "flex", flexDirection: "column", gap: "var(--space-2)",
+          }}>
+            <span style={{
+              fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em",
+              textTransform: "uppercase", color: "var(--text-dim)",
+            }}>
+              Catalog Streams · {albums.length} release{albums.length !== 1 ? "s" : ""}
+            </span>
+            <span style={{
+              fontSize: "var(--text-4xl)", fontWeight: 800, color: "var(--text)",
+              letterSpacing: "-0.02em", lineHeight: 1,
+            }}>
+              {formatStreams(totalStreams)}
+            </span>
+            {totalEraAdjusted > totalStreams * 1.1 && totalEraAdjusted > 0 && (
+              <span style={{
+                fontSize: "var(--text-sm)", color: ACCENT_A, fontWeight: 600,
+                padding: "4px 10px", borderRadius: "var(--radius-pill)",
+                background: "rgba(167,139,250,0.12)",
+                alignSelf: "flex-start",
+              }}>
+                Era Score: {formatStreams(totalEraAdjusted)}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Action row */}
+        <div className="hero-actions" style={{
+          position: "relative", zIndex: 2,
+          display: "flex", gap: "var(--space-2)", flexWrap: "wrap",
+          marginTop: "var(--space-5)",
+        }}>
+          <ShareButton surface="artist" title={`${artist.name} on Contour`} />
+          {artist.external_url && (
+            <a href={artist.external_url} target="_blank" rel="noreferrer"
+              onClick={() => analytics.spotifyLinkClicked("artist")}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: "var(--space-1)",
+                padding: "var(--space-3) var(--space-4)",
+                background: "var(--surface3)", border: "none",
+                borderRadius: "var(--radius-pill)",
+                color: "var(--text-muted)", fontSize: "var(--text-sm)",
+                textDecoration: "none",
+              }}>
+              <SpotifyIcon size={14} /> Open in Spotify
+            </a>
+          )}
+        </div>
       </div>
+
+      {/* Body container with consistent padding */}
+      <div style={{ padding: "var(--space-6) var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
 
       {/* ── Stats bar ── */}
       {(totalStreams > 0 || albums.length > 0) && (
         <div style={{
           display: "flex", gap: 0,
-          background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
+          background: "var(--surface)",
+          borderRadius: "var(--radius-lg)",
           overflow: "hidden",
         }}>
           {[
@@ -298,8 +366,8 @@ export function ArtistPage() {
             topAlbum?.streams ? { label: "Top Release", value: topAlbum.name.length > 20 ? topAlbum.name.slice(0, 18) + "…" : topAlbum.name } : null,
           ].filter(Boolean).map((stat, i, arr) => (
             <div key={stat.label} style={{
-              flex: 1, padding: "16px 20px", textAlign: "center",
-              borderRight: i < arr.length - 1 ? "1px solid var(--border)" : "none",
+              flex: 1, padding: "var(--space-4) var(--space-5)", textAlign: "center",
+              borderRight: i < arr.length - 1 ? "1px solid var(--border-faint)" : "none",
             }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {stat.value}
@@ -317,9 +385,14 @@ export function ArtistPage() {
 
       {/* ── Popular Tracks (full ranked list) ── */}
       {topTracks.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Popular Tracks</h2>
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", padding: "6px 0" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 700 }}>Popular Tracks</h2>
+          <div style={{
+            background: "var(--surface)",
+            borderRadius: "var(--radius-lg)",
+            overflow: "hidden",
+            padding: "var(--space-2) 0",
+          }}>
             {topTracks.map((track, i) => (
               <TopTrackRow key={track.id} track={track} rank={i + 1} />
             ))}
@@ -328,11 +401,11 @@ export function ArtistPage() {
       )}
 
       {/* ── Discography ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Discography</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 700 }}>Discography</h2>
           {!albumsLoading && !albumsEmpty && (
-            <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 7, overflow: "hidden", border: "1px solid var(--border)", flexShrink: 0 }}>
+            <div style={{ display: "flex", background: "var(--surface3)", borderRadius: "var(--radius-pill)", overflow: "hidden", flexShrink: 0, padding: 3 }}>
               {[
                 ["date",    "Latest",  "Sorted by release date, newest first"],
                 ["streams", "Streams", "Raw stream count from Spotify (or Last.fm scrobbles). Favors newer releases since Spotify's audience was much smaller before 2018."],
@@ -342,10 +415,13 @@ export function ArtistPage() {
                   <button
                     onClick={() => { setSort(val); setShowAllAlbums(false); }}
                     style={{
-                      padding: "5px 14px", fontSize: 12, fontWeight: sort === val ? 700 : 400,
-                      background: sort === val ? ACCENT_A : "transparent",
+                      padding: "var(--space-1) var(--space-3)", fontSize: "var(--text-xs)",
+                      fontWeight: sort === val ? 700 : 500,
+                      background: sort === val ? "var(--accent)" : "transparent",
                       color: sort === val ? "#000" : "var(--text-muted)",
-                      border: "none", cursor: "pointer", transition: "all 0.15s",
+                      border: "none", cursor: "pointer",
+                      borderRadius: "var(--radius-pill)",
+                      transition: "all var(--motion-base) var(--ease)",
                     }}
                     title={tip}
                   >{lbl}</button>
@@ -359,41 +435,44 @@ export function ArtistPage() {
           <RowSkeleton count={5} />
         ) : albumsEmpty ? (
           <div style={{
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
-            padding: "36px 24px", textAlign: "center",
-            background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
+            display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-3)",
+            padding: "var(--space-6) var(--space-5)", textAlign: "center",
+            background: "var(--surface)", borderRadius: "var(--radius-lg)",
           }}>
             <div style={{ fontSize: 28 }}>⚠️</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>
+            <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--text)" }}>
               Couldn't load discography
             </div>
-            <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 340, lineHeight: 1.5 }}>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 340, lineHeight: 1.5 }}>
               Spotify's API is temporarily rate-limited. This usually clears in a few minutes.
             </div>
             <button
               onClick={loadAlbums}
               style={{
-                marginTop: 4, padding: "8px 22px", borderRadius: 7, fontSize: 13, fontWeight: 600,
-                background: "var(--surface2)", border: "1px solid var(--border)",
-                color: "var(--text)", cursor: "pointer", transition: "border-color 0.15s",
+                marginTop: "var(--space-1)",
+                padding: "var(--space-3) var(--space-5)",
+                borderRadius: "var(--radius-pill)",
+                fontSize: "var(--text-sm)", fontWeight: 600,
+                background: "var(--surface3)", border: "none",
+                color: "var(--text)", cursor: "pointer",
+                transition: "background var(--motion-base) var(--ease)",
               }}
-              onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT_A}
-              onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
             >
               Try again
             </button>
           </div>
         ) : (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "var(--space-3)" }}>
               {(showAllAlbums ? sorted : sorted.slice(0, 5)).map((album) => (
                 <Link key={album.id} to={`/album/${album.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
                   <div style={{
-                    background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10,
-                    overflow: "hidden", transition: "border-color 0.15s, transform 0.15s",
+                    background: "var(--surface)", borderRadius: "var(--radius)",
+                    overflow: "hidden",
+                    transition: "transform var(--motion-base) var(--ease), background var(--motion-base) var(--ease)",
                   }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT_A; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface2)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.transform = "none"; }}
                   >
                     {album.image_url
                       ? <img src={album.image_url} alt={album.name} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
@@ -445,24 +524,33 @@ export function ArtistPage() {
       </div>
 
       {/* ── Ratings & Reviews ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700 }}>Ratings & Reviews</h2>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+        <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 700 }}>Ratings & Reviews</h2>
+        <div style={{
+          background: "var(--surface)",
+          borderRadius: "var(--radius-lg)",
+          padding: "var(--space-5) var(--space-5)",
+        }}>
           <ReviewSection entityType="artist" entityId={id} user={user} />
         </div>
       </div>
 
       {/* ── Compare ── */}
       {albums.length >= 2 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Compare Albums</h2>
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 700 }}>Compare Albums</h2>
+          <div style={{
+            background: "var(--surface)",
+            borderRadius: "var(--radius-lg)",
+            padding: "var(--space-5)",
+          }}>
             {/* Lazy import to avoid increasing initial bundle */}
             <CompareSection sorted={sorted} artistName={artist.name} />
           </div>
         </div>
       )}
 
+      </div>{/* end body wrapper */}
     </div>
   );
 }

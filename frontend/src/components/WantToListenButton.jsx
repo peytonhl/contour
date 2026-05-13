@@ -54,18 +54,20 @@ export function WantToListenButton({ entityType = "album", entityId, albumId }) 
     }
   }
 
-  // Match the other secondary actions on the hero (Compare / Spotify / etc.).
+  // Secondary action — sits next to the primary Rate button on entity heros.
+  // Borderless, pill-shaped, surface3 background so it recedes from Rate's
+  // full accent fill but is still tappable.
   const baseStyle = {
-    padding: "8px 16px",
-    border: "1px solid var(--border)",
-    borderRadius: 6,
-    fontSize: 13,
+    padding: "var(--space-3) var(--space-4)",
+    border: "none",
+    borderRadius: "var(--radius-pill)",
+    fontSize: "var(--text-sm)",
     cursor: "pointer",
     letterSpacing: "0.01em",
     display: "inline-flex",
     alignItems: "center",
-    gap: 6,
-    transition: "all 0.15s",
+    gap: "var(--space-1)",
+    transition: "background var(--motion-base) var(--ease)",
   };
 
   if (inBacklog) {
@@ -75,8 +77,7 @@ export function WantToListenButton({ entityType = "album", entityId, albumId }) 
         disabled={pending}
         style={{
           ...baseStyle,
-          background: `${ACCENT_B}18`,
-          borderColor: `${ACCENT_B}50`,
+          background: `${ACCENT_B}1f`,
           color: ACCENT_B,
           fontWeight: 700,
         }}
@@ -92,7 +93,7 @@ export function WantToListenButton({ entityType = "album", entityId, albumId }) 
       disabled={pending}
       style={{
         ...baseStyle,
-        background: "var(--surface2)",
+        background: "var(--surface3)",
         color: "var(--text-muted)",
       }}
     >

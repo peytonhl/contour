@@ -1403,15 +1403,15 @@ function ForYouFeed() {
         onClick={() => setSettingsOpen(o => !o)}
         title="Feed settings"
         aria-label="Feed settings"
+        className="glass"
         style={{
           position: "absolute", top: 8, left: 10, zIndex: 5,
           fontSize: 15, lineHeight: 1,
-          width: 30, height: 30, borderRadius: 16, padding: 0,
-          background: "rgba(0,0,0,0.55)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          color: settingsOpen ? ACCENT_A : "rgba(255,255,255,0.55)",
+          width: 32, height: 32, borderRadius: "var(--radius-pill)", padding: 0,
+          border: "none",
+          color: settingsOpen ? "var(--accent)" : "rgba(255,255,255,0.7)",
           cursor: "pointer",
-          transition: "color 0.15s, background 0.15s",
+          transition: "color var(--motion-base) var(--ease)",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}
       >⚙</button>
