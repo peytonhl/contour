@@ -1144,13 +1144,24 @@ function ForYouFeed() {
   // Latched true while the snap animation is running so new touchstarts
   // don't interrupt mid-flight.
   const [transitioning, setTransitioning] = useState(false);
+  // The deck container's current pixel height. We render all transforms in
+  // pixels (not calc(N * 100%)) because iOS WebView occasionally rounds %
+  // transforms differently from JS-measured clientHeight — that fractional
+  // mismatch was causing a 0.5-1px snap at the commit moment, perceived as
+  // a tiny jitter between songs. With pure pixel arithmetic the wrapper's
+  // pre-commit and post-commit transform values are bitwise identical.
+  const [cardHeight, setCardHeight] = useState(0);
   const cardHeightRef = useRef(0);
 
   // Measure card height on mount and on resize so the snap distance matches
   // the visible viewport (account for the mobile address bar collapsing).
   useEffect(() => {
     const measure = () => {
-      if (containerRef.current) cardHeightRef.current = containerRef.current.clientHeight;
+      if (containerRef.current) {
+        const h = containerRef.current.clientHeight;
+        cardHeightRef.current = h;
+        setCardHeight(h);
+      }
     };
     measure();
     window.addEventListener("resize", measure);
@@ -1711,7 +1722,16 @@ function ForYouFeed() {
         <div
           style={{
             position: "absolute", inset: 0,
-            transform: `translate3d(0, calc(${-activeIdx * 100}% + ${dragOffset}px), 0)`,
+            // PIXEL-BASED transform — no calc(% + px). On iOS WebView, percent
+            // transforms can resolve to a fractional value that differs from
+            // the JS-measured clientHeight by 0.5-1px, causing a tiny snap at
+            // the commit moment. With both terms in pixels using the same
+            // measured cardHeight, the pre-commit value
+            //   `-activeIdx * cardHeight + (-cardHeight)`
+            // equals the post-commit value
+            //   `-(activeIdx+1) * cardHeight + 0`
+            // bitwise. No snap.
+            transform: `translate3d(0, ${(-activeIdx * cardHeight) + dragOffset}px, 0)`,
             transition: dragging ? "none" : "transform 280ms cubic-bezier(0.2, 0, 0, 1)",
             willChange: "transform",
           }}
@@ -1726,7 +1746,7 @@ function ForYouFeed() {
                 data-card={i}
                 style={{
                   position: "absolute", top: 0, left: 0, right: 0, height: "100%",
-                  transform: `translate3d(0, ${i * 100}%, 0)`,
+                  transform: `translate3d(0, ${i * cardHeight}px, 0)`,
                   willChange: "transform",
                 }}
               >
