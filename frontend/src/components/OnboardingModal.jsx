@@ -58,16 +58,18 @@ export function GenreChip({ genre, selected, onToggle }) {
 }
 
 // ── Value prop icons (SVG, stroke-based — matches the rest of the app) ───────
+// Sized at 24px so they fill the 44-48px circular containers properly; tiny
+// 16px glyphs in 32px boxes read as "stock admin template" rather than designed.
 function StarIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
   );
 }
 function ChartIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="3 17 9 11 13 15 21 7" />
       <polyline points="14 7 21 7 21 14" />
     </svg>
@@ -75,7 +77,7 @@ function ChartIcon() {
 }
 function HeadphonesIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
       <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z" />
       <path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
@@ -84,7 +86,7 @@ function HeadphonesIcon() {
 }
 function BookmarkIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
     </svg>
   );
@@ -251,15 +253,14 @@ export function OnboardingModal() {
       }}>
         <div style={{
           background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "20px 20px 16px 16px",
+          borderRadius: "var(--radius-xl) var(--radius-xl) var(--radius-lg) var(--radius-lg)",
           padding: "24px 24px 20px",
           maxWidth: 480,
           margin: "0 auto",
-          boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
+          boxShadow: "var(--shadow-3)",
         }}>
           {/* Drag handle */}
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 22px" }} />
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--surface3)", margin: "0 auto 22px" }} />
 
           {/* ── Step 0: Value prop ── */}
           {step === 0 && (
@@ -283,20 +284,21 @@ export function OnboardingModal() {
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
                 {VALUE_PROPS.map((vp) => (
                   <div key={vp.title} style={{
-                    display: "flex", alignItems: "flex-start", gap: 13,
-                    background: "var(--surface2)", borderRadius: 12, padding: "13px 15px",
-                    border: "1px solid var(--border)",
+                    display: "flex", alignItems: "center", gap: 14,
+                    background: "var(--surface2)",
+                    borderRadius: "var(--radius-lg)",
+                    padding: "14px 16px",
                   }}>
                     <span style={{
-                      width: 32, height: 32, flexShrink: 0,
-                      borderRadius: 8, background: `${vp.color}18`,
-                      border: `1px solid ${vp.color}35`,
+                      width: 44, height: 44, flexShrink: 0,
+                      borderRadius: "50%",
+                      background: `${vp.color}1f`,
                       color: vp.color,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       <vp.Icon />
                     </span>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{vp.title}</span>
                       <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55 }}>{vp.body}</span>
                     </div>
@@ -388,14 +390,15 @@ export function OnboardingModal() {
               </div>
 
               <div style={{
-                background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: 12, padding: "14px 16px", marginBottom: 16,
-                display: "flex", alignItems: "center", gap: 12,
+                background: "var(--surface2)",
+                borderRadius: "var(--radius-lg)",
+                padding: "16px 16px", marginBottom: 16,
+                display: "flex", alignItems: "center", gap: 14,
               }}>
                 <span style={{
-                  width: 36, height: 36, flexShrink: 0,
-                  borderRadius: 8, background: `${ACCENT_B}18`,
-                  border: `1px solid ${ACCENT_B}35`,
+                  width: 48, height: 48, flexShrink: 0,
+                  borderRadius: "50%",
+                  background: `${ACCENT_B}1f`,
                   color: ACCENT_B,
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
