@@ -567,16 +567,21 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                 decoding="async"
                 fetchpriority="high"
                 style={{
-                  // aspect-ratio: 1 reserves a square layout box BEFORE the
-                  // image bytes load, so the browser doesn't render the IMG
-                  // at intrinsic-pixel-zero on first paint and then re-flow
-                  // it to full size when bytes arrive. Without this the
-                  // cover visibly "enlarges" the first time a card mounts.
-                  // Combined with maxHeight: 94% the image sizes to 94% of
-                  // the art region height, square.
+                  // CSS aspect-ratio only computes a definite size if AT LEAST
+                  // ONE dimension is constrained. With width:auto + height:auto
+                  // the box defaults to intrinsic 0×0 until image bytes arrive
+                  // (then re-flows to natural-image size, capped by max-*).
+                  // That re-flow was the "image enlarges visibly when it
+                  // loads" bug — the IMG was a 0×0 dot at first paint.
+                  //
+                  // Pin height to 94% so the layout box is definite from
+                  // first paint; aspect-ratio computes width=height, and the
+                  // maxWidth: 94% safety-caps it on the rare card where the
+                  // section is narrower than tall (very wide aspect-ratio
+                  // viewport).
+                  height: "94%",
                   aspectRatio: "1 / 1",
-                  maxHeight: "94%", maxWidth: "94%",
-                  height: "auto", width: "auto",
+                  maxWidth: "94%",
                   borderRadius: "var(--radius-lg)",
                   boxShadow: "var(--shadow-hero)",
                   objectFit: "cover",
