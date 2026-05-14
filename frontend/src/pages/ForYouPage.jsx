@@ -24,16 +24,26 @@ const GOLD = "#f59e0b";
 const GENRES_KEY = "contour_genres_v1";
 const HISTORY_KEY = "contour_history_v1";
 const DISLIKED_KEY = "contour_disliked_v1";
-const ENGLISH_ONLY_KEY = "contour_english_only_v1";
+const ENGLISH_ONLY_KEY = "contour_english_only_v1";  // legacy boolean key
+const LANGUAGE_KEY = "contour_language_v1";          // new 3-state key
 
-function loadEnglishOnly() {
+// Language filter — three modes:
+//   "english" → Latin script only, no Spanish-leaning bias (default; matches
+//               the old english_only=true behavior)
+//   "spanish" → Latin script PLUS a Spanish-language indicator on title/artist
+//   "all"     → no filter; everything shows including CJK / Cyrillic / etc.
+function loadLanguage() {
   try {
-    const v = localStorage.getItem(ENGLISH_ONLY_KEY);
-    return v === null ? true : v === "true"; // default ON
-  } catch { return true; }
+    const v = localStorage.getItem(LANGUAGE_KEY);
+    if (v === "english" || v === "spanish" || v === "all") return v;
+    // Migrate from the older boolean key so existing users keep their setting.
+    const legacy = localStorage.getItem(ENGLISH_ONLY_KEY);
+    if (legacy === "false") return "all";
+    return "english"; // default
+  } catch { return "english"; }
 }
-function saveEnglishOnly(val) {
-  localStorage.setItem(ENGLISH_ONLY_KEY, String(val));
+function saveLanguage(val) {
+  try { localStorage.setItem(LANGUAGE_KEY, val); } catch {}
 }
 
 // Soft ramp threshold — past this many ratings we hide the "rate to personalize"
@@ -818,26 +828,42 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
             </div>
           </div>
         ) : (
-          // Spotify's embed renders its own dark-themed player UI we can't restyle
-          // (cross-origin). Wrapping it in a rounded container with our tokens at
-          // least snaps the corners to the rest of the card's radius vocabulary,
-          // and gives the widget a tiny breathing margin so it doesn't read as
-          // crammed against the rating row below.
-          <div style={{
-            borderRadius: "var(--radius)",
-            overflow: "hidden",
-            background: "rgba(255,255,255,0.04)",
-          }}>
-            <iframe
-              src={`https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0`}
-              width="100%"
-              height="70"
-              style={{ border: "none", display: "block" }}
-              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-              loading="lazy"
-              title={`${track.name} preview`}
-            />
-          </div>
+          // No preview_url available (common for older/classical catalog —
+          // Spotify dropped preview clips for most tracks in late 2023).
+          // Previously we embedded Spotify's official iframe player here,
+          // but the iframe renders its own thumbnail + title + artist row
+          // INSIDE the player, duplicating the same info our card chrome
+          // already shows above. On a Puccini opera card you'd see the
+          // album cover + title at top, then the iframe's mini-thumbnail +
+          // title pill, then the rating stars — visually redundant and
+          // read as a layout bug. Replaced with a clean external-link
+          // affordance that opens the track in Spotify (app on mobile,
+          // web on desktop). Inline playback is lost for these tracks but
+          // the cards stay readable, and tracks WITH preview_url still
+          // get the inline audio player branch above.
+          track.external_url && (
+            <a
+              href={track.external_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                alignSelf: "flex-start",
+                padding: "8px 14px",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: "var(--radius-pill)",
+                color: "rgba(255,255,255,0.85)",
+                fontSize: 12, fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none"/>
+              </svg>
+              Listen on Spotify
+            </a>
+          )
         )}
 
         {/* Rating */}
@@ -1042,8 +1068,8 @@ function ForYouFeed() {
   useEffect(() => {
     if (user?.rating_count !== undefined) setRatingCount(user.rating_count);
   }, [user?.rating_count]);
-  const [englishOnly, setEnglishOnly] = useState(loadEnglishOnly);
-  const englishOnlyRef = useRef(loadEnglishOnly());
+  const [language, setLanguage] = useState(loadLanguage);
+  const languageRef = useRef(loadLanguage());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const containerRef = useRef(null);
   const genresRef = useRef(loadGenres());
@@ -1098,7 +1124,7 @@ function ForYouFeed() {
         liked_artists: likedArtists,
         disliked_artists: dislikedArtists,
         exclude: sessionExclude,
-        english_only: englishOnlyRef.current,
+        language: languageRef.current,
         limit: 10,
       });
 
@@ -1133,10 +1159,11 @@ function ForYouFeed() {
     fetchBatch();
   }
 
-  function toggleEnglishOnly(val) {
-    saveEnglishOnly(val);
-    englishOnlyRef.current = val;
-    setEnglishOnly(val);
+  function setLanguagePref(val) {
+    if (val === languageRef.current) return;
+    saveLanguage(val);
+    languageRef.current = val;
+    setLanguage(val);
     setTracks([]);
     setActiveIdx(0);
     fetchBatch();
@@ -1770,29 +1797,44 @@ function ForYouFeed() {
             <button onClick={() => setSettingsOpen(false)} style={{ fontSize: 16, background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer" }}>✕</button>
           </div>
 
-          {/* English-only toggle */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {/* Language filter — three modes. Replaces the older English-only
+              boolean. Spanish mode is a best-effort heuristic (Spanish
+              diacritics or common stopwords on title/artist) — false
+              positives on Portuguese / Italian are tolerable. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div>
-              <p style={{ margin: 0, fontSize: 13, color: "#fff", fontWeight: 600 }}>English / Latin songs only</p>
+              <p style={{ margin: 0, fontSize: 13, color: "#fff", fontWeight: 600 }}>Language</p>
               <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-                Filters out Cyrillic, Arabic, CJK, and other non-Latin scripts
+                Filter the For You feed by song language.
               </p>
             </div>
-            <button
-              onClick={() => toggleEnglishOnly(!englishOnly)}
-              style={{
-                width: 44, height: 24, borderRadius: "var(--radius-lg)", flexShrink: 0,
-                background: englishOnly ? ACCENT_A : "rgba(255,255,255,0.15)",
-                border: "none", cursor: "pointer", position: "relative",
-                transition: "background 0.2s",
-              }}
-            >
-              <span style={{
-                position: "absolute", top: 2, width: 20, height: 20, borderRadius: "50%",
-                background: "#fff", transition: "left 0.2s",
-                left: englishOnly ? 22 : 2,
-              }} />
-            </button>
+            <div style={{
+              display: "flex", padding: 3,
+              background: "rgba(255,255,255,0.08)",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}>
+              {[
+                { key: "english", label: "English" },
+                { key: "spanish", label: "Spanish" },
+                { key: "all",     label: "All" },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setLanguagePref(key)}
+                  style={{
+                    flex: 1, padding: "7px 10px", fontSize: 12,
+                    fontWeight: language === key ? 700 : 500,
+                    background: language === key ? ACCENT_A : "transparent",
+                    color: language === key ? "#000" : "rgba(255,255,255,0.65)",
+                    border: "none", borderRadius: "var(--radius-sm)",
+                    cursor: "pointer", transition: "all 0.15s",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
