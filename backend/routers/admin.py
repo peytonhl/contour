@@ -565,6 +565,32 @@ async def test_genre_search(
                 entry["error_message"] = str(exc)
             variant_diagnostics.append(entry)
 
+    # ── Limit-cap probe ───────────────────────────────────────────────────────
+    # Quickly tells us the maximum `limit` value /v1/search accepts for our
+    # app's credentials. Saves a debug cycle the next time we need to know
+    # what the safe cap is — Spotify changes this without notice and the
+    # error ("Invalid limit") is misleading.
+    limit_probe: list[dict] = []
+    async with _httpx.AsyncClient(timeout=10.0) as client:
+        token = await spotify._get_token(client)
+        for cap in [50, 30, 20, 15, 10, 5]:
+            try:
+                resp = await client.get(
+                    "https://api.spotify.com/v1/search",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"q": genre, "type": "track", "limit": cap, "market": "US"},
+                )
+                limit_probe.append({
+                    "limit": cap,
+                    "status_code": resp.status_code,
+                    "ok": resp.status_code == 200,
+                })
+            except Exception as exc:
+                limit_probe.append({
+                    "limit": cap,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+
     return {
         "genre": genre,
         "cache": {
@@ -580,6 +606,7 @@ async def test_genre_search(
              "popularity": final_pool[0].get("popularity")}
             if final_pool else None
         ),
+        "limit_probe": limit_probe,
     }
 
 
