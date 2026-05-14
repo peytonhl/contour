@@ -36,15 +36,29 @@ function timeAgo(iso) {
 }
 
 function RatingBadge({ value }) {
-  const high = value >= 4;
-  const mid = value >= 3;
+  // Render 5 stars with the appropriate count lit, matching FollowingTab's
+  // treatment so the same rating shows the same visual on both Friends and
+  // Community tabs. The earlier "4★" + number pill was compact but a tester
+  // reported it read as "only one star" — the unicode ★ looked like a unit
+  // glyph rather than part of a rating display.
   return (
-    <div style={{
-      padding: "3px 9px", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 700, flexShrink: 0,
-      background: high ? `${GOLD}18` : mid ? `${GOLD}0a` : "var(--surface2)",
-      border: `1px solid ${high ? `${GOLD}50` : "var(--border)"}`,
-      color: high ? GOLD : mid ? `${GOLD}99` : "var(--text-muted)",
-    }}>{value}★</div>
+    <span style={{ display: "inline-flex", gap: 1, flexShrink: 0 }}>
+      {[1, 2, 3, 4, 5].map((n) => {
+        const lit = value >= n - 0.5;
+        return (
+          <span
+            key={n}
+            style={{
+              fontSize: 12,
+              color: lit ? GOLD : "var(--border)",
+              opacity: lit ? 1 : 0.35,
+            }}
+          >
+            ★
+          </span>
+        );
+      })}
+    </span>
   );
 }
 
@@ -82,8 +96,15 @@ function ReviewCardItem({ item, user, onVote, badges }) {
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{item.entity_artists.slice(0, 2).join(", ")}</div>
           )}
         </div>
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: ENTITY_COLOR[item.entity_type], padding: "2px 8px", borderRadius: "var(--radius-xl)", background: `${ENTITY_COLOR[item.entity_type]}18`, border: `1px solid ${ENTITY_COLOR[item.entity_type]}40`, flexShrink: 0 }}>
-          {item.entity_type}
+        <span style={{
+          fontFamily: "var(--font-display)", fontStyle: "italic",
+          fontSize: 12, color: ENTITY_COLOR[item.entity_type],
+          flexShrink: 0,
+        }}>
+          {item.entity_type === "album" ? "album"
+            : item.entity_type === "track" ? "track"
+            : item.entity_type === "artist" ? "artist"
+            : item.entity_type}
         </span>
       </Link>
 

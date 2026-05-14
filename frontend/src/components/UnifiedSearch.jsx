@@ -40,8 +40,8 @@ const styles = {
     border: "1px solid var(--border)", borderRadius: "var(--radius-md)",
   },
   typePill: {
-    fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase",
-    padding: "2px 7px", borderRadius: "var(--radius-xl)", flexShrink: 0,
+    fontFamily: "var(--font-display)", fontStyle: "italic",
+    fontSize: 12, flexShrink: 0,
   },
 };
 
@@ -172,8 +172,8 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
                           {album.artists?.join(", ")} · {album.release_date?.slice(0, 4)}
                         </div>
                       </div>
-                      <span style={{ ...styles.typePill, background: `${ACCENT_ALBUM}18`, color: ACCENT_ALBUM, border: `1px solid ${ACCENT_ALBUM}35` }}>
-                        Album
+                      <span style={{ ...styles.typePill, color: ACCENT_ALBUM }}>
+                        album
                       </span>
                     </div>
                   ))}
@@ -203,8 +203,8 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
                           {track.duration_ms ? ` · ${formatDuration(track.duration_ms)}` : ""}
                         </div>
                       </div>
-                      <span style={{ ...styles.typePill, background: `${ACCENT_TRACK}18`, color: ACCENT_TRACK, border: `1px solid ${ACCENT_TRACK}35` }}>
-                        Track
+                      <span style={{ ...styles.typePill, color: ACCENT_TRACK }}>
+                        track
                       </span>
                     </div>
                   ))}
