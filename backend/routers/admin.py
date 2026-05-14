@@ -455,6 +455,130 @@ async def inspect_my_feed(
     }
 
 
+@router.get("/test-genre-search")
+async def test_genre_search(
+    genre: str = "hip-hop",
+    user_id: str = Depends(require_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Mirror the EXACT logic of services.spotify.search_tracks_by_genre but
+    capture every step's output for the response, so we can see precisely
+    where the function loses tracks between "Spotify returns items" and
+    "function returns []".
+
+    The previous probe showed Spotify returning 5/5/3 items (200 OK) across
+    all 3 variants, but search_tracks_by_genre returned 0. Suspect: items
+    without `id` (region-restricted tracks) being filtered out by the
+    `if t.get("id")` gate. This endpoint exposes the id presence on each
+    item explicitly.
+
+    Read-only. Admin-only. Hits Redis (read), Spotify, but does NOT write
+    anything (cache, DB, etc.) — so safe to run repeatedly.
+    """
+    await _require_admin(db, user_id)
+    import httpx as _httpx
+
+    cache_key = f"spotify:genre_pool_v3:{genre}"
+    cached = None
+    try:
+        from services import redis_cache
+        cached = await redis_cache.get(cache_key)
+    except Exception as exc:
+        cached_error = f"{type(exc).__name__}: {exc}"
+    else:
+        cached_error = None
+
+    variants = [
+        ("plain", genre, 90, 30),
+        ("hipster", f"{genre} tag:hipster", 5, 40),
+        ("recent", f"{genre} year:2023-2026", 70, 40),
+    ]
+
+    variant_diagnostics: list[dict] = []
+    seen: set[str] = set()
+    final_pool: list[dict] = []
+
+    async with _httpx.AsyncClient(timeout=10.0) as client:
+        token = await spotify._get_token(client)
+        for label, q, pop_start, pop_end in variants:
+            entry: dict = {"label": label, "query": q}
+            try:
+                resp = await client.get(
+                    "https://api.spotify.com/v1/search",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"q": q, "type": "track", "limit": 30, "market": "US"},
+                )
+                entry["status_code"] = resp.status_code
+                if resp.status_code != 200:
+                    entry["response_preview"] = resp.text[:400]
+                    variant_diagnostics.append(entry)
+                    continue
+
+                body = resp.json()
+                items = (body.get("tracks") or {}).get("items") or []
+                entry["raw_items_count"] = len(items)
+
+                # Item-by-item inspection — what does each item actually carry?
+                item_breakdown: list[dict] = []
+                added_count = 0
+                parse_errors = 0
+                for rank, t in enumerate(items):
+                    info: dict = {
+                        "rank": rank,
+                        "t_is_dict": isinstance(t, dict),
+                        "has_id": bool(t and isinstance(t, dict) and t.get("id")),
+                        "id": (t or {}).get("id") if isinstance(t, dict) else None,
+                        "name": (t or {}).get("name") if isinstance(t, dict) else None,
+                    }
+                    if t and isinstance(t, dict) and t.get("id"):
+                        if t["id"] in seen:
+                            info["dropped"] = "duplicate"
+                        else:
+                            try:
+                                parsed = spotify._parse_track(t)
+                                seen.add(t["id"])
+                                if parsed.get("popularity") is None:
+                                    n_denom = max(len(items) - 1, 1)
+                                    ratio = rank / n_denom
+                                    synth = pop_start + (pop_end - pop_start) * ratio
+                                    parsed["popularity"] = max(0, min(100, int(round(synth))))
+                                final_pool.append(parsed)
+                                added_count += 1
+                                info["added"] = True
+                            except Exception as exc:
+                                parse_errors += 1
+                                info["parse_error"] = f"{type(exc).__name__}: {exc}"
+                    else:
+                        info["dropped"] = "no_id"
+                    if rank < 5:  # only show first 5 to keep response bounded
+                        item_breakdown.append(info)
+                entry["added_to_pool"] = added_count
+                entry["parse_errors"] = parse_errors
+                entry["first_5_items"] = item_breakdown
+            except Exception as exc:
+                entry["error_type"] = type(exc).__name__
+                entry["error_message"] = str(exc)
+            variant_diagnostics.append(entry)
+
+    return {
+        "genre": genre,
+        "cache": {
+            "key": cache_key,
+            "cached_value_type": type(cached).__name__ if cached is not None else "None",
+            "cached_length": (len(cached) if isinstance(cached, list) else None),
+            "cached_error": cached_error,
+        },
+        "variants": variant_diagnostics,
+        "final_pool_size": len(final_pool),
+        "first_pool_track": (
+            {"id": final_pool[0].get("id"), "name": final_pool[0].get("name"),
+             "popularity": final_pool[0].get("popularity")}
+            if final_pool else None
+        ),
+    }
+
+
 @router.post("/reset-spotify-circuit")
 async def reset_spotify_circuit(
     user_id: str = Depends(require_user_id),
