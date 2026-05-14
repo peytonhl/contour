@@ -8,7 +8,6 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ReferenceLine,
 } from "recharts";
 import { AlertIcon } from "./Icons";
 
@@ -16,14 +15,40 @@ const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 const ACCENT_C = "#fb923c";
 
-function CertLabel({ viewBox, value, color, index }) {
-  if (!viewBox) return null;
-  const { x, y } = viewBox;
-  const dy = 14 + index * 14;
+// ── Milestone timeline ───────────────────────────────────────────────────────
+// Renders below the chart. Replaces the previous in-chart ReferenceLines +
+// stacked CertLabel approach, which produced a tower of overlapping text on
+// the left side of the chart whenever multiple milestones hit within a few
+// days of release (which is most of them). The dashed-line approach showed
+// WHERE on the X-axis a milestone happened but couldn't say WHICH milestone
+// belonged to WHICH curve at a glance, and the labels physically overlapped
+// for early-life certifications. This separates the two jobs:
+//   - The chart stays clean and shows trajectory shape only.
+//   - The timeline below tells the day-by-day story chronologically.
+function MilestoneTimeline({ certs, name, color }) {
+  if (!certs.length) return null;
   return (
-    <text x={x + 3} y={y + dy} fill={color} fontSize={9} opacity={0.85} fontWeight={600}>
-      {value}
-    </text>
+    <div style={{
+      display: "flex", flexWrap: "wrap", alignItems: "baseline",
+      rowGap: 4, columnGap: 0,
+      padding: "4px 0",
+    }}>
+      <span style={{
+        fontSize: 13, fontWeight: 700, color,
+        flexShrink: 0, marginRight: 12, minWidth: 60,
+      }}>
+        {name}
+      </span>
+      {certs.map((c, i) => (
+        <span key={i} style={{ fontSize: 12, lineHeight: 1.7, whiteSpace: "nowrap" }}>
+          <span style={{ color: "var(--text)", fontWeight: 600 }}>{c.label}</span>
+          <span style={{ color: "var(--text-muted)" }}> day {c.day}</span>
+          {i < certs.length - 1 && (
+            <span style={{ color: "var(--text-muted)", opacity: 0.45, margin: "0 8px" }}>·</span>
+          )}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -196,22 +221,6 @@ export function ComparisonChart({ data, nameA, nameB, nameC, disclaimer }) {
             wrapperStyle={{ fontSize: 13, paddingTop: 8 }}
           />
 
-          {certLinesA.map((cl, i) => (
-            <ReferenceLine key={`a-${cl.label}`} x={cl.day} stroke={ACCENT_A}
-              strokeDasharray="4 3" strokeOpacity={0.5}
-              label={<CertLabel value={cl.label} color={ACCENT_A} index={i} />} />
-          ))}
-          {certLinesB.map((cl, i) => (
-            <ReferenceLine key={`b-${cl.label}`} x={cl.day} stroke={ACCENT_B}
-              strokeDasharray="4 3" strokeOpacity={0.5}
-              label={<CertLabel value={cl.label} color={ACCENT_B} index={i} />} />
-          ))}
-          {certLinesC.map((cl, i) => (
-            <ReferenceLine key={`c-${cl.label}`} x={cl.day} stroke={ACCENT_C}
-              strokeDasharray="4 3" strokeOpacity={0.5}
-              label={<CertLabel value={cl.label} color={ACCENT_C} index={i} />} />
-          ))}
-
           <Line type="monotone" dataKey={dataKeyA} stroke={ACCENT_A} strokeWidth={2.5}
             dot={false} name={dataKeyA} connectNulls />
           <Line type="monotone" dataKey={dataKeyB} stroke={ACCENT_B} strokeWidth={2.5}
@@ -222,6 +231,28 @@ export function ComparisonChart({ data, nameA, nameB, nameC, disclaimer }) {
           )}
         </LineChart>
       </ResponsiveContainer>
+
+      {/* Milestone timelines — chronological story of when each entity hit
+          each RIAA certification. One row per series, color-coded. Renders
+          nothing for series that don't have any milestones yet, so a brand-
+          new release doesn't show empty rows. */}
+      {(certLinesA.length > 0 || certLinesB.length > 0 || certLinesC.length > 0) && (
+        <div style={{
+          display: "flex", flexDirection: "column", gap: 2,
+          padding: "10px 0 4px",
+          borderTop: "1px solid var(--border)",
+        }}>
+          <div style={{
+            fontFamily: "var(--font-display)", fontStyle: "italic",
+            fontSize: 13, color: "var(--text-muted)", marginBottom: 4,
+          }}>
+            RIAA milestones
+          </div>
+          <MilestoneTimeline certs={certLinesA} name={nameA} color={ACCENT_A} />
+          <MilestoneTimeline certs={certLinesB} name={nameB} color={ACCENT_B} />
+          {hasC && <MilestoneTimeline certs={certLinesC} name={nameC} color={ACCENT_C} />}
+        </div>
+      )}
 
       {disclaimer && (
         <div style={{
