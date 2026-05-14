@@ -2043,7 +2043,15 @@ export function ForYouPage() {
       // from the Discover tab (which goes back to normal flow).
       ...(isSwipe ? {
         position: "fixed",
-        top: "env(safe-area-inset-top, 0px)",
+        // Anchor to top:0, not env(safe-area-inset-top) — on iOS Safari
+        // the URL bar collapses opportunistically on upward gestures
+        // (even with overflow:hidden body). When that happens, the
+        // safe-area-inset-top value can shift, leaving a black gap
+        // between the device top and where this element re-anchored.
+        // Anchoring to 0 keeps the surface continuous to the top edge;
+        // the tabs strip below pads its content past the safe area so
+        // tab buttons aren't under the notch / status bar.
+        top: 0,
         left: 0,
         right: 0,
         bottom: "calc(56px + env(safe-area-inset-bottom, 0px))",
@@ -2078,6 +2086,12 @@ export function ForYouPage() {
         display: "flex",
         borderBottom: "1px solid rgba(255,255,255,0.1)",
         flexShrink: 0,
+        // In swipe mode the parent extends to top:0 (covers the safe area
+        // so URL-bar-collapse doesn't expose a black gap). Pad the strip
+        // by safe-area-inset-top so the tab buttons themselves stay
+        // below the notch / status bar — the glass background extends
+        // up into the status-bar area as a continuous header surface.
+        paddingTop: isSwipe ? "env(safe-area-inset-top, 0px)" : undefined,
         // Belt-and-suspenders: force the strip onto its own GPU layer so
         // nothing in the content panel paints above it regardless of
         // descendant stacking-context shenanigans.
