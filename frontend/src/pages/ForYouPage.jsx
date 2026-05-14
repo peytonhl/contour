@@ -1067,16 +1067,32 @@ function ForYouFeed() {
       // profile dislikes are still applied — but the nuclear-fallback tier
       // on the backend handles that case.)
       const dislikedArtists = attempt === 0 ? loadDisliked() : [];
-      // Tell the backend which tracks we've already shown in this scroll
-      // session so the next prefetch doesn't repeat them. Only pass on
-      // append — a non-append fetch is a deliberate reset (e.g. toggling
-      // englishOnly) where we want a fresh batch. Cap at 80 IDs to keep
-      // the URL well under any reasonable length limit; that's ~8 batches
-      // of memory, far more than needed to mask the Deezer chart cache
-      // (which now expires every ~15 min after the signed-URL TTL fix).
-      const sessionExclude = append
+      // Tell the backend which tracks to exclude from this batch. Two sources:
+      //
+      //   1. Past-rated source IDs (mostly Deezer numeric IDs from history).
+      //      The server-side Rating table stores the *resolved Spotify ID*
+      //      for every rating — so when a Deezer-sourced track was rated,
+      //      DB has the Spotify ID, but the Deezer chart tier returns the
+      //      same song under its original numeric ID. The server-side
+      //      exclude query can't match those, and the user sees a track
+      //      they already rated. Sending history.trackId (the source-native
+      //      ID at rate time) closes that gap. Also covers guest users who
+      //      have no Rating rows at all.
+      //
+      //   2. In-session shown tracks (append=true only) — prevents prefetch
+      //      from repeating tracks visible in the same scroll session when
+      //      the same Deezer chart response is still warm in cache.
+      //
+      // Cap conservatively to keep the URL bounded: ~12 chars per ID + comma,
+      // 150 IDs ≈ 1.8 KB, comfortable under any proxy/CDN limit.
+      const ratedSourceIds = loadHistory()
+        .map((h) => h.trackId)
+        .filter(Boolean)
+        .slice(0, 150);
+      const inSession = append
         ? tracks.slice(-80).map((t) => t.id).filter(Boolean)
         : [];
+      const sessionExclude = Array.from(new Set([...ratedSourceIds, ...inSession]));
       const batch = await api.getDiscoverFeed({
         genres: genresRef.current.slice(0, 3),
         liked_artists: likedArtists,
