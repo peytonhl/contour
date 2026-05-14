@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import random
 import time
 from pathlib import Path
 from typing import Optional
@@ -607,9 +608,36 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
     Search for tracks by genre using a keyword search.
 
     Note: Spotify deprecated the `genre:` filter in 2024. We use a plain
-    keyword query instead (e.g. "pop hits") which returns reliable results.
+    keyword query instead, but rotate across three variants per call so
+    niche-genre users actually see niche tracks:
+
+      1. `{genre}` — default popularity ranking (the "mainstream of the niche")
+      2. `{genre} tag:hipster` — Spotify's documented low-popularity filter,
+         returns deep cuts that wouldn't surface from default ranking
+      3. `{genre} year:2023-2026` — recent tracks regardless of popularity,
+         tilts toward what's fresh in the niche right now
+
+    The prior version always used `{genre} hits`, which both forced a
+    popularity skew AND prepended the lazy word "hits" into the query —
+    a user whose seed-artist genre was e.g. "shoegaze" or "math rock"
+    saw chart-of-the-niche tracks every batch instead of discovery.
+    Per-call random.choice means tier 1's three parallel genre searches
+    are a 1/3-ish mix of variants on average — over a session you land
+    on each variant repeatedly, which is what supplies the "I keep
+    finding stuff" feel the algorithm was missing for niche tastes.
+
+    Cache key includes the chosen variant so each variant caches
+    independently — popular `{genre}` results are hit far more often
+    than `tag:hipster`, and caching them together would let one variant
+    starve the other.
     """
-    cache_key = f"spotify:genre_kw:{genre}:{limit}"
+    variants = (
+        genre,
+        f"{genre} tag:hipster",
+        f"{genre} year:2023-2026",
+    )
+    query = random.choice(variants)
+    cache_key = f"spotify:genre_kw:{query}:{limit}"
     cached = await redis_cache.get(cache_key)
     if cached:  # guard: don't use an empty cached result
         return cached
@@ -618,7 +646,7 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
         token = await _get_token(client)
         resp = await _spotify_get(
             client, "https://api.spotify.com/v1/search", token,
-            params={"q": f"{genre} hits", "type": "track", "limit": limit, "market": "US"},
+            params={"q": query, "type": "track", "limit": limit, "market": "US"},
         )
         resp.raise_for_status()
         items = resp.json().get("tracks", {}).get("items", [])
