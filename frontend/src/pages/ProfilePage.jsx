@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
-import { BadgeChips } from "../components/Badges.jsx";
+import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 
@@ -413,8 +413,8 @@ export function ProfilePage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.025em", margin: 0, lineHeight: 1.1 }}>
                   {user.display_name}
+                  <BadgeMark badges={badges} userId={user?.id} size="md" />
                 </h1>
-                <BadgeChips badges={badges} userId={user?.id} size="md" />
               </div>
               <div style={{ display: "flex", gap: 6, flexShrink: 0, position: "relative" }}>
                 <button

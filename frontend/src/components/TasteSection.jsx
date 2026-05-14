@@ -7,6 +7,22 @@ const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 const GOLD = "#f59e0b";
 
+// Section-header-style ghost action button. Reads as a sub-action of the
+// "MUSIC TASTE" header (same case + tracking, lighter weight) rather than
+// a tinted pill competing with the chips elsewhere on the page.
+const tasteActionBtn = {
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: "0.05em",
+  textTransform: "uppercase",
+  color: "var(--text-muted)",
+  background: "transparent",
+  border: "none",
+  padding: "8px 0",
+  cursor: "pointer",
+  transition: "color 160ms var(--ease)",
+};
+
 // ── Genre → color gradient ────────────────────────────────────────────────────
 function genreGradient(genre) {
   const g = genre.toLowerCase();
@@ -571,26 +587,22 @@ export function TasteSection({ userId, isOwner }) {
             Music Taste
           </h3>
           {isOwner && (
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 18 }}>
               <button
                 onClick={() => setGenreEditorOpen(true)}
-                style={{
-                  fontSize: 11, fontWeight: 700, color: ACCENT_B,
-                  background: `${ACCENT_B}14`, border: `1px solid ${ACCENT_B}35`,
-                  borderRadius: "var(--radius-xl)", padding: "4px 12px", cursor: "pointer",
-                }}
+                style={tasteActionBtn}
+                onMouseEnter={(e) => e.currentTarget.style.color = "var(--text)"}
+                onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
               >
-                {savedGenres.length > 0 ? `Genres (${savedGenres.length})` : "+ Add genres"}
+                {savedGenres.length > 0 ? `Edit genres · ${savedGenres.length}` : "Add genres"}
               </button>
               <button
                 onClick={() => setPickerOpen(true)}
-                style={{
-                  fontSize: 11, fontWeight: 700, color: ACCENT_A,
-                  background: `${ACCENT_A}14`, border: `1px solid ${ACCENT_A}35`,
-                  borderRadius: "var(--radius-xl)", padding: "4px 12px", cursor: "pointer",
-                }}
+                style={tasteActionBtn}
+                onMouseEnter={(e) => e.currentTarget.style.color = "var(--text)"}
+                onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
               >
-                {taste?.pinned_albums?.length ? "Edit albums" : "+ Pick albums"}
+                {taste?.pinned_albums?.length ? `Edit albums · ${taste.pinned_albums.length}` : "Pick albums"}
               </button>
             </div>
           )}

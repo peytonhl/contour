@@ -7,7 +7,7 @@ import { TasteSection } from "../components/TasteSection.jsx";
 import { BlockButton } from "../components/BlockButton.jsx";
 import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
-import { BadgeChips } from "../components/Badges.jsx";
+import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 
@@ -156,8 +156,8 @@ export function UserPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
           <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.025em", margin: 0, lineHeight: 1.1 }}>
             {profile.display_name}
+            <BadgeMark badges={badges} userId={id} size="md" />
           </h1>
-          <BadgeChips badges={badges} userId={id} size="md" />
           {profile.bio && (
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.65, maxWidth: 400 }}>
               {profile.bio}

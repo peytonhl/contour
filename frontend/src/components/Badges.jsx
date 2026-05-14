@@ -2,11 +2,13 @@ import { Link } from "react-router-dom";
 import { PenIcon, TrendingUpIcon, UsersIcon } from "./Icons";
 
 // ── Badge definitions ─────────────────────────────────────────────────────────
-// All three badges share the brand-amber accent. Differentiation is purely by
-// glyph + label — a deliberate choice over the old emoji-and-three-different-
-// colors treatment, which read as gamified and visually noisy. If we ever
-// introduce tiering (gold-tier elite, etc.), add a `tone` field here rather
-// than reintroducing per-badge colors.
+// `Icon` is consumed by BadgeLeaderboard (the Community Top 5 card). On
+// individual profiles/feeds we no longer render per-badge chips at all —
+// BadgeMark below shows a single editorial mark next to the user's name and
+// lists which badges the user holds in a tooltip. Earlier iterations used a
+// row of tinted pills (one per badge type, each with its own icon and color);
+// that read as gamified shadcn-style chip soup, which was the opposite of the
+// editorial-serif feel the rest of the app is going for.
 export const BADGE_DEFS = [
   { key: "critics",     Icon: PenIcon,        label: "Top Critic",    title: "Top 5 most reviews written" },
   { key: "influencers", Icon: TrendingUpIcon, label: "Influential",   title: "Top 5 most upvotes received" },
@@ -24,34 +26,35 @@ export function getBadgesForUser(badges, userId) {
   );
 }
 
-export function BadgeChips({ badges, userId, size = "sm" }) {
+/**
+ * A single editorial mark — a serif star in brand amber — that sits inline
+ * next to a user's display name when they hold ANY community-recognition
+ * badge. The specific badges are revealed in the tooltip / aria-label, not
+ * shown visually. ★ is U+2605 (Misc Symbols), not an emoji, so it renders
+ * consistently across iOS/Android/Windows in the active font.
+ *
+ *   size="sm"   → 13px, intended for feed-row use beside a 13px name
+ *   size="md"   → 20px, intended for profile-hero use beside a 24-26px H1
+ */
+export function BadgeMark({ badges, userId, size = "sm" }) {
   const held = getBadgesForUser(badges, userId);
   if (!held.length) return null;
-  const fs = size === "sm" ? 11 : 12;
-  const pad = size === "sm" ? "2px 8px 2px 7px" : "3px 10px 3px 9px";
-  const iconSize = size === "sm" ? 11 : 13;
+  const labels = held.map((b) => b.label).join(" · ");
+  const fontSize = size === "md" ? 20 : 13;
   return (
-    <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
-      {held.map((b) => (
-        <span
-          key={b.key}
-          title={b.title}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 5,
-            fontSize: fs, fontWeight: 600, padding: pad,
-            borderRadius: "var(--radius-pill)",
-            background: "var(--accent-a-dim)",
-            border: "1px solid rgba(217, 122, 59, 0.32)",
-            color: "var(--accent-a)",
-            whiteSpace: "nowrap",
-            lineHeight: 1,
-          }}
-        >
-          <b.Icon size={iconSize} />
-          {b.label}
-        </span>
-      ))}
-    </span>
+    <span
+      title={labels}
+      aria-label={`Community recognition: ${labels}`}
+      style={{
+        fontFamily: "var(--font-display)",
+        fontSize,
+        color: "var(--accent-a)",
+        marginLeft: 6,
+        lineHeight: 1,
+        cursor: "help",
+        verticalAlign: "baseline",
+      }}
+    >★</span>
   );
 }
 

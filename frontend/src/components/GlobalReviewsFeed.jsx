@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-import { BadgeChips, BadgeLeaderboard } from "./Badges.jsx";
+import { BadgeMark, BadgeLeaderboard } from "./Badges.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
 
@@ -96,9 +96,11 @@ function ReviewCardItem({ item, user, onVote, badges }) {
         </Link>
         <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <Link to={`/user/${item.user?.id}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>{item.user?.display_name}</Link>
+            <Link to={`/user/${item.user?.id}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>
+              {item.user?.display_name}
+              <BadgeMark badges={badges} userId={item.user?.id} />
+            </Link>
             {item.rating && <RatingBadge value={item.rating} />}
-            <BadgeChips badges={badges} userId={item.user?.id} />
           </div>
         </div>
         <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{timeAgo(item.created_at)}</span>
