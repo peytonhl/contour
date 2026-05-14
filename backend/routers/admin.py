@@ -160,26 +160,20 @@ async def backfill_track_popularity(
     """
     Backfill `popularity` on TrackCache rows where it's currently NULL.
 
-    Catalog-stats audit (2026-05-14) showed 164 tracks in TrackCache with
-    popularity NULL on every single row. Root cause: Spotify's /v1/search
-    response appears to have stripped the `popularity` field for non-
-    Extended-Access apps in their late-2024 Web API changes. The /v1/tracks
-    endpoint (used here) still returns the full TrackObject including
-    popularity, so we backfill in 50-ID batches.
-
-    For the catalog-pivot work this is foundational — the For You feed's
-    Laplace popularity curve has no signal to weight against until the
-    rows have non-null popularity. Run this once after deploy to backfill
-    the existing 164 rows; ongoing growth from genre-search persist will
-    auto-enrich (see services.spotify.search_tracks_by_genre).
+    Includes an inline raw-HTTP diagnostic probe in the response so the
+    caller can see *exactly* what Spotify's /v1/tracks endpoint returns
+    for our app's credentials — status code, response body preview, and
+    the popularity field for the first 5 IDs. If the bulk path returns
+    fetched=0, the probe tells us why immediately rather than requiring
+    a log dive.
 
     Body params:
       max_tracks: cap on how many rows to scan + backfill in one call.
                   At 50 IDs per Spotify call, max=200 is 4 API calls.
-                  Default 200 keeps each invocation under a second of
-                  Spotify time and well below any rate-limit concern.
 
-    Returns: {ok, scanned, fetched, updated, elapsed_seconds, sample}.
+    Returns: {ok, scanned, fetched, updated, elapsed_seconds, sample,
+              probe: {status_code, ids_requested, response_preview,
+                      raw_popularity_values}}.
     """
     await _require_admin(db, user_id)
 
@@ -200,6 +194,41 @@ async def backfill_track_popularity(
             "note": "no tracks with NULL popularity — backfill is up to date",
         }
 
+    # ── Inline diagnostic probe ──────────────────────────────────────────────
+    # Hit /v1/tracks directly with the first 5 IDs and capture every signal
+    # we can: status code, response body preview, exception class if it
+    # blows up. Without this, get_tracks_batch's per-chunk try/except hides
+    # whatever is actually going wrong.
+    import httpx as _httpx
+    probe: dict = {"ids_requested": ids[:5]}
+    try:
+        async with _httpx.AsyncClient(timeout=10.0) as client:
+            token = await spotify._get_token(client)
+            resp = await client.get(
+                "https://api.spotify.com/v1/tracks",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"ids": ",".join(ids[:5]), "market": "US"},
+            )
+            probe["status_code"] = resp.status_code
+            probe["response_preview"] = resp.text[:600]
+            if resp.status_code == 200:
+                body = resp.json()
+                returned = body.get("tracks") or []
+                probe["tracks_in_response"] = len(returned)
+                probe["raw_popularity_values"] = [
+                    {
+                        "id": (t or {}).get("id"),
+                        "name": (t or {}).get("name"),
+                        "popularity": (t or {}).get("popularity"),
+                        "popularity_type": type((t or {}).get("popularity")).__name__,
+                    }
+                    for t in returned
+                ]
+    except Exception as exc:
+        probe["error_type"] = type(exc).__name__
+        probe["error_message"] = str(exc)
+
+    # ── Bulk backfill via get_tracks_batch ───────────────────────────────────
     try:
         fetched = await spotify.get_tracks_batch(ids)
     except Exception as exc:
@@ -209,17 +238,14 @@ async def backfill_track_popularity(
             "error_type": type(exc).__name__,
             "error_message": str(exc),
             "elapsed_seconds": round(time.time() - start, 2),
+            "probe": probe,
         }
 
     # get_tracks_batch fire-and-forgets persistence; settle here so the
     # caller sees an honest "updated" count rather than racing.
-    # _persist_track_to_db now preserves an existing non-null popularity,
-    # but for these rows the existing value IS null so the new popularity
-    # always lands.
     import asyncio as _asyncio
-    await _asyncio.sleep(0.5)  # let the create_task persists drain
+    await _asyncio.sleep(0.5)
 
-    # Re-query to confirm.
     confirmed = (await db.execute(
         select(TrackCache.spotify_id, TrackCache.popularity)
         .where(TrackCache.spotify_id.in_(ids))
@@ -238,4 +264,5 @@ async def backfill_track_popularity(
         "updated": updated,
         "elapsed_seconds": round(time.time() - start, 2),
         "sample": sample,
+        "probe": probe,
     }
