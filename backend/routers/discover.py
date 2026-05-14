@@ -87,55 +87,29 @@ def _is_likely_english(text: str) -> bool:
     return (non_ascii / len(text)) < 0.3
 
 
-_SPANISH_DIACRITICS = set("ñÑ¿¡áéíóúüÁÉÍÓÚÜ")
-_SPANISH_COMMON_WORDS = {
-    "el", "la", "los", "las", "de", "del", "que", "y", "en", "un", "una",
-    "es", "por", "para", "con", "no", "se", "mi", "tu", "su", "yo", "te",
-    "lo", "le", "más", "como", "pero", "todo", "amor", "vida", "corazón",
-    "noche", "día", "tiempo", "sin", "muy", "ya", "ahora",
-}
-
-
-def _looks_spanish(text: str) -> bool:
-    """
-    Heuristic Spanish-language detection. Imperfect — Latin script alone
-    doesn't distinguish Spanish from Portuguese / Italian, and titles are
-    short so common-word matches are unreliable. We accept either signal:
-    a Spanish-specific diacritic (ñ, ¿, ¡, ú with no English near-cognate)
-    or a common Spanish stopword in the text. False positives on
-    Portuguese / Italian are tolerable since they're stylistically
-    adjacent; false negatives on English-titled Latin-pop tracks (e.g.
-    "Te Amo") will pass too, which is also fine.
-    """
-    if not text:
-        return False
-    if any(c in _SPANISH_DIACRITICS for c in text):
-        return True
-    words = {w.strip(".,!?¡¿\"'()[]").lower() for w in text.split()}
-    return bool(words & _SPANISH_COMMON_WORDS)
-
-
 def _passes_language_filter(text: str, language: str) -> bool:
     """
     Single dispatch: route to the right filter based on the language enum
     coming from the /feed request.
 
       english → Latin script only (filters Cyrillic/CJK/Arabic/etc.;
-                French/Spanish accented chars still pass — that's intentional
-                because Spanish-pop tracks should reach an English-leaning
-                listener as they would on any other platform). Maps to the
-                old english_only=True behavior.
-      spanish → Latin script + at least one Spanish indicator (diacritic or
-                common stopword). Heuristic; see _looks_spanish.
+                Latin-script tracks in other Western languages still pass).
+                Maps to the old english_only=True behavior.
+      spanish → Latin script only. NOT a strict Spanish-only filter — the
+                actual Spanish bias comes from passing market="ES" to
+                Spotify's search, which surfaces Spanish-region-popular
+                tracks at the top of the genre pool. The previous version
+                of this filter required Spanish diacritics or stopwords on
+                track/artist text, which dropped ~everything because most
+                rap and classical search results are English-titled even
+                when popular in Spain. Result: empty feed, never loads.
+                Now we trust Spotify's market-based ranking and just keep
+                the Latin-script gate to filter Cyrillic/CJK.
       all     → no filter; everything passes.
     """
     if language == "all":
         return True
-    if not _is_likely_english(text):  # always strip non-Latin first
-        return False
-    if language == "spanish":
-        return _looks_spanish(text)
-    return True  # english (default)
+    return _is_likely_english(text)  # Latin-script gate for both english + spanish
 
 
 def _weighted_sample(items: list, weights: list[float], k: int) -> list:
@@ -317,6 +291,15 @@ async def get_discover_feed(
     else:
         active_language = "english" if english_only else "all"
 
+    # Spanish mode biases Spotify's genre search to the Spanish market
+    # (market=ES surfaces tracks popular in Spain). The post-fetch language
+    # filter does only a Latin-script gate in Spanish mode — too-strict
+    # diacritic / stopword filtering left the feed empty for users whose
+    # profile genres (hip-hop, classical) don't carry obvious Spanish text
+    # markers even when popular in Spain. Letting Spotify's market scoring
+    # do the heavy lifting is the right division of responsibility.
+    spotify_market = "ES" if active_language == "spanish" else "US"
+
     def _make_adder(excluded: set[str]):
         def _add(batch: list[dict]) -> None:
             for t in batch:
@@ -369,7 +352,7 @@ async def get_discover_feed(
         position_weights = [0.85 ** i for i in range(len(genre_list))]
         sampled_genres = _weighted_sample(genre_list, position_weights, k=n_pick)
         genre_results = await asyncio.gather(*[
-            spotify.search_tracks_by_genre(g, limit=15, target_popularity=target_popularity)
+            spotify.search_tracks_by_genre(g, limit=15, target_popularity=target_popularity, market=spotify_market)
             for g in sampled_genres
         ], return_exceptions=True)
         _flatten_shuffle_add(genre_results, add_personalized)

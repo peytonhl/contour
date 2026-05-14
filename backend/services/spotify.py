@@ -664,6 +664,7 @@ async def search_tracks_by_genre(
     genre: str,
     limit: int = 20,
     target_popularity: float | None = None,
+    market: str = "US",
 ) -> list[dict]:
     """
     Genre-based track search with popularity-weighted sampling.
@@ -747,11 +748,12 @@ async def search_tracks_by_genre(
     # If Spotify ever returns real popularity again (Extended Access
     # approval, policy change), the real value is preserved — synth only
     # fills the None case.
-    # v4: bumped from v3 because the keyword-filter logic below changed its
-    # criteria + threshold, so old v3 pools (which still carry keyword-
-    # stuffed tracks like "Classical" by Vampire Weekend in the classical
-    # pool) need to roll over. Old v3 keys naturally expire on their 7d TTL.
-    cache_key = f"spotify:genre_pool_v4:{genre}"
+    # v5: cache key now varies by market so English (US) and Spanish (ES)
+    # pools cache independently. Without this the first user to scroll
+    # would lock the cache to their market for 7d, and subsequent users
+    # on different language settings would get the wrong region's
+    # popular tracks. Bumped from v4 since the cache-key shape changed.
+    cache_key = f"spotify:genre_pool_v5:{genre}:{market}"
     pool = await redis_cache.get(cache_key)
 
     if not pool:
@@ -766,16 +768,12 @@ async def search_tracks_by_genre(
             responses = await asyncio.gather(*[
                 _spotify_get(
                     client, "https://api.spotify.com/v1/search", token,
-                    # limit=10: Spotify's /v1/search selectively rejects
-                    # higher limits for non-Extended-Access apps with a
-                    # disguised 400 "Invalid limit" — same pattern CLAUDE.md
-                    # warns about for /artists/{id}/albums. Probing on prod
-                    # showed limit=30 fails, limit=20 fails, limit=5 passes;
-                    # 10 is the proven cap (every other search_* function
-                    # in this file uses 10 without issue). 3 variants × 10
-                    # = ~25-30 deduped pool, smaller than ideal but enough
-                    # for the sampling step that draws 15.
-                    params={"q": q, "type": "track", "limit": 10, "market": "US"},
+                    # limit=10 is the cap for our app tier (see CLAUDE.md
+                    # + memory note). market param defaults to "US" but is
+                    # configurable so Spanish-mode requests pass "ES" and
+                    # get Spanish-region-popular tracks at the top of
+                    # Spotify's ranking instead of US-region tracks.
+                    params={"q": q, "type": "track", "limit": 10, "market": market},
                 )
                 for q, _, _ in variants
             ], return_exceptions=True)
