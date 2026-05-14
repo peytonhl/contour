@@ -16,13 +16,13 @@ const styles = {
   input: {
     width: "100%", padding: "10px 14px",
     background: "var(--surface2)", border: "1px solid var(--border)",
-    borderRadius: 8, color: "var(--text)", fontSize: 14,
+    borderRadius: "var(--radius-md)", color: "var(--text)", fontSize: 14,
     outline: "none", transition: "border-color 0.15s", boxSizing: "border-box",
   },
   dropdown: {
     position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
     background: "var(--surface)", border: "1px solid var(--border)",
-    borderRadius: 10, overflow: "hidden", zIndex: 100,
+    borderRadius: "var(--radius)", overflow: "hidden", zIndex: 100,
     boxShadow: "0 8px 32px rgba(0,0,0,0.5)", maxHeight: 380, overflowY: "auto",
   },
   item: {
@@ -37,11 +37,11 @@ const styles = {
   selectedBadge: {
     display: "flex", alignItems: "center", gap: 8,
     padding: "8px 10px", background: "var(--surface2)",
-    border: "1px solid var(--border)", borderRadius: 8,
+    border: "1px solid var(--border)", borderRadius: "var(--radius-md)",
   },
   typePill: {
     fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase",
-    padding: "2px 7px", borderRadius: 20, flexShrink: 0,
+    padding: "2px 7px", borderRadius: "var(--radius-xl)", flexShrink: 0,
   },
 };
 
@@ -109,8 +109,8 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
         // Selected state — show badge
         <div style={{ ...styles.selectedBadge, borderColor: accentColor + "66" }}>
           {selected.image_url
-            ? <img src={selected.image_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
-            : <div style={{ width: 32, height: 32, borderRadius: 4, background: "var(--surface2)", flexShrink: 0 }} />
+            ? <img src={selected.image_url} alt="" style={{ width: 32, height: 32, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+            : <div style={{ width: 32, height: 32, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
           }
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: accentColor, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -163,8 +163,8 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
                       onMouseDown={() => handleSelect({ ...album, _type: "album" })}
                     >
                       {album.image_url
-                        ? <img src={album.image_url} alt="" style={{ width: 40, height: 40, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
-                        : <div style={{ width: 40, height: 40, borderRadius: 4, background: "var(--surface2)", flexShrink: 0 }} />
+                        ? <img src={album.image_url} alt="" style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                        : <div style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                       }
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{album.name}</div>
@@ -193,8 +193,8 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
                       onMouseDown={() => handleSelect({ ...track, _type: "track" })}
                     >
                       {track.image_url
-                        ? <img src={track.image_url} alt="" style={{ width: 40, height: 40, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
-                        : <div style={{ width: 40, height: 40, borderRadius: 4, background: "var(--surface2)", flexShrink: 0 }} />
+                        ? <img src={track.image_url} alt="" style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                        : <div style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                       }
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.name}</div>

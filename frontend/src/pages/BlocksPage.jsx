@@ -43,7 +43,7 @@ export function BlocksPage() {
       ) : blocks.length === 0 ? (
         <div style={{
           padding: "40px 20px", textAlign: "center", color: "var(--text-muted)",
-          background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
+          background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
         }}>
           You haven't blocked anyone.
         </div>
@@ -53,7 +53,7 @@ export function BlocksPage() {
             <div key={b.user_id} style={{
               display: "flex", alignItems: "center", gap: 12,
               padding: "10px 14px",
-              background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10,
+              background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
             }}>
               <Link to={`/user/${b.user_id}`} style={{ flexShrink: 0 }}>
                 {b.image_url
@@ -69,7 +69,7 @@ export function BlocksPage() {
                 </Link>
               </div>
               <button onClick={() => unblock(b.user_id)} style={{
-                padding: "6px 12px", borderRadius: 6, fontSize: 12,
+                padding: "6px 12px", borderRadius: "var(--radius-sm)", fontSize: 12,
                 background: "none", border: "1px solid var(--border)",
                 color: "var(--text-muted)", cursor: "pointer",
               }}>

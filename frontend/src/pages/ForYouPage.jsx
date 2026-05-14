@@ -320,9 +320,9 @@ function StarPicker({ value, onChange, disabled }) {
 // ── Audio progress bar ────────────────────────────────────────────────────────
 function AudioBar({ progress }) {
   return (
-    <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.15)", overflow: "hidden" }}>
+    <div style={{ height: 3, borderRadius: "var(--radius-sm)", background: "rgba(255,255,255,0.15)", overflow: "hidden" }}>
       <div style={{
-        height: "100%", borderRadius: 2,
+        height: "100%", borderRadius: "var(--radius-sm)",
         background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
         width: `${Math.min(progress * 100, 100)}%`,
         transition: "width 0.25s linear",
@@ -730,7 +730,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
               </a>
             </h2>
             {track.explicit && (
-              <span style={{ fontSize: 9, background: "rgba(255,255,255,0.15)", borderRadius: 3, padding: "2px 5px", color: "rgba(255,255,255,0.5)", fontWeight: 700, flexShrink: 0, marginTop: 2 }}>E</span>
+              <span style={{ fontSize: 9, background: "rgba(255,255,255,0.15)", borderRadius: "var(--radius-sm)", padding: "2px 5px", color: "rgba(255,255,255,0.5)", fontWeight: 700, flexShrink: 0, marginTop: 2 }}>E</span>
             )}
           </div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -860,7 +860,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                   style={{
                     fontSize: 12, fontWeight: 600, color: "#fb7185",
                     background: "rgba(251,113,133,0.1)", border: "1px solid rgba(251,113,133,0.3)",
-                    borderRadius: 6, padding: "3px 9px", cursor: "pointer",
+                    borderRadius: "var(--radius-sm)", padding: "3px 9px", cursor: "pointer",
                   }}
                 >
                   Couldn't save · Retry
@@ -879,7 +879,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                 style={{
                   alignSelf: "flex-start", fontSize: 12, color: "rgba(255,255,255,0.45)",
                   background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 6, padding: "5px 14px", cursor: "pointer",
+                  borderRadius: "var(--radius-sm)", padding: "5px 14px", cursor: "pointer",
                   letterSpacing: "0.01em",
                 }}
               >
@@ -901,7 +901,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                     width: "100%", padding: "10px 12px", fontSize: 13,
                     background: "rgba(255,255,255,0.07)",
                     border: `1px solid ${reviewError ? "rgba(248,113,113,0.5)" : "rgba(255,255,255,0.15)"}`,
-                    borderRadius: 10, color: "#fff", resize: "none",
+                    borderRadius: "var(--radius)", color: "#fff", resize: "none",
                     outline: "none", boxSizing: "border-box",
                   }}
                 />
@@ -912,7 +912,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                   <button
                     onClick={handleSubmitReview}
                     style={{
-                      padding: "7px 18px", borderRadius: 20, fontSize: 13, fontWeight: 700,
+                      padding: "7px 18px", borderRadius: "var(--radius-xl)", fontSize: 13, fontWeight: 700,
                       background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                       border: "none", color: "#000", cursor: "pointer",
                     }}
@@ -920,7 +920,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                   <button
                     onClick={() => { setReviewOpen(false); setReviewError(""); }}
                     style={{
-                      padding: "7px 14px", borderRadius: 20, fontSize: 13,
+                      padding: "7px 14px", borderRadius: "var(--radius-xl)", fontSize: 13,
                       background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
                       color: "rgba(255,255,255,0.5)", cursor: "pointer",
                     }}
@@ -946,7 +946,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
             style={{
               fontSize: 11, color: "rgba(255,255,255,0.3)",
               background: "none", border: "none", cursor: "pointer",
-              padding: "4px 10px", borderRadius: 6,
+              padding: "4px 10px", borderRadius: "var(--radius-sm)",
               transition: "color 0.15s", letterSpacing: "0.01em",
             }}
             onMouseEnter={(e) => e.currentTarget.style.color = "rgba(255,255,255,0.55)"}
@@ -1004,7 +1004,7 @@ function ColdStartBanner({ ratingCount }) {
             <div
               key={i}
               style={{
-                flex: 1, borderRadius: 3,
+                flex: 1, borderRadius: "var(--radius-sm)",
                 background: filled
                   ? `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`
                   : "rgba(255,255,255,0.1)",
@@ -1622,7 +1622,7 @@ function ForYouFeed() {
 
         {/* Spotify-level diagnosis */}
         {debugInfo && spotifyOk === false && (
-          <div style={{ padding: "10px 16px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, maxWidth: 300 }}>
+          <div style={{ padding: "10px 16px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: "var(--radius-md)", maxWidth: 300 }}>
             <p style={{ margin: 0, fontSize: 12, color: "var(--danger)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
               <AlertIcon size={12} /> Spotify API unreachable
             </p>
@@ -1634,7 +1634,7 @@ function ForYouFeed() {
         )}
 
         {debugInfo && spotifyOk === true && tier3Ok === false && (
-          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, maxWidth: 300 }}>
+          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--radius-md)", maxWidth: 300 }}>
             <p style={{ margin: 0, fontSize: 12, color: "var(--gold)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
               <AlertIcon size={12} /> Spotify auth OK but track search failed
             </p>
@@ -1645,7 +1645,7 @@ function ForYouFeed() {
         )}
 
         {debugInfo && spotifyOk === true && tier3Ok === true && tier3Count === 0 && (
-          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, maxWidth: 300 }}>
+          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--radius-md)", maxWidth: 300 }}>
             <p style={{ margin: 0, fontSize: 12, color: "var(--gold)", fontWeight: 700 }}>Spotify returned 0 tracks</p>
             <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
               {dislikedCount >= 5 ? `${dislikedCount} artists blocked by your not-interested list.` : "Playlist may be empty or region-restricted."}
@@ -1664,7 +1664,7 @@ function ForYouFeed() {
         <button
           onClick={() => fetchBatch()}
           style={{
-            marginTop: 4, padding: "10px 24px", borderRadius: 20,
+            marginTop: 4, padding: "10px 24px", borderRadius: "var(--radius-xl)",
             background: ACCENT_A,
             border: "none", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer",
           }}
@@ -1673,7 +1673,7 @@ function ForYouFeed() {
           <button
             onClick={clearNotInterested}
             style={{
-              padding: "8px 20px", borderRadius: 20, fontSize: 12,
+              padding: "8px 20px", borderRadius: "var(--radius-xl)", fontSize: 12,
               background: "rgba(255,255,255,0.07)",
               border: "1px solid rgba(255,255,255,0.15)",
               color: "rgba(255,255,255,0.55)", cursor: "pointer",
@@ -1748,7 +1748,7 @@ function ForYouFeed() {
             <button
               onClick={() => toggleEnglishOnly(!englishOnly)}
               style={{
-                width: 44, height: 24, borderRadius: 12, flexShrink: 0,
+                width: 44, height: 24, borderRadius: "var(--radius-lg)", flexShrink: 0,
                 background: englishOnly ? ACCENT_A : "rgba(255,255,255,0.15)",
                 border: "none", cursor: "pointer", position: "relative",
                 transition: "background 0.2s",
@@ -2124,7 +2124,7 @@ export function ForYouPage() {
           padding: "10px 36px 10px 14px",
           background: "rgba(217,122,59,0.12)",
           border: "1px solid rgba(217,122,59,0.35)",
-          borderRadius: 10,
+          borderRadius: "var(--radius)",
           fontSize: 12.5, lineHeight: 1.45,
           color: "rgba(255,255,255,0.85)",
         }}>
@@ -2136,7 +2136,7 @@ export function ForYouPage() {
             aria-label="Dismiss tip"
             style={{
               position: "absolute", top: 6, right: 8,
-              width: 22, height: 22, borderRadius: 11,
+              width: 22, height: 22, borderRadius: "var(--radius)",
               background: "none", border: "none", cursor: "pointer",
               color: "rgba(255,255,255,0.5)", fontSize: 14, lineHeight: 1,
               display: "flex", alignItems: "center", justifyContent: "center",

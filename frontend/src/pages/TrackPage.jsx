@@ -58,7 +58,7 @@ function RiaaTooltip() {
           position: "absolute", bottom: "calc(100% + 8px)", left: "50%",
           transform: "translateX(-50%)",
           background: "var(--surface2)", border: "1px solid var(--border)",
-          borderRadius: 10, padding: "12px 14px",
+          borderRadius: "var(--radius)", padding: "12px 14px",
           fontSize: 12, lineHeight: 1.55, color: "var(--text)",
           width: 230, zIndex: 200, boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
           pointerEvents: "none",
@@ -92,7 +92,7 @@ function NoChartData({ releaseDate }) {
   const isEarlyEra = year && year < 2013;
   return (
     <div style={{
-      background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
+      background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
       padding: "52px 24px", display: "flex", flexDirection: "column",
       alignItems: "center", gap: 12, textAlign: "center",
     }}>
@@ -205,7 +205,7 @@ export function TrackPage() {
               margin: 0,
             }}>
               {track.name}
-              {track.explicit && <span style={{ marginLeft: 10, fontSize: "var(--text-xs)", background: "var(--surface3)", borderRadius: 4, padding: "2px 6px", color: "var(--text-muted)", verticalAlign: "middle", fontWeight: 700, letterSpacing: "0.06em" }}>E</span>}
+              {track.explicit && <span style={{ marginLeft: 10, fontSize: "var(--text-xs)", background: "var(--surface3)", borderRadius: "var(--radius-sm)", padding: "2px 6px", color: "var(--text-muted)", verticalAlign: "middle", fontWeight: 700, letterSpacing: "0.06em" }}>E</span>}
             </h1>
 
             <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", fontWeight: 600 }}>

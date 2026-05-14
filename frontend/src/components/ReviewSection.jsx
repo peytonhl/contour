@@ -136,7 +136,7 @@ function ReplyForm({ onSubmit, onCancel, autoFocus = false, placeholder = "Write
           // takes over.
           flex: "1 1 200px", minWidth: 0,
           padding: "10px 12px", background: "var(--surface2)",
-          border: "1px solid var(--border)", borderRadius: 7,
+          border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
           color: "var(--text)", fontSize: 13, outline: "none",
         }}
       />
@@ -145,7 +145,7 @@ function ReplyForm({ onSubmit, onCancel, autoFocus = false, placeholder = "Write
         disabled={saving || !text.trim()}
         style={{
           padding: "8px 14px", background: ACCENT, border: "none",
-          borderRadius: 7, color: "#000", fontWeight: 700, fontSize: 12,
+          borderRadius: "var(--radius-sm)", color: "#000", fontWeight: 700, fontSize: 12,
           opacity: saving || !text.trim() ? 0.5 : 1, cursor: "pointer",
         }}
       >
@@ -157,7 +157,7 @@ function ReplyForm({ onSubmit, onCancel, autoFocus = false, placeholder = "Write
           onClick={onCancel}
           style={{
             padding: "8px 10px", background: "none",
-            border: "1px solid var(--border)", borderRadius: 7,
+            border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
             color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
           }}
         >
@@ -643,7 +643,7 @@ export function ReviewSection({ entityType, entityId, user }) {
 
       {/* Review form */}
       {showForm && user && (
-        <form onSubmit={handleSubmitReview} style={{ display: "flex", flexDirection: "column", gap: 10, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
+        <form onSubmit={handleSubmitReview} style={{ display: "flex", flexDirection: "column", gap: 10, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>
             {summary?.user_review ? "Edit your review" : "Write a review"}
             {selectedRating && <span style={{ color: GOLD, marginLeft: 8 }}>· {selectedRating} / 5</span>}
@@ -655,7 +655,7 @@ export function ReviewSection({ entityType, entityId, user }) {
             rows={4}
             style={{
               width: "100%", boxSizing: "border-box",
-              background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 7,
+              background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
               color: "var(--text)", fontSize: 16, padding: "10px 12px", resize: "vertical",
               fontFamily: "inherit", lineHeight: 1.6, outline: "none",
             }}
@@ -663,11 +663,11 @@ export function ReviewSection({ entityType, entityId, user }) {
           {error && <span style={{ fontSize: 12, color: "var(--danger)" }}>{error}</span>}
           <div style={{ display: "flex", gap: 8 }}>
             <button type="submit" disabled={saving || !reviewText.trim()}
-              style={{ padding: "7px 18px", background: ACCENT, border: "none", borderRadius: 7, color: "#000", fontWeight: 700, fontSize: 13, cursor: saving ? "default" : "pointer", opacity: saving || !reviewText.trim() ? 0.6 : 1 }}>
+              style={{ padding: "7px 18px", background: ACCENT, border: "none", borderRadius: "var(--radius-sm)", color: "#000", fontWeight: 700, fontSize: 13, cursor: saving ? "default" : "pointer", opacity: saving || !reviewText.trim() ? 0.6 : 1 }}>
               {saving ? "Saving…" : "Save Review"}
             </button>
             <button type="button" onClick={() => setShowForm(false)}
-              style={{ padding: "7px 14px", background: "none", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text-muted)", fontSize: 13, cursor: "pointer" }}>
+              style={{ padding: "7px 14px", background: "none", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text-muted)", fontSize: 13, cursor: "pointer" }}>
               Cancel
             </button>
           </div>

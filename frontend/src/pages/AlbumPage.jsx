@@ -58,7 +58,7 @@ function RiaaTooltip() {
           position: "absolute", bottom: "calc(100% + 8px)", left: "50%",
           transform: "translateX(-50%)",
           background: "var(--surface2)", border: "1px solid var(--border)",
-          borderRadius: 10, padding: "12px 14px",
+          borderRadius: "var(--radius)", padding: "12px 14px",
           fontSize: 12, lineHeight: 1.55, color: "var(--text)",
           width: 230, zIndex: 200, boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
           pointerEvents: "none",
@@ -92,7 +92,7 @@ function NoChartData({ releaseDate }) {
   const isEarlyEra = year && year < 2013;
   return (
     <div style={{
-      background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
+      background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
       padding: "52px 24px", display: "flex", flexDirection: "column",
       alignItems: "center", gap: 12, textAlign: "center",
     }}>
@@ -394,7 +394,7 @@ export function AlbumPage() {
                 <span style={{ width: 22, textAlign: "right", fontSize: "var(--text-sm)", color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{track.track_number}</span>
                 <span style={{ flex: 1, fontSize: "var(--text-base)", fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {track.name}
-                  {track.explicit && <span style={{ marginLeft: 8, fontSize: 9, background: "var(--surface3)", borderRadius: 3, padding: "1px 4px", color: "var(--text-muted)", verticalAlign: "middle", letterSpacing: "0.04em", fontWeight: 700 }}>E</span>}
+                  {track.explicit && <span style={{ marginLeft: 8, fontSize: 9, background: "var(--surface3)", borderRadius: "var(--radius-sm)", padding: "1px 4px", color: "var(--text-muted)", verticalAlign: "middle", letterSpacing: "0.04em", fontWeight: 700 }}>E</span>}
                 </span>
                 <span style={{ fontSize: "var(--text-sm)", color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{formatDuration(track.duration_ms)}</span>
               </Link>

@@ -101,7 +101,7 @@ export function ImportPage() {
         <>
           <div style={{
             background: "var(--surface)", border: "1px solid var(--border)",
-            borderRadius: 10, padding: "16px 18px", marginBottom: 18,
+            borderRadius: "var(--radius)", padding: "16px 18px", marginBottom: 18,
             fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6,
           }}>
             <strong style={{ color: "var(--text)" }}>How to export from RYM:</strong>
@@ -119,7 +119,7 @@ export function ImportPage() {
           {/* Drop zone */}
           <label style={{
             display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-            padding: "32px 16px", borderRadius: 12,
+            padding: "32px 16px", borderRadius: "var(--radius-lg)",
             border: `2px dashed ${file ? ACCENT_A : "var(--border)"}`,
             background: file ? `${ACCENT_A}08` : "var(--surface)",
             cursor: "pointer", transition: "all 0.15s",
@@ -153,7 +153,7 @@ export function ImportPage() {
             <Link
               to="/profile"
               style={{
-                padding: "10px 18px", borderRadius: 8,
+                padding: "10px 18px", borderRadius: "var(--radius-md)",
                 border: "1px solid var(--border)", color: "var(--text-muted)",
                 fontSize: 13, textDecoration: "none",
               }}
@@ -164,7 +164,7 @@ export function ImportPage() {
               onClick={handleSubmit}
               disabled={!file || submitting}
               style={{
-                padding: "10px 22px", borderRadius: 8,
+                padding: "10px 22px", borderRadius: "var(--radius-md)",
                 background: !file ? "var(--surface2)" : `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                 color: !file ? "var(--text-muted)" : "#000",
                 fontSize: 13, fontWeight: 700, border: "none",
@@ -182,7 +182,7 @@ export function ImportPage() {
         <div>
           <div style={{
             background: `${ACCENT_B}12`, border: `1px solid ${ACCENT_B}40`,
-            borderRadius: 10, padding: "16px 18px", marginBottom: 20,
+            borderRadius: "var(--radius)", padding: "16px 18px", marginBottom: 20,
           }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: ACCENT_B, marginBottom: 4 }}>
               Imported {result.matched_count} album{result.matched_count === 1 ? "" : "s"}
@@ -199,7 +199,7 @@ export function ImportPage() {
               <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 8px" }}>
                 Not matched
               </h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto", padding: "8px 12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto", padding: "8px 12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
                 {result.unmatched.map((u, i) => (
                   <div key={i} style={{ fontSize: 12, color: "var(--text-muted)" }}>
                     <span style={{ color: "var(--text)" }}>{u.title}</span> · {u.artist}
@@ -217,7 +217,7 @@ export function ImportPage() {
             <button
               onClick={() => { setResult(null); setFile(null); if (inputRef.current) inputRef.current.value = ""; }}
               style={{
-                padding: "10px 18px", borderRadius: 8,
+                padding: "10px 18px", borderRadius: "var(--radius-md)",
                 border: "1px solid var(--border)", background: "none",
                 color: "var(--text-muted)", fontSize: 13, cursor: "pointer",
               }}
@@ -227,7 +227,7 @@ export function ImportPage() {
             <button
               onClick={() => navigate("/profile")}
               style={{
-                padding: "10px 22px", borderRadius: 8,
+                padding: "10px 22px", borderRadius: "var(--radius-md)",
                 background: ACCENT_A,
                 color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer",
               }}

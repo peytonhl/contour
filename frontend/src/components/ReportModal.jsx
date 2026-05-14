@@ -66,7 +66,7 @@ export function ReportModal({ open, onClose, targetType, targetId, onSubmitted }
       <div style={{
         position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
         background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: 14, padding: "22px 22px 18px",
+        borderRadius: "var(--radius-lg)", padding: "22px 22px 18px",
         width: "min(420px, calc(100vw - 32px))", maxHeight: "calc(100vh - 32px)",
         overflowY: "auto", zIndex: 301,
         boxShadow: "0 16px 50px rgba(0,0,0,0.6)",
@@ -95,7 +95,7 @@ export function ReportModal({ open, onClose, targetType, targetId, onSubmitted }
               {REASONS.map((r) => (
                 <label key={r.value} style={{
                   display: "flex", alignItems: "center", gap: 10,
-                  padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+                  padding: "8px 10px", borderRadius: "var(--radius-md)", cursor: "pointer",
                   background: reason === r.value ? "rgba(217,122,59,0.10)" : "transparent",
                   border: `1px solid ${reason === r.value ? ACCENT : "var(--border)"}`,
                 }}>
@@ -124,7 +124,7 @@ export function ReportModal({ open, onClose, targetType, targetId, onSubmitted }
               style={{
                 width: "100%", boxSizing: "border-box",
                 background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: 8, color: "var(--text)",
+                borderRadius: "var(--radius-md)", color: "var(--text)",
                 padding: "8px 10px", fontSize: 13, fontFamily: "inherit",
                 resize: "vertical", outline: "none", marginBottom: 14,
               }}
@@ -136,12 +136,12 @@ export function ReportModal({ open, onClose, targetType, targetId, onSubmitted }
 
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={onClose} disabled={submitting} style={{
-                flex: 1, padding: "10px 0", borderRadius: 8,
+                flex: 1, padding: "10px 0", borderRadius: "var(--radius-md)",
                 background: "none", border: "1px solid var(--border)",
                 color: "var(--text-muted)", fontSize: 13, cursor: "pointer",
               }}>Cancel</button>
               <button onClick={handleSubmit} disabled={submitting} style={{
-                flex: 2, padding: "10px 0", borderRadius: 8,
+                flex: 2, padding: "10px 0", borderRadius: "var(--radius-md)",
                 background: ACCENT, border: "none", color: "#000",
                 fontWeight: 700, fontSize: 13,
                 cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.6 : 1,

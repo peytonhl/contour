@@ -46,7 +46,7 @@ function ClassificationBadge({ type }) {
   return (
     <span style={{
       fontSize: 11, fontWeight: 600, padding: "2px 8px",
-      borderRadius: 20, flexShrink: 0,
+      borderRadius: "var(--radius-xl)", flexShrink: 0,
       background: s.bg, border: `1px solid ${s.border}`, color: s.color,
     }}>
       {s.label}
@@ -84,8 +84,8 @@ function LeaderboardRow({ entry, sort, onCompare }) {
 
           {/* Art */}
           {entry.image_url
-            ? <img src={entry.image_url} alt={entry.name} style={{ width: 44, height: 44, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-            : <div style={{ width: 44, height: 44, borderRadius: 6, background: "var(--surface2)", flexShrink: 0 }} />
+            ? <img src={entry.image_url} alt={entry.name} style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+            : <div style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
           }
 
           {/* Name + artist + badges */}
@@ -117,7 +117,7 @@ function LeaderboardRow({ entry, sort, onCompare }) {
             )}
             {sort === "streams" && entry.multiplier > 1.1 && (
               <span style={{
-                fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20,
+                fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: "var(--radius-xl)",
                 background: `${ACCENT_A}18`, border: `1px solid ${ACCENT_A}40`, color: ACCENT_A,
               }}>
                 ×{entry.multiplier.toFixed(1)}
@@ -133,7 +133,7 @@ function LeaderboardRow({ entry, sort, onCompare }) {
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCompare(entry); }}
           style={{
             position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-            fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20,
+            fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: "var(--radius-xl)",
             border: `1px solid ${ACCENT_B}50`, background: `${ACCENT_B}15`, color: ACCENT_B,
             cursor: "pointer", letterSpacing: "0.03em", whiteSpace: "nowrap",
           }}
@@ -190,7 +190,7 @@ export function LeaderboardPage() {
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {DECADES.map((d) => (
             <button key={d} onClick={() => setDecade(d)} style={{
-              padding: "5px 14px", fontSize: 13, borderRadius: 20,
+              padding: "5px 14px", fontSize: 13, borderRadius: "var(--radius-xl)",
               fontWeight: decade === d ? 700 : 500,
               background: decade === d ? ACCENT_A : "var(--surface2)",
               color: decade === d ? "#000" : "var(--text-muted)",
@@ -207,7 +207,7 @@ export function LeaderboardPage() {
           <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
             Sort by
           </span>
-          <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", background: "var(--surface2)", borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--border)" }}>
             {[["era", "Era score"], ["streams", "Raw plays"]].map(([val, lbl]) => (
               <button key={val} onClick={() => setSort(val)} style={{
                 padding: "6px 16px", fontSize: 13,
@@ -231,7 +231,7 @@ export function LeaderboardPage() {
           </span>
           {Object.entries(CLASSIFICATION_STYLES).map(([key, s]) => (
             <span key={key} style={{
-              fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20,
+              fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: "var(--radius-xl)",
               background: s.bg, border: `1px solid ${s.border}`, color: s.color,
             }}>
               {s.label}
@@ -248,7 +248,7 @@ export function LeaderboardPage() {
           {decade === "all" ? "No data yet." : `No albums found from the ${decade}.`}
         </div>
       ) : (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
           <div style={{
             display: "flex", alignItems: "center", gap: 14,
             padding: "10px 16px", borderBottom: "1px solid var(--border)",

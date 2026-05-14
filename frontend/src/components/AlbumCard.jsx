@@ -4,7 +4,7 @@ const styles = {
   card: {
     background: "var(--surface)",
     border: "1px solid var(--border)",
-    borderRadius: 12,
+    borderRadius: "var(--radius-lg)",
     padding: "16px",
     display: "flex",
     flexDirection: "column",
@@ -18,14 +18,14 @@ const styles = {
   art: {
     width: 64,
     height: 64,
-    borderRadius: 6,
+    borderRadius: "var(--radius-sm)",
     objectFit: "cover",
     flexShrink: 0,
   },
   artPlaceholder: {
     width: 64,
     height: 64,
-    borderRadius: 6,
+    borderRadius: "var(--radius-sm)",
     background: "var(--surface2)",
     flexShrink: 0,
   },
@@ -75,7 +75,7 @@ const styles = {
     fontSize: 12,
     fontWeight: 600,
     padding: "3px 8px",
-    borderRadius: 20,
+    borderRadius: "var(--radius-xl)",
     background: "rgba(245, 158, 11, 0.15)",
     color: "var(--gold)",
     border: "1px solid rgba(245, 158, 11, 0.3)",
@@ -89,7 +89,7 @@ const styles = {
     fontStyle: "italic",
     padding: "6px 10px",
     background: "var(--surface2)",
-    borderRadius: 6,
+    borderRadius: "var(--radius-sm)",
     lineHeight: 1.5,
   },
 };
@@ -153,7 +153,7 @@ export function AlbumCard({ meta, accentColor, enriching, detailLink }) {
           <span style={{ ...styles.statValue, display: "flex", alignItems: "center", gap: 6 }}>
             {formatStreams(meta.total_streams)}
             {showEnriching && (
-              <span style={{ fontSize: 10, color: "#6a90b5", fontWeight: 600, background: "rgba(106,144,181,0.12)", padding: "1px 6px", borderRadius: 4 }}>
+              <span style={{ fontSize: 10, color: "#6a90b5", fontWeight: 600, background: "rgba(106,144,181,0.12)", padding: "1px 6px", borderRadius: "var(--radius-sm)" }}>
                 enriching…
               </span>
             )}

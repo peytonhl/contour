@@ -108,7 +108,7 @@ export function AppleSignInButton({ size = "default", onSuccess }) {
       style={{
         display: "flex", alignItems: "center", gap: compact ? 6 : 8,
         padding: compact ? "5px 10px" : "6px 14px",
-        background: "#fff", borderRadius: 20,
+        background: "#fff", borderRadius: "var(--radius-xl)",
         color: "#000", fontSize: compact ? 11 : 12, fontWeight: 600,
         textDecoration: "none",
         border: "1px solid #dadce0",

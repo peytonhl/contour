@@ -40,7 +40,7 @@ function RatingBadge({ value }) {
   const mid = value >= 3;
   return (
     <div style={{
-      padding: "3px 9px", borderRadius: 4, fontSize: 12, fontWeight: 700, flexShrink: 0,
+      padding: "3px 9px", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 700, flexShrink: 0,
       background: high ? `${GOLD}18` : mid ? `${GOLD}0a` : "var(--surface2)",
       border: `1px solid ${high ? `${GOLD}50` : "var(--border)"}`,
       color: high ? GOLD : mid ? `${GOLD}99` : "var(--text-muted)",
@@ -72,7 +72,7 @@ function ReviewCardItem({ item, user, onVote, badges }) {
       <Link to={`/${item.entity_type}/${item.entity_id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
         {item.entity_image_url
           ? <img src={item.entity_image_url} alt="" style={{ width: 42, height: 42, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover", flexShrink: 0 }} />
-          : <div style={{ width: 42, height: 42, borderRadius: 6, background: "var(--surface2)", flexShrink: 0 }} />
+          : <div style={{ width: 42, height: 42, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
         }
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: ENTITY_COLOR[item.entity_type] ?? "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -82,7 +82,7 @@ function ReviewCardItem({ item, user, onVote, badges }) {
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{item.entity_artists.slice(0, 2).join(", ")}</div>
           )}
         </div>
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: ENTITY_COLOR[item.entity_type], padding: "2px 8px", borderRadius: 20, background: `${ENTITY_COLOR[item.entity_type]}18`, border: `1px solid ${ENTITY_COLOR[item.entity_type]}40`, flexShrink: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: ENTITY_COLOR[item.entity_type], padding: "2px 8px", borderRadius: "var(--radius-xl)", background: `${ENTITY_COLOR[item.entity_type]}18`, border: `1px solid ${ENTITY_COLOR[item.entity_type]}40`, flexShrink: 0 }}>
           {item.entity_type}
         </span>
       </Link>
@@ -185,7 +185,7 @@ export function GlobalReviewsFeed() {
                 padding: "4px 14px", fontSize: 12, fontWeight: sort === key ? 700 : 400,
                 background: sort === key ? "var(--surface2)" : "none",
                 border: sort === key ? "1px solid var(--border)" : "1px solid transparent",
-                borderRadius: 20, color: sort === key ? "var(--text)" : "var(--text-muted)",
+                borderRadius: "var(--radius-xl)", color: sort === key ? "var(--text)" : "var(--text-muted)",
                 cursor: "pointer", marginRight: 4,
               }}>
               {label}
@@ -197,7 +197,7 @@ export function GlobalReviewsFeed() {
           title="See the top reviewers, most-upvoted users, and most-followed users"
           style={{
             display: "flex", alignItems: "center", gap: 5,
-            fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 20,
+            fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: "var(--radius-xl)",
             background: showLeaderboard ? "var(--surface2)" : "transparent",
             border: `1px solid ${showLeaderboard ? "var(--border)" : "transparent"}`,
             color: showLeaderboard ? "var(--text)" : "var(--text-muted)",

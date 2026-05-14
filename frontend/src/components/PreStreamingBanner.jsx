@@ -21,7 +21,7 @@ export function PreStreamingBanner({ releaseDate }) {
       padding: "14px 18px",
       background: "rgba(251, 146, 60, 0.08)",
       border: "1px solid rgba(251, 146, 60, 0.3)",
-      borderRadius: 10,
+      borderRadius: "var(--radius)",
     }}>
       <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>{isPreStreaming ? "📼" : "📡"}</span>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
