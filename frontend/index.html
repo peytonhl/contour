@@ -61,7 +61,17 @@
          that mount happened before the splash even painted. Now main.jsx
          adds the `boot-splash--done` class after createRoot.render(), which
          fades the overlay out. Guarantees the wordmark is visible for at
-         least one paint frame regardless of how fast the JS arrives. -->
+         least one paint frame regardless of how fast the JS arrives.
+
+         Font is Georgia (NOT Instrument Serif) on purpose. Georgia is built
+         into iOS/macOS/Windows/Android, so it paints on the very first frame
+         with no FOUT. The native iOS LaunchScreen.storyboard ALSO renders
+         "Contour" in Georgia 52pt — keeping the two in sync means the
+         Capacitor splash → WebView handoff doesn't visibly shift the
+         wordmark's face, size, or baseline. The "real" brand serif
+         (Instrument Serif) takes over once the React app mounts and shows
+         actual page H1s. If you change the font here, change it in the
+         storyboard at frontend/assets/ios/LaunchScreen.storyboard too. -->
     <style>
       html, body {
         margin: 0;
@@ -89,7 +99,7 @@
         opacity: 0;
       }
       .boot-splash__wordmark {
-        font-family: "Instrument Serif", Georgia, serif;
+        font-family: Georgia, "Times New Roman", Times, serif;
         font-size: 52px;
         font-weight: 400;
         letter-spacing: -0.01em;

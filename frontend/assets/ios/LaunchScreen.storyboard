@@ -4,12 +4,24 @@
 
   Replaces the icon-on-dark-bg launch screen that `@capacitor/assets generate`
   produces by default — that one read as a black screen to users because the
-  icon contrast against a near-black bg was very low. This shows the Contour
-  wordmark in solid white centered on the brand dark bg (#08080a), matching
-  the web boot splash's bg color so the native → web splash transition is
-  visually continuous (just no gradient on the wordmark since storyboards
-  can't render gradient text without a pre-rendered image asset; the web
-  splash takes over with the gradient once the WebView paints).
+  icon contrast against a near-black bg was very low. Shows the "Contour"
+  wordmark in solid white centered on the brand dark bg (#08080a).
+
+  Typography MUST match the HTML boot splash in frontend/index.html:
+    font-family: Georgia (system serif, available on iOS since 1.0)
+    font-size:   52pt / 52px
+    weight:      regular
+    color:       #fafafa
+  Mismatching any of these reintroduces the "wordmark visibly shifts/resizes
+  when the WebView paints" bug. Georgia is used in both places because it's
+  a built-in iOS font (no web-font download = no FOUT) and is visually close
+  to Instrument Serif, so when the React app finally renders its real serif
+  headings the brand transition still feels coherent.
+
+  On native, this storyboard is ALSO what the Capacitor SplashScreen plugin
+  renders over the WebView until main.jsx calls SplashScreen.hide() — so
+  the user sees one continuous wordmark from process launch → plugin hold →
+  HTML boot splash → React app, with no black gap and no visual jumps.
 
   Copied into ios/App/App/Base.lproj/LaunchScreen.storyboard by a build step
   in codemagic.yaml after `capacitor-assets generate` runs.
@@ -31,9 +43,9 @@
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
                             <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Contour" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="cnt-lb-01">
-                                <rect key="frame" x="0.0" y="401.0" width="393" height="50"/>
-                                <fontDescription key="fontDescription" type="boldSystem" pointSize="42"/>
-                                <color key="textColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                <rect key="frame" x="0.0" y="396.0" width="393" height="60"/>
+                                <fontDescription key="fontDescription" name="Georgia" family="Georgia" pointSize="52"/>
+                                <color key="textColor" red="0.98039215686274506" green="0.98039215686274506" blue="0.98039215686274506" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                                 <nil key="highlightedColor"/>
                             </label>
                         </subviews>
