@@ -8,7 +8,7 @@ Read server-side from UserTasteProfile so they follow the user across devices:
   • genres                 — set by onboarding (client also caches own copy)
   • disliked_artist_ids    — explicit "Not interested" clicks (hard exclude)
   • down_weighted_artist_ids — inferred from 1–2★ ratings (soft exclude:
-                              dropped from personalized seeds & tiers 1–2,
+                              dropped from tier 1 personalized pivots,
                               still allowed in baseline chart tiers)
 
 Cold-start vs. personalized
@@ -20,19 +20,24 @@ variety while the taste profile builds.
 
 Tier ladder (in order, until `limit` tracks are gathered)
 ─────────────────────────────────────────────────────────
-  1. Seed-artist genre pivot — fetch each seed artist's own Spotify genres
-                              (cached 24h) and search those. Keeps results
-                              tied to what the user actually liked. Replaces
-                              the older /related-artists tier, which Spotify
-                              deprecated for non-Extended-Access apps in
-                              late 2024 and now always returns 0.
-  2. Genre-filtered search   — Spotify search across the user's profile
-                              genres
-  3. Deezer chart baseline   — /chart/0/tracks, no auth, no quota
-  4. Deezer new music        — search for fresh tracks
-  5. Deezer keyword fallbacks — last-resort, always returns something
+  1. Weighted-genre pivot     — Sample 3 genres from profile.genres weighted
+                                by position (decay 0.85^i). Front of the list
+                                = most-recent + most-frequent prepend, so a
+                                user's top genre lands in ~43% of batches
+                                while position-15 still lands in ~4%. For
+                                each sampled genre, Spotify search returns
+                                a pool that's then popularity-curve-sampled
+                                to match the user's average liked-track
+                                popularity (target_popularity).
+                                  Replaces the older two-tier setup (seed-
+                                  artist pivot → profile genres top-3),
+                                  which sampled by recency-of-artist only
+                                  and treated all liked genres as equal.
+  2. Deezer chart baseline    — /chart/0/tracks, no auth, no quota
+  3. Deezer new music         — search for fresh tracks
+  4. Deezer keyword fallbacks — last-resort, always returns something
 
-Tiers 1–2 honor down-weighted artists. Tiers 3–5 only honor hard dislikes.
+Tier 1 honors down-weighted artists. Tiers 2–4 only honor hard dislikes.
 This means a single low rating won't blackhole an artist from charts, but
 explicit "Not interested" will.
 """
@@ -59,7 +64,7 @@ from services.limiter import limiter
 router = APIRouter(prefix="/discover", tags=["discover"])
 
 # Deezer queries for the new-music and fallback tiers (no Spotify needed).
-# Tier 3 now uses the chart API directly (no text search → no "Top Hits band" problem).
+# Tier 2 uses the chart API directly (no text search → no "Top Hits band" problem).
 _DEEZER_NEW_QUERIES = ["new music 2025", "new songs 2025", "fresh music"]
 _DEEZER_FALLBACK_QUERIES = [
     "pop hits",
@@ -80,6 +85,29 @@ def _is_likely_english(text: str) -> bool:
         return True
     non_ascii = sum(1 for c in text if ord(c) > 127)
     return (non_ascii / len(text)) < 0.3
+
+
+def _weighted_sample(items: list, weights: list[float], k: int) -> list:
+    """
+    Sample `k` items from `items` without replacement, weighted by `weights`.
+
+    Uses Efraimidis-Spirakis weighted reservoir sampling: assign each item
+    a key = U ** (1 / w), sort descending, take top k. Equivalent to
+    drawing k times from the discrete distribution and removing the chosen
+    item each draw, but in a single sort pass.
+
+    When k >= len(items) returns all items (trivially). When weights and
+    items lengths mismatch, zip truncates to the shorter — caller's
+    responsibility to keep them aligned.
+    """
+    if k >= len(items):
+        return list(items)
+    keyed = [
+        (random.random() ** (1.0 / max(w, 1e-9)), x)
+        for x, w in zip(items, weights)
+    ]
+    keyed.sort(key=lambda p: p[0], reverse=True)
+    return [x for _, x in keyed[:k]]
 
 
 async def _compute_target_popularity(db: AsyncSession, user_id: str) -> float | None:
@@ -126,7 +154,7 @@ def _flatten_shuffle_add(results: list, adder) -> None:
 
     Pairs with the removal of the post-slice random.shuffle(result) at the
     end of /feed: tier order is now stable (tier 1 personalized first,
-    tier 3 chart baseline later), so within-tier shuffle is what supplies
+    tier 2 chart baseline later), so within-tier shuffle is what supplies
     the variety the post-slice shuffle used to (badly) provide.
     """
     flat = [t for res in results if isinstance(res, list) for t in res]
@@ -205,16 +233,17 @@ async def get_discover_feed(
         if a not in disliked_set and a not in down_weighted_set
     ]
 
-    # Soft-exclude is the union of dislikes + down-weights for tiers 1–2.
-    # Tiers 3–5 (chart baselines) only honor hard dislikes — a single low
-    # rating shouldn't blackhole an artist from popular charts.
+    # Soft-exclude is the union of dislikes + down-weights for tier 1
+    # (personalized genre pivots). Tiers 2–4 (chart baselines) only honor
+    # hard dislikes — a single low rating shouldn't blackhole an artist
+    # from popular charts.
     soft_excluded = disliked_set | down_weighted_set
 
     # Per-user popularity target. A user whose 4–5★ track ratings average
     # to popularity=25 has signaled niche-leaning taste; the Laplace curve
     # inside search_tracks_by_genre will peak there. None → cold-start
-    # default (target=70, mild mainstream lean). Only relevant for tiers
-    # 1 and 2 — tiers 3–5 are mainstream chart baselines by definition.
+    # default (target=70, mild mainstream lean). Only relevant for tier 1
+    # — tiers 2–4 are mainstream chart baselines by definition.
     target_popularity: float | None = None
     if user_id:
         try:
@@ -250,57 +279,48 @@ async def get_discover_feed(
     add_personalized = _make_adder(soft_excluded)
     add_baseline = _make_adder(disliked_set)
 
-    # ── Tier 1: Seed-artist genre pivot ──────────────────────────────────────
-    # We used to call Spotify's /related-artists for each seed first, but that
-    # endpoint was deprecated for non-Extended-Access apps in late 2024 and
-    # always returns 0. Instead, fetch the seed artists' own genres (cached
-    # 24h in Redis) and search those — keeps the result tied to what the user
-    # actually liked, costs 3 cached artist lookups + 3 cached genre searches
-    # max per batch rather than 3 dead /related-artists calls plus the same
-    # fallback work.
+    # ── Tier 1: Weighted-genre pivot ─────────────────────────────────────────
+    # Sample 3 genres from profile.genres weighted by position. Position 0
+    # is the most-recent prepend; the list is dedup'd on every 4–5★ rating
+    # so a genre that's been rated repeatedly keeps getting re-prepended →
+    # stays near the front. Position is therefore a recency × frequency
+    # proxy — exactly the signal "preferred genres" wants.
     #
-    # Seed rotation: an earlier version always took seed_artist_ids[:3], so
-    # tier 1 was permanently anchored to the user's three most-recent 4–5★
-    # artists. A power user who'd rated 50 artists got the same three pivots
-    # every batch until they rated again. Now we keep the recency bias (the
-    # window is the most-recent 8) but randomly sample 3 from it per batch
-    # so the feed actually evolves as the user's taste history grows.
+    # Decay 0.85: position-0 genre has weight 1.0, position-19 ≈ 0.046.
+    # At k=3, simulation shows:
+    #   position 0 → in ~43% of batches
+    #   position 5 → in ~21%
+    #   position 10 → in ~10%
+    #   position 19 → in ~2%
+    # Top genres dominate but tail genres still surface — a user who's
+    # rated mostly hip-hop with occasional jazz still gets jazz queries
+    # in some batches instead of jazz being functionally invisible.
+    #
+    # Replaces the previous two-tier setup:
+    #   - Tier 1 was a seed-artist pivot (random 3 of top-8 most-recent
+    #     liked artists, then their Spotify genres). Recency-of-artist
+    #     only, no frequency weighting, cost 3 cached artist lookups.
+    #   - Tier 2 was profile.genres[:3], deterministic top-3 every batch.
+    # Both treated all liked genres as equal once they entered the
+    # profile. The new tier 1 unifies them into one probabilistic pick.
     tier1_added_before = len(tracks)
-    if seed_artist_ids and len(tracks) < limit:
-        seed_window = seed_artist_ids[:8]
-        seed_sample = (
-            random.sample(seed_window, k=3)
-            if len(seed_window) > 3 else seed_window
-        )
-        artist_meta = await asyncio.gather(*[
-            spotify.get_artist(aid) for aid in seed_sample
-        ], return_exceptions=True)
-        seed_genres: list[str] = []
-        for meta in artist_meta:
-            if isinstance(meta, dict):
-                seed_genres.extend((meta.get("genres") or [])[:2])
-        seed_genres = list(dict.fromkeys(seed_genres))[:3]
-        if seed_genres:
-            seed_genre_results = await asyncio.gather(*[
-                spotify.search_tracks_by_genre(g, limit=15, target_popularity=target_popularity)
-                for g in seed_genres
-            ], return_exceptions=True)
-            _flatten_shuffle_add(seed_genre_results, add_personalized)
-            logger.info(
-                "discover: tier1 (seed-artist genre pivot) → %d tracks (sample=%s, genres=%s, target_pop=%s)",
-                len(tracks) - tier1_added_before, seed_sample, seed_genres,
-                f"{target_popularity:.1f}" if target_popularity is not None else "default",
-            )
-
-    # ── Tier 2: Profile-genre search ─────────────────────────────────────────
     if genre_list and len(tracks) < limit:
+        n_pick = min(3, len(genre_list))
+        position_weights = [0.85 ** i for i in range(len(genre_list))]
+        sampled_genres = _weighted_sample(genre_list, position_weights, k=n_pick)
         genre_results = await asyncio.gather(*[
             spotify.search_tracks_by_genre(g, limit=15, target_popularity=target_popularity)
-            for g in genre_list[:3]
+            for g in sampled_genres
         ], return_exceptions=True)
         _flatten_shuffle_add(genre_results, add_personalized)
+        logger.info(
+            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, target_pop=%s, profile_size=%d)",
+            len(tracks) - tier1_added_before, sampled_genres,
+            f"{target_popularity:.1f}" if target_popularity is not None else "default",
+            len(genre_list),
+        )
 
-    # ── Tier 3: Deezer chart baseline ────────────────────────────────────────
+    # ── Tier 2: Deezer chart baseline ────────────────────────────────────────
     # Uses Deezer's /chart/0/tracks endpoint (actual chart data) instead of
     # searching text like "top hits" which was matching a karaoke artist of
     # the same name and flooding the feed with cover tracks.
@@ -309,9 +329,9 @@ async def get_discover_feed(
         if isinstance(chart_tracks, list):
             random.shuffle(chart_tracks)
             add_baseline(chart_tracks)
-        logger.info("discover: tier3 (deezer chart) → %d tracks", len(tracks))
+        logger.info("discover: tier2 (deezer chart) → %d tracks", len(tracks))
 
-    # ── Tier 4: Deezer new music ──────────────────────────────────────────────
+    # ── Tier 3: Deezer new music ──────────────────────────────────────────────
     if len(tracks) < limit:
         new_results = await asyncio.gather(*[
             deezer_svc.search_tracks(q, limit=15)
@@ -319,7 +339,7 @@ async def get_discover_feed(
         ], return_exceptions=True)
         _flatten_shuffle_add(new_results, add_baseline)
 
-    # ── Tier 5: Deezer keyword fallbacks — always produces results ────────────
+    # ── Tier 4: Deezer keyword fallbacks — always produces results ────────────
     if len(tracks) < limit:
         fallback_results = await asyncio.gather(*[
             deezer_svc.search_tracks(q, limit=10)
@@ -327,7 +347,7 @@ async def get_discover_feed(
         ], return_exceptions=True)
         _flatten_shuffle_add(fallback_results, add_baseline)
 
-    # ── Tier 5.5: Nuclear fallback — ignore even hard dislikes ───────────────
+    # ── Tier 4.5: Nuclear fallback — ignore even hard dislikes ───────────────
     # Only triggers when every tier above produced zero. Keeps the feed alive
     # if upstreams are down rather than showing an empty page.
     if not tracks and disliked_set:
@@ -352,9 +372,10 @@ async def get_discover_feed(
         logger.error("discover: all tiers failed — returning empty feed")
         return []
 
-    # Preserve tier order — tier 1 (most personalized) first, tier 3
-    # (chart baseline) last. Within each tier _flatten_shuffle_add has
-    # already shuffled to keep genres/queries from clustering.
+    # Preserve tier order — tier 1 (personalized weighted-genre) first,
+    # tier 2 (Deezer chart baseline) and beyond last. Within each tier
+    # _flatten_shuffle_add has already shuffled to keep genres/queries
+    # from clustering.
     # An earlier random.shuffle(result) here was clobbering this and
     # routinely surfacing generic chart hits above tier-1 personalized
     # results — i.e. the user got the algorithm's worst guesses first.
