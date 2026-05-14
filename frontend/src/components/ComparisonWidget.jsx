@@ -274,30 +274,15 @@ export function ComparisonWidget({
           Compare
         </button>
 
-        {comparison && !loading && (
-          savedId ? (
-            <Link
-              to={`/compare/${savedId}`}
-              style={{
-                padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)", color: ACCENT_A, fontSize: 13, fontWeight: 600, textDecoration: "none",
-              }}
-            >
-              Shareable link ↗
-            </Link>
-          ) : (
-            <button
-              onClick={saveComparison}
-              disabled={saving}
-              style={{
-                padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)", color: "var(--text-muted)", fontSize: 13, cursor: "pointer",
-              }}
-            >
-              {saving ? "Saving…" : "Share"}
-            </button>
-          )
-        )}
+        {/* The Share / shareable-link affordance is currently hidden — the
+            saveComparison API call silently fails in production (catch{}
+            in the handler swallows whatever the actual error is, and from
+            a user's perspective the button does nothing). Per feedback
+            "we shouldn't have that available if it doesn't work" we keep
+            it out of the UI until the root cause is diagnosed and fixed.
+            saveComparison() and savedId state are left in place because
+            they'll be needed when the feature is restored — just not
+            rendering the buttons. */}
 
         {enriching && (
           <span style={{ fontSize: 12, color: ACCENT_B, display: "flex", alignItems: "center", gap: 6 }}>

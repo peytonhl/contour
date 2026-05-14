@@ -241,6 +241,13 @@ export function ProfilePage() {
 
   const [editingPhoto, setEditingPhoto] = useState(false);
   const [photoInput, setPhotoInput] = useState("");
+  // Photo source toggle. Two paths to set a profile photo (upload a file
+  // or paste a URL) used to render side-by-side, which let users
+  // accidentally clobber an upload by typing in the URL field — feedback
+  // was that they read as AND when they should be OR. Now a tab toggle
+  // shows only one input at a time, and switching modes clears the
+  // staged photoInput so committing to one path means abandoning the other.
+  const [photoMode, setPhotoMode] = useState("upload");
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState("");
 
@@ -386,7 +393,17 @@ export function ProfilePage() {
               />
             </div>
             <button
-              onClick={() => { setPhotoInput(profile?.image_url ?? ""); setEditingPhoto(true); setPhotoError(""); }}
+              onClick={() => {
+                const current = profile?.image_url ?? "";
+                setPhotoInput(current);
+                // Open the modal in whichever mode matches the existing
+                // photo — data URL → upload tab, http(s) URL → URL tab.
+                // Default to upload when there's no existing photo since
+                // that's the more common path users take.
+                setPhotoMode(current.startsWith("http") ? "url" : "upload");
+                setEditingPhoto(true);
+                setPhotoError("");
+              }}
               title="Change photo"
               style={{
                 position: "absolute", bottom: 2, right: 2,
@@ -531,58 +548,89 @@ export function ProfilePage() {
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "26px 24px", width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", gap: 16 }}>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Change profile photo</h3>
 
-            {/* Preview */}
+            {/* Preview — only when something is staged */}
             {photoInput.trim() && (
               <img
                 src={photoInput.trim()}
                 alt="Preview"
-                onError={(e) => { e.currentTarget.style.display = "none"; setPhotoError("Could not load that URL."); }}
+                onError={(e) => { e.currentTarget.style.display = "none"; setPhotoError("Could not load that image."); }}
                 style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", alignSelf: "center", border: "3px solid var(--border)" }}
               />
             )}
 
-            {/* Upload from device */}
-            <label style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "10px 16px", borderRadius: "var(--radius-md)", border: "1px dashed var(--border)",
-              cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--text-muted)",
-              transition: "border-color 0.15s",
+            {/* Mode toggle: pick ONE path. Switching clears the staged photo
+                so users can't accidentally combine an upload with a URL. */}
+            <div style={{
+              display: "flex", padding: 3,
+              background: "var(--surface2)", borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border)",
             }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-              Upload from device
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={handleFileUpload}
-              />
-            </label>
-
-            {/* Divider */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-              <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>or paste a URL</span>
-              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              {[
+                { key: "upload", label: "Upload" },
+                { key: "url",    label: "Paste URL" },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    if (key !== photoMode) {
+                      setPhotoMode(key);
+                      setPhotoInput("");
+                      setPhotoError("");
+                    }
+                  }}
+                  style={{
+                    flex: 1, padding: "8px 14px", fontSize: 13,
+                    fontWeight: photoMode === key ? 700 : 500,
+                    background: photoMode === key ? ACCENT : "transparent",
+                    color: photoMode === key ? "#000" : "var(--text-muted)",
+                    border: "none", borderRadius: "var(--radius-sm)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
-            {/* URL input */}
-            <input
-              value={photoInput.startsWith("data:") ? "" : photoInput}
-              onChange={(e) => { setPhotoInput(e.target.value); setPhotoError(""); }}
-              placeholder="https://i.imgur.com/…"
-              style={{
-                padding: "9px 12px", background: "var(--surface2)",
-                border: `1px solid ${photoError ? "#f87171" : "var(--border)"}`,
-                borderRadius: "var(--radius-md)", color: "var(--text)", fontSize: 14, outline: "none",
-                fontFamily: "inherit",
-              }}
-            />
+            {photoMode === "upload" && (
+              <label style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                padding: "14px 16px", borderRadius: "var(--radius-md)", border: "1px dashed var(--border)",
+                cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--text-muted)",
+                transition: "border-color 0.15s",
+              }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                {photoInput.startsWith("data:") ? "Choose a different image" : "Upload from device"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handleFileUpload}
+                />
+              </label>
+            )}
+
+            {photoMode === "url" && (
+              <input
+                value={photoInput.startsWith("data:") ? "" : photoInput}
+                onChange={(e) => { setPhotoInput(e.target.value); setPhotoError(""); }}
+                placeholder="https://i.imgur.com/…"
+                style={{
+                  padding: "10px 12px", background: "var(--surface2)",
+                  border: `1px solid ${photoError ? "#f87171" : "var(--border)"}`,
+                  borderRadius: "var(--radius-md)", color: "var(--text)", fontSize: 14, outline: "none",
+                  fontFamily: "inherit",
+                }}
+              />
+            )}
+
             <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>
-              Leave blank to reset to your Google photo.
+              Leave blank and save to reset to your Google photo.
             </p>
 
             {photoError && <p style={{ margin: 0, fontSize: 12, color: "var(--danger)" }}>{photoError}</p>}
@@ -595,7 +643,7 @@ export function ProfilePage() {
                 {savingPhoto ? "Saving…" : "Save"}
               </button>
               <button
-                onClick={() => { setEditingPhoto(false); setPhotoInput(""); setPhotoError(""); }}
+                onClick={() => { setEditingPhoto(false); setPhotoInput(""); setPhotoError(""); setPhotoMode("upload"); }}
                 style={{ padding: "8px 14px", borderRadius: "var(--radius-md)", fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}
               >
                 Cancel
