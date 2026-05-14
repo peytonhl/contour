@@ -507,11 +507,11 @@ async def test_genre_search(
                 resp = await client.get(
                     "https://api.spotify.com/v1/search",
                     headers={"Authorization": f"Bearer {token}"},
-                    # Mirror the production limit (20) since the whole point
+                    # Mirror the production limit (10) since the whole point
                     # of this endpoint is to reproduce search_tracks_by_genre.
-                    # limit=30 returned 400 "Invalid limit" for our app tier,
-                    # which was the bug this endpoint found.
-                    params={"q": q, "type": "track", "limit": 20, "market": "US"},
+                    # /v1/search caps at 10 for our app tier — see
+                    # limit_probe section below for the live cap.
+                    params={"q": q, "type": "track", "limit": 10, "market": "US"},
                 )
                 entry["status_code"] = resp.status_code
                 if resp.status_code != 200:
