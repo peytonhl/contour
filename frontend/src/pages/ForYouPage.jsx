@@ -1226,31 +1226,6 @@ function ForYouFeed() {
     setDragging(true);
   }
 
-  // Non-passive native touchmove listener — calls e.preventDefault() while
-  // we're handling a gesture (touchStartRef.current is set). React attaches
-  // its onTouchMove as a PASSIVE listener since React 17+, which means our
-  // React handler cannot block the browser's native gesture. `touch-action:
-  // none` on the deck container is the primary defense, but iOS WKWebView
-  // has shipped versions where touch-action alone isn't honored when the
-  // body is also position:fixed. This is belt-and-suspenders: a hard
-  // preventDefault on every touchmove during a deck gesture, which
-  // categorically stops iOS from rubber-banding the document OR translating
-  // anything outside our React-controlled wrapper. The early-return when
-  // touchStartRef.current is null preserves native behavior on touches
-  // that started on interactive elements (textareas, buttons) — those
-  // touches never set touchStartRef, so we don't intervene with them.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    function block(e) {
-      if (!touchStartRef.current) return;
-      if (!e.cancelable) return;
-      e.preventDefault();
-    }
-    el.addEventListener("touchmove", block, { passive: false });
-    return () => el.removeEventListener("touchmove", block);
-  }, []);
-
   function handleTouchMove(e) {
     const start = touchStartRef.current;
     if (!start) return;
