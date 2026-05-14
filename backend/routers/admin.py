@@ -366,6 +366,73 @@ async def inspect_my_feed(
                     "error": f"{type(exc).__name__}: {exc}",
                 })
 
+    # ── Spotify health probe ─────────────────────────────────────────────────
+    # When tier 1 returns 0, the cause is almost always one of:
+    #   - circuit breaker open (process-level rate-limit shield)
+    #   - Spotify search itself returning empty / errored for our credentials
+    #   - the new query variants (tag:hipster, year:) hitting a 400
+    # The probe surfaces each so we can stop guessing.
+    spotify_probe: dict = {}
+    try:
+        spotify_probe["circuit_remaining_seconds"] = round(spotify._circuit_remaining(), 2)
+    except Exception as exc:
+        spotify_probe["circuit_check_error"] = f"{type(exc).__name__}: {exc}"
+
+    # Raw probe — fire each query variant with the FIRST sampled genre
+    # directly (not through search_tracks_by_genre), capture status/body.
+    if sampled_genres:
+        probe_genre = sampled_genres[0]
+        variants = [
+            ("plain", probe_genre),
+            ("hipster", f"{probe_genre} tag:hipster"),
+            ("recent", f"{probe_genre} year:2023-2026"),
+        ]
+        import httpx as _httpx
+        variant_results: list[dict] = []
+        try:
+            async with _httpx.AsyncClient(timeout=10.0) as client:
+                token = await spotify._get_token(client)
+                for label, q in variants:
+                    try:
+                        resp = await client.get(
+                            "https://api.spotify.com/v1/search",
+                            headers={"Authorization": f"Bearer {token}"},
+                            params={"q": q, "type": "track", "limit": 5, "market": "US"},
+                        )
+                        try:
+                            body = resp.json()
+                        except Exception:
+                            body = None
+                        item_count = 0
+                        first_item = None
+                        if isinstance(body, dict):
+                            items = (body.get("tracks") or {}).get("items") or []
+                            item_count = len(items)
+                            if items and isinstance(items[0], dict):
+                                first_item = {
+                                    "name": items[0].get("name"),
+                                    "artists": [a.get("name") for a in items[0].get("artists", []) if isinstance(a, dict)],
+                                    "popularity": items[0].get("popularity"),
+                                }
+                        variant_results.append({
+                            "label": label,
+                            "query": q,
+                            "status_code": resp.status_code,
+                            "items_returned": item_count,
+                            "first_item": first_item,
+                            "response_preview": resp.text[:300] if resp.status_code != 200 else None,
+                        })
+                    except Exception as exc:
+                        variant_results.append({
+                            "label": label,
+                            "query": q,
+                            "error_type": type(exc).__name__,
+                            "error_message": str(exc),
+                        })
+            spotify_probe["variant_results"] = variant_results
+        except Exception as exc:
+            spotify_probe["probe_error"] = f"{type(exc).__name__}: {exc}"
+
     return {
         "user_id": user_id,
         "profile": {
@@ -384,4 +451,30 @@ async def inspect_my_feed(
             "sampled_genres": sampled_genres,
             "per_genre": per_genre,
         },
+        "spotify_probe": spotify_probe,
+    }
+
+
+@router.post("/reset-spotify-circuit")
+async def reset_spotify_circuit(
+    user_id: str = Depends(require_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Force-close the Spotify circuit breaker. Use when the breaker has tripped
+    on a long Retry-After and the actual rate-limit window has since expired
+    but the breaker is still holding all Spotify calls back. Returns the
+    remaining seconds before-and-after so the caller can verify.
+
+    Admin-only. The breaker is process-wide, so resetting on the live
+    container clears it for every user.
+    """
+    await _require_admin(db, user_id)
+    before = spotify._circuit_remaining()
+    spotify.reset_circuit()
+    after = spotify._circuit_remaining()
+    return {
+        "ok": True,
+        "circuit_remaining_seconds_before": round(before, 2),
+        "circuit_remaining_seconds_after": round(after, 2),
     }
