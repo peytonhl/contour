@@ -91,6 +91,56 @@ frontend/
 
 ---
 
+## Debugging mindset
+
+When something's broken, **default to diagnosis over guessing.** Your first
+instinct on a bug report should be to make the state visible, not to write
+a fix.
+
+This rule exists because the 2026-05-13/14 swipe-deck session burned ~4
+hours and 6+ Vercel pushes on a one-line fix. The first 3 hours were
+"add another fix, push, hope it works." It didn't, every time. The actual
+breakthrough came in the last 30 minutes when we added an on-screen debug
+overlay and read the live state — which immediately showed the state
+machine was fine and the bug was render-side. That overlay should have
+been the first thing built, not the last.
+
+### Concretely
+
+- **Before writing a fix, instrument.** Build an on-screen debug overlay,
+  add a `<pre>{JSON.stringify(state)}</pre>` somewhere visible, render a
+  color-coded marker, or otherwise externalize the runtime state. Mobile
+  users can't see your `console.log` — assume devtools aren't an option.
+- **Treat hypotheses as hypotheses.** "I think it's the body-fixed CSS"
+  is a starting point for a diagnostic, not a license to change code.
+  Verify the hypothesis with a measurement first, then act on the result.
+- **Read the diff before assuming what's different.**
+  `git diff origin/master -- frontend/src/pages/X.jsx` will tell you what
+  actually changed between your branch and the working baseline. Don't
+  describe the difference from memory.
+- **Confirm scope before acting.** Is the bug on `master` / prod too, or
+  only on your branch? Same surface the user is reporting from (Safari
+  vs Firefox vs Capacitor app vs desktop)? Same commit they're testing?
+  If you don't know, you're guessing.
+- **When iterating on a fix, bisect by removing.** Each new "fix" you
+  layer on can introduce its own regression and make it harder to tell
+  which change was the actual culprit. Smaller diff vs. master = easier
+  to reason about.
+- **One concept per commit.** "Try a thing" + "revert that thing" should
+  each be one commit. That way `git log --oneline` reads as the actual
+  reasoning trail.
+
+### When the user reports a UI bug on mobile
+
+The full runbook (on-screen debug overlay templates, the 4-reading gesture
+walkthrough, CSS containment + transform pitfalls, iOS Safari URL-bar
+quirks, local-tunnel testing setup, etc.) lives in
+[DEBUGGING.md](DEBUGGING.md). Open that before any code edit on a mobile
+gesture / layout / iOS-specific report. There's a 10-step diagnostic
+checklist at the bottom — start there.
+
+---
+
 ## Critical rules
 
 ### Never touch
@@ -184,6 +234,71 @@ or accept that successive batches may repeat tracks from the chart cache.
 - All API calls go through `services/api.js` — never call fetch/axios directly in a component
 - Recharts for all charts
 - No external UI libraries (no MUI, no Chakra) — plain CSS-in-JS style objects
+
+### Design system (shipped 2026-05-13)
+The visual identity was deliberately rebuilt away from the default "AI app
+template" look (violet→emerald gradients, system sans, UPPERCASE tracked
+eyebrows). Do not reintroduce those patterns.
+
+- **Type**: headings + wordmark use **Instrument Serif** (loaded via
+  Google Fonts in `index.html`). Body type stays on the system stack.
+  Reference via `var(--font-display)` from `index.css`. Apply to any new
+  H1/H2 or signature stat. Don't use sans-serif for page titles.
+- **Color palette**: pulled from the Contour logo.
+  - `--accent` / `--accent-a` = `#d97a3b` (warm amber, primary brand)
+  - `--accent-b` = `#6a90b5` (dusty cobalt, used only in Compare for
+    "entity B" data semantics — not for general brand use)
+  - `--gold` = `#f59e0b` (star ratings, RIAA milestones)
+  - `--danger` = `#f87171` (errors)
+  - **No emerald (`#34d399`)**, **no violet (`#a78bfa`)** as brand. Those
+    were Tailwind defaults that read as templated. The genre-picker palette
+    keeps its own varied colors; the badge palette keeps its own — those
+    aren't brand application.
+- **No gradient clip-text** on headlines. The previous wordmark and every
+  page H1 used `background: linear-gradient(violet, emerald)` + `-webkit-
+  background-clip: text`. All removed. Headings are solid `var(--text)` in
+  Instrument Serif. If you find yourself reaching for `backgroundClip:
+  "text"`, stop — it's almost never the right call for this app.
+- **No trailing `→` on CTAs**. "Get started", "Continue", "Got it", "See all"
+  — punctuation off. Was used in 8+ places, all removed.
+- **Sentence-case section headers**, not UPPERCASE+tracked eyebrow labels.
+  Compare "Tracklist" / "Listen on" / "Sort by" / "Era score" (current) vs.
+  "TRACKLIST" / "LISTEN ON" (old AI-template look).
+- **One tagline, one home**: "Rate. Review. Discover." lives only on the
+  sign-in gate. Don't repeat it on the header or onboarding.
+- **Era Score as signature stat**: `EraAdjustedStat` hero variant treats the
+  era-adjusted number like a magazine stat — Instrument Serif at ~76px,
+  `font-variant-numeric: tabular-nums`, with raw plays + ×multiplier as a
+  sub-line. That stat is the brand's typographic identity.
+
+If you're adding new pages: copy the H1 pattern from `LeaderboardPage.jsx` or
+`TrendingPage.jsx` (serif, 40px, weight 400, solid text color, no gradient).
+
+### Deck rendering — known landmines
+The For You feed swipe deck (`ForYouPage.jsx` → `ForYouFeed` component) has
+shipped multiple regressions. Two things to never reintroduce:
+
+- **No `contain: layout paint` on the deck wrapper.** Per spec, paint
+  containment clips descendants to the element's UN-transformed border box.
+  Cards inside are positioned via `transform: translate3d(0, i*100%, 0)` so
+  card[1] sits at +100% (outside the wrapper's static box). When the wrapper
+  translates `-100%` on a forward swipe, card[1] visually enters the
+  viewport — but paint containment kept clipping it against the static
+  bounds, producing a black screen on iOS where the next song should be.
+  Fixed in c41e7c9. The deck container parent already has `overflow:
+  hidden` so paint isolation isn't lost.
+- **No `position: fixed` on `body` to suppress rubber-band.** That was
+  tried (8f6ec8e) and broke forward swipe — the layout shift confused
+  iOS gesture dispatch. Use `overflow: hidden` on body+html instead, or
+  accept the rubber-band as a lower-priority issue.
+- **`touch-action: pan-y` on the deck container, not `none`.** Setting
+  `touch-action: none` on iOS WebKit suppresses the touchend → JS-advance
+  gesture sequence entirely. pan-y lets iOS interpret the gesture natively
+  while our touchstart/move/end handlers still fire.
+
+For debugging future deck issues: see [DEBUGGING.md](DEBUGGING.md) — there's
+a methodology section specifically for mobile gestures since you can't see
+the JS console on iPhone.
 
 ### Branch rules
 

@@ -4,7 +4,7 @@ Single place to find:
 1. **Every external service Contour depends on** — what it costs, what to monitor, when it renews.
 2. **Runbooks for things that span systems** — domain migration, key rotation, credential loss recovery.
 
-Last updated: 2026-05-12. Keep this file current whenever you sign up for, cancel, or upgrade a service.
+Last updated: 2026-05-14. Keep this file current whenever you sign up for, cancel, or upgrade a service.
 
 ---
 
@@ -16,7 +16,7 @@ Format: **Service** — what it does | cost | renewal | what to watch | where th
 
 | Service | What it does | Cost | Renewal | Watch | Config |
 |---|---|---|---|---|---|
-| **Vercel** — Hobby plan | Hosts the React frontend at `contour-rosy.vercel.app`. Auto-deploys every push to `master`. | $0 | N/A | Build minutes (100/day free), bandwidth (100 GB/mo free), Web Analytics events (2,500/day free). Upgrade at 80% of any. | vercel.com dashboard → Contour project → Settings + Environment Variables. |
+| **Vercel** — Pro plan | Hosts the React frontend at `contour-rosy.vercel.app`. Auto-deploys every push to `master`. Upgraded from Hobby on **2026-05-14** after a debugging session burned through the Hobby build-minute quota in one evening. | **$20 / month** | Monthly billing | Build minutes (6000/mo Pro), bandwidth (1 TB/mo Pro), Web Analytics events. Pro removes the daily rate-limit hard cap that was the breaking issue. | vercel.com dashboard → Contour project → Settings + Environment Variables. |
 | **Railway** — Pay-as-you-go | Hosts the FastAPI backend + Postgres + Redis at `contour-production.up.railway.app`. Auto-deploys on `master` push. Migrations run automatically. | $5 trial credit, then ~$5–20/month at launch traffic | Monthly billing | Monthly usage in Railway → Usage tab. Postgres disk growth (250 MB free tier; not currently a concern). Spotify circuit breaker open time (via `/health`). | railway.app dashboard → Contour project → Variables tab. |
 | **Codemagic** — Free tier | macOS build farm for iOS Capacitor builds. Triggered by git push, outputs `.ipa` for TestFlight upload. | $0 | N/A | Build minutes used per month (500 free, ~10 min per iOS build → ~50 builds free). | codemagic.io dashboard → Contour app → Workflows + Environment Variables. |
 | **GitHub** — Public repo | Source of truth. Triggers Vercel + Railway + Codemagic deploys. | $0 | N/A | Nothing specific. | github.com/peytonhl/contour |
