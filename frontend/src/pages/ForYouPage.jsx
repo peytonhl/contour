@@ -1818,10 +1818,17 @@ function ForYouFeed() {
             // hard from peak velocity for a clean "lock-in" feel.
             transition: dragging ? "none" : "transform 240ms cubic-bezier(0.16, 1, 0.3, 1)",
             willChange: "transform",
-            // contain isolates the deck's rendering from the rest of the
-            // page — the compositor can promote it to its own layer with
-            // no surprise repaints from outside.
-            contain: "layout paint",
+            // `contain: layout paint` was REMOVED here — it was clipping
+            // descendants to the wrapper's un-transformed border box, per
+            // CSS spec. Cards are positioned via translate3d(0, i*100%, 0)
+            // inside the wrapper, so card[1] sits at +100% (one wrapper
+            // height below the wrapper's static box). When the wrapper
+            // transforms by -100% on a forward swipe, card[1] visually
+            // moves into the viewport — but paint containment clipped it
+            // against the wrapper's STATIC bounds, leaving a black screen.
+            // Symptom on iOS: swipe up shows nothing where the next song
+            // should be. The deck container parent already has overflow:
+            // hidden so we keep the perf isolation at that level.
           }}
         >
           {tracks.map((track, i) => {
