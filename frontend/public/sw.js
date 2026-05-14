@@ -22,7 +22,17 @@
  * stub on next launch and self-uninstall.
  */
 
-const CACHE_VERSION = 'contour-v2';
+// Bumped v2 → v3 (2026-05-14): the prior master push (sha 2d192e2, the splash
+// fix) shipped to Codemagic via the ios-v0.1.14 tag, but Vercel deduplicated
+// against the existing Preview build for that SHA and never built a Production
+// deploy. The IPA shipped to TestFlight loaded the stale dabe3ba HTML/JS from
+// contour-rosy.vercel.app — old JS doesn't call SplashScreen.hide(), new
+// native plugin has launchAutoHide: false, so the splash holds forever. This
+// version bump:
+//   (a) is a content change, so Vercel can't dedup the master deploy
+//   (b) invalidates v2 caches on activate, so any device that had stale
+//       cached entries from the old SW gets a clean slate
+const CACHE_VERSION = 'contour-v3';
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
