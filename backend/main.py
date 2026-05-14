@@ -241,6 +241,14 @@ async def debug_version():
         else:
             sweeper_state = "running"
 
+    # Pull the sweeper's own activity counters so we can see if it's
+    # actually completing cycles vs. just sitting in a "running" Task state.
+    try:
+        from services.enrichment_sweeper import STATS as _SW_STATS
+        sweeper_stats = dict(_SW_STATS)
+    except Exception:
+        sweeper_stats = None
+
     return {
         "git_sha": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown"),
         "git_branch": os.environ.get("RAILWAY_GIT_BRANCH", "unknown"),
@@ -253,8 +261,44 @@ async def debug_version():
         "sweeper_scheduled": _STARTUP_STATE["sweeper_scheduled"],
         "sweeper_state": sweeper_state,
         "sweeper_exception": sweeper_exception,
+        "sweeper_stats": sweeper_stats,
         "now_utc": now,
     }
+
+
+@app.post("/debug/sweep")
+async def debug_sweep():
+    """Run one sweeper cycle synchronously and return what happened.
+
+    Independent of the background run_forever() task. Lets us answer
+    "does sweep_once() ACTUALLY work in production right now?" by
+    invoking it directly from a request handler and inspecting the
+    return value + any exception. If a manual sweep returns
+    processed=N>0, the sweep logic is sound and any failure of the
+    background task to make progress is a scheduling/timing issue.
+    If it returns 0 with no exception, the query is selecting nothing
+    despite 706 pending rows in the table — different bug. If it
+    raises, the exception text tells us what's broken inline.
+    """
+    import time as _time
+    from services import enrichment_sweeper
+    start = _time.time()
+    try:
+        processed = await enrichment_sweeper.sweep_once()
+        return {
+            "ok": True,
+            "processed": processed,
+            "elapsed_seconds": round(_time.time() - start, 2),
+        }
+    except Exception as exc:
+        import traceback
+        return {
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "traceback": traceback.format_exc(),
+            "elapsed_seconds": round(_time.time() - start, 2),
+        }
 
 
 @app.get("/health")
