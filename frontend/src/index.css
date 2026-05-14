@@ -423,3 +423,31 @@ button, a, [role="button"] {
 @media (min-width: 641px) {
   .show-mobile { display: none !important; }
 }
+
+/* ── Horizontal scroll shelf ──
+   Used on Trending and other browse surfaces where a row of cards reads
+   better as a swipeable shelf than as a uniform grid. Hides the scrollbar
+   across browsers while keeping native momentum scrolling, and snaps each
+   card to the start edge so a half-card sliver doesn't trail at the right.
+   Children should set their own widths (typically minmax via flex-basis or
+   a fixed px width) — this class only governs the container. */
+.scroll-shelf {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Negative margin + matching padding lets cards bleed to the page edge
+     on mobile without the parent container needing to be full-bleed —
+     reads as "this row continues off-screen" rather than "section ends
+     where the page padding ends." */
+  margin: 0 -20px;
+  padding: 4px 20px 12px;
+}
+.scroll-shelf::-webkit-scrollbar { display: none; }
+.scroll-shelf > * {
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+}
