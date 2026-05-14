@@ -308,6 +308,114 @@ This is the working minimum: report content, block users, admin review queue.
   feed, admin endpoint authorization, and the resolve-with-delete flow.
 - 18 backend tests total now pass (10 auth linking + 8 moderation).
 
+
+### ✅ Task — UI refresh: pull surface chrome off the AI-template default
+**Shipped:** 2026-05-13 (commit `f9a8676`)
+
+Triggered by external feedback that the app read as "extremely vibe coded."
+Audit found the surface vocabulary was textbook shadcn/Vercel/Linear-clone:
+violet→emerald gradient text on every H1, UPPERCASE tracked eyebrow labels
+in 58+ places, trailing `→` on CTAs, generic system-sans, three-clause
+tagline duplicated in 4 places. Substance (era-adjusted ratings, etc.) is
+fine — the chrome was the problem.
+
+**Shipped:**
+- **Typography**: Instrument Serif via Google Fonts for headings + wordmark.
+  Body type stays system stack. `--font-display` token added to index.css.
+- **Color**: pulled from the actual logo. `--accent-a` violet (`#a78bfa`)
+  → amber (`#d97a3b`). `--accent-b` emerald (`#34d399`) → cobalt
+  (`#6a90b5`). `--accent-b` now reserved for "entity B" data semantics in
+  Compare; brand uses single-accent amber.
+- **Gradient clip-text removed** in 11+ files: wordmark (Layout.jsx, boot
+  splash), SigninGate, OnboardingModal (3 H1s + CTA gradients),
+  LeaderboardPage, TrendingPage, ImportPage, PrivacyPage, ComparePage.
+- **Onboarding rework**: step 0 collapsed from 3-card tinted-circle
+  value-prop carousel to single-screen welcome + one CTA. Deleted
+  `VALUE_PROPS`, `StarIcon`/`ChartIcon`/`HeadphonesIcon` helpers, and
+  `ACCENT_C` constant. Steps 1 (genres) + 2 (backlog) preserved.
+- **Tagline consolidation**: "Rate. Review. Discover." now lives only on
+  the sign-in gate (was duplicated on Layout header, SearchPage eyebrow,
+  Onboarding step 0). Search eyebrow became a real `<h1>Search</h1>`.
+- **Sentence-case eyebrows** for the most-visible labels: Sort by, Era
+  score, Raw plays, Album, Listen on, Tracklist, Streaming trajectory,
+  Recent, Trending searches, Total streams, Community verdict.
+- **CTA arrows stripped**: Get started, Next, Got it, See your profile,
+  Learn more, See all, Skip for now, See how it works — all `→` removed.
+- **Emoji decorations replaced**: 🔥 / ✨ section headers → serif text;
+  🎵 cover-art fallback → small vinyl-disc SVG.
+- **Era Score signature**: `EraAdjustedStat` hero variant treats the
+  era-adjusted number as a magazine-stat — Instrument Serif at 76px,
+  tabular-nums, with raw plays + ×multiplier as sub-line.
+- **Empty/loading copy with voice**: AlbumPage no-trajectory splits
+  between pre-streaming-era and not-yet-indexed; For You empty
+  differentiates warming-up vs blocked-list-full vs server-unreachable;
+  Leaderboard "Loading…" → "Counting plays…".
+
+Mechanics: bulk sed across 36 .jsx files swapped brand hex constants. Genre
++ badge palettes intentionally preserved (they're not brand application,
+just varied-color tags).
+
+
+### ✅ Task — Forward-swipe regression fix (`contain:layout-paint`)
+**Shipped:** 2026-05-14 (commit `c41e7c9`)
+
+**Bug:** swiping up on the For You feed produced a black screen where the
+next song should be. State machine worked perfectly (`activeIdx`
+incremented, `dragOffset` reset, cards mounted in DOM) — but cards didn't
+paint.
+
+**Root cause:** the deck wrapper had `contain: "layout paint"` as a perf
+optimization. Per CSS spec, paint containment clips descendants to the
+element's UN-transformed border box. Cards inside the wrapper were
+positioned via `transform: translate3d(0, i*100%, 0)` — so card[1] sat at
++100% (one wrapper height below the wrapper's static box). When the
+wrapper translated `-100%` on a forward swipe, card[1] visually moved into
+the viewport, but paint containment kept clipping it against the wrapper's
+STATIC bounds (y=0 to y=100%), making it invisible regardless of where it
+visually sat.
+
+**Fix:** removed the `contain: "layout paint"` line. The deck container
+parent already has `overflow: hidden` so paint isolation at that level
+isn't lost. One-line fix, big impact.
+
+**Diagnostic path:** on-device debug overlay (see DEBUGGING.md) showed all
+state values correct, all cards mounted, but no paint. Bisected by reverting
+suspect changes one at a time on a local Vite dev server tunneled via
+tunnelmole to the iPhone.
+
+
+### ✅ Task — Post-swipe black gap above tabs strip
+**Shipped:** 2026-05-14 (commit `abc3e1c`)
+
+**Bug:** after the first forward swipe, a black bar appeared between the
+iPhone status bar and the Discover/Friends/Community tab strip.
+
+**Root cause:** ForYouFeed root was anchored at `top: env(safe-area-inset-top,
+0px)`. iOS Safari opportunistically collapses the URL bar on upward
+gestures even when the document doesn't actually scroll. When that happens,
+safe-area-inset-top can shift and the position:fixed root re-anchors, exposing
+the page background above where the chrome now sits.
+
+**Fix:** anchor root to `top: 0` so it always covers the device's top edge
+regardless of safe-area changes. The tabs strip now applies
+`paddingTop: env(safe-area-inset-top)` so its tab buttons stay below the
+notch / status bar, and the strip's `glass` background extends up into the
+status-bar zone as a continuous header surface.
+
+**Status:** shipped, but Peyton reported the fix didn't fully resolve the
+issue on his device. Deferred for a follow-up debugging pass — the layout
+math may need a different anchor strategy or there's a Capacitor-shell
+specific behavior we haven't accounted for.
+
+
+### ✅ Task — Vercel upgrade Hobby → Pro
+**Shipped:** 2026-05-14
+
+Hobby tier's 100-builds-per-day limit kept rate-limiting us mid-debug as
+we iterated on the For You swipe fix (5+ pushes in 30 min during one
+session). Upgraded to Pro at $20/mo to unblock the iteration loop.
+Operations doc updated. Future debugging sessions won't hit this ceiling.
+
 ---
 
 ## Notes for Peyton
