@@ -5,6 +5,7 @@ import { ReviewSection } from "../components/ReviewSection.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
 import { SpotifyIcon } from "../components/PlatformIcons.jsx";
 import { EntityHeroSkeleton, RowSkeleton } from "../components/Skeleton.jsx";
+import { AlertIcon } from "../components/Icons.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
@@ -444,7 +445,9 @@ export function ArtistPage() {
             padding: "var(--space-6) var(--space-5)", textAlign: "center",
             background: "var(--surface)", borderRadius: "var(--radius-lg)",
           }}>
-            <div style={{ fontSize: 28 }}>⚠️</div>
+            <div style={{ color: "var(--text-muted)", lineHeight: 0 }}>
+              <AlertIcon size={28} />
+            </div>
             <div style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--text)" }}>
               Couldn't load discography
             </div>

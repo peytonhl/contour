@@ -25,7 +25,7 @@ export function PreStreamingBanner({ releaseDate }) {
     }}>
       <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>{isPreStreaming ? "📼" : "📡"}</span>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "#fb923c" }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-a)" }}>
           {isPreStreaming ? "Pre-Streaming Era" : "Early Streaming Era"}
         </span>
         <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>

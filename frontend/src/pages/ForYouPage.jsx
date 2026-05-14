@@ -14,6 +14,7 @@ function tierSourceOf(track) {
 import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
 import { FollowingTab } from "../components/FollowingTab.jsx";
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
+import { AlertIcon } from "../components/Icons.jsx";
 
 const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -905,7 +906,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                   }}
                 />
                 {reviewError && (
-                  <span style={{ fontSize: 11, color: "#f87171" }}>{reviewError}</span>
+                  <span style={{ fontSize: 11, color: "var(--danger)" }}>{reviewError}</span>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
@@ -1622,7 +1623,9 @@ function ForYouFeed() {
         {/* Spotify-level diagnosis */}
         {debugInfo && spotifyOk === false && (
           <div style={{ padding: "10px 16px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, maxWidth: 300 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "#f87171", fontWeight: 700 }}>⚠ Spotify API unreachable</p>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--danger)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <AlertIcon size={12} /> Spotify API unreachable
+            </p>
             {spotifyErr && <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{spotifyErr}</p>}
             <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
               Check that SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are set in Railway.
@@ -1632,7 +1635,9 @@ function ForYouFeed() {
 
         {debugInfo && spotifyOk === true && tier3Ok === false && (
           <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, maxWidth: 300 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>⚠ Spotify auth OK but track search failed</p>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--gold)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <AlertIcon size={12} /> Spotify auth OK but track search failed
+            </p>
             <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
               {tier3Err}
             </p>
@@ -1641,7 +1646,7 @@ function ForYouFeed() {
 
         {debugInfo && spotifyOk === true && tier3Ok === true && tier3Count === 0 && (
           <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, maxWidth: 300 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>Spotify returned 0 tracks</p>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--gold)", fontWeight: 700 }}>Spotify returned 0 tracks</p>
             <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
               {dislikedCount >= 5 ? `${dislikedCount} artists blocked by your not-interested list.` : "Playlist may be empty or region-restricted."}
             </p>

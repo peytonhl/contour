@@ -44,6 +44,25 @@ export function EntityHeroSkeleton() {
   );
 }
 
+// Light empty-state line used under tabs / list containers when there's no
+// content yet. Centralizes the muted-text-with-vertical-padding pattern that
+// was being duplicated inline across profile, user, and trending pages.
+// Use this only for the "nothing to show here" case — for *error* empty
+// states (e.g. ArtistPage discography failure) build a richer block with
+// an AlertIcon and a retry CTA.
+export function EmptyHint({ children, dense = false }) {
+  return (
+    <p style={{
+      color: "var(--text-muted)",
+      fontSize: "var(--text-sm)",
+      padding: dense ? "var(--space-2) 0" : "var(--space-5) 0",
+      margin: 0,
+    }}>
+      {children}
+    </p>
+  );
+}
+
 // Compact list-row skeleton used by ArtistPage discography while albums load.
 export function RowSkeleton({ count = 6 }) {
   return (

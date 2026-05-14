@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
+import { EmptyHint } from "../components/Skeleton.jsx";
 
 const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -65,7 +66,7 @@ function AlbumGrid({ items, surface }) {
 
 function ReviewList({ items, surface }) {
   if (!items?.length) {
-    return <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 0" }}>No reviews to show.</p>;
+    return <EmptyHint dense>No reviews to show.</EmptyHint>;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
