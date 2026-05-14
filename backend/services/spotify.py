@@ -800,6 +800,33 @@ async def search_tracks_by_genre(
                         parsed["popularity"] = max(0, min(100, int(round(synth))))
                     pool.append(parsed)
 
+        # Filter out tracks whose title literally contains the genre name —
+        # e.g. searching "hip-hop" puts "Hip Hop" by Trinix and "Hip-Hop"
+        # by Lil Wayne at the top because Spotify's text search rewards
+        # title matches above genre-tag relevance. The user wants tracks
+        # that ARE hip-hop, not tracks LITERALLY CALLED Hip-Hop. Drop these
+        # title-keyword matches unless removing them would leave a pool
+        # too thin to sample from (< 8 tracks) — in that case keep them
+        # rather than serve nothing.
+        if pool:
+            genre_keyword = genre.lower().strip()
+            # Also strip the dash form so "hip-hop" filter catches "hip hop"
+            # and "hiphop"; same for "r&b" → "rnb" etc.
+            keyword_variants = {
+                genre_keyword,
+                genre_keyword.replace("-", " "),
+                genre_keyword.replace("-", ""),
+                genre_keyword.replace(" ", "-"),
+            }
+
+            def _has_genre_keyword(t):
+                name = (t.get("name") or "").lower()
+                return any(kw and kw in name for kw in keyword_variants)
+
+            filtered = [t for t in pool if not _has_genre_keyword(t)]
+            if len(filtered) >= 8:
+                pool = filtered
+
         if pool:  # don't cache an empty pool — let next call retry
             await redis_cache.set(cache_key, pool, ttl=_TTL_7D)
             # Write-through to TrackCache so the catalog grows organically
