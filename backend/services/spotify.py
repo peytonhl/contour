@@ -80,11 +80,26 @@ def _get_semaphore() -> asyncio.Semaphore:
 # Imports are inline + lazy so this module doesn't introduce a hard dependency
 # on the DB / models from a pure-API-client perspective. Failures here are
 # logged and swallowed — the Spotify call already returned, the user has
-# their data, persistence is best-effort.
+# their data, persistence is best-effort. The outcome-counter pattern below
+# means any silent failure shows up on /admin/stats with its exception type
+# so we don't repeat the int32-overflow debugging fiasco.
+
+from services.instrumentation import counter as _make_counter, record as _record
+
+_TRACK_PERSIST = _make_counter(
+    "spotify._persist_track_to_db",
+    inserted_total=0, updated_total=0, errored_total=0, skipped_no_id_total=0,
+)
+_ALBUM_PERSIST = _make_counter(
+    "spotify._persist_album_to_db",
+    inserted_total=0, updated_total=0, errored_total=0, skipped_no_id_total=0,
+)
+
 
 async def _persist_track_to_db(meta: dict) -> None:
     """Write-through a fetched track to TrackCache. Idempotent upsert."""
     if not meta.get("id"):
+        _record(_TRACK_PERSIST, outcome="skipped_no_id", skipped_no_id_total=1)
         return
     try:
         import json
@@ -110,6 +125,8 @@ async def _persist_track_to_db(meta: dict) -> None:
                 existing.image_url = meta.get("image_url") or existing.image_url
                 existing.external_url = meta.get("external_url") or existing.external_url
                 existing.artist_ids_json = artist_ids_json
+                outcome = "updated"
+                delta = {"updated_total": 1}
             else:
                 session.add(TrackCache(
                     spotify_id=meta["id"],
@@ -125,8 +142,14 @@ async def _persist_track_to_db(meta: dict) -> None:
                     external_url=meta.get("external_url"),
                     artist_ids_json=artist_ids_json,
                 ))
+                outcome = "inserted"
+                delta = {"inserted_total": 1}
             await session.commit()
+        _record(_TRACK_PERSIST, outcome=outcome, subject=meta["id"], **delta)
     except Exception as exc:
+        _record(_TRACK_PERSIST,
+                outcome=f"errored: {type(exc).__name__}: {exc}",
+                subject=meta.get("id"), errored_total=1)
         _log.warning("[spotify] persist track %s failed: %s", meta.get("id"), exc)
 
 
@@ -137,6 +160,7 @@ async def _persist_album_to_db(meta: dict) -> None:
     enrichment pipeline owns that field's lifecycle.
     """
     if not meta.get("id"):
+        _record(_ALBUM_PERSIST, outcome="skipped_no_id", skipped_no_id_total=1)
         return
     try:
         from sqlalchemy import select
@@ -158,6 +182,8 @@ async def _persist_album_to_db(meta: dict) -> None:
                 existing.label = meta.get("label") or existing.label
                 existing.popularity = meta.get("popularity") or existing.popularity
                 existing.image_url = meta.get("image_url") or existing.image_url
+                outcome = "updated"
+                delta = {"updated_total": 1}
             else:
                 session.add(AlbumCache(
                     spotify_id=meta["id"],
@@ -170,8 +196,14 @@ async def _persist_album_to_db(meta: dict) -> None:
                     image_url=meta.get("image_url"),
                     enrichment_status="pending",
                 ))
+                outcome = "inserted"
+                delta = {"inserted_total": 1}
             await session.commit()
+        _record(_ALBUM_PERSIST, outcome=outcome, subject=meta["id"], **delta)
     except Exception as exc:
+        _record(_ALBUM_PERSIST,
+                outcome=f"errored: {type(exc).__name__}: {exc}",
+                subject=meta.get("id"), errored_total=1)
         _log.warning("[spotify] persist album %s failed: %s", meta.get("id"), exc)
 
 

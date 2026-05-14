@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from services.limiter import limiter
 
 from database import init_db, AsyncSessionLocal
-from routers import albums, apple_music, artists, auth, backlog, comparison, discover, featured, feed, imports, leaderboard, lists, moderation, notifications, ratings, reviews, saved_comparisons, search, taste, tracks, trending, users
+from routers import admin, albums, apple_music, artists, auth, backlog, comparison, discover, featured, feed, imports, leaderboard, lists, moderation, notifications, ratings, reviews, saved_comparisons, search, taste, tracks, trending, users
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(admin.router)
 app.include_router(search.router)
 app.include_router(albums.router)
 app.include_router(tracks.router)
@@ -207,109 +208,10 @@ async def startup():
     logger.info("=== Contour startup complete — app is ready to serve requests ===")
 
 
-@app.get("/debug/version")
-async def debug_version():
-    """Identifying info about the running container.
-
-    Exists so an external probe can answer "is the new deploy actually
-    serving traffic?" without depending on Railway's log UI. Reads
-    RAILWAY_GIT_COMMIT_SHA (set automatically by Railway at build time)
-    plus the _STARTUP_STATE markers the startup hook writes as it
-    progresses. If `stage` is anything other than "complete" and
-    `complete` is False, that container is wedged mid-startup.
-    """
-    import time as _time
-    now = _time.time()
-
-    # Report the sweeper task's actual runtime state — not just "was it
-    # scheduled" but "is it still alive". done()=True means the task
-    # finished (which for an infinite loop means it crashed or was GC'd
-    # — both bad). cancelled()=True also means it's dead.
-    sweeper_state = "not-scheduled"
-    sweeper_exception = None
-    if _sweeper_task is not None:
-        if _sweeper_task.cancelled():
-            sweeper_state = "cancelled"
-        elif _sweeper_task.done():
-            sweeper_state = "done"  # infinite loop ended = bad
-            try:
-                exc = _sweeper_task.exception()
-                if exc is not None:
-                    sweeper_exception = f"{type(exc).__name__}: {exc}"
-            except Exception:
-                pass
-        else:
-            sweeper_state = "running"
-
-    # Pull the sweeper's own activity counters so we can see if it's
-    # actually completing cycles vs. just sitting in a "running" Task state.
-    try:
-        from services.enrichment_sweeper import STATS as _SW_STATS
-        sweeper_stats = dict(_SW_STATS)
-    except Exception:
-        sweeper_stats = None
-
-    # Pull the persistence-layer counters too. Sweeper reports "processed"
-    # rows but that only means _enrich_album returned without raising —
-    # save_kworb_streams may have silently early-returned if the row
-    # lookup didn't match. These counters tell us which branch fired.
-    try:
-        from services.album_cache import SAVE_STATS as _SAVE_STATS
-        save_stats = dict(_SAVE_STATS)
-    except Exception:
-        save_stats = None
-
-    return {
-        "git_sha": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown"),
-        "git_branch": os.environ.get("RAILWAY_GIT_BRANCH", "unknown"),
-        "deployment_id": os.environ.get("RAILWAY_DEPLOYMENT_ID", "unknown"),
-        "module_import_utc": _STARTUP_STATE["import_time_utc"],
-        "uptime_seconds": int(now - _STARTUP_STATE["import_time_utc"]),
-        "startup_stage": _STARTUP_STATE["stage"],
-        "startup_complete": _STARTUP_STATE["complete"],
-        "startup_complete_at_utc": _STARTUP_STATE["complete_at_utc"],
-        "sweeper_scheduled": _STARTUP_STATE["sweeper_scheduled"],
-        "sweeper_state": sweeper_state,
-        "sweeper_exception": sweeper_exception,
-        "sweeper_stats": sweeper_stats,
-        "save_stats": save_stats,
-        "now_utc": now,
-    }
-
-
-@app.post("/debug/sweep")
-async def debug_sweep():
-    """Run one sweeper cycle synchronously and return what happened.
-
-    Independent of the background run_forever() task. Lets us answer
-    "does sweep_once() ACTUALLY work in production right now?" by
-    invoking it directly from a request handler and inspecting the
-    return value + any exception. If a manual sweep returns
-    processed=N>0, the sweep logic is sound and any failure of the
-    background task to make progress is a scheduling/timing issue.
-    If it returns 0 with no exception, the query is selecting nothing
-    despite 706 pending rows in the table — different bug. If it
-    raises, the exception text tells us what's broken inline.
-    """
-    import time as _time
-    from services import enrichment_sweeper
-    start = _time.time()
-    try:
-        processed = await enrichment_sweeper.sweep_once()
-        return {
-            "ok": True,
-            "processed": processed,
-            "elapsed_seconds": round(_time.time() - start, 2),
-        }
-    except Exception as exc:
-        import traceback
-        return {
-            "ok": False,
-            "error_type": type(exc).__name__,
-            "error_message": str(exc),
-            "traceback": traceback.format_exc(),
-            "elapsed_seconds": round(_time.time() - start, 2),
-        }
+# _STARTUP_STATE and _sweeper_task are read by routers/admin.py to power
+# /admin/version. They're kept module-level here (vs. moved into the admin
+# router) so the startup hook can write to them as it progresses — admin
+# routes are read-only consumers.
 
 
 @app.get("/health")

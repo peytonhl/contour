@@ -13,26 +13,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import AlbumCache
+from services.instrumentation import counter, record
 
 logger = logging.getLogger(__name__)
 
 STREAM_TTL_HOURS = 24  # re-scrape Kworb after this many hours
 
 
-# Observability for the persistence step. The sweeper has shown processed
-# rows >> 0 but production counts don't move — meaning save_kworb_streams
-# is being called but its commit isn't sticking. These counters tell us
-# exactly which branch fired per call. Exposed via /debug/version.
-SAVE_STATS: dict = {
-    "called_total": 0,
-    "row_found_total": 0,
-    "row_missing_total": 0,
-    "committed_total": 0,
-    "commit_failed_total": 0,
-    "last_call_at_utc": None,
-    "last_call_outcome": None,    # "committed" | "row_missing" | "commit_failed: <err>"
-    "last_call_spotify_id": None,
-}
+# Counter for the persistence step. The int32-overflow bug went undetected
+# because save_kworb_streams swallowed the DataError. These outcome buckets
+# make a future silent-failure here surface on /admin/stats immediately:
+#   row_missing_total    — get_cached_album returned None (early return path)
+#   committed_total      — full success
+#   commit_failed_total  — db.commit() raised
+_SAVE = counter(
+    "album_cache.save_kworb_streams",
+    row_found_total=0,
+    row_missing_total=0,
+    committed_total=0,
+    commit_failed_total=0,
+)
 
 
 async def get_cached_album(db: AsyncSession, spotify_id: str) -> Optional[AlbumCache]:
@@ -77,31 +77,25 @@ async def upsert_album(db: AsyncSession, spotify_meta: dict) -> AlbumCache:
 async def save_kworb_streams(
     db: AsyncSession, spotify_id: str, streams: Optional[int]
 ) -> None:
-    SAVE_STATS["called_total"] += 1
-    SAVE_STATS["last_call_at_utc"] = datetime.utcnow().isoformat() + "Z"
-    SAVE_STATS["last_call_spotify_id"] = spotify_id
-
     row = await get_cached_album(db, spotify_id)
     if row is None:
-        SAVE_STATS["row_missing_total"] += 1
-        SAVE_STATS["last_call_outcome"] = "row_missing"
+        record(_SAVE, outcome="row_missing", subject=spotify_id, row_missing_total=1)
         logger.warning(
             "save_kworb_streams: row not found for spotify_id=%r — skipping write",
             spotify_id,
         )
         return
 
-    SAVE_STATS["row_found_total"] += 1
     row.kworb_streams = streams
     row.enrichment_status = "done" if streams is not None else "failed"
     row.enriched_at = datetime.utcnow()
     try:
         await db.commit()
-        SAVE_STATS["committed_total"] += 1
-        SAVE_STATS["last_call_outcome"] = "committed"
+        record(_SAVE, outcome="committed", subject=spotify_id,
+               row_found_total=1, committed_total=1)
     except Exception as exc:
-        SAVE_STATS["commit_failed_total"] += 1
-        SAVE_STATS["last_call_outcome"] = f"commit_failed: {type(exc).__name__}: {exc}"
+        record(_SAVE, outcome=f"commit_failed: {type(exc).__name__}: {exc}",
+               subject=spotify_id, row_found_total=1, commit_failed_total=1)
         logger.warning(
             "save_kworb_streams: commit failed for spotify_id=%r — %s",
             spotify_id, exc,

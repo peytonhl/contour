@@ -29,6 +29,8 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import and_, or_, select
 
+from services.instrumentation import counter, record
+
 logger = logging.getLogger(__name__)
 
 INITIAL_DELAY_SEC = 60   # let startup tasks settle before first sweep
@@ -38,20 +40,15 @@ FAILED_RETRY_HOURS = 6   # don't retry failed rows more often than this
 PACING_SEC = 0.5         # gentle delay between rows within a batch
 
 
-# Per-task observability counters. Updated inside sweep_once and run_forever
-# so /debug/version can read them without needing Railway log access.
-# Module-level dict because the sweeper task and the HTTP endpoint live in
-# different async contexts but the same process.
-STATS: dict = {
-    "cycles_attempted": 0,
-    "cycles_succeeded": 0,
-    "cycles_errored": 0,
-    "rows_picked_total": 0,
-    "rows_processed_total": 0,
-    "last_cycle_at_utc": None,
-    "last_cycle_result": None,   # "ok N", "empty", or "error: ..."
-    "last_cycle_error": None,
-}
+# Sweeper cycle counter. Registered with the shared instrumentation
+# registry so /admin/stats picks it up alongside every other counter.
+_CYCLE = counter(
+    "enrichment_sweeper.cycle",
+    cycles_succeeded=0,
+    cycles_errored=0,
+    rows_picked_total=0,
+    rows_processed_total=0,
+)
 
 
 def _row_to_meta(row, artist_ids_map: dict[str, str]) -> dict:
@@ -115,7 +112,7 @@ async def sweep_once(
         )
         rows = result.scalars().all()
 
-    STATS["rows_picked_total"] += len(rows)
+    _CYCLE["rows_picked_total"] += len(rows)
     if not rows:
         return 0
 
@@ -131,7 +128,7 @@ async def sweep_once(
             )
         await asyncio.sleep(PACING_SEC)
 
-    STATS["rows_processed_total"] += processed
+    _CYCLE["rows_processed_total"] += processed
     return processed
 
 
@@ -148,18 +145,14 @@ async def run_forever() -> None:
         INTERVAL_SEC, BATCH_SIZE,
     )
     while True:
-        STATS["cycles_attempted"] += 1
-        STATS["last_cycle_at_utc"] = datetime.utcnow().isoformat() + "Z"
         try:
             count = await sweep_once()
-            STATS["cycles_succeeded"] += 1
-            STATS["last_cycle_result"] = f"ok {count}" if count > 0 else "empty"
-            STATS["last_cycle_error"] = None
+            record(_CYCLE, outcome=f"ok {count}" if count > 0 else "empty",
+                   cycles_succeeded=1)
             if count > 0:
                 logger.info("enrichment sweeper: processed %d row(s)", count)
         except Exception as exc:
-            STATS["cycles_errored"] += 1
-            STATS["last_cycle_result"] = "error"
-            STATS["last_cycle_error"] = f"{type(exc).__name__}: {exc}"
+            record(_CYCLE, outcome=f"error: {type(exc).__name__}: {exc}",
+                   cycles_errored=1)
             logger.warning("enrichment sweeper: cycle error — %s", exc)
         await asyncio.sleep(INTERVAL_SEC)
