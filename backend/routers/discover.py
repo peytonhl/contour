@@ -87,6 +87,57 @@ def _is_likely_english(text: str) -> bool:
     return (non_ascii / len(text)) < 0.3
 
 
+_SPANISH_DIACRITICS = set("ñÑ¿¡áéíóúüÁÉÍÓÚÜ")
+_SPANISH_COMMON_WORDS = {
+    "el", "la", "los", "las", "de", "del", "que", "y", "en", "un", "una",
+    "es", "por", "para", "con", "no", "se", "mi", "tu", "su", "yo", "te",
+    "lo", "le", "más", "como", "pero", "todo", "amor", "vida", "corazón",
+    "noche", "día", "tiempo", "sin", "muy", "ya", "ahora",
+}
+
+
+def _looks_spanish(text: str) -> bool:
+    """
+    Heuristic Spanish-language detection. Imperfect — Latin script alone
+    doesn't distinguish Spanish from Portuguese / Italian, and titles are
+    short so common-word matches are unreliable. We accept either signal:
+    a Spanish-specific diacritic (ñ, ¿, ¡, ú with no English near-cognate)
+    or a common Spanish stopword in the text. False positives on
+    Portuguese / Italian are tolerable since they're stylistically
+    adjacent; false negatives on English-titled Latin-pop tracks (e.g.
+    "Te Amo") will pass too, which is also fine.
+    """
+    if not text:
+        return False
+    if any(c in _SPANISH_DIACRITICS for c in text):
+        return True
+    words = {w.strip(".,!?¡¿\"'()[]").lower() for w in text.split()}
+    return bool(words & _SPANISH_COMMON_WORDS)
+
+
+def _passes_language_filter(text: str, language: str) -> bool:
+    """
+    Single dispatch: route to the right filter based on the language enum
+    coming from the /feed request.
+
+      english → Latin script only (filters Cyrillic/CJK/Arabic/etc.;
+                French/Spanish accented chars still pass — that's intentional
+                because Spanish-pop tracks should reach an English-leaning
+                listener as they would on any other platform). Maps to the
+                old english_only=True behavior.
+      spanish → Latin script + at least one Spanish indicator (diacritic or
+                common stopword). Heuristic; see _looks_spanish.
+      all     → no filter; everything passes.
+    """
+    if language == "all":
+        return True
+    if not _is_likely_english(text):  # always strip non-Latin first
+        return False
+    if language == "spanish":
+        return _looks_spanish(text)
+    return True  # english (default)
+
+
 def _weighted_sample(items: list, weights: list[float], k: int) -> list:
     """
     Sample `k` items from `items` without replacement, weighted by `weights`.
@@ -170,7 +221,8 @@ async def get_discover_feed(
     liked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs rated 4–5 stars (logged-out fallback)"),
     disliked_artists: Optional[str] = Query(None, description="Comma-separated artist IDs marked 'not interested' (logged-out fallback; logged-in users use server profile)"),
     exclude: Optional[str] = Query(None, description="Comma-separated track IDs already shown to this user in the current scroll session — excluded from the batch so prefetches don't repeat tracks from earlier batches"),
-    english_only: bool = Query(True, description="Filter to tracks with Latin/English titles and artist names"),
+    english_only: bool = Query(True, description="DEPRECATED — use `language` instead. Kept for older mobile clients that still send this param; mapped to language=english when true, language=all when false."),
+    language: Optional[str] = Query(None, description="Language filter: 'english' (Latin script only, default), 'spanish' (Spanish indicators required), 'all' (no filter). Overrides english_only when set."),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
@@ -257,13 +309,21 @@ async def get_discover_feed(
     tracks: list[dict] = []
     seen: set[str] = set()
 
+    # Resolve language filter mode. `language` query param takes precedence
+    # when set (current clients); fall back to mapping the legacy boolean
+    # english_only so older mobile builds still get the expected behavior.
+    if language in ("english", "spanish", "all"):
+        active_language = language
+    else:
+        active_language = "english" if english_only else "all"
+
     def _make_adder(excluded: set[str]):
         def _add(batch: list[dict]) -> None:
             for t in batch:
                 artist_id = (t.get("artist_ids") or [None])[0]
-                if english_only:
-                    title_ok = _is_likely_english(t.get("name", ""))
-                    artist_ok = _is_likely_english((t.get("artists") or [""])[0])
+                if active_language != "all":
+                    title_ok = _passes_language_filter(t.get("name", ""), active_language)
+                    artist_ok = _passes_language_filter((t.get("artists") or [""])[0], active_language)
                     if not (title_ok and artist_ok):
                         continue
                 if (
