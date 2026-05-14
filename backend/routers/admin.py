@@ -479,7 +479,8 @@ async def test_genre_search(
     await _require_admin(db, user_id)
     import httpx as _httpx
 
-    cache_key = f"spotify:genre_pool_v3:{genre}"
+    # Mirror the live function's cache key (currently v4).
+    cache_key = f"spotify:genre_pool_v4:{genre}"
     cached = None
     try:
         from services import redis_cache
@@ -565,6 +566,46 @@ async def test_genre_search(
                 entry["error_message"] = str(exc)
             variant_diagnostics.append(entry)
 
+    # ── Genre-keyword filter pass ─────────────────────────────────────────────
+    # Replicates the filter step inside search_tracks_by_genre so the
+    # diagnostic shows BOTH the raw fetch (above) and the post-filter pool.
+    # Pre-fix this was opaque; the diagnostic only reported raw counts and
+    # the user couldn't tell if the filter was actually dropping keyword
+    # tracks before they hit the For You feed.
+    genre_keyword = genre.lower().strip()
+    keyword_variants_for_filter = {
+        genre_keyword,
+        genre_keyword.replace("-", " "),
+        genre_keyword.replace("-", ""),
+        genre_keyword.replace(" ", "-"),
+    }
+
+    def _has_genre_keyword(t: dict) -> bool:
+        fields = [
+            (t.get("name") or "").lower(),
+            " ".join(t.get("artists") or []).lower(),
+            (t.get("album_name") or "").lower(),
+        ]
+        return any(
+            kw and any(kw in f for f in fields)
+            for kw in keyword_variants_for_filter
+        )
+
+    pre_filter_size = len(final_pool)
+    keyword_stuffed = [
+        {"name": t.get("name"), "artists": t.get("artists"),
+         "album_name": t.get("album_name")}
+        for t in final_pool if _has_genre_keyword(t)
+    ]
+    filtered_pool = [t for t in final_pool if not _has_genre_keyword(t)]
+    safety_threshold = 3
+    if len(filtered_pool) >= safety_threshold:
+        post_filter_size = len(filtered_pool)
+        filter_applied = True
+    else:
+        post_filter_size = pre_filter_size
+        filter_applied = False
+
     # ── Limit-cap probe ───────────────────────────────────────────────────────
     # Quickly tells us the maximum `limit` value /v1/search accepts for our
     # app's credentials. Saves a debug cycle the next time we need to know
@@ -600,11 +641,20 @@ async def test_genre_search(
             "cached_error": cached_error,
         },
         "variants": variant_diagnostics,
-        "final_pool_size": len(final_pool),
+        "pre_filter_pool_size": pre_filter_size,
+        "filter": {
+            "applied": filter_applied,
+            "safety_threshold": safety_threshold,
+            "post_filter_pool_size": post_filter_size,
+            "dropped_count": pre_filter_size - len(filtered_pool),
+            "dropped_examples": keyword_stuffed[:10],
+        },
+        "final_pool_size": post_filter_size,
         "first_pool_track": (
-            {"id": final_pool[0].get("id"), "name": final_pool[0].get("name"),
-             "popularity": final_pool[0].get("popularity")}
-            if final_pool else None
+            {"id": filtered_pool[0].get("id") if filter_applied else final_pool[0].get("id"),
+             "name": filtered_pool[0].get("name") if filter_applied else final_pool[0].get("name"),
+             "popularity": filtered_pool[0].get("popularity") if filter_applied else final_pool[0].get("popularity")}
+            if (filtered_pool if filter_applied else final_pool) else None
         ),
         "limit_probe": limit_probe,
     }
