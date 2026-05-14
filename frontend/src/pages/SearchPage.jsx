@@ -31,8 +31,74 @@ function formatStreams(n) {
   return null;
 }
 
-const TYPE_LABELS = { album: "Album", track: "Track", artist: "Artist", user: "User" };
+const TYPE_LABELS = { album: "album", track: "track", artist: "artist", user: "user" };
 const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C, user: "#60a5fa" };
+const GOLD = "#f59e0b";
+
+// ── Inline rating widget for search results ───────────────────────────────────
+// 5 tappable stars rendered to the right of an album/track row in the search
+// dropdown. Lets users rate without clicking through to the entity page —
+// addresses the "I can't refine my For You feed by manually rating things I
+// know I like" feedback. Each star is a 28px touch target on mobile.
+//
+// Half-star values aren't supported here (too fiddly inside a search row);
+// users wanting 4.5 vs 5 can still click through to the entity page where
+// the full StarRating widget is.
+function InlineRate({ entityType, entityId, initialValue, onSaved }) {
+  const [value, setValue] = useState(initialValue ?? 0);
+  const [hover, setHover] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const display = hover || value;
+
+  async function rate(v) {
+    if (saving) return;
+    setSaving(true);
+    const prev = value;
+    setValue(v);  // optimistic
+    try {
+      await api.rateEntity(entityType, entityId, v);
+      onSaved?.(v);
+    } catch {
+      setValue(prev);  // revert on failure
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      onMouseLeave={() => setHover(0)}
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        display: "inline-flex", gap: 1, flexShrink: 0,
+        opacity: saving ? 0.55 : 1,
+      }}
+    >
+      {[1, 2, 3, 4, 5].map((n) => {
+        const lit = display >= n;
+        return (
+          <button
+            key={n}
+            onMouseEnter={() => setHover(n)}
+            onClick={(e) => { e.stopPropagation(); rate(n); }}
+            disabled={saving}
+            aria-label={`Rate ${n} stars`}
+            style={{
+              padding: "4px 2px", minWidth: 24,
+              background: "none", border: "none", cursor: "pointer",
+              color: lit ? GOLD : "var(--border)",
+              opacity: lit ? 1 : 0.4,
+              fontSize: 16, lineHeight: 1,
+              transition: "color var(--motion-fast) var(--ease)",
+            }}
+          >
+            ★
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function GoogleIcon({ size = 16 }) {
   return (
@@ -220,48 +286,72 @@ export function SearchPage() {
 
           {hasResults && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 var(--radius-lg) var(--radius-lg)", overflow: "hidden" }}>
-              {results.map((item, i) => (
-                <button
-                  key={`${item._type}-${item.id}`}
-                  onClick={() => handleSelect(item)}
-                  style={{
-                    width: "100%", display: "flex", alignItems: "center", gap: 14,
-                    padding: "10px 16px", background: "transparent", border: "none",
-                    borderTop: i > 0 ? "1px solid var(--border)" : "none",
-                    cursor: "pointer", textAlign: "left", color: "var(--text)",
-                    transition: "background 0.1s",
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
-                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                >
-                  {item.image_url
-                    ? <img src={item.image_url} alt={item.name} style={{ width: 40, height: 40, borderRadius: (item._type === "artist" || item._type === "user") ? "50%" : 5, objectFit: "cover", flexShrink: 0 }} />
-                    : <div style={{ width: 40, height: 40, borderRadius: (item._type === "artist" || item._type === "user") ? "50%" : 5, background: "var(--surface2)", flexShrink: 0 }} />
-                  }
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item._type === "user"
-                        ? (item.bio ? item.bio.slice(0, 60) + (item.bio.length > 60 ? "…" : "") : "Contour user")
-                        : <>
-                            {Array.isArray(item.artists) ? item.artists.join(", ") : item.artists}
-                            {item.release_date && ` · ${item.release_date.slice(0, 4)}`}
-                            {formatStreams(item.streams) && ` · ${formatStreams(item.streams)}`}
-                          </>
+              {results.map((item, i) => {
+                const canRateInline = user && (item._type === "album" || item._type === "track");
+                return (
+                  <div
+                    key={`${item._type}-${item.id}`}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 14,
+                      padding: "10px 16px", background: "transparent",
+                      borderTop: i > 0 ? "1px solid var(--border)" : "none",
+                      color: "var(--text)",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                  >
+                    {/* Navigation area — image + text → entity page */}
+                    <div
+                      onClick={() => handleSelect(item)}
+                      style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0, cursor: "pointer" }}
+                    >
+                      {item.image_url
+                        ? <img src={item.image_url} alt={item.name} style={{ width: 40, height: 40, borderRadius: (item._type === "artist" || item._type === "user") ? "50%" : 5, objectFit: "cover", flexShrink: 0 }} />
+                        : <div style={{ width: 40, height: 40, borderRadius: (item._type === "artist" || item._type === "user") ? "50%" : 5, background: "var(--surface2)", flexShrink: 0 }} />
                       }
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {item._type === "user"
+                            ? (item.bio ? item.bio.slice(0, 60) + (item.bio.length > 60 ? "…" : "") : "Contour user")
+                            : <>
+                                {Array.isArray(item.artists) ? item.artists.join(", ") : item.artists}
+                                {item.release_date && ` · ${item.release_date.slice(0, 4)}`}
+                                {formatStreams(item.streams) && ` · ${formatStreams(item.streams)}`}
+                              </>
+                          }
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Inline rate — album/track only, signed-in only.
+                        Lets users rate directly from search instead of
+                        clicking through, addressing the "I can't refine my
+                        For You by rating things I know I like" feedback. */}
+                    {canRateInline && (
+                      <InlineRate
+                        entityType={item._type}
+                        entityId={item.id}
+                        onSaved={() => analytics.ratingSubmitted?.(item._type, item.id, null)}
+                      />
+                    )}
+
+                    {/* Type label — italic serif, sentence-case, no chip
+                        chrome. Matches the rest of the redesign pass. */}
+                    <span
+                      onClick={() => handleSelect(item)}
+                      style={{
+                        fontFamily: "var(--font-display)", fontStyle: "italic",
+                        fontSize: 12, color: TYPE_COLORS[item._type],
+                        flexShrink: 0, cursor: "pointer",
+                      }}
+                    >
+                      {TYPE_LABELS[item._type]}
+                    </span>
                   </div>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600,
-                    color: TYPE_COLORS[item._type], flexShrink: 0,
-                    background: `${TYPE_COLORS[item._type]}18`,
-                    padding: "2px 9px", borderRadius: "var(--radius-pill)",
-                    border: `1px solid ${TYPE_COLORS[item._type]}40`,
-                  }}>
-                    {TYPE_LABELS[item._type]}
-                  </span>
-                </button>
-              ))}
+                );
+              })}
             </div>
           )}
 
