@@ -896,10 +896,18 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
           )}
         </div>
 
-        {/* Review */}
+        {/* Review trigger — the actual composer is a bottom sheet rendered
+            below, outside the card's overflowY: auto section. The inline-
+            form approach was unusable on mobile: when the iOS keyboard
+            popped up to fill the bottom half of the screen, the Post
+            button got pushed off-screen and the inner scroll competed
+            with the swipe-deck container around it, so the user could
+            scroll past Post but not actually tap it without losing
+            position. Bottom sheet is position: fixed and iOS handles
+            keyboard positioning natively for fixed elements. */}
         {user && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {!reviewOpen && !submitted && (
+            {!submitted && (
               <button
                 onClick={() => { setReviewOpen(true); setReviewError(""); }}
                 style={{
@@ -915,46 +923,101 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
             {submitted && (
               <span style={{ fontSize: 12, color: ACCENT_B, fontWeight: 600 }}>Review posted ✓</span>
             )}
-            {reviewOpen && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <textarea
-                  autoFocus
-                  value={reviewText}
-                  onChange={(e) => { setReviewText(e.target.value.slice(0, 2000)); setReviewError(""); }}
-                  placeholder="What did you think?"
-                  rows={3}
-                  style={{
-                    width: "100%", padding: "10px 12px", fontSize: 13,
-                    background: "rgba(255,255,255,0.07)",
-                    border: `1px solid ${reviewError ? "rgba(248,113,113,0.5)" : "rgba(255,255,255,0.15)"}`,
-                    borderRadius: "var(--radius)", color: "#fff", resize: "none",
-                    outline: "none", boxSizing: "border-box",
-                  }}
-                />
-                {reviewError && (
-                  <span style={{ fontSize: 11, color: "var(--danger)" }}>{reviewError}</span>
-                )}
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={handleSubmitReview}
-                    style={{
-                      padding: "7px 18px", borderRadius: "var(--radius-xl)", fontSize: 13, fontWeight: 700,
-                      background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                      border: "none", color: "#000", cursor: "pointer",
-                    }}
-                  >Post</button>
-                  <button
-                    onClick={() => { setReviewOpen(false); setReviewError(""); }}
-                    style={{
-                      padding: "7px 14px", borderRadius: "var(--radius-xl)", fontSize: 13,
-                      background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
-                      color: "rgba(255,255,255,0.5)", cursor: "pointer",
-                    }}
-                  >Cancel</button>
+          </div>
+        )}
+
+        {reviewOpen && user && (
+          <>
+            {/* Backdrop — tap to dismiss. Inset 0 plus z-index above the
+                swipe deck so it intercepts taps everywhere outside the
+                sheet. Slight blur so the card behind reads as deprioritized. */}
+            <div
+              onClick={() => { setReviewOpen(false); setReviewError(""); }}
+              style={{
+                position: "fixed", inset: 0,
+                background: "rgba(0,0,0,0.55)",
+                backdropFilter: "blur(2px)",
+                WebkitBackdropFilter: "blur(2px)",
+                zIndex: 90,
+              }}
+            />
+            {/* Bottom sheet. position: fixed at bottom: 0 means iOS
+                automatically pushes the entire sheet up when the
+                keyboard appears — the Post button stays visible. */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "fixed",
+                left: 0, right: 0, bottom: 0,
+                zIndex: 100,
+                background: "#111",
+                borderTop: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "var(--radius-xl) var(--radius-xl) 0 0",
+                padding: "18px 20px calc(env(safe-area-inset-bottom, 16px) + 16px)",
+                display: "flex", flexDirection: "column", gap: 12,
+                boxShadow: "0 -8px 32px rgba(0,0,0,0.5)",
+              }}
+            >
+              {/* Drag handle — visual cue that this is dismissible */}
+              <div style={{
+                width: 36, height: 4, borderRadius: "var(--radius-sm)",
+                background: "rgba(255,255,255,0.2)",
+                margin: "0 auto 4px",
+              }} />
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                gap: 8,
+              }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {track.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {track.artists?.[0]}
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+              <textarea
+                autoFocus
+                value={reviewText}
+                onChange={(e) => { setReviewText(e.target.value.slice(0, 2000)); setReviewError(""); }}
+                placeholder="What did you think?"
+                rows={4}
+                style={{
+                  width: "100%", padding: "12px 14px", fontSize: 15,
+                  background: "rgba(255,255,255,0.07)",
+                  border: `1px solid ${reviewError ? "rgba(248,113,113,0.5)" : "rgba(255,255,255,0.15)"}`,
+                  borderRadius: "var(--radius)", color: "#fff", resize: "none",
+                  outline: "none", boxSizing: "border-box",
+                  fontFamily: "inherit", lineHeight: 1.5,
+                }}
+              />
+              {reviewError && (
+                <span style={{ fontSize: 12, color: "var(--danger)" }}>{reviewError}</span>
+              )}
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => { setReviewOpen(false); setReviewError(""); }}
+                  style={{
+                    padding: "10px 18px", borderRadius: "var(--radius-pill)", fontSize: 14,
+                    background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
+                    color: "rgba(255,255,255,0.65)", cursor: "pointer",
+                  }}
+                >Cancel</button>
+                <button
+                  onClick={handleSubmitReview}
+                  disabled={!reviewText.trim()}
+                  style={{
+                    padding: "10px 24px", borderRadius: "var(--radius-pill)", fontSize: 14, fontWeight: 700,
+                    background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
+                    border: "none", color: "#000",
+                    cursor: reviewText.trim() ? "pointer" : "default",
+                    opacity: reviewText.trim() ? 1 : 0.5,
+                  }}
+                >Post</button>
+              </div>
+            </div>
+          </>
         )}
 
         {/* Bottom-pinned group: "Not interested" + swipe hint. marginTop:
