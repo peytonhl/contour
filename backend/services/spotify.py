@@ -704,6 +704,13 @@ async def search_tracks_by_genre(
 
         if pool:  # don't cache an empty pool — let next call retry
             await redis_cache.set(cache_key, pool, ttl=_TTL_7D)
+            # Write-through to TrackCache so the catalog grows organically
+            # from every fresh genre search. Fire-and-forget per track so the
+            # response isn't blocked on DB writes. _persist_track_to_db is an
+            # idempotent upsert that updates popularity on re-encounter, so
+            # the next 7-day cache miss naturally refreshes any drift.
+            for t in pool:
+                asyncio.create_task(_persist_track_to_db(t))
 
     if not pool:
         return []

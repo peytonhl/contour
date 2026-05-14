@@ -55,7 +55,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Rating, TrackCache, UserTasteProfile
+from models import AlbumCache, ArtistCache, Rating, TrackCache, UserTasteProfile
 from routers.auth import optional_user_id
 from services import spotify
 from services import deezer as deezer_svc
@@ -513,3 +513,136 @@ async def discover_debug():
 
     all_ok = all(v.get("ok", False) for v in results.values() if "note" not in v)
     return {"status": "ok" if all_ok else "degraded", "tiers": results}
+
+
+@router.get("/catalog-stats")
+async def catalog_stats(db: AsyncSession = Depends(get_db)):
+    """
+    Snapshot of what's in our local catalog (TrackCache + ArtistCache + AlbumCache).
+
+    Read-only audit endpoint — the foundation for the catalog-pivot work. The
+    long-term goal is to serve the For You feed from local SQL queries against
+    these tables rather than text-searching Spotify on every request; this
+    endpoint tells us how far we are from that being viable. A catalog with
+    ~10k tracks across diverse genres + popularity levels is roughly the
+    threshold where DB-served feed batches start matching the variety of
+    live-search batches.
+
+    The popularity distribution is the most-watched number — the For You
+    weighted-sampling curve needs candidates across the full 0–100 range to
+    have anything to sample from. A catalog that's all popularity-80+ would
+    serve every niche-leaning user (target_pop=25) zero good matches.
+
+    Genre frequency comes from ArtistCache.genres. We don't have track-level
+    genre tags (Spotify doesn't expose them on tracks; we infer from artist),
+    so "the catalog has 200 hip-hop tracks" is really "the catalog has tracks
+    by 50 artists tagged hip-hop." That's the same logic the For You feed uses.
+
+    Caveat: top_genres scans up to 5000 ArtistCache rows and aggregates in
+    Python. Plenty for the current catalog size; if ArtistCache ever grows
+    past low-thousands, switch to DB-native JSON aggregation.
+    """
+    # ── TrackCache ────────────────────────────────────────────────────────────
+    total_tracks = await db.scalar(select(func.count()).select_from(TrackCache)) or 0
+    tracks_with_popularity = await db.scalar(
+        select(func.count()).select_from(TrackCache).where(TrackCache.popularity.is_not(None))
+    ) or 0
+    tracks_with_artist_ids = await db.scalar(
+        select(func.count()).select_from(TrackCache).where(TrackCache.artist_ids_json.is_not(None))
+    ) or 0
+    tracks_with_image = await db.scalar(
+        select(func.count()).select_from(TrackCache).where(TrackCache.image_url.is_not(None))
+    ) or 0
+
+    # Popularity buckets — same edges as the algorithm uses to reason about
+    # "mainstream vs niche" so the stats line up with the weighting code.
+    popularity_buckets: dict[str, int] = {}
+    for lo, hi in [(0, 19), (20, 39), (40, 59), (60, 79), (80, 100)]:
+        n = await db.scalar(
+            select(func.count()).select_from(TrackCache).where(
+                TrackCache.popularity >= lo,
+                TrackCache.popularity <= hi,
+            )
+        )
+        popularity_buckets[f"{lo}-{hi}"] = n or 0
+
+    # Percentiles via sorted scan — fine at current catalog size, may need
+    # a DB-native percentile_cont() switch if TrackCache passes ~100k rows.
+    pops = (await db.execute(
+        select(TrackCache.popularity)
+        .where(TrackCache.popularity.is_not(None))
+        .order_by(TrackCache.popularity)
+    )).scalars().all()
+
+    def _pct(p: float):
+        if not pops:
+            return None
+        idx = max(0, min(len(pops) - 1, int(len(pops) * p)))
+        return pops[idx]
+
+    # ── ArtistCache ───────────────────────────────────────────────────────────
+    total_artists = await db.scalar(select(func.count()).select_from(ArtistCache)) or 0
+    artists_with_genres = await db.scalar(
+        select(func.count()).select_from(ArtistCache).where(ArtistCache.genres.is_not(None))
+    ) or 0
+
+    # Top-genres aggregation — parse JSON in Python rather than DB-native
+    # because we run on SQLite locally and Postgres in prod, and json_each /
+    # jsonb_array_elements_text differ between them.
+    from collections import Counter
+    genres_rows = (await db.execute(
+        select(ArtistCache.genres).where(ArtistCache.genres.is_not(None)).limit(5000)
+    )).scalars().all()
+    genre_counter: Counter[str] = Counter()
+    for g_json in genres_rows:
+        try:
+            for g in json.loads(g_json or "[]"):
+                if g:
+                    genre_counter[g] += 1
+        except Exception:
+            continue
+    top_genres = [{"genre": g, "count": c} for g, c in genre_counter.most_common(20)]
+
+    # ── AlbumCache (context) ──────────────────────────────────────────────────
+    total_albums = await db.scalar(select(func.count()).select_from(AlbumCache)) or 0
+
+    # ── Ratings (context — drives the target_popularity per-user signal) ──────
+    total_track_ratings = await db.scalar(
+        select(func.count()).select_from(Rating).where(Rating.entity_type == "track")
+    ) or 0
+    high_track_ratings = await db.scalar(
+        select(func.count()).select_from(Rating).where(
+            Rating.entity_type == "track",
+            Rating.value >= 4.0,
+        )
+    ) or 0
+
+    return {
+        "tracks": {
+            "total": total_tracks,
+            "with_popularity": tracks_with_popularity,
+            "with_artist_ids": tracks_with_artist_ids,
+            "with_image": tracks_with_image,
+            "popularity_buckets": popularity_buckets,
+            "popularity_percentiles": {
+                "p10": _pct(0.10),
+                "p25": _pct(0.25),
+                "p50": _pct(0.50),
+                "p75": _pct(0.75),
+                "p90": _pct(0.90),
+            },
+        },
+        "artists": {
+            "total": total_artists,
+            "with_genres": artists_with_genres,
+            "top_genres": top_genres,
+            "unique_genres_seen": len(genre_counter),
+        },
+        "albums": {
+            "total": total_albums,
+        },
+        "ratings_context": {
+            "total_track_ratings": total_track_ratings,
+            "high_rated_4_plus": high_track_ratings,
+        },
+    }
