@@ -123,7 +123,15 @@ async def _persist_track_to_db(meta: dict) -> None:
                 existing.release_date = meta.get("release_date") or existing.release_date
                 existing.duration_ms = meta.get("duration_ms") or existing.duration_ms
                 existing.explicit = meta.get("explicit", existing.explicit)
-                existing.popularity = meta.get("popularity")
+                # Don't nuke a previously-set popularity if the new meta has
+                # None — that happens when a track was originally enriched
+                # via /v1/tracks (full popularity) and is now being re-
+                # persisted from a /v1/search response (popularity stripped
+                # for non-Extended-Access apps post late-2024). Keep the
+                # known value rather than regressing it to null.
+                new_pop = meta.get("popularity")
+                if new_pop is not None:
+                    existing.popularity = new_pop
                 existing.image_url = meta.get("image_url") or existing.image_url
                 existing.external_url = meta.get("external_url") or existing.external_url
                 existing.artist_ids_json = artist_ids_json
@@ -467,6 +475,54 @@ async def get_track(track_id: str) -> dict:
     return result
 
 
+async def get_tracks_batch(track_ids: list[str]) -> list[dict]:
+    """
+    Batch-fetch full track metadata for up to 50 track IDs in a single call.
+
+    Uses /v1/tracks?ids=<comma-list> which returns FULL TrackObjects including
+    `popularity` — unlike /v1/search?type=track, which Spotify's late-2024
+    Web API changes appear to have stripped `popularity` from for non-Extended-
+    Access apps. We use this endpoint for catalog popularity backfill: scan
+    TrackCache for rows with popularity=NULL, send them through here, and
+    upsert with the popularity value. 50 IDs per call is the documented max;
+    callers needing more should chunk.
+
+    Each successful result is also write-through persisted to TrackCache via
+    the same idempotent path as get_track. Null entries in the response (for
+    IDs Spotify doesn't recognize or that are region-restricted) are skipped.
+
+    Returns the parsed tracks in the same order as the input IDs, filtering
+    out any nulls. Errors are non-fatal — partial response is fine.
+    """
+    if not track_ids:
+        return []
+    # Spotify caps at 50; chunk if larger.
+    chunks = [track_ids[i:i + 50] for i in range(0, len(track_ids), 50)]
+    all_tracks: list[dict] = []
+    async with httpx.AsyncClient() as client:
+        token = await _get_token(client)
+        for chunk in chunks:
+            try:
+                resp = await _spotify_get(
+                    client,
+                    "https://api.spotify.com/v1/tracks",
+                    token,
+                    params={"ids": ",".join(chunk), "market": "US"},
+                )
+                resp.raise_for_status()
+                tracks = resp.json().get("tracks", []) or []
+                for t in tracks:
+                    if t and t.get("id"):
+                        parsed = _parse_track(t)
+                        all_tracks.append(parsed)
+                        # Fire-and-forget persist — same pattern as get_track.
+                        asyncio.create_task(_persist_track_to_db(parsed))
+            except Exception as exc:
+                _log.warning("[spotify.get_tracks_batch] chunk failed: %s", exc)
+                continue
+    return all_tracks
+
+
 async def search_albums(query: str, limit: int = 10) -> list[dict]:
     """Search Spotify for albums matching the query string. Cached 7d in Redis."""
     cache_key = f"spotify:album_search:{query.lower().strip()}:{limit}"
@@ -707,10 +763,22 @@ async def search_tracks_by_genre(
             # Write-through to TrackCache so the catalog grows organically
             # from every fresh genre search. Fire-and-forget per track so the
             # response isn't blocked on DB writes. _persist_track_to_db is an
-            # idempotent upsert that updates popularity on re-encounter, so
-            # the next 7-day cache miss naturally refreshes any drift.
+            # idempotent upsert that preserves existing popularity if the new
+            # meta has None — important because /v1/search appears to strip
+            # popularity for non-Extended-Access apps post late-2024.
             for t in pool:
                 asyncio.create_task(_persist_track_to_db(t))
+            # Popularity enrichment: fire one batched /v1/tracks call for the
+            # full pool. That endpoint returns the FULL TrackObject including
+            # popularity, which /v1/search no longer does for our app tier.
+            # Without this every new catalog entry lands with null popularity
+            # and is useless to the Laplace popularity-weighted sampling that
+            # ranks the candidate pool. get_tracks_batch fire-and-forgets its
+            # own _persist_track_to_db calls, so the popularity column gets
+            # filled in within a second or two of the search response.
+            pool_ids = [t["id"] for t in pool if t.get("id")]
+            if pool_ids:
+                asyncio.create_task(get_tracks_batch(pool_ids))
 
     if not pool:
         return []

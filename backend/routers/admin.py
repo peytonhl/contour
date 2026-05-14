@@ -26,9 +26,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import User
+from models import TrackCache, User
 from routers.auth import require_user_id
-from services import enrichment_sweeper, instrumentation
+from services import enrichment_sweeper, instrumentation, spotify
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -149,3 +149,93 @@ async def admin_sweep(
             "traceback": traceback.format_exc(),
             "elapsed_seconds": round(time.time() - start, 2),
         }
+
+
+@router.post("/backfill-track-popularity")
+async def backfill_track_popularity(
+    max_tracks: int = 200,
+    user_id: str = Depends(require_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Backfill `popularity` on TrackCache rows where it's currently NULL.
+
+    Catalog-stats audit (2026-05-14) showed 164 tracks in TrackCache with
+    popularity NULL on every single row. Root cause: Spotify's /v1/search
+    response appears to have stripped the `popularity` field for non-
+    Extended-Access apps in their late-2024 Web API changes. The /v1/tracks
+    endpoint (used here) still returns the full TrackObject including
+    popularity, so we backfill in 50-ID batches.
+
+    For the catalog-pivot work this is foundational — the For You feed's
+    Laplace popularity curve has no signal to weight against until the
+    rows have non-null popularity. Run this once after deploy to backfill
+    the existing 164 rows; ongoing growth from genre-search persist will
+    auto-enrich (see services.spotify.search_tracks_by_genre).
+
+    Body params:
+      max_tracks: cap on how many rows to scan + backfill in one call.
+                  At 50 IDs per Spotify call, max=200 is 4 API calls.
+                  Default 200 keeps each invocation under a second of
+                  Spotify time and well below any rate-limit concern.
+
+    Returns: {ok, scanned, fetched, updated, elapsed_seconds, sample}.
+    """
+    await _require_admin(db, user_id)
+
+    start = time.time()
+    rows = (await db.execute(
+        select(TrackCache.spotify_id)
+        .where(TrackCache.popularity.is_(None))
+        .limit(max_tracks)
+    )).scalars().all()
+    ids = list(rows)
+    if not ids:
+        return {
+            "ok": True,
+            "scanned": 0,
+            "fetched": 0,
+            "updated": 0,
+            "elapsed_seconds": round(time.time() - start, 2),
+            "note": "no tracks with NULL popularity — backfill is up to date",
+        }
+
+    try:
+        fetched = await spotify.get_tracks_batch(ids)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "scanned": len(ids),
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "elapsed_seconds": round(time.time() - start, 2),
+        }
+
+    # get_tracks_batch fire-and-forgets persistence; settle here so the
+    # caller sees an honest "updated" count rather than racing.
+    # _persist_track_to_db now preserves an existing non-null popularity,
+    # but for these rows the existing value IS null so the new popularity
+    # always lands.
+    import asyncio as _asyncio
+    await _asyncio.sleep(0.5)  # let the create_task persists drain
+
+    # Re-query to confirm.
+    confirmed = (await db.execute(
+        select(TrackCache.spotify_id, TrackCache.popularity)
+        .where(TrackCache.spotify_id.in_(ids))
+    )).all()
+    updated = sum(1 for _, p in confirmed if p is not None)
+
+    sample = [
+        {"id": t.get("id"), "name": t.get("name"), "popularity": t.get("popularity")}
+        for t in fetched[:5]
+    ]
+
+    return {
+        "ok": True,
+        "scanned": len(ids),
+        "fetched": len(fetched),
+        "updated": updated,
+        "elapsed_seconds": round(time.time() - start, 2),
+        "sample": sample,
+    }
