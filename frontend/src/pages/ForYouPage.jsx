@@ -26,6 +26,13 @@ const HISTORY_KEY = "contour_history_v1";
 const DISLIKED_KEY = "contour_disliked_v1";
 const ENGLISH_ONLY_KEY = "contour_english_only_v1";  // legacy boolean key
 const LANGUAGE_KEY = "contour_language_v1";          // new 3-state key
+// Persistent "seen" list — every track the user has swiped past in the For
+// You feed, whether they rated it or not. Drives cross-session dedup so a
+// user who closed the app and reopened doesn't see the same chart-toppers
+// they already skipped yesterday. Capped at the most recent 500 IDs to keep
+// localStorage and the exclude-param URL size bounded.
+const SEEN_KEY = "contour_seen_v1";
+const SEEN_CAP = 500;
 
 // Language filter — three modes:
 //   "english" → Latin script only, no Spanish-leaning bias (default; matches
@@ -54,6 +61,28 @@ function saveLanguage(val) {
 // for finishing) within the first minute, matching the "Rate a few tracks"
 // copy in OnboardingModal's value-prop card.
 const PERSONALIZATION_RAMP = 3;
+
+// ── Seen-track history ────────────────────────────────────────────────────────
+// Records every track the user has actively swiped past. Used by the
+// exclude param on /feed requests so already-seen tracks (rated OR just
+// skipped) stop reappearing in future batches — including across app
+// reopens. The server-side dedup only knows about RATED tracks via the
+// Rating table; this client-side list closes the gap for "swiped past
+// without rating" which is the bulk of feed interactions.
+function loadSeen() {
+  try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch { return []; }
+}
+function markSeen(trackId) {
+  if (!trackId) return;
+  try {
+    const prev = loadSeen();
+    // Move-to-front if already present, otherwise prepend. Keeps the most
+    // recently seen IDs at the front so the slice(0, 250) we send to the
+    // backend always reflects the user's most current scroll history.
+    const next = [trackId, ...prev.filter((id) => id !== trackId)].slice(0, SEEN_CAP);
+    localStorage.setItem(SEEN_KEY, JSON.stringify(next));
+  } catch { /* localStorage may be full or disabled */ }
+}
 
 // ── Genre prefs ───────────────────────────────────────────────────────────────
 function loadGenres() {
@@ -1156,24 +1185,33 @@ function ForYouFeed() {
       // profile dislikes are still applied — but the nuclear-fallback tier
       // on the backend handles that case.)
       const dislikedArtists = attempt === 0 ? loadDisliked() : [];
-      // Tell the backend which tracks to exclude from this batch. Two sources:
+      // Tell the backend which tracks to exclude from this batch. Three
+      // sources, merged + deduped:
       //
-      //   1. Past-rated source IDs (mostly Deezer numeric IDs from history).
-      //      The server-side Rating table stores the *resolved Spotify ID*
-      //      for every rating — so when a Deezer-sourced track was rated,
-      //      DB has the Spotify ID, but the Deezer chart tier returns the
-      //      same song under its original numeric ID. The server-side
-      //      exclude query can't match those, and the user sees a track
-      //      they already rated. Sending history.trackId (the source-native
-      //      ID at rate time) closes that gap. Also covers guest users who
-      //      have no Rating rows at all.
+      //   1. Past-seen track IDs (the new SEEN_KEY localStorage). Captures
+      //      every card the user has swiped past — whether they rated it,
+      //      disliked it, or just skipped. Persists across app reopens, so
+      //      a user who scrolls past 50 chart-toppers today doesn't see the
+      //      same 50 again tomorrow. This is the primary repeat-prevention
+      //      mechanism; the server-side Rating-table dedup only covers
+      //      rated tracks, not skipped ones.
       //
-      //   2. In-session shown tracks (append=true only) — prevents prefetch
-      //      from repeating tracks visible in the same scroll session when
-      //      the same Deezer chart response is still warm in cache.
+      //   2. Past-rated source IDs (from HISTORY_KEY). The server-side
+      //      Rating table stores the *resolved Spotify ID* for every
+      //      rating — but a Deezer-sourced rating's original numeric ID
+      //      isn't there, so the same song coming back from the Deezer
+      //      chart wouldn't be filtered server-side. Sending history.trackId
+      //      (the source-native ID at rate time) closes that gap.
       //
-      // Cap conservatively to keep the URL bounded: ~12 chars per ID + comma,
-      // 150 IDs ≈ 1.8 KB, comfortable under any proxy/CDN limit.
+      //   3. In-session shown tracks (append=true only) — prevents
+      //      prefetch from repeating tracks visible in the same scroll
+      //      session when the Deezer chart cache is still warm.
+      //
+      // Cap conservatively to keep the URL bounded: ~12 chars per ID +
+      // comma. 250 seen + 150 rated + 80 in-session = max ~480 IDs ≈ 5.8KB
+      // serialized, well under any proxy/CDN limit. dedup via Set means
+      // overlap (a seen+rated track) only counts once.
+      const seenIds = loadSeen().slice(0, 250);
       const ratedSourceIds = loadHistory()
         .map((h) => h.trackId)
         .filter(Boolean)
@@ -1181,7 +1219,9 @@ function ForYouFeed() {
       const inSession = append
         ? tracks.slice(-80).map((t) => t.id).filter(Boolean)
         : [];
-      const sessionExclude = Array.from(new Set([...ratedSourceIds, ...inSession]));
+      const sessionExclude = Array.from(new Set([
+        ...seenIds, ...ratedSourceIds, ...inSession,
+      ]));
       const batch = await api.getDiscoverFeed({
         genres: genresRef.current.slice(0, 3),
         liked_artists: likedArtists,
@@ -1432,6 +1472,14 @@ function ForYouFeed() {
       if (committed) return;
       committed = true;
       setDragging(true);
+      // Mark the LEAVING track as seen — only on forward swipes. Back
+      // swipes are usually the user looking again at something they
+      // already saw, so leaving-them-seen would double-count and add
+      // no information. Forward-swipe past = "this card is done; don't
+      // show it to me again."
+      if (direction === 1 && tracks[activeIdx]?.id) {
+        markSeen(tracks[activeIdx].id);
+      }
       setActiveIdx(target);
       setDragOffset(0);
       setTransitioning(false);
@@ -1589,6 +1637,12 @@ function ForYouFeed() {
     // what makes Deezer-source ratings backfill-able if the resolution
     // fails this session (see syncOrphanedRatings).
     recordRating(track.id, track.artist_ids?.[0], value, track);
+    // Also mark seen so the exclude list catches this track on subsequent
+    // batches even if the user rated without swiping forward. handleRate
+    // can fire from the inline-rate widget on the search page or from the
+    // discover card without an immediate advance, so we can't rely on
+    // markSeen via the advance handler alone.
+    markSeen(track.id);
     const tier = tierSourceOf(track);
     analytics.forYouRated(tier, value);
     try {
@@ -1664,6 +1718,11 @@ function ForYouFeed() {
     // Immediately remove every track by this artist from the current feed
     // using whatever ID we have locally — don't wait on the network.
     setTracks((prev) => prev.filter((t) => t.artist_ids?.[0] !== localArtistId));
+    // Mark seen — the user has explicitly said they don't want this
+    // track again. Artist-level dislike covers future artist content
+    // but seen-tracking ensures THIS specific track ID is filtered too
+    // (covers Deezer/Spotify ID mismatch edge cases for the same song).
+    markSeen(track.id);
 
     // Resolve to a canonical Spotify ID, then persist.
     const canonicalId = await _resolveSpotifyArtistId(track);
