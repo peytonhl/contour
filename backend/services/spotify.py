@@ -747,7 +747,11 @@ async def search_tracks_by_genre(
     # If Spotify ever returns real popularity again (Extended Access
     # approval, policy change), the real value is preserved — synth only
     # fills the None case.
-    cache_key = f"spotify:genre_pool_v3:{genre}"  # v3: pool entries now carry synth popularity
+    # v4: bumped from v3 because the keyword-filter logic below changed its
+    # criteria + threshold, so old v3 pools (which still carry keyword-
+    # stuffed tracks like "Classical" by Vampire Weekend in the classical
+    # pool) need to roll over. Old v3 keys naturally expire on their 7d TTL.
+    cache_key = f"spotify:genre_pool_v4:{genre}"
     pool = await redis_cache.get(cache_key)
 
     if not pool:
@@ -800,18 +804,32 @@ async def search_tracks_by_genre(
                         parsed["popularity"] = max(0, min(100, int(round(synth))))
                     pool.append(parsed)
 
-        # Filter out tracks whose title literally contains the genre name —
-        # e.g. searching "hip-hop" puts "Hip Hop" by Trinix and "Hip-Hop"
-        # by Lil Wayne at the top because Spotify's text search rewards
-        # title matches above genre-tag relevance. The user wants tracks
-        # that ARE hip-hop, not tracks LITERALLY CALLED Hip-Hop. Drop these
-        # title-keyword matches unless removing them would leave a pool
-        # too thin to sample from (< 8 tracks) — in that case keep them
-        # rather than serve nothing.
+        # Filter out tracks where the genre keyword appears in track name,
+        # artist name, OR album name. Spotify's text search rewards literal
+        # matches on any of those fields, which fills the pool with tracks
+        # NAMED after the genre rather than tracks IN the genre. Without
+        # this filter:
+        #   - "hip-hop" query returned: "Hip Hop" by Trinix, "Hip-Hop" by
+        #     Lil Wayne, "Hip-hop/Jwk" by Ntitled
+        #   - "classical" query returned: "Classical Gas" by Mason Williams,
+        #     "Classical" by Vampire Weekend
+        # Worse: a user who picks BOTH hip-hop AND classical was seeing rap
+        # tracks with the word "classical" in their title surfaced under the
+        # classical search because Spotify ranks title-keyword matches above
+        # genre-tag relevance. The filter scope is now ALL three text fields
+        # (track / artist / album) so a rap song called "Classical Flow"
+        # gets dropped from the classical pool regardless of which field
+        # carries the keyword.
+        #
+        # Safety threshold dropped from 8 → 3: for niche genres like
+        # "classical" or "shoegaze" the entire raw pool can be keyword-
+        # stuffed, and the old threshold kept the stuffed tracks rather
+        # than serve a thin pool. A thin-but-genre-relevant pool beats a
+        # full-but-misleading pool — the sampling step draws 15 per call
+        # and we have downstream tiers (Deezer chart) to fill any
+        # shortfall.
         if pool:
             genre_keyword = genre.lower().strip()
-            # Also strip the dash form so "hip-hop" filter catches "hip hop"
-            # and "hiphop"; same for "r&b" → "rnb" etc.
             keyword_variants = {
                 genre_keyword,
                 genre_keyword.replace("-", " "),
@@ -820,11 +838,18 @@ async def search_tracks_by_genre(
             }
 
             def _has_genre_keyword(t):
-                name = (t.get("name") or "").lower()
-                return any(kw and kw in name for kw in keyword_variants)
+                fields = [
+                    (t.get("name") or "").lower(),
+                    " ".join(t.get("artists") or []).lower(),
+                    (t.get("album_name") or "").lower(),
+                ]
+                return any(
+                    kw and any(kw in f for f in fields)
+                    for kw in keyword_variants
+                )
 
             filtered = [t for t in pool if not _has_genre_keyword(t)]
-            if len(filtered) >= 8:
+            if len(filtered) >= 3:
                 pool = filtered
 
         if pool:  # don't cache an empty pool — let next call retry
