@@ -34,6 +34,13 @@ app.add_middleware(
         "http://localhost:3000",
         "https://contour-rosy.vercel.app",
     ],
+    # Vercel preview deploys land on URLs like
+    #   https://contour-rosy-git-<branch>-peytonhl.vercel.app
+    #   https://contour-rosy-<commit-hash>-peytonhl.vercel.app
+    # which aren't in the static allow-list above. The regex below matches
+    # both formats so PR previews can talk to the production backend for
+    # review (e.g. clicking through a feed before merging the PR).
+    allow_origin_regex=r"^https://contour-rosy-[a-z0-9-]+-peytonhl\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
