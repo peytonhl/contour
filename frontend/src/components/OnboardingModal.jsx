@@ -151,12 +151,24 @@ export function OnboardingModal() {
 
   // Save genres ASAP (after step 1) so that progress isn't lost if the user
   // bails on the backlog explainer step.
+  //
+  // Note on the dispatched event: ForYouPage fetches its first batch on mount,
+  // which happens before this modal opens for a new user. Without the event,
+  // the user picks genres and then keeps scrolling the cold-start batch until
+  // they reach the prefetch boundary ~10 tracks later — the personalization
+  // signal is saved server-side but invisible to them. Firing
+  // contour:taste-updated tells the For You feed to drop its current batch
+  // and refetch with the new genres applied.
   async function saveGenresAndAdvance() {
     if (selectedGenres.length > 0) {
       localStorage.setItem(GENRES_KEY, JSON.stringify(selectedGenres));
       if (user) {
-        api.saveTasteProfile(selectedGenres, [], true).catch(() => {});
+        try { await api.saveTasteProfile(selectedGenres, [], true); }
+        catch { /* non-fatal; localStorage copy still drives logged-out path */ }
       }
+      window.dispatchEvent(new CustomEvent("contour:taste-updated", {
+        detail: { source: "onboarding", genres: selectedGenres },
+      }));
     }
     analytics.onboardingStepCompleted("genres", selectedGenres.length === 0);
     setStep(2);

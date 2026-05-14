@@ -1128,6 +1128,23 @@ function ForYouFeed() {
 
   useEffect(() => { fetchBatch(); }, []);
 
+  // Refetch when taste signals change mid-session — primarily fired by
+  // OnboardingModal after the genre picker saves. Without this, a new user
+  // who finishes onboarding keeps seeing the cold-start batch they got on
+  // initial mount until they scroll ~10 tracks to the prefetch boundary.
+  // Also rehydrates genresRef from localStorage so the next fetchBatch sees
+  // the new picks (the ref only updates on rating events otherwise).
+  useEffect(() => {
+    function handler() {
+      genresRef.current = loadGenres();
+      setTracks([]);
+      setActiveIdx(0);
+      fetchBatch();
+    }
+    window.addEventListener("contour:taste-updated", handler);
+    return () => window.removeEventListener("contour:taste-updated", handler);
+  }, []);
+
   // Background backfill of orphaned ratings — see syncOrphanedRatings().
   // Runs once per mount after a short delay so the initial feed render
   // isn't competing for network with the backfill API calls. Capped at

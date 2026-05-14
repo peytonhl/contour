@@ -128,8 +128,13 @@ async def get_chart_tracks(limit: int = 50) -> list[dict]:
     """
     Return Deezer's global chart tracks (real chart data, not a text search).
     Avoids the "Top Hits band" problem caused by searching the string "top hits".
-    Cached 24h — charts don't shift hour-to-hour and this is hit on every For You
-    batch.
+
+    TTL is capped at the shortest signed-URL expiry across the batch
+    (typically ~15 min) rather than a fixed 24h. We _could_ cache the chart
+    rows longer since chart positions don't shift hour-to-hour, but the
+    Akamai-signed preview URLs embedded in each row expire fast, so the
+    whole payload has to roll over together to avoid serving an expired
+    preview. See `_signed_url_ttl()` for the math.
     """
     cache_key = f"deezer:chart:{limit}"
     cached = await redis_cache.get(cache_key)

@@ -210,10 +210,22 @@ async def get_discover_feed(
     # actually liked, costs 3 cached artist lookups + 3 cached genre searches
     # max per batch rather than 3 dead /related-artists calls plus the same
     # fallback work.
+    #
+    # Seed rotation: an earlier version always took seed_artist_ids[:3], so
+    # tier 1 was permanently anchored to the user's three most-recent 4–5★
+    # artists. A power user who'd rated 50 artists got the same three pivots
+    # every batch until they rated again. Now we keep the recency bias (the
+    # window is the most-recent 8) but randomly sample 3 from it per batch
+    # so the feed actually evolves as the user's taste history grows.
     tier1_added_before = len(tracks)
     if seed_artist_ids and len(tracks) < limit:
+        seed_window = seed_artist_ids[:8]
+        seed_sample = (
+            random.sample(seed_window, k=3)
+            if len(seed_window) > 3 else seed_window
+        )
         artist_meta = await asyncio.gather(*[
-            spotify.get_artist(aid) for aid in seed_artist_ids[:3]
+            spotify.get_artist(aid) for aid in seed_sample
         ], return_exceptions=True)
         seed_genres: list[str] = []
         for meta in artist_meta:
@@ -227,8 +239,8 @@ async def get_discover_feed(
             ], return_exceptions=True)
             _flatten_shuffle_add(seed_genre_results, add_personalized)
             logger.info(
-                "discover: tier1 (seed-artist genre pivot) → %d tracks (genres=%s)",
-                len(tracks) - tier1_added_before, seed_genres,
+                "discover: tier1 (seed-artist genre pivot) → %d tracks (sample=%s, genres=%s)",
+                len(tracks) - tier1_added_before, seed_sample, seed_genres,
             )
 
     # ── Tier 2: Profile-genre search ─────────────────────────────────────────
