@@ -1814,29 +1814,9 @@ function ForYouFeed() {
             // Pure-percent transform. dragOffset is stored as %-of-cardHeight
             // (touchmove handler converts the finger's px delta on the way in),
             // so the whole expression resolves consistently against the
-            // wrapper's own height.
-            //
-            // Boundary clamp applied at RENDER time as well as in the touchmove
-            // handler. The handler clamps dy=0 at the deck boundaries, but if
-            // a stale dragOffset state ever paints for a frame (React batching,
-            // an out-of-order touchmove, etc.) the wrapper would briefly
-            // translate past the boundary and reveal the void above card[0]
-            // (the "blank card when you pull down at idx 0" report). Inlining
-            // the same clamp into the transform expression makes the boundary
-            // a hard visual invariant: no value of dragOffset can push the
-            // wrapper past the first or last card. During an in-flight
-            // advance() the wrapper transitions through the clamped value
-            // because activeIdx hasn't updated yet (only changes on commit),
-            // so the snap animation is unaffected.
-            transform: `translate3d(0, ${
-              -activeIdx * 100 + (
-                activeIdx === 0 && dragOffset > 0
-                  ? 0
-                  : activeIdx >= tracks.length - 1 && dragOffset < 0
-                    ? 0
-                    : dragOffset
-              )
-            }%, 0)`,
+            // wrapper's own height. Boundary clamp lives in handleTouchMove
+            // (dy=0 at idx 0 or last card).
+            transform: `translate3d(0, ${-activeIdx * 100 + dragOffset}%, 0)`,
             // Snappier ease-out curve (cubic-bezier-iOS-style) + shorter
             // duration so the snap feels closer to Tinder / TikTok's native
             // animation. The previous (0.2, 0, 0, 1) was a linear-snappy
