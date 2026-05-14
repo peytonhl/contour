@@ -91,6 +91,56 @@ frontend/
 
 ---
 
+## Debugging mindset
+
+When something's broken, **default to diagnosis over guessing.** Your first
+instinct on a bug report should be to make the state visible, not to write
+a fix.
+
+This rule exists because the 2026-05-13/14 swipe-deck session burned ~4
+hours and 6+ Vercel pushes on a one-line fix. The first 3 hours were
+"add another fix, push, hope it works." It didn't, every time. The actual
+breakthrough came in the last 30 minutes when we added an on-screen debug
+overlay and read the live state — which immediately showed the state
+machine was fine and the bug was render-side. That overlay should have
+been the first thing built, not the last.
+
+### Concretely
+
+- **Before writing a fix, instrument.** Build an on-screen debug overlay,
+  add a `<pre>{JSON.stringify(state)}</pre>` somewhere visible, render a
+  color-coded marker, or otherwise externalize the runtime state. Mobile
+  users can't see your `console.log` — assume devtools aren't an option.
+- **Treat hypotheses as hypotheses.** "I think it's the body-fixed CSS"
+  is a starting point for a diagnostic, not a license to change code.
+  Verify the hypothesis with a measurement first, then act on the result.
+- **Read the diff before assuming what's different.**
+  `git diff origin/master -- frontend/src/pages/X.jsx` will tell you what
+  actually changed between your branch and the working baseline. Don't
+  describe the difference from memory.
+- **Confirm scope before acting.** Is the bug on `master` / prod too, or
+  only on your branch? Same surface the user is reporting from (Safari
+  vs Firefox vs Capacitor app vs desktop)? Same commit they're testing?
+  If you don't know, you're guessing.
+- **When iterating on a fix, bisect by removing.** Each new "fix" you
+  layer on can introduce its own regression and make it harder to tell
+  which change was the actual culprit. Smaller diff vs. master = easier
+  to reason about.
+- **One concept per commit.** "Try a thing" + "revert that thing" should
+  each be one commit. That way `git log --oneline` reads as the actual
+  reasoning trail.
+
+### When the user reports a UI bug on mobile
+
+The full runbook (on-screen debug overlay templates, the 4-reading gesture
+walkthrough, CSS containment + transform pitfalls, iOS Safari URL-bar
+quirks, local-tunnel testing setup, etc.) lives in
+[DEBUGGING.md](DEBUGGING.md). Open that before any code edit on a mobile
+gesture / layout / iOS-specific report. There's a 10-step diagnostic
+checklist at the bottom — start there.
+
+---
+
 ## Critical rules
 
 ### Never touch
