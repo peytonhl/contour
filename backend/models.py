@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -126,7 +126,10 @@ class StreamAnchor(Base):
     entity_id: Mapped[str] = mapped_column(String(64), index=True)
     entity_type: Mapped[str] = mapped_column(String(16))   # "track" | "album"
     snapshot_date: Mapped[str] = mapped_column(String(16)) # ISO date "YYYY-MM-DD"
-    stream_count: Mapped[int] = mapped_column(Integer)
+    # BigInteger (int64) — Postgres INT4 caps at 2.1B and popular albums
+    # routinely exceed that (UTOPIA ~7B, Astroworld ~11B). The same overflow
+    # would happen here as on AlbumCache.kworb_streams.
+    stream_count: Mapped[int] = mapped_column(BigInteger)
     source: Mapped[str] = mapped_column(String(32))        # "kworb_daily" | "wayback"
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -239,8 +242,12 @@ class AlbumCache(Base):
     popularity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # Stream enrichment — filled in async by Kworb scrape
-    kworb_streams: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Stream enrichment — filled in async by Kworb scrape.
+    # BigInteger (int64): Postgres INT4 maxes at 2.1B and popular albums
+    # routinely exceed that. UTOPIA ~7B, Astroworld ~11B. Using Integer
+    # here would silently break enrichment for every popular album with
+    # asyncpg DataError: "value out of int32 range" on the UPDATE.
+    kworb_streams: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     # "pending" | "done" | "failed"
     enrichment_status: Mapped[str] = mapped_column(String(16), default="pending")
     enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

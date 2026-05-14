@@ -170,6 +170,52 @@ async def test_enrich_album_marks_failed_when_all_sources_miss(
 
 
 @pytest.mark.asyncio
+async def test_enrich_album_handles_streams_above_int32_max(shared_engine_and_session, monkeypatch):
+    """Regression guard for the production int32 overflow bug.
+
+    The kworb_streams column was originally declared sa.Integer (int32, max
+    2,147,483,647). Every popular album exceeds that (UTOPIA ~7B,
+    Astroworld ~11B). asyncpg raised DataError "value out of int32 range"
+    on the UPDATE, the row stayed pending, no log surfaced until we
+    instrumented save_kworb_streams. This test inserts a >int32 value to
+    make sure the model schema is wide enough."""
+    _, SessionLocal = shared_engine_and_session
+
+    async with SessionLocal() as s:
+        s.add(AlbumCache(
+            spotify_id="huge-streams",
+            name="Huge",
+            artist="Travis Scott",
+            enrichment_status="pending",
+        ))
+        await s.commit()
+
+    INT32_MAX = 2_147_483_647
+    UTOPIA_LIKE = 7_068_208_275  # actual UTOPIA stream count
+    assert UTOPIA_LIKE > INT32_MAX
+
+    async def kworb_huge(artist_id, name):
+        return UTOPIA_LIKE
+
+    monkeypatch.setattr("services.kworb.get_album_streams", kworb_huge)
+
+    from routers.albums import _enrich_album
+    await _enrich_album("huge-streams", {
+        "id": "huge-streams",
+        "name": "Huge",
+        "artists": ["Travis Scott"],
+        "artist_ids": ["0Y5tJX1MQlPlqiwlOH1tJY"],
+    })
+
+    async with SessionLocal() as s:
+        row = (await s.execute(
+            select(AlbumCache).where(AlbumCache.spotify_id == "huge-streams")
+        )).scalar_one()
+        assert row.enrichment_status == "done"
+        assert row.kworb_streams == UTOPIA_LIKE
+
+
+@pytest.mark.asyncio
 async def test_enrich_album_signature_does_not_accept_db(shared_engine_and_session):
     """Regression guard for the closed-session bug. _enrich_album must not
     accept a request-scoped session — callers should let it open its own.
