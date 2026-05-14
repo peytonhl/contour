@@ -200,7 +200,7 @@ function SuggestedUser({ u, onFollow }) {
         <button
           onClick={handleFollow} disabled={loading || followed}
           style={{
-            padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+            padding: "6px 14px", borderRadius: "var(--radius-xl)", fontSize: 12, fontWeight: 700,
             border: `1px solid ${followed ? "var(--border)" : ACCENT_A}`,
             background: followed ? "var(--surface2)" : `${ACCENT_A}18`,
             color: followed ? "var(--text-muted)" : ACCENT_A,

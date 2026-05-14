@@ -19,7 +19,7 @@ const ACCENT_B = "#6a90b5";
 function ListCollage({ images }) {
   const slots = [0, 1, 2, 3];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 52, height: 52, borderRadius: 8, overflow: "hidden", flexShrink: 0 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 52, height: 52, borderRadius: "var(--radius-md)", overflow: "hidden", flexShrink: 0 }}>
       {slots.map((i) =>
         images[i]
           ? <img key={i} src={images[i]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -34,7 +34,7 @@ function RatingBadge({ value }) {
   const mid = value >= 3;
   return (
     <div style={{
-      padding: "3px 10px", borderRadius: 4, fontSize: 13, fontWeight: 700, flexShrink: 0,
+      padding: "3px 10px", borderRadius: "var(--radius-sm)", fontSize: 13, fontWeight: 700, flexShrink: 0,
       background: high ? `${GOLD}18` : mid ? `${GOLD}0a` : "var(--surface2)",
       border: `1px solid ${high ? `${GOLD}50` : "var(--border)"}`,
       color: high ? GOLD : mid ? `${GOLD}99` : "var(--text-muted)",
@@ -69,8 +69,8 @@ function EntityRow({ item, right }) {
       padding: "13px 0", borderBottom: "1px solid var(--border)",
     }}>
       {item.entity_image_url
-        ? <img src={item.entity_image_url} alt={item.entity_name} style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-        : <div style={{ width: 48, height: 48, borderRadius: 6, background: "var(--surface2)", flexShrink: 0 }} />
+        ? <img src={item.entity_image_url} alt={item.entity_name} style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+        : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
       }
       <div style={{ flex: 1, minWidth: 0 }}>
         <Link
@@ -106,7 +106,7 @@ function SettingsMenu({ open, onClose }) {
       <div style={{
         position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 81,
         background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: 10, padding: 6, minWidth: 200,
+        borderRadius: "var(--radius)", padding: 6, minWidth: 200,
         boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
       }}>
         <Link
@@ -114,7 +114,7 @@ function SettingsMenu({ open, onClose }) {
           onClick={onClose}
           style={{
             display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: 6,
+            padding: "10px 12px", borderRadius: "var(--radius-sm)",
             color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
           }}
           onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
@@ -132,7 +132,7 @@ function SettingsMenu({ open, onClose }) {
           onClick={onClose}
           style={{
             display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: 6,
+            padding: "10px 12px", borderRadius: "var(--radius-sm)",
             color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
           }}
           onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
@@ -149,7 +149,7 @@ function SettingsMenu({ open, onClose }) {
           onClick={onClose}
           style={{
             display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: 6,
+            padding: "10px 12px", borderRadius: "var(--radius-sm)",
             color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
           }}
           onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
@@ -171,7 +171,7 @@ function SettingsMenu({ open, onClose }) {
           style={{
             width: "100%", textAlign: "left",
             display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: 6,
+            padding: "10px 12px", borderRadius: "var(--radius-sm)",
             background: "transparent", border: "none",
             color: "var(--text)", fontSize: 13, fontWeight: 600, cursor: "pointer",
           }}
@@ -190,7 +190,7 @@ function SettingsMenu({ open, onClose }) {
           onClick={onClose}
           style={{
             display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: 6,
+            padding: "10px 12px", borderRadius: "var(--radius-sm)",
             color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
           }}
           onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
@@ -423,7 +423,7 @@ export function ProfilePage() {
                   title="Settings"
                   style={{
                     width: 28, height: 28, color: "var(--text-muted)", background: "none",
-                    border: "1px solid var(--border)", borderRadius: 6,
+                    border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
                     cursor: "pointer", display: "inline-flex",
                     alignItems: "center", justifyContent: "center",
                   }}
@@ -438,7 +438,7 @@ export function ProfilePage() {
                   onClick={logout}
                   style={{
                     fontSize: 12, color: "var(--text-muted)", background: "none",
-                    border: "1px solid var(--border)", borderRadius: 6,
+                    border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
                     cursor: "pointer", padding: "4px 12px",
                     letterSpacing: "0.01em",
                   }}
@@ -482,7 +482,7 @@ export function ProfilePage() {
                   style={{
                     width: "100%", padding: "9px 11px", fontSize: 13,
                     background: "var(--surface2)", border: "1px solid var(--border)",
-                    borderRadius: 8, color: "var(--text)", resize: "vertical",
+                    borderRadius: "var(--radius-md)", color: "var(--text)", resize: "vertical",
                     outline: "none", boxSizing: "border-box", lineHeight: 1.6,
                     fontFamily: "inherit",
                   }}
@@ -491,7 +491,7 @@ export function ProfilePage() {
                   <button
                     onClick={handleSaveBio} disabled={savingBio}
                     style={{
-                      fontSize: 12, fontWeight: 700, padding: "5px 16px", borderRadius: 6,
+                      fontSize: 12, fontWeight: 700, padding: "5px 16px", borderRadius: "var(--radius-sm)",
                       background: ACCENT, border: "none", color: "#000", cursor: "pointer",
                     }}
                   >
@@ -501,7 +501,7 @@ export function ProfilePage() {
                     onClick={() => setEditingBio(false)}
                     style={{
                       fontSize: 12, color: "var(--text-muted)", background: "none",
-                      border: "1px solid var(--border)", borderRadius: 6,
+                      border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
                       cursor: "pointer", padding: "5px 12px",
                     }}
                   >
@@ -528,7 +528,7 @@ export function ProfilePage() {
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
           onClick={(e) => e.target === e.currentTarget && setEditingPhoto(false)}
         >
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "26px 24px", width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "26px 24px", width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", gap: 16 }}>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Change profile photo</h3>
 
             {/* Preview */}
@@ -544,7 +544,7 @@ export function ProfilePage() {
             {/* Upload from device */}
             <label style={{
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "10px 16px", borderRadius: 8, border: "1px dashed var(--border)",
+              padding: "10px 16px", borderRadius: "var(--radius-md)", border: "1px dashed var(--border)",
               cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--text-muted)",
               transition: "border-color 0.15s",
             }}>
@@ -577,7 +577,7 @@ export function ProfilePage() {
               style={{
                 padding: "9px 12px", background: "var(--surface2)",
                 border: `1px solid ${photoError ? "#f87171" : "var(--border)"}`,
-                borderRadius: 8, color: "var(--text)", fontSize: 14, outline: "none",
+                borderRadius: "var(--radius-md)", color: "var(--text)", fontSize: 14, outline: "none",
                 fontFamily: "inherit",
               }}
             />
@@ -590,13 +590,13 @@ export function ProfilePage() {
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={handleSavePhoto} disabled={savingPhoto}
-                style={{ padding: "8px 20px", borderRadius: 8, fontWeight: 700, fontSize: 13, background: ACCENT, border: "none", color: "#000", cursor: "pointer" }}
+                style={{ padding: "8px 20px", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: 13, background: ACCENT, border: "none", color: "#000", cursor: "pointer" }}
               >
                 {savingPhoto ? "Saving…" : "Save"}
               </button>
               <button
                 onClick={() => { setEditingPhoto(false); setPhotoInput(""); setPhotoError(""); }}
-                style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}
+                style={{ padding: "8px 14px", borderRadius: "var(--radius-md)", fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}
               >
                 Cancel
               </button>
@@ -651,7 +651,7 @@ export function ProfilePage() {
               <button
                 onClick={() => { setShowCreateList(true); setNewListTitle(""); setNewListDesc(""); setNewListRanked(true); }}
                 style={{
-                  alignSelf: "flex-start", padding: "7px 18px", borderRadius: 6,
+                  alignSelf: "flex-start", padding: "7px 18px", borderRadius: "var(--radius-sm)",
                   fontWeight: 700, fontSize: 13, letterSpacing: "0.01em",
                   background: "var(--surface2)", border: "1px solid var(--border)",
                   color: "var(--text)", cursor: "pointer",
@@ -660,20 +660,20 @@ export function ProfilePage() {
                 + New list
               </button>
             ) : (
-              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
                 <input
                   autoFocus
                   value={newListTitle}
                   onChange={(e) => setNewListTitle(e.target.value.slice(0, 200))}
                   placeholder="List title…"
-                  style={{ padding: "9px 12px", background: "var(--surface2)", border: `1px solid ${ACCENT}50`, borderRadius: 8, color: "var(--text)", fontSize: 14, outline: "none", fontFamily: "inherit" }}
+                  style={{ padding: "9px 12px", background: "var(--surface2)", border: `1px solid ${ACCENT}50`, borderRadius: "var(--radius-md)", color: "var(--text)", fontSize: 14, outline: "none", fontFamily: "inherit" }}
                 />
                 <textarea
                   value={newListDesc}
                   onChange={(e) => setNewListDesc(e.target.value.slice(0, 500))}
                   placeholder="Description (optional)…"
                   rows={2}
-                  style={{ padding: "9px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)", fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }}
+                  style={{ padding: "9px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", color: "var(--text)", fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit" }}
                 />
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
                   <input type="checkbox" checked={newListRanked} onChange={(e) => setNewListRanked(e.target.checked)} />
@@ -682,13 +682,13 @@ export function ProfilePage() {
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={handleCreateList} disabled={creatingList || !newListTitle.trim()}
-                    style={{ padding: "7px 18px", borderRadius: 6, fontWeight: 700, fontSize: 13, background: ACCENT, border: "none", color: "#000", cursor: "pointer", opacity: !newListTitle.trim() ? 0.45 : 1 }}
+                    style={{ padding: "7px 18px", borderRadius: "var(--radius-sm)", fontWeight: 700, fontSize: 13, background: ACCENT, border: "none", color: "#000", cursor: "pointer", opacity: !newListTitle.trim() ? 0.45 : 1 }}
                   >
                     {creatingList ? "Creating…" : "Create"}
                   </button>
                   <button
                     onClick={() => setShowCreateList(false)}
-                    style={{ padding: "7px 14px", borderRadius: 6, fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}
+                    style={{ padding: "7px 14px", borderRadius: "var(--radius-sm)", fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}
                   >
                     Cancel
                   </button>
@@ -701,7 +701,7 @@ export function ProfilePage() {
             {lists.map((lst) => (
               <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
                 <div
-                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, transition: "border-color 0.15s" }}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", transition: "border-color 0.15s" }}
                   onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT}
                   onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
                 >

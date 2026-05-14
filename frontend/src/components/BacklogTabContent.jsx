@@ -89,7 +89,7 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
               key={opt.key}
               onClick={() => setSort(opt.key)}
               style={{
-                padding: "5px 10px", borderRadius: 16,
+                padding: "5px 10px", borderRadius: "var(--radius-lg)",
                 border: `1px solid ${sort === opt.key ? ACCENT : "var(--border)"}`,
                 background: sort === opt.key ? `${ACCENT}18` : "transparent",
                 color: sort === opt.key ? ACCENT : "var(--text-muted)",
@@ -156,7 +156,7 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
                 <button
                   onClick={() => handlePromote(entityType, entityId)}
                   style={{
-                    padding: "6px 12px", borderRadius: 6,
+                    padding: "6px 12px", borderRadius: "var(--radius-sm)",
                     background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT_B})`,
                     border: "none", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer",
                   }}
@@ -167,7 +167,7 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
                   onClick={() => handleRemove(entityType, entityId)}
                   title="Remove from backlog"
                   style={{
-                    padding: "6px 10px", borderRadius: 6,
+                    padding: "6px 10px", borderRadius: "var(--radius-sm)",
                     background: "none", border: "1px solid var(--border)",
                     color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
                   }}
@@ -195,13 +195,13 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "8px 10px", background: "var(--surface)",
-                  border: "1px solid var(--border)", borderRadius: 8,
+                  border: "1px solid var(--border)", borderRadius: "var(--radius-md)",
                   textDecoration: "none", color: "var(--text)",
                 }}
               >
                 {s.image_url
-                  ? <img src={s.image_url} alt="" style={{ width: 40, height: 40, borderRadius: 5, objectFit: "cover" }} />
-                  : <div style={{ width: 40, height: 40, borderRadius: 5, background: "var(--surface2)" }} />
+                  ? <img src={s.image_url} alt="" style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />
+                  : <div style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", background: "var(--surface2)" }} />
                 }
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

@@ -47,7 +47,7 @@ function GenreBadge({ genre }) {
     <span style={{
       display: "inline-block",
       padding: "5px 13px",
-      borderRadius: 20,
+      borderRadius: "var(--radius-xl)",
       fontSize: 12,
       fontWeight: 700,
       background: `linear-gradient(135deg, ${from}22, ${to}22)`,
@@ -73,7 +73,7 @@ function AlbumSlot({ album, isOwner, onClick, onRemove }) {
         onMouseLeave={() => setHovered(false)}
         style={{
           aspectRatio: "1",
-          borderRadius: 12,
+          borderRadius: "var(--radius-lg)",
           border: `2px dashed ${hovered ? ACCENT_A : "var(--border)"}`,
           display: "flex",
           flexDirection: "column",
@@ -98,7 +98,7 @@ function AlbumSlot({ album, isOwner, onClick, onRemove }) {
   // Filled slot
   return (
     <div
-      style={{ position: "relative", aspectRatio: "1", borderRadius: 12, overflow: "hidden", cursor: "pointer" }}
+      style={{ position: "relative", aspectRatio: "1", borderRadius: "var(--radius-lg)", overflow: "hidden", cursor: "pointer" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -133,7 +133,7 @@ function AlbumSlot({ album, isOwner, onClick, onRemove }) {
               fontSize: 10, fontWeight: 700,
               background: "rgba(255,255,255,0.15)",
               border: "1px solid rgba(255,255,255,0.25)",
-              borderRadius: 20, color: "#fff",
+              borderRadius: "var(--radius-xl)", color: "#fff",
               padding: "3px 10px", cursor: "pointer",
             }}
           >
@@ -225,7 +225,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
         <div style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: 20,
+          borderRadius: "var(--radius-xl)",
           width: "100%",
           maxWidth: 520,
           maxHeight: "85dvh",
@@ -259,7 +259,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                   onClick={handleSave}
                   disabled={saving}
                   style={{
-                    padding: "8px 20px", borderRadius: 20, fontSize: 13, fontWeight: 800,
+                    padding: "8px 20px", borderRadius: "var(--radius-xl)", fontSize: 13, fontWeight: 800,
                     background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                     border: "none", color: "#000", cursor: saving ? "default" : "pointer",
                     opacity: saving ? 0.7 : 1, flexShrink: 0,
@@ -277,10 +277,10 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                   <div key={p.id} style={{
                     display: "flex", alignItems: "center", gap: 6,
                     background: `${ACCENT_A}18`, border: `1px solid ${ACCENT_A}40`,
-                    borderRadius: 20, padding: "5px 10px 5px 6px",
+                    borderRadius: "var(--radius-xl)", padding: "5px 10px 5px 6px",
                   }}>
                     {p.image_url && (
-                      <img src={p.image_url} alt="" style={{ width: 22, height: 22, borderRadius: 4, objectFit: "cover" }} />
+                      <img src={p.image_url} alt="" style={{ width: 22, height: 22, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />
                     )}
                     <span style={{ fontSize: 12, fontWeight: 700, color: ACCENT_A, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                     <button onClick={() => toggle(p)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
@@ -303,7 +303,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                 style={{
                   width: "100%", padding: "11px 14px 11px 38px",
                   background: "var(--surface2)", border: "1px solid var(--border)",
-                  borderRadius: 12, color: "var(--text)", fontSize: 14,
+                  borderRadius: "var(--radius-lg)", color: "var(--text)", fontSize: 14,
                   outline: "none", boxSizing: "border-box",
                 }}
               />
@@ -355,8 +355,8 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                   }}
                 >
                   {album.image_url
-                    ? <img src={album.image_url} alt={album.name} style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }} />
-                    : <div style={{ width: 60, height: 60, borderRadius: 8, background: "var(--surface2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
+                    ? <img src={album.image_url} alt={album.name} style={{ width: 60, height: 60, borderRadius: "var(--radius-md)", objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }} />
+                    : <div style={{ width: 60, height: 60, borderRadius: "var(--radius-md)", background: "var(--surface2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
                           <circle cx="12" cy="12" r="9" />
                           <circle cx="12" cy="12" r="2.5" />
@@ -426,7 +426,7 @@ function GenreEditorSheet({ currentGenres, onSave, onClose }) {
           borderRadius: "20px 20px 16px 16px", padding: "22px 22px 20px",
           maxWidth: 480, margin: "0 auto", boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
         }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 20px" }} />
+          <div style={{ width: 36, height: 4, borderRadius: "var(--radius-sm)", background: "var(--border)", margin: "0 auto 20px" }} />
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <div>
@@ -439,7 +439,7 @@ function GenreEditorSheet({ currentGenres, onSave, onClose }) {
               onClick={handleSave}
               disabled={saving}
               style={{
-                padding: "7px 18px", borderRadius: 20, fontSize: 13, fontWeight: 800,
+                padding: "7px 18px", borderRadius: "var(--radius-xl)", fontSize: 13, fontWeight: 800,
                 background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
                 border: "none", color: "#000", cursor: "pointer", opacity: saving ? 0.7 : 1,
               }}
@@ -479,11 +479,11 @@ function RatingDistribution({ distribution }) {
             <span style={{ fontSize: 12, color: GOLD, width: 20, textAlign: "right", flexShrink: 0 }}>
               {star}★
             </span>
-            <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--surface2)", overflow: "hidden" }}>
+            <div style={{ flex: 1, height: 8, borderRadius: "var(--radius-sm)", background: "var(--surface2)", overflow: "hidden" }}>
               <div style={{
                 height: "100%",
                 width: `${pct}%`,
-                borderRadius: 4,
+                borderRadius: "var(--radius-sm)",
                 background: star >= 4
                   ? `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`
                   : star === 3
@@ -559,7 +559,7 @@ export function TasteSection({ userId, isOwner }) {
       <div style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
-        borderRadius: 16,
+        borderRadius: "var(--radius-lg)",
         padding: "20px 20px 22px",
         display: "flex",
         flexDirection: "column",
@@ -577,7 +577,7 @@ export function TasteSection({ userId, isOwner }) {
                 style={{
                   fontSize: 11, fontWeight: 700, color: ACCENT_B,
                   background: `${ACCENT_B}14`, border: `1px solid ${ACCENT_B}35`,
-                  borderRadius: 20, padding: "4px 12px", cursor: "pointer",
+                  borderRadius: "var(--radius-xl)", padding: "4px 12px", cursor: "pointer",
                 }}
               >
                 {savedGenres.length > 0 ? `Genres (${savedGenres.length})` : "+ Add genres"}
@@ -587,7 +587,7 @@ export function TasteSection({ userId, isOwner }) {
                 style={{
                   fontSize: 11, fontWeight: 700, color: ACCENT_A,
                   background: `${ACCENT_A}14`, border: `1px solid ${ACCENT_A}35`,
-                  borderRadius: 20, padding: "4px 12px", cursor: "pointer",
+                  borderRadius: "var(--radius-xl)", padding: "4px 12px", cursor: "pointer",
                 }}
               >
                 {taste?.pinned_albums?.length ? "Edit albums" : "+ Pick albums"}
@@ -617,7 +617,7 @@ export function TasteSection({ userId, isOwner }) {
             onClick={() => setPickerOpen(true)}
             style={{
               display: "flex", alignItems: "center", gap: 12,
-              padding: "14px 16px", borderRadius: 10,
+              padding: "14px 16px", borderRadius: "var(--radius)",
               border: "1px dashed var(--border)",
               background: "transparent", cursor: "pointer",
               textAlign: "left", width: "100%",
@@ -627,7 +627,7 @@ export function TasteSection({ userId, isOwner }) {
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "transparent"; }}
           >
             <div style={{
-              width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+              width: 36, height: 36, borderRadius: "var(--radius-md)", flexShrink: 0,
               border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

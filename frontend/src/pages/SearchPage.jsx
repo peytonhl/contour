@@ -59,7 +59,7 @@ function FeaturedCard({ item, type }) {
         // uniform regardless of any wrapper around the card.
         width: "100%",
         background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: 10, overflow: "hidden", cursor: "pointer",
+        borderRadius: "var(--radius)", overflow: "hidden", cursor: "pointer",
         textAlign: "left", transition: "border-color 0.15s, transform 0.15s",
         display: "flex", flexDirection: "column",
         padding: 0,
@@ -173,7 +173,7 @@ export function SearchPage() {
             to="/compare"
             style={{
               fontSize: 12, fontWeight: 600,
-              padding: "6px 12px", borderRadius: 16,
+              padding: "6px 12px", borderRadius: "var(--radius-lg)",
               background: "var(--surface)", border: "1px solid var(--border)",
               color: "var(--text-muted)", textDecoration: "none",
               display: "inline-flex", alignItems: "center", gap: 6,
@@ -253,7 +253,7 @@ export function SearchPage() {
                     fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
                     color: TYPE_COLORS[item._type], flexShrink: 0,
                     background: `${TYPE_COLORS[item._type]}18`,
-                    padding: "2px 8px", borderRadius: 20,
+                    padding: "2px 8px", borderRadius: "var(--radius-xl)",
                     border: `1px solid ${TYPE_COLORS[item._type]}40`,
                   }}>
                     {TYPE_LABELS[item._type]}
@@ -306,7 +306,7 @@ export function SearchPage() {
                   display: "flex", alignItems: "center", gap: 8,
                   padding: "6px 12px 6px 6px",
                   background: "var(--surface)", border: "1px solid var(--border)",
-                  borderRadius: 24, cursor: "pointer", color: "var(--text)",
+                  borderRadius: "var(--radius-pill)", cursor: "pointer", color: "var(--text)",
                   transition: "border-color 0.12s",
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT_A}
@@ -344,7 +344,7 @@ export function SearchPage() {
                   handleInput({ target: { value: s.query } });
                 }}
                 style={{
-                  padding: "6px 14px", borderRadius: 18,
+                  padding: "6px 14px", borderRadius: "var(--radius-xl)",
                   background: "var(--surface)", border: "1px solid var(--border)",
                   color: "var(--text)", fontSize: 13, cursor: "pointer",
                   transition: "border-color 0.12s",
@@ -364,7 +364,7 @@ export function SearchPage() {
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
           background: "var(--surface)", border: "1px solid var(--border)",
-          borderRadius: 12, padding: "14px 18px", flexWrap: "wrap",
+          borderRadius: "var(--radius-lg)", padding: "14px 18px", flexWrap: "wrap",
         }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Rate, review &amp; follow listeners</span>
@@ -376,7 +376,7 @@ export function SearchPage() {
               {...externalLinkProps()}
               style={{
                 display: "flex", alignItems: "center", gap: 8,
-                padding: "8px 16px", background: "#fff", borderRadius: 20,
+                padding: "8px 16px", background: "#fff", borderRadius: "var(--radius-xl)",
                 color: "#3c3c3c", fontSize: 13, fontWeight: 600, textDecoration: "none",
                 border: "1px solid #dadce0",
               }}

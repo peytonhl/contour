@@ -57,7 +57,7 @@ function KnownForSection({ tracks }) {
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
-                borderRadius: 10,
+                borderRadius: "var(--radius)",
                 overflow: "hidden",
                 transition: "border-color 0.15s, transform 0.15s",
               }}
@@ -118,7 +118,7 @@ function TopTrackRow({ track, rank }) {
         display: "flex", alignItems: "center", gap: 14,
         padding: "10px 16px",
         textDecoration: "none", color: "var(--text)",
-        borderRadius: 8,
+        borderRadius: "var(--radius-md)",
         transition: "background 0.1s",
       }}
       onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
@@ -131,8 +131,8 @@ function TopTrackRow({ track, rank }) {
 
       {/* Art */}
       {track.image_url
-        ? <img src={track.image_url} alt={track.name} style={{ width: 42, height: 42, borderRadius: 5, objectFit: "cover", flexShrink: 0 }} />
-        : <div style={{ width: 42, height: 42, borderRadius: 5, background: "var(--surface2)", flexShrink: 0 }} />
+        ? <img src={track.image_url} alt={track.name} style={{ width: 42, height: 42, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+        : <div style={{ width: 42, height: 42, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
       }
 
       {/* Name + album */}
@@ -140,7 +140,7 @@ function TopTrackRow({ track, rank }) {
         <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {track.name}
           {track.explicit && (
-            <span style={{ marginLeft: 6, fontSize: 9, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 3, padding: "1px 4px", color: "var(--text-muted)", verticalAlign: "middle", fontWeight: 600 }}>E</span>
+            <span style={{ marginLeft: 6, fontSize: 9, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "1px 4px", color: "var(--text-muted)", verticalAlign: "middle", fontWeight: 600 }}>E</span>
           )}
         </div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
@@ -516,7 +516,7 @@ export function ArtistPage() {
               <button
                 onClick={() => setShowAllAlbums(v => !v)}
                 style={{
-                  marginTop: 4, width: "100%", padding: "10px", borderRadius: 8,
+                  marginTop: 4, width: "100%", padding: "10px", borderRadius: "var(--radius-md)",
                   background: "var(--surface)", border: "1px solid var(--border)",
                   color: "var(--text-muted)", fontSize: 13, fontWeight: 600,
                   cursor: "pointer", transition: "border-color 0.15s, color 0.15s",

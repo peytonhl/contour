@@ -267,7 +267,7 @@ export function ComparisonWidget({
           style={{
             padding: "12px 28px",
             background: "linear-gradient(135deg, var(--accent-a), var(--accent-b))",
-            border: "none", borderRadius: 8, color: "#000", fontWeight: 700, fontSize: 14,
+            border: "none", borderRadius: "var(--radius-md)", color: "#000", fontWeight: 700, fontSize: 14,
             opacity: canCompare ? 1 : 0.4, cursor: canCompare ? "pointer" : "default",
           }}
         >
@@ -280,7 +280,7 @@ export function ComparisonWidget({
               to={`/compare/${savedId}`}
               style={{
                 padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: 8, color: ACCENT_A, fontSize: 13, fontWeight: 600, textDecoration: "none",
+                borderRadius: "var(--radius-md)", color: ACCENT_A, fontSize: 13, fontWeight: 600, textDecoration: "none",
               }}
             >
               Shareable link ↗
@@ -291,7 +291,7 @@ export function ComparisonWidget({
               disabled={saving}
               style={{
                 padding: "10px 18px", background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: 8, color: "var(--text-muted)", fontSize: 13, cursor: "pointer",
+                borderRadius: "var(--radius-md)", color: "var(--text-muted)", fontSize: 13, cursor: "pointer",
               }}
             >
               {saving ? "Saving…" : "Share"}
@@ -310,7 +310,7 @@ export function ComparisonWidget({
       {error && (
         <div style={{
           padding: "14px 16px", background: "rgba(248,113,113,0.1)",
-          border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8,
+          border: "1px solid rgba(248,113,113,0.3)", borderRadius: "var(--radius-md)",
           color: "var(--danger)", fontSize: 13,
         }}>
           Error: {error}

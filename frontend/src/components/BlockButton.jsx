@@ -44,7 +44,7 @@ export function BlockButton({ targetUserId, initiallyBlocked, onChange }) {
         disabled={busy}
         title="Unblock this user"
         style={{
-          padding: "8px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+          padding: "8px 14px", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 600,
           background: "rgba(248,113,113,0.10)", color: DANGER,
           border: `1px solid ${DANGER}`,
           cursor: busy ? "default" : "pointer",
@@ -62,7 +62,7 @@ export function BlockButton({ targetUserId, initiallyBlocked, onChange }) {
           onClick={doBlock}
           disabled={busy}
           style={{
-            padding: "8px 14px", borderRadius: 6, fontSize: 12, fontWeight: 700,
+            padding: "8px 14px", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 700,
             background: DANGER, color: "#000", border: "none",
             cursor: busy ? "default" : "pointer",
           }}
@@ -72,7 +72,7 @@ export function BlockButton({ targetUserId, initiallyBlocked, onChange }) {
         <button
           onClick={() => setConfirming(false)}
           style={{
-            padding: "8px 12px", borderRadius: 6, fontSize: 12,
+            padding: "8px 12px", borderRadius: "var(--radius-sm)", fontSize: 12,
             background: "none", color: "var(--text-muted)",
             border: "1px solid var(--border)", cursor: "pointer",
           }}
@@ -88,7 +88,7 @@ export function BlockButton({ targetUserId, initiallyBlocked, onChange }) {
       onClick={() => setConfirming(true)}
       title="Block this user. Their content will be hidden from you."
       style={{
-        padding: "8px 12px", borderRadius: 6, fontSize: 12,
+        padding: "8px 12px", borderRadius: "var(--radius-sm)", fontSize: 12,
         background: "none", color: "var(--text-muted)",
         border: "1px solid var(--border)", cursor: "pointer",
       }}

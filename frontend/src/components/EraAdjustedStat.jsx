@@ -169,7 +169,7 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
               style={{
                 position: "absolute", top: "calc(100% + 8px)", left: 0,
                 background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: 10, padding: "14px 16px",
+                borderRadius: "var(--radius)", padding: "14px 16px",
                 fontSize: 12, lineHeight: 1.55, color: "var(--text)",
                 width: 280, zIndex: 200, boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
               }}

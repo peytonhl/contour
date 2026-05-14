@@ -88,7 +88,7 @@ export function AdminReportsPage() {
       ) : reports.length === 0 ? (
         <div style={{
           padding: "40px 20px", textAlign: "center", color: "var(--text-muted)",
-          background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
+          background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
         }}>
           No reports in this tab.
         </div>
@@ -96,13 +96,13 @@ export function AdminReportsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {reports.map((r) => (
             <div key={r.id} style={{
-              background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
+              background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
               padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10,
             }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <span style={{
                   fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
-                  padding: "3px 8px", borderRadius: 4,
+                  padding: "3px 8px", borderRadius: "var(--radius-sm)",
                   background: r.target_type === "review" ? "rgba(217,122,59,0.18)" : "rgba(106,144,181,0.18)",
                   color: r.target_type === "review" ? ACCENT : GREEN,
                 }}>
@@ -110,7 +110,7 @@ export function AdminReportsPage() {
                 </span>
                 <span style={{
                   fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
-                  padding: "3px 8px", borderRadius: 4,
+                  padding: "3px 8px", borderRadius: "var(--radius-sm)",
                   background: "rgba(248,113,113,0.15)", color: DANGER,
                 }}>
                   {REASON_LABEL[r.reason] || r.reason}
@@ -126,7 +126,7 @@ export function AdminReportsPage() {
                 </div>
                 {r.target_exists ? (
                   <div style={{
-                    background: "var(--surface2)", borderRadius: 8, padding: "10px 12px",
+                    background: "var(--surface2)", borderRadius: "var(--radius-md)", padding: "10px 12px",
                     fontSize: 13, color: "var(--text)", lineHeight: 1.55,
                     whiteSpace: "pre-wrap", wordBreak: "break-word",
                   }}>
@@ -166,7 +166,7 @@ export function AdminReportsPage() {
                     onClick={() => resolve(r, "resolved", true)}
                     disabled={working[r.id] || !r.target_exists}
                     style={{
-                      padding: "7px 14px", borderRadius: 6, fontSize: 12, fontWeight: 700,
+                      padding: "7px 14px", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 700,
                       background: DANGER, color: "#000", border: "none",
                       cursor: working[r.id] ? "default" : "pointer",
                       opacity: r.target_exists ? 1 : 0.4,
@@ -178,7 +178,7 @@ export function AdminReportsPage() {
                     onClick={() => resolve(r, "resolved", false)}
                     disabled={working[r.id]}
                     style={{
-                      padding: "7px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                      padding: "7px 14px", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 600,
                       background: "var(--surface2)", color: "var(--text)",
                       border: "1px solid var(--border)", cursor: working[r.id] ? "default" : "pointer",
                     }}
@@ -189,7 +189,7 @@ export function AdminReportsPage() {
                     onClick={() => resolve(r, "dismissed", false)}
                     disabled={working[r.id]}
                     style={{
-                      padding: "7px 14px", borderRadius: 6, fontSize: 12,
+                      padding: "7px 14px", borderRadius: "var(--radius-sm)", fontSize: 12,
                       background: "none", color: "var(--text-muted)",
                       border: "1px solid var(--border)", cursor: working[r.id] ? "default" : "pointer",
                     }}

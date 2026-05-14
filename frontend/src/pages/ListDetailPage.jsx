@@ -55,7 +55,7 @@ function AddItemSearch({ onAdd, existingIds }) {
 
   const typePill = (type) => ({
     fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase",
-    padding: "2px 7px", borderRadius: 20,
+    padding: "2px 7px", borderRadius: "var(--radius-xl)",
     background: type === "track" ? `${ACCENT_B}20` : `${ACCENT_A}20`,
     color: type === "track" ? ACCENT_B : ACCENT_A,
     border: `1px solid ${type === "track" ? ACCENT_B : ACCENT_A}35`,
@@ -71,7 +71,7 @@ function AddItemSearch({ onAdd, existingIds }) {
         style={{
           width: "100%", padding: "10px 14px", boxSizing: "border-box",
           background: "var(--surface2)", border: `1px solid ${ACCENT_A}50`,
-          borderRadius: 10, color: "var(--text)", fontSize: 14, outline: "none",
+          borderRadius: "var(--radius)", color: "var(--text)", fontSize: 14, outline: "none",
         }}
       />
       {loading && <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "var(--text-muted)" }}>…</span>}
@@ -79,7 +79,7 @@ function AddItemSearch({ onAdd, existingIds }) {
         <div style={{
           position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
           background: "var(--surface)", border: "1px solid var(--border)",
-          borderRadius: 10, zIndex: 50, maxHeight: 340, overflowY: "auto",
+          borderRadius: "var(--radius)", zIndex: 50, maxHeight: 340, overflowY: "auto",
           boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
         }}>
           {[["album", albums], ["track", tracks]].map(([type, items]) =>
@@ -99,8 +99,8 @@ function AddItemSearch({ onAdd, existingIds }) {
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
                       {item.image_url
-                        ? <img src={item.image_url} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
-                        : <div style={{ width: 36, height: 36, borderRadius: 4, background: "var(--surface2)", flexShrink: 0 }} />
+                        ? <img src={item.image_url} alt="" style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                        : <div style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                       }
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
@@ -146,7 +146,7 @@ function ListItemRow({ item, index, isOwner, isRanked, onMoveUp, onMoveDown, onR
       <Link to={entityPath} style={{ flexShrink: 0 }}>
         {item.entity_image_url
           ? <img src={item.entity_image_url} alt="" style={{ width: 48, height: 48, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover" }} />
-          : <div style={{ width: 48, height: 48, borderRadius: 6, background: "var(--surface2)" }} />
+          : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)" }} />
         }
       </Link>
 
@@ -167,7 +167,7 @@ function ListItemRow({ item, index, isOwner, isRanked, onMoveUp, onMoveDown, onR
       {/* Type pill */}
       <span style={{
         fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase",
-        padding: "2px 7px", borderRadius: 20, flexShrink: 0,
+        padding: "2px 7px", borderRadius: "var(--radius-xl)", flexShrink: 0,
         background: `${color}18`, color, border: `1px solid ${color}35`,
       }}>
         {item.entity_type}
@@ -176,9 +176,9 @@ function ListItemRow({ item, index, isOwner, isRanked, onMoveUp, onMoveDown, onR
       {/* Owner controls */}
       {isOwner && (
         <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-          <button onClick={onMoveUp} disabled={isFirst} style={{ width: 28, height: 28, borderRadius: 6, background: "none", border: "1px solid var(--border)", color: isFirst ? "var(--border)" : "var(--text-muted)", cursor: isFirst ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
-          <button onClick={onMoveDown} disabled={isLast} style={{ width: 28, height: 28, borderRadius: 6, background: "none", border: "1px solid var(--border)", color: isLast ? "var(--border)" : "var(--text-muted)", cursor: isLast ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↓</button>
-          <button onClick={onRemove} style={{ width: 28, height: 28, borderRadius: 6, background: "none", border: "1px solid var(--border)", color: "var(--danger)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+          <button onClick={onMoveUp} disabled={isFirst} style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: isFirst ? "var(--border)" : "var(--text-muted)", cursor: isFirst ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
+          <button onClick={onMoveDown} disabled={isLast} style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: isLast ? "var(--border)" : "var(--text-muted)", cursor: isLast ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↓</button>
+          <button onClick={onRemove} style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: "var(--danger)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
         </div>
       )}
     </div>
@@ -295,18 +295,18 @@ export function ListDetailPage() {
               value={titleInput}
               onChange={(e) => setTitleInput(e.target.value.slice(0, 200))}
               placeholder="List title…"
-              style={{ fontSize: 22, fontWeight: 800, padding: "8px 12px", background: "var(--surface2)", border: `1px solid ${ACCENT_A}`, borderRadius: 8, color: "var(--text)", outline: "none" }}
+              style={{ fontSize: 22, fontWeight: 800, padding: "8px 12px", background: "var(--surface2)", border: `1px solid ${ACCENT_A}`, borderRadius: "var(--radius-md)", color: "var(--text)", outline: "none" }}
             />
             <textarea
               value={descInput}
               onChange={(e) => setDescInput(e.target.value.slice(0, 500))}
               placeholder="Description (optional)…"
               rows={2}
-              style={{ fontSize: 13, padding: "8px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)", outline: "none", resize: "vertical" }}
+              style={{ fontSize: 13, padding: "8px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", color: "var(--text)", outline: "none", resize: "vertical" }}
             />
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={saveTitle} style={{ padding: "7px 18px", borderRadius: 8, fontWeight: 700, fontSize: 13, background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`, border: "none", color: "#000", cursor: "pointer" }}>Save</button>
-              <button onClick={() => setEditingTitle(false)} style={{ padding: "7px 14px", borderRadius: 8, fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}>Cancel</button>
+              <button onClick={saveTitle} style={{ padding: "7px 18px", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: 13, background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`, border: "none", color: "#000", cursor: "pointer" }}>Save</button>
+              <button onClick={() => setEditingTitle(false)} style={{ padding: "7px 14px", borderRadius: "var(--radius-md)", fontSize: 13, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
         ) : (
@@ -321,8 +321,8 @@ export function ListDetailPage() {
             </div>
             {list.is_owner && (
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                <button onClick={() => setEditingTitle(true)} style={{ fontSize: 12, padding: "5px 12px", borderRadius: 6, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}>Edit</button>
-                <button onClick={handleDelete} disabled={deleting} style={{ fontSize: 12, padding: "5px 12px", borderRadius: 6, background: "none", border: "1px solid rgba(248,113,113,0.4)", color: "var(--danger)", cursor: "pointer" }}>
+                <button onClick={() => setEditingTitle(true)} style={{ fontSize: 12, padding: "5px 12px", borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}>Edit</button>
+                <button onClick={handleDelete} disabled={deleting} style={{ fontSize: 12, padding: "5px 12px", borderRadius: "var(--radius-sm)", background: "none", border: "1px solid rgba(248,113,113,0.4)", color: "var(--danger)", cursor: "pointer" }}>
                   {deleting ? "…" : "Delete"}
                 </button>
               </div>

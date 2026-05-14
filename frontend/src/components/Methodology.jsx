@@ -38,7 +38,7 @@ function Callout({ children }) {
       padding: "14px 16px",
       background: "rgba(217, 122, 59, 0.08)",
       border: "1px solid rgba(217, 122, 59, 0.25)",
-      borderRadius: 8,
+      borderRadius: "var(--radius-md)",
       fontSize: 13,
       lineHeight: 1.7,
       color: "var(--text-muted)",
@@ -54,7 +54,7 @@ function Formula({ children }) {
     <div style={{
       padding: "14px 20px",
       background: "var(--surface2)",
-      borderRadius: 8,
+      borderRadius: "var(--radius-md)",
       fontFamily: "monospace",
       fontSize: 14,
       color: "var(--text)",
@@ -71,7 +71,7 @@ function FeaturePill({ label }) {
     <span style={{
       display: "inline-block",
       fontSize: 11, fontWeight: 700, padding: "2px 9px",
-      borderRadius: 20,
+      borderRadius: "var(--radius-xl)",
       background: "rgba(106, 144, 181, 0.1)",
       border: "1px solid rgba(106, 144, 181, 0.3)",
       color: "#6a90b5",
@@ -364,7 +364,7 @@ export function Methodology() {
             <div key={v} style={{ display: "flex", gap: 12, fontSize: 13, lineHeight: 1.7 }}>
               <span style={{
                 fontWeight: 700, color: "#000", background: "var(--accent-b)",
-                padding: "1px 8px", borderRadius: 4, fontSize: 11, alignSelf: "flex-start", marginTop: 3, flexShrink: 0,
+                padding: "1px 8px", borderRadius: "var(--radius-sm)", fontSize: 11, alignSelf: "flex-start", marginTop: 3, flexShrink: 0,
                 textTransform: "capitalize",
               }}>{v}</span>
               <span style={{ color: "var(--text-muted)" }}>{items}</span>

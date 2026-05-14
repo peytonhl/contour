@@ -47,8 +47,8 @@ function AlbumGrid({ items, surface }) {
           onMouseLeave={(e) => e.currentTarget.style.transform = "none"}
         >
           {it.image_url
-            ? <img src={it.image_url} alt={it.name ?? ""} style={{ width: "100%", aspectRatio: "1", borderRadius: 8, objectFit: "cover" }} />
-            : <div style={{ width: "100%", aspectRatio: "1", borderRadius: 8, background: "var(--surface2)" }} />
+            ? <img src={it.image_url} alt={it.name ?? ""} style={{ width: "100%", aspectRatio: "1", borderRadius: "var(--radius-md)", objectFit: "cover" }} />
+            : <div style={{ width: "100%", aspectRatio: "1", borderRadius: "var(--radius-md)", background: "var(--surface2)" }} />
           }
           <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {it.name ?? "—"}
@@ -80,13 +80,13 @@ function ReviewList({ items, surface }) {
             style={{
               display: "flex", gap: 12, alignItems: "flex-start",
               padding: "12px 14px", background: "var(--surface)",
-              border: "1px solid var(--border)", borderRadius: 10,
+              border: "1px solid var(--border)", borderRadius: "var(--radius)",
               textDecoration: "none", color: "var(--text)",
             }}
           >
             {target?.image_url
-              ? <img src={target.image_url} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-              : <div style={{ width: 48, height: 48, borderRadius: 6, background: "var(--surface2)", flexShrink: 0 }} />
+              ? <img src={target.image_url} alt="" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+              : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
             }
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>
@@ -120,7 +120,7 @@ function SearchChips({ items, surface }) {
           onClick={() => analytics.trendingModuleClicked(surface, "search", s.query)}
           style={{
             display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "6px 14px", borderRadius: 18,
+            padding: "6px 14px", borderRadius: "var(--radius-xl)",
             background: "var(--surface)", border: "1px solid var(--border)",
             textDecoration: "none", color: "var(--text)", fontSize: 13,
           }}
@@ -182,7 +182,7 @@ export function TrendingPage() {
             key={opt.key}
             onClick={() => setWindow(opt.key)}
             style={{
-              padding: "6px 14px", borderRadius: 18,
+              padding: "6px 14px", borderRadius: "var(--radius-xl)",
               border: `1px solid ${window === opt.key ? ACCENT_A : "var(--border)"}`,
               background: window === opt.key ? `${ACCENT_A}18` : "transparent",
               color: window === opt.key ? ACCENT_A : "var(--text-muted)",

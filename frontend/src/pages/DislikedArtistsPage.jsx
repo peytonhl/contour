@@ -105,7 +105,7 @@ export function DislikedArtistsPage() {
           style={{
             width: "100%", padding: "11px 14px", fontSize: 14,
             background: "var(--surface)", border: "1px solid var(--border)",
-            borderRadius: 10, color: "var(--text)", outline: "none",
+            borderRadius: "var(--radius)", color: "var(--text)", outline: "none",
             boxSizing: "border-box",
           }}
           onFocus={(e) => e.currentTarget.style.borderColor = ACCENT}
@@ -116,7 +116,7 @@ export function DislikedArtistsPage() {
           <div style={{
             position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10,
             background: "var(--surface)", border: "1px solid var(--border)",
-            borderRadius: 10, maxHeight: 320, overflowY: "auto",
+            borderRadius: "var(--radius)", maxHeight: 320, overflowY: "auto",
             boxShadow: "0 6px 24px rgba(0,0,0,0.4)",
           }}>
             {searching && results.length === 0 && (
@@ -160,7 +160,7 @@ export function DislikedArtistsPage() {
       ) : dislikes.length === 0 ? (
         <div style={{
           padding: "40px 20px", textAlign: "center", color: "var(--text-muted)",
-          background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12,
+          background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
         }}>
           You haven't blocked any artists. Tap "Not interested" on a For You card to block one.
         </div>
@@ -176,7 +176,7 @@ export function DislikedArtistsPage() {
             <button
               onClick={clearAll}
               style={{
-                fontSize: 12, padding: "5px 10px", borderRadius: 6,
+                fontSize: 12, padding: "5px 10px", borderRadius: "var(--radius-sm)",
                 background: "none", border: "1px solid var(--border)",
                 color: "var(--text-muted)", cursor: "pointer",
               }}
@@ -189,7 +189,7 @@ export function DislikedArtistsPage() {
               <div key={a.id} style={{
                 display: "flex", alignItems: "center", gap: 12,
                 padding: "10px 14px",
-                background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10,
+                background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
               }}>
                 <Link to={`/artist/${a.id}`} style={{ flexShrink: 0 }}>
                   {a.image_url
@@ -205,7 +205,7 @@ export function DislikedArtistsPage() {
                   </Link>
                 </div>
                 <button onClick={() => removeArtist(a.id)} style={{
-                  padding: "6px 12px", borderRadius: 6, fontSize: 12,
+                  padding: "6px 12px", borderRadius: "var(--radius-sm)", fontSize: 12,
                   background: "none", border: "1px solid var(--border)",
                   color: "var(--text-muted)", cursor: "pointer",
                 }}>

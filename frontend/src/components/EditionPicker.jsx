@@ -58,7 +58,7 @@ export function EditionPicker({ album, accentColor, onEditionsChange }) {
   return (
     <div style={{
       border: `1px solid ${accentColor}33`,
-      borderRadius: 8,
+      borderRadius: "var(--radius-md)",
       overflow: "hidden",
       fontSize: 13,
     }}>
@@ -120,7 +120,7 @@ const quickBtn = (color) => ({
   fontSize: 11,
   background: "transparent",
   border: `1px solid ${color}55`,
-  borderRadius: 4,
+  borderRadius: "var(--radius-sm)",
   color: color,
   cursor: "pointer",
 });

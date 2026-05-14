@@ -38,7 +38,7 @@ export function GenreChip({ genre, selected, onToggle }) {
       onClick={() => onToggle(genre.slug)}
       style={{
         padding: "8px 16px",
-        borderRadius: 20,
+        borderRadius: "var(--radius-xl)",
         fontSize: 13,
         fontWeight: 700,
         border: `2px solid ${active ? genre.from : "var(--border)"}`,
@@ -75,7 +75,7 @@ function Dots({ total, active }) {
         <div key={i} style={{
           width: i === active ? 18 : 6,
           height: 6,
-          borderRadius: 3,
+          borderRadius: "var(--radius-sm)",
           background: i === active ? ACCENT_A : "var(--border)",
           transition: "all 0.25s",
         }} />
@@ -213,7 +213,7 @@ export function OnboardingModal() {
           boxShadow: "var(--shadow-3)",
         }}>
           {/* Drag handle */}
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--surface3)", margin: "0 auto 22px" }} />
+          <div style={{ width: 36, height: 4, borderRadius: "var(--radius-sm)", background: "var(--surface3)", margin: "0 auto 22px" }} />
 
           {/* ── Step 0: Welcome ──
               Collapsed from the previous 3-card value-prop carousel. The
@@ -241,7 +241,7 @@ export function OnboardingModal() {
               </div>
 
               <button onClick={() => { analytics.onboardingStepCompleted("value_prop", false); setStep(1); }} style={{
-                width: "100%", padding: "14px 0", borderRadius: 12,
+                width: "100%", padding: "14px 0", borderRadius: "var(--radius-lg)",
                 background: ACCENT_A, border: "none",
                 color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer",
                 letterSpacing: "0.01em",
@@ -286,14 +286,14 @@ export function OnboardingModal() {
 
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => { analytics.onboardingStepCompleted("genres", true); setStep(2); }} style={{
-                  flex: 1, padding: "12px 0", borderRadius: 12,
+                  flex: 1, padding: "12px 0", borderRadius: "var(--radius-lg)",
                   background: "none", border: "1px solid var(--border)",
                   color: "var(--text-muted)", fontSize: 14, cursor: "pointer",
                 }}>
                   Skip
                 </button>
                 <button onClick={saveGenresAndAdvance} style={{
-                  flex: 2, padding: "12px 0", borderRadius: 12,
+                  flex: 2, padding: "12px 0", borderRadius: "var(--radius-lg)",
                   background: ACCENT_A, border: "none",
                   color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
                 }}>
@@ -357,7 +357,7 @@ export function OnboardingModal() {
               </div>
 
               <button onClick={() => finishBacklogStep(false)} style={{
-                width: "100%", padding: "14px 0", borderRadius: 12,
+                width: "100%", padding: "14px 0", borderRadius: "var(--radius-lg)",
                 background: ACCENT_A, border: "none",
                 color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
               }}>

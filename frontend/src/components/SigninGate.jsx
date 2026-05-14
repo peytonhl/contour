@@ -139,7 +139,7 @@ export function SigninGate() {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <a href={LOGIN_URL} {...externalLinkProps()} style={{
             display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-            padding: "13px 20px", borderRadius: 28,
+            padding: "13px 20px", borderRadius: "var(--radius-pill)",
             background: "#fff", color: "#1f1f1f",
             fontSize: 14, fontWeight: 700, textDecoration: "none",
             border: "1px solid #dadce0",
@@ -169,7 +169,7 @@ export function SigninGate() {
           onClick={continueAsGuest}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "13px 20px", borderRadius: 28,
+            padding: "13px 20px", borderRadius: "var(--radius-pill)",
             background: "transparent",
             color: "rgba(255,255,255,0.9)",
             fontSize: 14, fontWeight: 700,

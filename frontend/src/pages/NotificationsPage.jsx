@@ -72,7 +72,7 @@ export function NotificationsPage() {
       )}
 
       {!loading && notifs.length > 0 && (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
           {notifs.map((n, i) => {
             const link = notifLink(n);
             const content = (

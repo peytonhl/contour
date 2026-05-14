@@ -70,7 +70,7 @@ function CustomTooltip({ active, payload, label, mode, nameMap }) {
     <div style={{
       background: "var(--surface)",
       border: "1px solid var(--border)",
-      borderRadius: 8,
+      borderRadius: "var(--radius-md)",
       padding: "10px 14px",
       fontSize: 13,
       lineHeight: 1.6,
@@ -117,7 +117,7 @@ export function ComparisonChart({ data, nameA, nameB, nameC, disclaimer }) {
     <div style={{
       background: "var(--surface)",
       border: "1px solid var(--border)",
-      borderRadius: 12,
+      borderRadius: "var(--radius-lg)",
       padding: "20px 16px 16px",
       display: "flex",
       flexDirection: "column",
@@ -132,7 +132,7 @@ export function ComparisonChart({ data, nameA, nameB, nameC, disclaimer }) {
           <div style={{
             display: "flex",
             background: "var(--surface2)",
-            borderRadius: 8,
+            borderRadius: "var(--radius-md)",
             overflow: "hidden",
             border: "1px solid var(--border)",
           }}>
@@ -234,7 +234,7 @@ export function ComparisonChart({ data, nameA, nameB, nameC, disclaimer }) {
           lineHeight: 1.5,
           padding: "8px 12px",
           background: "var(--surface2)",
-          borderRadius: 6,
+          borderRadius: "var(--radius-sm)",
         }}>
           <span style={{ flexShrink: 0, marginTop: 1, lineHeight: 0 }}>
             <AlertIcon size={12} />

@@ -18,7 +18,7 @@ const GOLD = "#f59e0b";
 function ListCollage({ images }) {
   const slots = [0, 1, 2, 3];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 52, height: 52, borderRadius: 8, overflow: "hidden", flexShrink: 0 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 52, height: 52, borderRadius: "var(--radius-md)", overflow: "hidden", flexShrink: 0 }}>
       {slots.map((i) =>
         images[i]
           ? <img key={i} src={images[i]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -33,7 +33,7 @@ function RatingBadge({ value }) {
   const mid = value >= 3;
   return (
     <div style={{
-      padding: "3px 10px", borderRadius: 4, fontSize: 13, fontWeight: 700, flexShrink: 0,
+      padding: "3px 10px", borderRadius: "var(--radius-sm)", fontSize: 13, fontWeight: 700, flexShrink: 0,
       background: high ? `${GOLD}18` : mid ? `${GOLD}0a` : "var(--surface2)",
       border: `1px solid ${high ? `${GOLD}50` : "var(--border)"}`,
       color: high ? GOLD : mid ? `${GOLD}99` : "var(--text-muted)",
@@ -174,7 +174,7 @@ export function UserPage() {
               onClick={handleFollow}
               disabled={followLoading}
               style={{
-                padding: "8px 28px", borderRadius: 6, fontWeight: 700, fontSize: 13,
+                padding: "8px 28px", borderRadius: "var(--radius-sm)", fontWeight: 700, fontSize: 13,
                 cursor: followLoading ? "default" : "pointer",
                 background: profile.is_following ? "var(--surface2)" : `linear-gradient(90deg, ${ACCENT}, ${ACCENT_B})`,
                 color: profile.is_following ? "var(--text-muted)" : "#000",
@@ -216,8 +216,8 @@ export function UserPage() {
             {ratings.map((r, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderBottom: "1px solid var(--border)" }}>
                 {r.entity_image_url
-                  ? <img src={r.entity_image_url} alt={r.entity_name} style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-                  : <div style={{ width: 48, height: 48, borderRadius: 6, background: "var(--surface2)", flexShrink: 0 }} />
+                  ? <img src={r.entity_image_url} alt={r.entity_name} style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                  : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                 }
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Link
@@ -249,8 +249,8 @@ export function UserPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <Link to={entityPath}>
                       {r.entity_image_url
-                        ? <img src={r.entity_image_url} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-                        : <div style={{ width: 48, height: 48, borderRadius: 6, background: "var(--surface2)", flexShrink: 0 }} />
+                        ? <img src={r.entity_image_url} alt="" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                        : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                       }
                     </Link>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -281,7 +281,7 @@ export function UserPage() {
             {lists.map((lst) => (
               <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
                 <div
-                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, transition: "border-color 0.15s" }}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", transition: "border-color 0.15s" }}
                   onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT}
                   onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
                 >
@@ -331,7 +331,7 @@ function UserList({ users, emptyText }) {
           style={{
             display: "flex", alignItems: "center", gap: 12,
             padding: "10px 14px", background: "var(--surface)",
-            border: "1px solid var(--border)", borderRadius: 10,
+            border: "1px solid var(--border)", borderRadius: "var(--radius)",
             textDecoration: "none", color: "var(--text)",
             transition: "border-color 0.15s",
           }}

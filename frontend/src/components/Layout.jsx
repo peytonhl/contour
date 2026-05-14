@@ -249,7 +249,7 @@ export function Layout() {
               {unread > 0 && (
                 <span style={{
                   position: "absolute", top: 4, right: 4,
-                  minWidth: 16, height: 16, borderRadius: 8,
+                  minWidth: 16, height: 16, borderRadius: "var(--radius-md)",
                   background: ACCENT_A, color: "#000",
                   fontSize: 10, fontWeight: 800,
                   display: "flex", alignItems: "center", justifyContent: "center",
@@ -269,7 +269,7 @@ export function Layout() {
             <>
               <a href={LOGIN_URL} {...externalLinkProps()} style={{
                 display: "flex", alignItems: "center", gap: 8,
-                padding: "6px 14px", background: "#fff", borderRadius: 20,
+                padding: "6px 14px", background: "#fff", borderRadius: "var(--radius-xl)",
                 color: "#3c3c3c", fontSize: 12, fontWeight: 600, textDecoration: "none",
                 border: "1px solid #dadce0",
               }}>
@@ -289,7 +289,7 @@ export function Layout() {
               {unread > 0 && (
                 <span style={{
                   position: "absolute", top: 6, right: 2,
-                  minWidth: 15, height: 15, borderRadius: 8,
+                  minWidth: 15, height: 15, borderRadius: "var(--radius-md)",
                   background: ACCENT_A, color: "#000",
                   fontSize: 9, fontWeight: 800,
                   display: "flex", alignItems: "center", justifyContent: "center",
@@ -307,7 +307,7 @@ export function Layout() {
             <>
               <a href={LOGIN_URL} {...externalLinkProps()} style={{
                 display: "flex", alignItems: "center", gap: 6,
-                padding: "5px 10px", background: "#fff", borderRadius: 20,
+                padding: "5px 10px", background: "#fff", borderRadius: "var(--radius-xl)",
                 color: "#3c3c3c", fontSize: 11, fontWeight: 600, textDecoration: "none",
                 border: "1px solid #dadce0",
               }}>

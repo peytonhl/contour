@@ -58,8 +58,13 @@
   --space-8: 64px;
   --space-9: 96px;
 
-  /* ── Radii ── */
+  /* ── Radii ──
+     Snap to this scale — don't reach for off-grid values. `--radius-md`
+     (8px) is here because earlier audits found ~50 places organically
+     using it; codifying it preserves the look while gaining a single
+     source of truth. */
   --radius-sm: 6px;
+  --radius-md: 8px;
   --radius: 10px;
   --radius-lg: 14px;
   --radius-xl: 20px;

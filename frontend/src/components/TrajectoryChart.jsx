@@ -30,7 +30,7 @@ function CertLabel({ viewBox, value, color, index }) {
 function CustomTooltip({ active, payload, label, mode }) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px", fontSize: 13, lineHeight: 1.6 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "10px 14px", fontSize: 13, lineHeight: 1.6 }}>
       <div style={{ color: "var(--text-muted)", marginBottom: 6, fontSize: 12 }}>Day {label}</div>
       <div style={{ color: "var(--accent-a)" }}>
         {mode === "normalized"
@@ -52,11 +52,11 @@ export function TrajectoryChart({ trajectory, milestones = [], accentColor = "va
   });
 
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 16px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "20px 16px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.04em" }}>VIEW</span>
-          <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", background: "var(--surface2)", borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--border)" }}>
             {[["normalized", "Normalized"], ["raw", "Raw Streams"]].map(([val, lbl]) => (
               <button key={val} onClick={() => setMode(val)} style={{
                 padding: "7px 16px", background: mode === val ? accentColor : "transparent",
@@ -89,7 +89,7 @@ export function TrajectoryChart({ trajectory, milestones = [], accentColor = "va
       </ResponsiveContainer>
 
       {disclaimer && (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, color: "var(--text-muted)", fontStyle: "italic", lineHeight: 1.5, padding: "8px 12px", background: "var(--surface2)", borderRadius: 6 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, color: "var(--text-muted)", fontStyle: "italic", lineHeight: 1.5, padding: "8px 12px", background: "var(--surface2)", borderRadius: "var(--radius-sm)" }}>
           <span style={{ flexShrink: 0, marginTop: 1, lineHeight: 0 }}>
             <AlertIcon size={12} />
           </span>
