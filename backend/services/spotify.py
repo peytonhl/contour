@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import math
 import random
 import time
 from pathlib import Path
@@ -603,7 +604,11 @@ async def get_new_releases(limit: int = 10) -> list[dict]:
     return albums[:limit]
 
 
-async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
+async def search_tracks_by_genre(
+    genre: str,
+    limit: int = 20,
+    target_popularity: float | None = None,
+) -> list[dict]:
     """
     Genre-based track search with popularity-weighted sampling.
 
@@ -622,20 +627,29 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
          single digits.
 
       2. WEIGHTED SAMPLE (per call, fresh randomness). Sample `limit`
-         tracks from the pool without replacement, weighted by
-             w(t) = (popularity + 10) ** 0.7
-         The exponent < 1 flattens the curve so the tail has real
-         probability. Numerical feel:
-             popularity 85 → weight ≈ 23
-             popularity 50 → weight ≈ 17
-             popularity 15 → weight ≈ 9
-             popularity  5 → weight ≈ 6
-         So a chart track is ~3-4x more likely than a popularity-5
-         deep cut to land in a given slot — not 17x as linear weighting
-         would give, not 1x as uniform would give. Niche users keep
-         seeing popular-of-the-niche AND obscure-of-the-niche in every
-         batch, and the long tail is in genuine rotation rather than
-         being a 1/3 lottery for the whole call.
+         tracks from the pool without replacement, weighted by a Laplace
+         curve centered on the caller's preferred popularity:
+             w(t) = exp(-|popularity(t) - target| / spread)
+         with spread = 50 (gentle decay).
+
+         `target_popularity` is the user's avg popularity-score across
+         their 4–5★ rated tracks (computed in discover.py from the
+         Rating join over TrackCache). Defaults to 70 when None — a
+         mild mainstream lean appropriate for cold-start users with no
+         signal yet. As the user rates, the curve adapts: a user whose
+         avg liked-track popularity is 25 (consistent niche taste) sees
+         pop-25 tracks ~38% of batches and chart-100 tracks only ~10%
+         — pop dominance reversed without becoming uniform random.
+
+         Numerical feel at target=70, spread=50:
+             popularity 100 → weight 0.55
+             popularity  70 → weight 1.00 (peak)
+             popularity  30 → weight 0.45
+             popularity   0 → weight 0.25
+         And at target=25, spread=50:
+             popularity 100 → weight 0.22
+             popularity  25 → weight 1.00 (peak)
+             popularity   0 → weight 0.61
 
       Sampling uses Efraimidis-Spirakis: key = U ** (1/w), sort
       descending, take top N. Standard weighted-reservoir-without-
@@ -645,13 +659,15 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
 
       Pool fetch is cached because it's the expensive part (3 Spotify
       calls). Sampling is per-call so every batch sees a different
-      cross-section of the same pool.
+      cross-section of the same pool — AND the curve is per-user so
+      two users with the same seed genre but different rating histories
+      see different cross-sections.
 
       Earlier versions: `{genre} hits` (forced popularity skew + the
-      word "hits" prepended into the query — niche users saw chart-of-
-      niche every batch); then a per-call random.choice between three
-      queries (better but still 1/3 chance of an all-mainstream batch
-      for the whole genre tier).
+      word "hits" prepended into the query); per-call random.choice
+      between three query variants (1/3-chance batches were all-one-
+      kind); then a fixed `w(p) = (p+10)**0.7` curve (popular favored
+      but uniform across users, no adaptation to taste).
     """
     cache_key = f"spotify:genre_pool_v2:{genre}"
     pool = await redis_cache.get(cache_key)
@@ -692,17 +708,29 @@ async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
     if not pool:
         return []
 
+    # Clamp target to the actual popularity range so a stray value
+    # doesn't put the Laplace peak off the curve entirely.
+    target = 70.0 if target_popularity is None else float(target_popularity)
+    target = max(0.0, min(100.0, target))
+    spread = 50.0
+
     def _weight(t: dict) -> float:
-        # popularity can be None for very obscure tracks; treat as mid-low
-        # so they're in play but not over-weighted.
+        # popularity can be None for very obscure tracks; treat as 30 so
+        # they're in play but not over-weighted toward the niche side.
         p = t.get("popularity")
         if p is None:
             p = 30
-        return (p + 10) ** 0.7
+        return math.exp(-abs(p - target) / spread)
 
     # random.random() returns [0.0, 1.0). 0.0 ** anything = 0 which sorts
-    # to the bottom — fine, just means that track loses this round.
-    keyed = [(random.random() ** (1.0 / _weight(t)), t) for t in pool]
+    # to the bottom — fine, just means that track loses this round. The
+    # max(weight, 1e-6) guard prevents 1.0/weight from blowing up if the
+    # curve ever produces a vanishingly small number (shouldn't happen at
+    # spread=50, but cheap insurance).
+    keyed = [
+        (random.random() ** (1.0 / max(_weight(t), 1e-6)), t)
+        for t in pool
+    ]
     keyed.sort(key=lambda x: x[0], reverse=True)
     return [t for _, t in keyed[:limit]]
 

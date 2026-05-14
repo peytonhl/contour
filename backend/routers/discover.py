@@ -46,11 +46,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Request
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Rating, UserTasteProfile
+from models import Rating, TrackCache, UserTasteProfile
 from routers.auth import optional_user_id
 from services import spotify
 from services import deezer as deezer_svc
@@ -80,6 +80,39 @@ def _is_likely_english(text: str) -> bool:
         return True
     non_ascii = sum(1 for c in text if ord(c) > 127)
     return (non_ascii / len(text)) < 0.3
+
+
+async def _compute_target_popularity(db: AsyncSession, user_id: str) -> float | None:
+    """
+    Average Spotify popularity (0–100) of the tracks this user has rated 4–5★.
+
+    Drives the per-user popularity curve in spotify.search_tracks_by_genre.
+    A user whose high-rated tracks average to popularity ~25 (consistent
+    niche taste) gets a sampling curve peaked at 25; one whose average is
+    ~80 (mainstream-listener) gets a curve peaked at 80. Returns None if
+    the user has zero high ratings of tracks we have popularity data for,
+    in which case the genre search falls back to a target=70 default
+    (mild mainstream lean — fine for cold-start).
+
+    Cheap indexed join (ratings.user_id + track_cache.spotify_id are both
+    indexed). Run on every /feed call; no caching beyond what SQLAlchemy's
+    session does — the value drifts slowly enough that staleness inside a
+    single request isn't a concern, and recomputing keeps it honest as
+    the user rates more tracks.
+    """
+    row = await db.execute(
+        select(func.avg(TrackCache.popularity))
+        .select_from(Rating)
+        .join(TrackCache, Rating.entity_id == TrackCache.spotify_id)
+        .where(
+            Rating.user_id == user_id,
+            Rating.entity_type == "track",
+            Rating.value >= 4.0,
+            TrackCache.popularity.is_not(None),
+        )
+    )
+    avg = row.scalar()
+    return float(avg) if avg is not None else None
 
 
 def _flatten_shuffle_add(results: list, adder) -> None:
@@ -177,6 +210,21 @@ async def get_discover_feed(
     # rating shouldn't blackhole an artist from popular charts.
     soft_excluded = disliked_set | down_weighted_set
 
+    # Per-user popularity target. A user whose 4–5★ track ratings average
+    # to popularity=25 has signaled niche-leaning taste; the Laplace curve
+    # inside search_tracks_by_genre will peak there. None → cold-start
+    # default (target=70, mild mainstream lean). Only relevant for tiers
+    # 1 and 2 — tiers 3–5 are mainstream chart baselines by definition.
+    target_popularity: float | None = None
+    if user_id:
+        try:
+            target_popularity = await _compute_target_popularity(db, user_id)
+        except Exception:
+            # If TrackCache hasn't been populated for any of this user's
+            # rated tracks yet (e.g. fresh DB on a new deploy), fall back
+            # silently to the cold-start default.
+            target_popularity = None
+
     tracks: list[dict] = []
     seen: set[str] = set()
 
@@ -234,19 +282,20 @@ async def get_discover_feed(
         seed_genres = list(dict.fromkeys(seed_genres))[:3]
         if seed_genres:
             seed_genre_results = await asyncio.gather(*[
-                spotify.search_tracks_by_genre(g, limit=15)
+                spotify.search_tracks_by_genre(g, limit=15, target_popularity=target_popularity)
                 for g in seed_genres
             ], return_exceptions=True)
             _flatten_shuffle_add(seed_genre_results, add_personalized)
             logger.info(
-                "discover: tier1 (seed-artist genre pivot) → %d tracks (sample=%s, genres=%s)",
+                "discover: tier1 (seed-artist genre pivot) → %d tracks (sample=%s, genres=%s, target_pop=%s)",
                 len(tracks) - tier1_added_before, seed_sample, seed_genres,
+                f"{target_popularity:.1f}" if target_popularity is not None else "default",
             )
 
     # ── Tier 2: Profile-genre search ─────────────────────────────────────────
     if genre_list and len(tracks) < limit:
         genre_results = await asyncio.gather(*[
-            spotify.search_tracks_by_genre(g, limit=15)
+            spotify.search_tracks_by_genre(g, limit=15, target_popularity=target_popularity)
             for g in genre_list[:3]
         ], return_exceptions=True)
         _flatten_shuffle_add(genre_results, add_personalized)
@@ -292,9 +341,11 @@ async def get_discover_feed(
                 break
 
     logger.info(
-        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, genres=%s)",
+        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, target_pop=%s, genres=%s)",
         len(tracks), len(exclude_ids), len(seed_artist_ids),
-        len(disliked_set), len(down_weighted_set), genre_list[:2],
+        len(disliked_set), len(down_weighted_set),
+        f"{target_popularity:.1f}" if target_popularity is not None else "default",
+        genre_list[:2],
     )
 
     if not tracks:
