@@ -838,10 +838,20 @@ async def search_tracks_by_genre(
             }
 
             def _has_genre_keyword(t):
+                # Track name + artist name only. Album name is intentionally
+                # excluded — diagnostic showed it has a high false-positive
+                # rate on compilation albums: Beethoven's Für Elise from
+                # "Classical Best Of", Bach's Orchestral Suite from
+                # "Classical Music in Bloom", Gymnopédie from "Classical
+                # Baby : Classical Lullabies" — all legit classical tracks
+                # we'd be dropping because someone's compilation namesake
+                # uses the genre word. The keyword-stuffing problem we
+                # actually want to catch is in track titles ("Classical
+                # Dragon" by a metal band) and artist names ("Hip-hop/Jwk")
+                # — those stay filtered.
                 fields = [
                     (t.get("name") or "").lower(),
                     " ".join(t.get("artists") or []).lower(),
-                    (t.get("album_name") or "").lower(),
                 ]
                 return any(
                     kw and any(kw in f for f in fields)

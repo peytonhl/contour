@@ -581,10 +581,12 @@ async def test_genre_search(
     }
 
     def _has_genre_keyword(t: dict) -> bool:
+        # Mirror the production filter: track + artist only, NOT album_name.
+        # Compilation albums named "Classical Best Of" etc. were producing
+        # false positives that dropped legit Beethoven / Bach tracks.
         fields = [
             (t.get("name") or "").lower(),
             " ".join(t.get("artists") or []).lower(),
-            (t.get("album_name") or "").lower(),
         ]
         return any(
             kw and any(kw in f for f in fields)
