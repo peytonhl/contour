@@ -249,6 +249,16 @@ async def debug_version():
     except Exception:
         sweeper_stats = None
 
+    # Pull the persistence-layer counters too. Sweeper reports "processed"
+    # rows but that only means _enrich_album returned without raising —
+    # save_kworb_streams may have silently early-returned if the row
+    # lookup didn't match. These counters tell us which branch fired.
+    try:
+        from services.album_cache import SAVE_STATS as _SAVE_STATS
+        save_stats = dict(_SAVE_STATS)
+    except Exception:
+        save_stats = None
+
     return {
         "git_sha": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown"),
         "git_branch": os.environ.get("RAILWAY_GIT_BRANCH", "unknown"),
@@ -262,6 +272,7 @@ async def debug_version():
         "sweeper_state": sweeper_state,
         "sweeper_exception": sweeper_exception,
         "sweeper_stats": sweeper_stats,
+        "save_stats": save_stats,
         "now_utc": now,
     }
 
