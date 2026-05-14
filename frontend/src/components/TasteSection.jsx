@@ -318,7 +318,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
               </div>
             )}
             {searchError && (
-              <div style={{ textAlign: "center", color: "#f87171", padding: "16px 24px", fontSize: 13 }}>
+              <div style={{ textAlign: "center", color: "var(--danger)", padding: "16px 24px", fontSize: 13 }}>
                 {searchError}
               </div>
             )}

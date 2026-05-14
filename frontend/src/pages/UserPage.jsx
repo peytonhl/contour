@@ -9,6 +9,7 @@ import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeChips } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
+import { EmptyHint } from "../components/Skeleton.jsx";
 
 const ACCENT = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -211,9 +212,7 @@ export function UserPage() {
         {/* ── Ratings ── */}
         {tab === "ratings" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {ratings.length === 0 && (
-              <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>No ratings yet.</p>
-            )}
+            {ratings.length === 0 && <EmptyHint>No ratings yet.</EmptyHint>}
             {ratings.map((r, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderBottom: "1px solid var(--border)" }}>
                 {r.entity_image_url
@@ -242,9 +241,7 @@ export function UserPage() {
         {/* ── Reviews ── */}
         {tab === "reviews" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {reviews.length === 0 && (
-              <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>No reviews yet.</p>
-            )}
+            {reviews.length === 0 && <EmptyHint>No reviews yet.</EmptyHint>}
             {reviews.map((r) => {
               const entityPath = `/${r.entity_type}/${r.entity_id}`;
               return (
@@ -280,9 +277,7 @@ export function UserPage() {
         {/* ── Lists ── */}
         {tab === "lists" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {lists.length === 0 && (
-              <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>No lists yet.</p>
-            )}
+            {lists.length === 0 && <EmptyHint>No lists yet.</EmptyHint>}
             {lists.map((lst) => (
               <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
                 <div

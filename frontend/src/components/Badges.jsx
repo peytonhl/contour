@@ -1,10 +1,16 @@
 import { Link } from "react-router-dom";
+import { PenIcon, TrendingUpIcon, UsersIcon } from "./Icons";
 
 // ── Badge definitions ─────────────────────────────────────────────────────────
+// All three badges share the brand-amber accent. Differentiation is purely by
+// glyph + label — a deliberate choice over the old emoji-and-three-different-
+// colors treatment, which read as gamified and visually noisy. If we ever
+// introduce tiering (gold-tier elite, etc.), add a `tone` field here rather
+// than reintroducing per-badge colors.
 export const BADGE_DEFS = [
-  { key: "critics",      emoji: "✍️",  label: "Top Critic",     color: "#d97a3b", title: "Top 5 most reviews written" },
-  { key: "influencers",  emoji: "⬆️",  label: "Influential",    color: "#6a90b5", title: "Top 5 most upvotes received" },
-  { key: "connectors",   emoji: "👥",  label: "Most Followed",  color: "#fb923c", title: "Top 5 most followers" },
+  { key: "critics",     Icon: PenIcon,        label: "Top Critic",    title: "Top 5 most reviews written" },
+  { key: "influencers", Icon: TrendingUpIcon, label: "Influential",   title: "Top 5 most upvotes received" },
+  { key: "connectors",  Icon: UsersIcon,      label: "Most Followed", title: "Top 5 most followers" },
 ];
 
 /**
@@ -21,8 +27,9 @@ export function getBadgesForUser(badges, userId) {
 export function BadgeChips({ badges, userId, size = "sm" }) {
   const held = getBadgesForUser(badges, userId);
   if (!held.length) return null;
-  const fs = size === "sm" ? 10 : 12;
-  const pad = size === "sm" ? "2px 7px" : "3px 10px";
+  const fs = size === "sm" ? 11 : 12;
+  const pad = size === "sm" ? "2px 8px 2px 7px" : "3px 10px 3px 9px";
+  const iconSize = size === "sm" ? 11 : 13;
   return (
     <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
       {held.map((b) => (
@@ -30,15 +37,18 @@ export function BadgeChips({ badges, userId, size = "sm" }) {
           key={b.key}
           title={b.title}
           style={{
-            fontSize: fs, fontWeight: 700, padding: pad,
-            borderRadius: 20,
-            background: `${b.color}18`,
-            border: `1px solid ${b.color}50`,
-            color: b.color,
+            display: "inline-flex", alignItems: "center", gap: 5,
+            fontSize: fs, fontWeight: 600, padding: pad,
+            borderRadius: "var(--radius-pill)",
+            background: "var(--accent-a-dim)",
+            border: "1px solid rgba(217, 122, 59, 0.32)",
+            color: "var(--accent-a)",
             whiteSpace: "nowrap",
+            lineHeight: 1,
           }}
         >
-          {b.emoji} {b.label}
+          <b.Icon size={iconSize} />
+          {b.label}
         </span>
       ))}
     </span>
@@ -55,11 +65,14 @@ export function BadgeLeaderboard({ badges }) {
     <div style={{
       background: "var(--surface)",
       border: "1px solid var(--border)",
-      borderRadius: 12,
-      padding: "16px 18px",
-      marginBottom: 20,
+      borderRadius: "var(--radius-lg)",
+      padding: "var(--space-4) 18px",
+      marginBottom: "var(--space-5)",
     }}>
-      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 14 }}>
+      <div style={{
+        fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.06em",
+        textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 14,
+      }}>
         Community Top 5
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -68,20 +81,28 @@ export function BadgeLeaderboard({ badges }) {
           if (!list.length) return null;
           return (
             <div key={def.key}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 13 }}>{def.emoji}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: def.color, letterSpacing: "0.04em", textTransform: "uppercase" }}>{def.label}</span>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6, marginBottom: 8,
+                color: "var(--accent-a)",
+              }}>
+                <def.Icon size={13} />
+                <span style={{
+                  fontSize: "var(--text-xs)", fontWeight: 700,
+                  letterSpacing: "0.04em", textTransform: "uppercase",
+                }}>
+                  {def.label}
+                </span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {list.map((u, i) => (
                   <Link key={u.id} to={`/user/${u.id}`} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 14, flexShrink: 0 }}>#{i + 1}</span>
+                    <span style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--text-muted)", width: 14, flexShrink: 0 }}>#{i + 1}</span>
                     {u.image_url
                       ? <img src={u.image_url} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                       : <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
                     }
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name}</span>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{u.score}</span>
+                    <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name}</span>
+                    <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", flexShrink: 0 }}>{u.score}</span>
                   </Link>
                 ))}
               </div>

@@ -1,3 +1,5 @@
+import { AlertIcon } from "./Icons";
+
 const styles = {
   card: {
     background: "var(--surface)",
@@ -79,6 +81,9 @@ const styles = {
     border: "1px solid rgba(245, 158, 11, 0.3)",
   },
   warning: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 6,
     fontSize: 11,
     color: "var(--text-muted)",
     fontStyle: "italic",
@@ -167,7 +172,12 @@ export function AlbumCard({ meta, accentColor, enriching, detailLink }) {
       </div>
 
       {meta.stream_warning && (
-        <div style={styles.warning}>⚠ {meta.stream_warning}</div>
+        <div style={styles.warning}>
+          <span style={{ flexShrink: 0, marginTop: 1, lineHeight: 0 }}>
+            <AlertIcon size={12} />
+          </span>
+          <span>{meta.stream_warning}</span>
+        </div>
       )}
     </div>
   );

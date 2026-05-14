@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
+import { AlertIcon } from "./Icons";
 
 const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -224,6 +225,9 @@ export function ComparisonChart({ data, nameA, nameB, nameC, disclaimer }) {
 
       {disclaimer && (
         <div style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 6,
           fontSize: 11,
           color: "var(--text-muted)",
           fontStyle: "italic",
@@ -232,7 +236,10 @@ export function ComparisonChart({ data, nameA, nameB, nameC, disclaimer }) {
           background: "var(--surface2)",
           borderRadius: 6,
         }}>
-          ⚠ {disclaimer}
+          <span style={{ flexShrink: 0, marginTop: 1, lineHeight: 0 }}>
+            <AlertIcon size={12} />
+          </span>
+          <span>{disclaimer}</span>
         </div>
       )}
     </div>

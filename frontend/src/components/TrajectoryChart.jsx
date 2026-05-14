@@ -3,6 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
+import { AlertIcon } from "./Icons";
 
 function formatYAxis(val, mode) {
   if (mode === "normalized") {
@@ -88,8 +89,11 @@ export function TrajectoryChart({ trajectory, milestones = [], accentColor = "va
       </ResponsiveContainer>
 
       {disclaimer && (
-        <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic", lineHeight: 1.5, padding: "8px 12px", background: "var(--surface2)", borderRadius: 6 }}>
-          ⚠ {disclaimer}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, color: "var(--text-muted)", fontStyle: "italic", lineHeight: 1.5, padding: "8px 12px", background: "var(--surface2)", borderRadius: 6 }}>
+          <span style={{ flexShrink: 0, marginTop: 1, lineHeight: 0 }}>
+            <AlertIcon size={12} />
+          </span>
+          <span>{disclaimer}</span>
         </div>
       )}
     </div>

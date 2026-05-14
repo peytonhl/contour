@@ -8,6 +8,7 @@ import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeChips } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
+import { EmptyHint } from "../components/Skeleton.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#d97a3b";
@@ -584,7 +585,7 @@ export function ProfilePage() {
               Leave blank to reset to your Google photo.
             </p>
 
-            {photoError && <p style={{ margin: 0, fontSize: 12, color: "#f87171" }}>{photoError}</p>}
+            {photoError && <p style={{ margin: 0, fontSize: 12, color: "var(--danger)" }}>{photoError}</p>}
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
@@ -621,9 +622,7 @@ export function ProfilePage() {
         {/* ── Ratings ── */}
         {tab === "ratings" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {!profile?.ratings?.length && (
-              <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>No ratings yet.</p>
-            )}
+            {!profile?.ratings?.length && <EmptyHint>No ratings yet.</EmptyHint>}
             {profile?.ratings?.map((r, i) => (
               <EntityRow key={i} item={r} right={<RatingBadge value={r.value} />} />
             ))}
@@ -633,9 +632,7 @@ export function ProfilePage() {
         {/* ── Reviews ── */}
         {tab === "reviews" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {!profile?.reviews?.length && (
-              <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>No reviews yet.</p>
-            )}
+            {!profile?.reviews?.length && <EmptyHint>No reviews yet.</EmptyHint>}
             {profile?.reviews?.map((r, i) => (
               <div key={i} style={{ padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
                 <EntityRow item={r} right={r.value ? <RatingBadge value={r.value} /> : null} />
@@ -699,9 +696,7 @@ export function ProfilePage() {
               </div>
             )}
 
-            {lists.length === 0 && (
-              <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "8px 0" }}>No lists yet.</p>
-            )}
+            {lists.length === 0 && <EmptyHint dense>No lists yet.</EmptyHint>}
 
             {lists.map((lst) => (
               <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
@@ -752,7 +747,7 @@ export function ProfilePage() {
         {/* ── Followers ── */}
         {tab === "followers" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {!followers.length && <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>No followers yet.</p>}
+            {!followers.length && <EmptyHint>No followers yet.</EmptyHint>}
             {followers.map((u) => (
               <Link
                 key={u.id}

@@ -147,7 +147,7 @@ export function ImportPage() {
             />
           </label>
 
-          {error && <p style={{ color: "#f87171", fontSize: 13, marginTop: 12 }}>{error}</p>}
+          {error && <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 12 }}>{error}</p>}
 
           <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
             <Link

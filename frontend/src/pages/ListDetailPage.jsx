@@ -178,7 +178,7 @@ function ListItemRow({ item, index, isOwner, isRanked, onMoveUp, onMoveDown, onR
         <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
           <button onClick={onMoveUp} disabled={isFirst} style={{ width: 28, height: 28, borderRadius: 6, background: "none", border: "1px solid var(--border)", color: isFirst ? "var(--border)" : "var(--text-muted)", cursor: isFirst ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
           <button onClick={onMoveDown} disabled={isLast} style={{ width: 28, height: 28, borderRadius: 6, background: "none", border: "1px solid var(--border)", color: isLast ? "var(--border)" : "var(--text-muted)", cursor: isLast ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↓</button>
-          <button onClick={onRemove} style={{ width: 28, height: 28, borderRadius: 6, background: "none", border: "1px solid var(--border)", color: "#f87171", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+          <button onClick={onRemove} style={{ width: 28, height: 28, borderRadius: 6, background: "none", border: "1px solid var(--border)", color: "var(--danger)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
         </div>
       )}
     </div>
@@ -322,7 +322,7 @@ export function ListDetailPage() {
             {list.is_owner && (
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                 <button onClick={() => setEditingTitle(true)} style={{ fontSize: 12, padding: "5px 12px", borderRadius: 6, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}>Edit</button>
-                <button onClick={handleDelete} disabled={deleting} style={{ fontSize: 12, padding: "5px 12px", borderRadius: 6, background: "none", border: "1px solid rgba(248,113,113,0.4)", color: "#f87171", cursor: "pointer" }}>
+                <button onClick={handleDelete} disabled={deleting} style={{ fontSize: 12, padding: "5px 12px", borderRadius: 6, background: "none", border: "1px solid rgba(248,113,113,0.4)", color: "var(--danger)", cursor: "pointer" }}>
                   {deleting ? "…" : "Delete"}
                 </button>
               </div>
