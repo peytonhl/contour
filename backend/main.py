@@ -104,12 +104,34 @@ async def _seed_compare_page_albums() -> None:
 
 
 
+# Module-level boot marker. Set when the @app.on_event("startup") hook
+# finishes successfully. Exposed via /debug/version so an external probe
+# (e.g. curl from outside Railway) can tell whether the current container
+# completed its startup without needing access to Railway logs.
+_STARTUP_STATE: dict = {
+    "import_time_utc": __import__("time").time(),
+    "stage": "not-started",   # set step-by-step in startup()
+    "complete": False,
+    "complete_at_utc": None,
+    "sweeper_scheduled": False,
+}
+
+
 @app.on_event("startup")
 async def startup():
-    # Run pending Alembic migrations so every deploy is schema-current.
-    # This keeps user data (reviews, ratings, follows) safe — we never drop
-    # tables, only add columns / new tables as migrations land.
-    # Falls back to create_all if alembic.ini is missing (e.g. CI environments).
+    # PROGRESS BEACONS — each stage writes its name into _STARTUP_STATE and
+    # logs an "[startup] entering: X" line. If production gets stuck at
+    # stage "Y", both /debug/version (external) and Railway logs (internal)
+    # surface "Y" before hanging — pinpointing the broken stage without
+    # needing a stack trace. Previously the startup hang happened
+    # somewhere between "Waiting for application startup" and the next
+    # "Started server process" with no signal which stage held the lock.
+    def _enter(stage: str) -> None:
+        _STARTUP_STATE["stage"] = stage
+        logger.info("[startup] entering: %s", stage)
+
+    _enter("alembic_migrations")
+
     alembic_ini = os.path.join(os.path.dirname(__file__), "alembic.ini")
     if os.path.exists(alembic_ini):
         try:
@@ -125,27 +147,29 @@ async def startup():
         except Exception as exc:
             logger.warning("Alembic migration failed: %s", exc)
 
-    # Always run create_all as a safety net for models not yet covered by
-    # Alembic migrations (e.g. UserTasteProfile added without a migration file).
-    # SQLAlchemy create_all is idempotent — it only creates tables that are
-    # missing; it never drops or alters existing ones.
+    _enter("init_db_create_all")
+    # SQLAlchemy create_all as a safety net for models not yet covered by
+    # Alembic migrations. Idempotent — only creates missing tables.
     await init_db()
 
-    # Pre-cache the exact Compare page preset albums in the background.
-    # Running as a task so startup isn't blocked if Spotify is slow.
+    _enter("schedule_compare_seed")
     asyncio.create_task(_seed_compare_page_albums())
 
-    # Enrichment safety-net sweeper — picks up any AlbumCache rows stuck on
-    # pending/failed status and re-runs the enrichment pipeline against them.
-    # Pairs with the inline spawn_enrichment() in routers/albums.py: the
-    # inline path handles fresh views, the sweeper guarantees nothing gets
-    # permanently stuck if an inline task drops.
-    from services import enrichment_sweeper
-    asyncio.create_task(enrichment_sweeper.run_forever())
+    _enter("schedule_enrichment_sweeper")
+    # Wrap in try/except so a sweeper import error / scheduling error can't
+    # kill the whole startup. The app should serve traffic even if the
+    # background sweeper isn't running — sweeper is defense-in-depth, not
+    # the only enrichment path.
+    try:
+        from services import enrichment_sweeper
+        asyncio.create_task(enrichment_sweeper.run_forever())
+        _STARTUP_STATE["sweeper_scheduled"] = True
+    except Exception as exc:
+        logger.warning("Enrichment sweeper failed to schedule (non-fatal): %s", exc)
 
-    # One-time cleanup: delete ratings/reviews whose entity_id is a pure numeric
-    # string (Deezer IDs that leaked in via the /review endpoint before validation
-    # was added).  Idempotent — safe to run on every startup until rows are gone.
+    _enter("cleanup_numeric_entity_ids")
+    # One-time cleanup: delete ratings/reviews whose entity_id is a pure
+    # numeric string (Deezer IDs that leaked in before validation).
     try:
         from sqlalchemy import text
         async with AsyncSessionLocal() as _db:
@@ -166,7 +190,37 @@ async def startup():
     except Exception as exc:
         logger.warning("Startup cleanup failed (non-fatal): %s", exc)
 
+    _enter("complete")
+    _STARTUP_STATE["complete"] = True
+    _STARTUP_STATE["complete_at_utc"] = __import__("time").time()
     logger.info("=== Contour startup complete — app is ready to serve requests ===")
+
+
+@app.get("/debug/version")
+async def debug_version():
+    """Identifying info about the running container.
+
+    Exists so an external probe can answer "is the new deploy actually
+    serving traffic?" without depending on Railway's log UI. Reads
+    RAILWAY_GIT_COMMIT_SHA (set automatically by Railway at build time)
+    plus the _STARTUP_STATE markers the startup hook writes as it
+    progresses. If `stage` is anything other than "complete" and
+    `complete` is False, that container is wedged mid-startup.
+    """
+    import time as _time
+    now = _time.time()
+    return {
+        "git_sha": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown"),
+        "git_branch": os.environ.get("RAILWAY_GIT_BRANCH", "unknown"),
+        "deployment_id": os.environ.get("RAILWAY_DEPLOYMENT_ID", "unknown"),
+        "module_import_utc": _STARTUP_STATE["import_time_utc"],
+        "uptime_seconds": int(now - _STARTUP_STATE["import_time_utc"]),
+        "startup_stage": _STARTUP_STATE["stage"],
+        "startup_complete": _STARTUP_STATE["complete"],
+        "startup_complete_at_utc": _STARTUP_STATE["complete_at_utc"],
+        "sweeper_scheduled": _STARTUP_STATE["sweeper_scheduled"],
+        "now_utc": now,
+    }
 
 
 @app.get("/health")
