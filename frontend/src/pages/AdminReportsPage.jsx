@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
-const ACCENT = "#a78bfa";
+const ACCENT = "#d97a3b";
 const DANGER = "#f87171";
-const GREEN = "#34d399";
+const GREEN = "#6a90b5";
 
 const REASON_LABEL = {
   spam: "Spam",
@@ -103,7 +103,7 @@ export function AdminReportsPage() {
                 <span style={{
                   fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
                   padding: "3px 8px", borderRadius: 4,
-                  background: r.target_type === "review" ? "rgba(167,139,250,0.18)" : "rgba(52,211,153,0.18)",
+                  background: r.target_type === "review" ? "rgba(217,122,59,0.18)" : "rgba(106,144,181,0.18)",
                   color: r.target_type === "review" ? ACCENT : GREEN,
                 }}>
                   {r.target_type}

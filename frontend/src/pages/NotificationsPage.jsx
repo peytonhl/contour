@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
-const ACCENT_A = "#a78bfa";
+const ACCENT_A = "#d97a3b";
 
 function timeAgo(iso) {
   // Backend serializes naive UTC; treat tz-less strings as UTC so non-UTC

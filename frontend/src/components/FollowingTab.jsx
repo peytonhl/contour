@@ -7,9 +7,9 @@ import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
 
 const GOLD = "#f59e0b";
-const ACCENT_A = "#a78bfa";
+const ACCENT_A = "#d97a3b";
 
-const ENTITY_COLOR = { album: ACCENT_A, track: "#34d399", artist: "#fb923c" };
+const ENTITY_COLOR = { album: ACCENT_A, track: "#6a90b5", artist: "#fb923c" };
 
 function timeAgo(iso) {
   // Backend serializes naive UTC; treat tz-less strings as UTC so non-UTC

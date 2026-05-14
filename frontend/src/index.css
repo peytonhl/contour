@@ -19,13 +19,19 @@
   --text: #fafafa;
   --text-muted: #a1a1aa;
   --text-dim: #71717a;
-  --accent: #a78bfa;        /* Primary brand accent (alias for --accent-a) */
-  --accent-a: #a78bfa;      /* violet — album A */
-  --accent-b: #34d399;      /* emerald — album B */
-  --accent-a-dim: rgba(167, 139, 250, 0.15);
-  --accent-b-dim: rgba(52, 211, 153, 0.15);
+  --accent: #d97a3b;        /* Primary brand accent (alias for --accent-a) */
+  --accent-a: #d97a3b;      /* warm amber — album A, from logo */
+  --accent-b: #6a90b5;      /* dusty cobalt — album B, from logo */
+  --accent-a-dim: rgba(217, 122, 59, 0.15);
+  --accent-b-dim: rgba(106, 144, 181, 0.15);
   --gold: #f59e0b;
   --danger: #f87171;
+
+  /* ── Display type ──
+     Instrument Serif loaded via index.html. Used on the wordmark, page H1s,
+     and the Era Score number. Body type stays on the system stack so most
+     of the UI remains legible at small sizes. */
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
 
   /* ── Type scale ──
      8 steps. Stick to these — avoid arbitrary px values in components.
@@ -97,11 +103,29 @@
 }
 
 /* ── Typography helpers ──
-   Predefined size+weight combos for headings. Use these as className OR
-   inline style references — they keep type rhythm consistent across pages. */
+   Headings use Instrument Serif — an editorial serif that gives the app
+   typographic personality instead of the system-sans look every AI-generated
+   site shares. Body text stays on the system stack for legibility at small
+   sizes. Letter-spacing is gentler than the geometric default because serifs
+   want a little more breathing room. */
 h1, h2, h3, h4, h5, h6 {
-  letter-spacing: -0.02em;
-  line-height: 1.15;
+  font-family: var(--font-display);
+  font-weight: 400;             /* serif looks heavy at 700; 400 reads as elegant */
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+/* ── Display helper ──
+   Apply to a numeric stat or a one-off display element when you want the
+   serif treatment without it being a semantic heading. */
+.display, .font-display {
+  font-family: var(--font-display);
+}
+
+/* ── Numeric tabular ──
+   Stat blocks want stable digit width so tickers don't shimmy. */
+.tnum, .font-tnum {
+  font-variant-numeric: tabular-nums;
 }
 
 body {

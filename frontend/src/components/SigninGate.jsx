@@ -10,8 +10,8 @@ import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 // away from this gate's render path).
 const GUEST_MODE_KEY = "contour_guest_mode";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 
 // Helpers exported for reuse in other components (e.g. action handlers that
 // need to flip a guest user into a "sign in to continue" state).
@@ -106,28 +106,32 @@ export function SigninGate() {
         margin: "0 auto",
       }}>
 
-        {/* ── Brand block ── */}
+        {/* ── Brand block ──
+            This is the one place the tagline lives. The header and onboarding
+            used to repeat it; both have been stripped so it lands once and
+            then the product speaks for itself. */}
         <div style={{ textAlign: "center", marginBottom: 36 }}>
           <h1 style={{
-            fontSize: 44, fontWeight: 800, letterSpacing: "-0.03em",
-            margin: "0 0 10px",
-            background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            fontFamily: "var(--font-display)",
+            fontSize: 64, fontWeight: 400, letterSpacing: "-0.015em",
+            margin: "0 0 14px",
+            color: "var(--text)",
+            lineHeight: 1,
           }}>
             Contour
           </h1>
           <p style={{
-            fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.85)",
-            margin: "0 0 14px", letterSpacing: "0.01em",
+            fontSize: 14, color: "rgba(255,255,255,0.7)",
+            margin: "0 0 10px", letterSpacing: "0.01em",
           }}>
             Rate. Review. Discover.
           </p>
           <p style={{
-            fontSize: 13, color: "rgba(255,255,255,0.55)",
-            margin: 0, lineHeight: 1.6, maxWidth: 340, marginInline: "auto",
+            fontSize: 13, color: "rgba(255,255,255,0.5)",
+            margin: 0, lineHeight: 1.65, maxWidth: 320, marginInline: "auto",
           }}>
-            Rate albums and tracks, write reviews, follow friends, and discover music
-            through a feed that learns your taste in real time.
+            Half-star ratings, written reviews, era-adjusted streaming charts,
+            and a feed that sharpens with every track you rate.
           </p>
         </div>
 

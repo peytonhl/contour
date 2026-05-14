@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../services/api.js";
 
-const ACCENT = "#a78bfa";
+const ACCENT = "#d97a3b";
 const DANGER = "#f87171";
 
 const REASONS = [
@@ -96,7 +96,7 @@ export function ReportModal({ open, onClose, targetType, targetId, onSubmitted }
                 <label key={r.value} style={{
                   display: "flex", alignItems: "center", gap: 10,
                   padding: "8px 10px", borderRadius: 8, cursor: "pointer",
-                  background: reason === r.value ? "rgba(167,139,250,0.10)" : "transparent",
+                  background: reason === r.value ? "rgba(217,122,59,0.10)" : "transparent",
                   border: `1px solid ${reason === r.value ? ACCENT : "var(--border)"}`,
                 }}>
                   <input

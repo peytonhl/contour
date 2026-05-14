@@ -6,9 +6,8 @@ import { analytics } from "../services/analytics.js";
 
 const STORAGE_KEY = "contour_onboarded_v2";
 const GENRES_KEY = "contour_genres_v1";
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
-const ACCENT_C = "#fb923c";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 
 // ── Genre picker data (also exported for reuse in TasteSection) ───────────────
 export const GENRE_OPTIONS = [
@@ -16,7 +15,7 @@ export const GENRE_OPTIONS = [
   { label: "R&B",         slug: "r-n-b",       from: "#c084fc", to: "#a855f7" },
   { label: "Pop",         slug: "pop",          from: "#f472b6", to: "#ec4899" },
   { label: "Indie",       slug: "indie",        from: ACCENT_A,  to: "#7c3aed" },
-  { label: "Alternative", slug: "alternative",  from: "#a78bfa", to: "#6d28d9" },
+  { label: "Alternative", slug: "alternative",  from: "#d97a3b", to: "#6d28d9" },
   { label: "Rock",        slug: "rock",         from: "#f87171", to: "#dc2626" },
   { label: "Electronic",  slug: "electronic",   from: "#22d3ee", to: "#06b6d4" },
   { label: "Jazz",        slug: "jazz",         from: "#fcd34d", to: "#f59e0b" },
@@ -57,33 +56,9 @@ export function GenreChip({ genre, selected, onToggle }) {
   );
 }
 
-// ── Value prop icons (SVG, stroke-based — matches the rest of the app) ───────
-// Sized at 24px so they fill the 44-48px circular containers properly; tiny
-// 16px glyphs in 32px boxes read as "stock admin template" rather than designed.
-function StarIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  );
-}
-function ChartIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 17 9 11 13 15 21 7" />
-      <polyline points="14 7 21 7 21 14" />
-    </svg>
-  );
-}
-function HeadphonesIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
-      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z" />
-      <path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
-    </svg>
-  );
-}
+// Bookmark icon — used in the step 2 backlog explainer. The previous
+// value-prop icons (Star/Chart/Headphones) were deleted when step 0
+// collapsed from a 3-card carousel to a single welcome screen.
 function BookmarkIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -91,28 +66,6 @@ function BookmarkIcon() {
     </svg>
   );
 }
-
-// ── Value prop cards ──────────────────────────────────────────────────────────
-const VALUE_PROPS = [
-  {
-    Icon: StarIcon,
-    color: ACCENT_A,
-    title: "Rate & review anything",
-    body: "Half-star ratings and reviews for albums, tracks, and artists. Think Letterboxd, but for music.",
-  },
-  {
-    Icon: ChartIcon,
-    color: ACCENT_B,
-    title: "See what actually streamed",
-    body: "Era-adjusted scores level the playing field. A 2012 album that was massive gets the credit it deserves, even next to a 2024 release.",
-  },
-  {
-    Icon: HeadphonesIcon,
-    color: ACCENT_C,
-    title: "Find music made for you",
-    body: "Rate a few tracks in the feed and Contour learns your taste: genre, era, vibe. Every rating sharpens what comes next.",
-  },
-];
 
 // ── Dot indicator ─────────────────────────────────────────────────────────────
 function Dots({ total, active }) {
@@ -262,48 +215,25 @@ export function OnboardingModal() {
           {/* Drag handle */}
           <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--surface3)", margin: "0 auto 22px" }} />
 
-          {/* ── Step 0: Value prop ── */}
+          {/* ── Step 0: Welcome ──
+              Collapsed from the previous 3-card value-prop carousel. The
+              pitch lives on the sign-in gate; by this point the user is
+              already in, so step 0 is just an orientation beat: a single
+              line, no marketing, then straight into genres. */}
           {step === 0 && (
             <>
-              <div style={{ textAlign: "center", marginBottom: 20 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
-                  Welcome to Contour
-                </div>
+              <div style={{ textAlign: "center", marginBottom: 28, padding: "12px 4px 0" }}>
                 <h2 style={{
-                  fontSize: 24, fontWeight: 800, margin: "0 0 8px", lineHeight: 1.2,
-                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 36, fontWeight: 400, margin: "0 0 12px",
+                  color: "var(--text)", lineHeight: 1.05, letterSpacing: "-0.01em",
                 }}>
-                  Rate. Review.<br />Discover.
+                  Glad you're here.
                 </h2>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
-                  The only music app that combines ratings and reviews with real streaming analytics, so you can finally settle the debate.
+                <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0, lineHeight: 1.55, maxWidth: 320, marginInline: "auto" }}>
+                  A couple of taste questions so the feed knows where to start.
+                  Takes about thirty seconds.
                 </p>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
-                {VALUE_PROPS.map((vp) => (
-                  <div key={vp.title} style={{
-                    display: "flex", alignItems: "center", gap: 14,
-                    background: "var(--surface2)",
-                    borderRadius: "var(--radius-lg)",
-                    padding: "14px 16px",
-                  }}>
-                    <span style={{
-                      width: 44, height: 44, flexShrink: 0,
-                      borderRadius: "50%",
-                      background: `${vp.color}1f`,
-                      color: vp.color,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
-                      <vp.Icon />
-                    </span>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{vp.title}</span>
-                      <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55 }}>{vp.body}</span>
-                    </div>
-                  </div>
-                ))}
               </div>
 
               <div style={{ marginBottom: 18 }}>
@@ -311,11 +241,12 @@ export function OnboardingModal() {
               </div>
 
               <button onClick={() => { analytics.onboardingStepCompleted("value_prop", false); setStep(1); }} style={{
-                width: "100%", padding: "13px 0", borderRadius: 12,
-                background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
+                width: "100%", padding: "14px 0", borderRadius: 12,
+                background: ACCENT_A, border: "none",
+                color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer",
+                letterSpacing: "0.01em",
               }}>
-                Get started →
+                Pick your genres
               </button>
             </>
           )}
@@ -325,14 +256,14 @@ export function OnboardingModal() {
             <>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h2 style={{
-                  fontSize: 22, fontWeight: 800, margin: "0 0 8px",
-                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 30, fontWeight: 400, margin: "0 0 8px",
+                  color: "var(--text)", lineHeight: 1.1,
                 }}>
                   What do you listen to?
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                  Pick your genres to personalize your For You feed from day one.
+                  Pick the genres you reach for most.
                   {selectedGenres.length > 0 && (
                     <span style={{ color: ACCENT_A, fontWeight: 700 }}> {selectedGenres.length} selected</span>
                   )}
@@ -363,10 +294,10 @@ export function OnboardingModal() {
                 </button>
                 <button onClick={saveGenresAndAdvance} style={{
                   flex: 2, padding: "12px 0", borderRadius: 12,
-                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                  border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
+                  background: ACCENT_A, border: "none",
+                  color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
                 }}>
-                  {selectedGenres.length > 0 ? "Next →" : "Skip for now →"}
+                  {selectedGenres.length > 0 ? "Continue" : "Skip for now"}
                 </button>
               </div>
             </>
@@ -377,15 +308,15 @@ export function OnboardingModal() {
             <>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h2 style={{
-                  fontSize: 22, fontWeight: 800, margin: "0 0 8px",
-                  background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 30, fontWeight: 400, margin: "0 0 8px",
+                  color: "var(--text)", lineHeight: 1.1,
                 }}>
-                  Track what you want to listen to
+                  Save what you want to hear
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>
-                  Save albums to your backlog as you find them. It's public on
-                  your profile so friends can see what you're excited about.
+                  Bookmark albums as you find them. Your backlog is public on
+                  your profile so friends can see what's queued up.
                 </p>
               </div>
 
@@ -418,7 +349,7 @@ export function OnboardingModal() {
                   padding: "0 0 16px", display: "block", marginInline: "auto",
                 }}
               >
-                See how it works →
+                See how it works
               </button>
 
               <div style={{ marginBottom: 18 }}>
@@ -426,11 +357,11 @@ export function OnboardingModal() {
               </div>
 
               <button onClick={() => finishBacklogStep(false)} style={{
-                width: "100%", padding: "13px 0", borderRadius: 12,
-                background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                border: "none", color: "#000", fontSize: 14, fontWeight: 800, cursor: "pointer",
+                width: "100%", padding: "14px 0", borderRadius: 12,
+                background: ACCENT_A, border: "none",
+                color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
               }}>
-                Got it →
+                Got it
               </button>
             </>
           )}

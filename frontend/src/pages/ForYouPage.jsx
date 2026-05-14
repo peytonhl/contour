@@ -15,8 +15,8 @@ import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
 import { FollowingTab } from "../components/FollowingTab.jsx";
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 const GOLD = "#f59e0b";
 
 // ── LocalStorage keys ─────────────────────────────────────────────────────────
@@ -990,8 +990,8 @@ function ColdStartBanner({ ratingCount }) {
       // Right padding bumped to 54px (gear button is 30px wide + 10px right
       // inset + 14px breathing room) so the gear no longer eats the label.
       padding: "8px 54px 8px 16px",
-      background: "rgba(167,139,250,0.08)",
-      borderBottom: "1px solid rgba(167,139,250,0.15)",
+      background: "rgba(217,122,59,0.08)",
+      borderBottom: "1px solid rgba(217,122,59,0.15)",
       display: "flex", alignItems: "center", gap: 10,
       flexShrink: 0,
     }}>
@@ -1607,9 +1607,16 @@ function ForYouFeed() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
-        <div style={{ fontSize: 40 }}>🎵</div>
-        <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#fff" }}>
-          {fetchError ? "Couldn't reach server" : "Nothing to show right now"}
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" aria-hidden style={{ color: "rgba(255,255,255,0.35)" }}>
+          <circle cx="12" cy="12" r="9" />
+          <circle cx="12" cy="12" r="2.5" />
+        </svg>
+        <p style={{ fontFamily: "var(--font-display)", margin: 0, fontSize: 22, fontWeight: 400, color: "#fff", lineHeight: 1.2 }}>
+          {fetchError
+            ? "Can't reach the server."
+            : (dislikedCount >= 5
+                ? "The feed ran out of room."
+                : "Warming up the feed.")}
         </p>
 
         {/* Spotify-level diagnosis */}
@@ -1642,10 +1649,10 @@ function ForYouFeed() {
         )}
 
         {!debugInfo && !fetchError && (
-          <p style={{ margin: 0, fontSize: 13, maxWidth: 280, lineHeight: 1.6 }}>
+          <p style={{ margin: 0, fontSize: 13, maxWidth: 300, lineHeight: 1.6 }}>
             {dislikedCount >= 5
-              ? `You've marked ${dislikedCount} artists as not interested. Try clearing that list to open up more music.`
-              : "Diagnosing…"}
+              ? `${dislikedCount} artists are on your not-interested list. Clearing some out reopens the feed.`
+              : "Pulling fresh tracks. Should only take a moment."}
           </p>
         )}
 
@@ -1653,8 +1660,8 @@ function ForYouFeed() {
           onClick={() => fetchBatch()}
           style={{
             marginTop: 4, padding: "10px 24px", borderRadius: 20,
-            background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-            border: "none", color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer",
+            background: ACCENT_A,
+            border: "none", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer",
           }}
         >Try again</button>
         {dislikedCount >= 5 && (
@@ -2089,8 +2096,8 @@ export function ForYouPage() {
           position: "relative",
           margin: "8px 14px 0",
           padding: "10px 36px 10px 14px",
-          background: "rgba(167,139,250,0.12)",
-          border: "1px solid rgba(167,139,250,0.35)",
+          background: "rgba(217,122,59,0.12)",
+          border: "1px solid rgba(217,122,59,0.35)",
           borderRadius: 10,
           fontSize: 12.5, lineHeight: 1.45,
           color: "rgba(255,255,255,0.85)",

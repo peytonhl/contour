@@ -3,7 +3,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
-const ACCENT_B = "#34d399";
+const ACCENT_B = "#6a90b5";
 
 /**
  * Toggleable "Want to listen" button shown on entity hero rows.

@@ -1,4 +1,4 @@
-const ACCENT = "#a78bfa";
+const ACCENT = "#d97a3b";
 
 /**
  * Letterboxd-style profile nav: each tab cell shows a large count above a

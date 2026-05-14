@@ -23,6 +23,12 @@
     <!-- Description for sharing -->
     <meta name="description" content="Rate, review, and discover music with friends. Half-star ratings, written reviews, side-by-side streaming comparison, and a personalized For You feed." />
 
+    <!-- Instrument Serif — headings + wordmark. One face, regular + italic.
+         Body type stays on the system stack. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" />
+
     <!-- ── Connection prefly ──
          Open TCP + TLS connections to every origin we'll hit during the
          first render, in parallel with the HTML parse. DNS, TLS, and TCP
@@ -83,14 +89,11 @@
         opacity: 0;
       }
       .boot-splash__wordmark {
-        font-size: 38px;
-        font-weight: 800;
-        letter-spacing: -0.025em;
-        background: linear-gradient(90deg, #a78bfa, #34d399);
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
-        color: transparent;
+        font-family: "Instrument Serif", Georgia, serif;
+        font-size: 52px;
+        font-weight: 400;
+        letter-spacing: -0.01em;
+        color: #fafafa;
       }
     </style>
   </head>

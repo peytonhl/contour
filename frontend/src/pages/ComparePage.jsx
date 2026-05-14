@@ -1,8 +1,8 @@
 import { useSearchParams } from "react-router-dom";
 import { ComparisonWidget } from "../components/ComparisonWidget.jsx";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 
 export function ComparePage() {
   const [searchParams] = useSearchParams();
@@ -17,15 +17,15 @@ export function ComparePage() {
       {!preloadedAlbumAId && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 600 }}>
           <h1 style={{
-            fontSize: 28, fontWeight: 800, margin: 0,
-            background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            fontSize: 40, fontWeight: 400, margin: 0,
+            color: "var(--text)",
           }}>
             Compare up to three albums
           </h1>
           <p style={{ fontSize: 15, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
-            See how streaming trajectories stack up when you level the playing field for era.
-            A 2013 album with a ×6 multiplier would have 6× more streams if it dropped today.
+            Stream trajectories side by side, weighted for era. A 2013 album
+            with a ×6 multiplier would have six times its current play count
+            if it dropped today.
           </p>
         </div>
       )}

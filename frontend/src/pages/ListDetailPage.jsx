@@ -3,8 +3,8 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 const GOLD = "#f59e0b";
 
 function formatDuration(ms) {

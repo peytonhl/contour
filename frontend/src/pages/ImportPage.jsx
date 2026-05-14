@@ -4,8 +4,8 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 
 /**
  * RYM CSV import page.
@@ -56,9 +56,8 @@ export function ImportPage() {
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 20px 80px" }}>
 
       <h1 style={{
-        fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 4px",
-        background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+        fontSize: 38, fontWeight: 400, margin: "0 0 6px",
+        color: "var(--text)",
       }}>
         Import ratings
       </h1>
@@ -229,11 +228,11 @@ export function ImportPage() {
               onClick={() => navigate("/profile")}
               style={{
                 padding: "10px 22px", borderRadius: 8,
-                background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-                color: "#000", fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer",
+                background: ACCENT_A,
+                color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer",
               }}
             >
-              See your profile →
+              See your profile
             </button>
           </div>
         </div>

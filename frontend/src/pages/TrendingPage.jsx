@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 const GOLD = "#f59e0b";
 
 const WINDOW_OPTIONS = [
@@ -17,8 +17,9 @@ const WINDOW_OPTIONS = [
 function SectionHeader({ label }) {
   return (
     <h2 style={{
-      fontSize: 13, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
-      color: "var(--text-muted)", margin: "0 0 12px",
+      fontFamily: "var(--font-display)",
+      fontSize: 22, fontWeight: 400,
+      color: "var(--text)", margin: "0 0 12px",
     }}>
       {label}
     </h2>
@@ -163,14 +164,13 @@ export function TrendingPage() {
 
       <div>
         <h1 style={{
-          fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 4px",
-          background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          fontSize: 40, fontWeight: 400, margin: "0 0 6px",
+          color: "var(--text)",
         }}>
           Trending
         </h1>
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-          What the Contour community is rating, reviewing, and saving right now.
+          What people are rating and saving this week.
         </p>
       </div>
 

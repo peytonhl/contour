@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { GENRE_OPTIONS, GenreChip } from "./OnboardingModal.jsx";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 const GOLD = "#f59e0b";
 
 // ── Genre → color gradient ────────────────────────────────────────────────────
@@ -356,7 +356,12 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                 >
                   {album.image_url
                     ? <img src={album.image_url} alt={album.name} style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }} />
-                    : <div style={{ width: 60, height: 60, borderRadius: 8, background: "var(--surface2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🎵</div>
+                    : <div style={{ width: 60, height: 60, borderRadius: 8, background: "var(--surface2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+                          <circle cx="12" cy="12" r="9" />
+                          <circle cx="12" cy="12" r="2.5" />
+                        </svg>
+                      </div>
                   }
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{album.name}</div>

@@ -5,7 +5,7 @@ import { analytics } from "../services/analytics.js";
 import { ReportModal } from "./ReportModal.jsx";
 
 const GOLD = "#f59e0b";
-const ACCENT = "#a78bfa";
+const ACCENT = "#d97a3b";
 const DANGER = "#f87171";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

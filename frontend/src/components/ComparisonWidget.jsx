@@ -7,8 +7,8 @@ import { AlbumCard } from "./AlbumCard.jsx";
 import { ComparisonChart } from "./ComparisonChart.jsx";
 import { EditionPicker } from "./EditionPicker.jsx";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 const ACCENT_C = "#fb923c"; // orange — third overlay series
 const POLL_INTERVAL = 4000;
 

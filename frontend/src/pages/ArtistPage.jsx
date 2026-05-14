@@ -8,7 +8,7 @@ import { EntityHeroSkeleton, RowSkeleton } from "../components/Skeleton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
-const ACCENT_A = "#a78bfa";
+const ACCENT_A = "#d97a3b";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 function formatStreams(n) {
@@ -72,7 +72,12 @@ function KnownForSection({ tracks }) {
               {/* Square album art */}
               {track.image_url
                 ? <img src={track.image_url} alt={track.name} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
-                : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>🎵</div>
+                : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+                      <circle cx="12" cy="12" r="9" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                  </div>
               }
               <div style={{ padding: "10px 12px 12px" }}>
                 <div style={{
@@ -316,7 +321,7 @@ export function ArtistPage() {
               <span style={{
                 fontSize: "var(--text-sm)", color: ACCENT_A, fontWeight: 600,
                 padding: "4px 10px", borderRadius: "var(--radius-pill)",
-                background: "rgba(167,139,250,0.12)",
+                background: "rgba(217,122,59,0.12)",
                 alignSelf: "flex-start",
               }}>
                 Era Score: {formatStreams(totalEraAdjusted)}
@@ -372,7 +377,7 @@ export function ArtistPage() {
               <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {stat.value}
               </div>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)" }}>
                 {stat.label}
               </div>
             </div>

@@ -6,8 +6,8 @@ import { userAvatar } from "../utils/userAvatar.js";
 import { AppleSignInButton } from "./AppleSignInButton.jsx";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 
 // ── Google "G" logo (official multicolor) ────────────────────────────────────
 function GoogleIcon({ size = 18 }) {
@@ -208,15 +208,16 @@ export function Layout() {
         top: 0,
         zIndex: 50,
       }}>
-        {/* Logo */}
-        <NavLink to="/" style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px 14px 0", textDecoration: "none", flexShrink: 0 }}>
+        {/* Wordmark — Instrument Serif sets the editorial tone; no gradient.
+            The desktop subtitle ("Rate. Review. Discover.") moved exclusively
+            to the sign-in gate so the tagline lives in one place. */}
+        <NavLink to="/" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "14px 16px 14px 0", textDecoration: "none", flexShrink: 0 }}>
           <span style={{
-            fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em",
-            background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
+            fontFamily: "var(--font-display)",
+            fontSize: 26, fontWeight: 400, letterSpacing: "-0.01em",
+            color: "var(--text)",
+            lineHeight: 1,
           }}>Contour</span>
-          <span className="hide-mobile" style={{ fontSize: 12, color: "var(--text-muted)" }}>Rate. Review. Discover.</span>
         </NavLink>
 
         {/* Desktop nav links */}

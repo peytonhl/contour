@@ -148,7 +148,7 @@ export function AlbumCard({ meta, accentColor, enriching, detailLink }) {
           <span style={{ ...styles.statValue, display: "flex", alignItems: "center", gap: 6 }}>
             {formatStreams(meta.total_streams)}
             {showEnriching && (
-              <span style={{ fontSize: 10, color: "#34d399", fontWeight: 600, background: "rgba(52,211,153,0.12)", padding: "1px 6px", borderRadius: 4 }}>
+              <span style={{ fontSize: 10, color: "#6a90b5", fontWeight: 600, background: "rgba(106,144,181,0.12)", padding: "1px 6px", borderRadius: 4 }}>
                 enriching…
               </span>
             )}

@@ -12,7 +12,7 @@ import { EntityHeroSkeleton } from "../components/Skeleton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
-const ACCENT = "#34d399";
+const ACCENT = "#6a90b5";
 const DISCLAIMER = "Stream trajectory is a modeled approximation calibrated to the known total stream count. Exact day-by-day data requires Luminate licensing.";
 
 function formatStreams(n) {
@@ -81,7 +81,7 @@ function RiaaTooltip() {
 function StatBlock({ label, value }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)" }}>{label}</span>
       <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{value ?? "—"}</span>
     </div>
   );
@@ -374,7 +374,7 @@ export function TrackPage() {
 
         {/* Streaming trajectory — moved below the fold; era-adjustment is contextual, surfaced in the hero stat */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase", margin: 0 }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 400, color: "var(--text)", margin: 0 }}>
             Streaming trajectory
           </h2>
           {trajectory?.trajectory?.length > 0 ? (

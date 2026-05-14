@@ -1,5 +1,5 @@
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 
 function Section({ title, children }) {
   return (
@@ -19,11 +19,10 @@ export function PrivacyPage() {
       {/* Header */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <h1 style={{
-          fontSize: 28, fontWeight: 800,
-          background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          fontSize: 38, fontWeight: 400,
+          color: "var(--text)",
         }}>
-          Privacy Policy
+          Privacy policy
         </h1>
         <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
           Last updated: May 2026

@@ -12,7 +12,7 @@ import { EntityHeroSkeleton } from "../components/Skeleton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
-const ACCENT = "#a78bfa";
+const ACCENT = "#d97a3b";
 const DISCLAIMER = "Stream trajectory is a modeled approximation calibrated to the known total stream count. Exact day-by-day data requires Luminate licensing.";
 
 function formatStreams(n) {
@@ -81,7 +81,7 @@ function RiaaTooltip() {
 function StatBlock({ label, value }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)" }}>{label}</span>
       <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{value ?? "—"}</span>
     </div>
   );
@@ -102,11 +102,13 @@ function NoChartData({ releaseDate }) {
           : <><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>
         }
       </svg>
-      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-muted)" }}>No streaming data available</div>
-      <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 420, lineHeight: 1.6, opacity: 0.75 }}>
+      <div style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 400, color: "var(--text)" }}>
+        {isEarlyEra ? "This one predates the chart." : "No trajectory yet."}
+      </div>
+      <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 420, lineHeight: 1.65 }}>
         {isEarlyEra
-          ? `Releases from ${year} predate widespread streaming adoption. Historical data is often absent from our sources.`
-          : "Streaming data isn't available for this album yet. It may not be indexed by our data sources."}
+          ? `Releases from ${year} predate widespread streaming, so the day-by-day curve isn't in our sources. The era adjustment still applies — it's why older albums get a fair shot.`
+          : "We haven't indexed a trajectory for this album yet. Check back in a few days, or rate it now and the page will catch up."}
       </div>
     </div>
   );
@@ -295,8 +297,8 @@ export function AlbumPage() {
             marginTop: "var(--space-3)",
           }}>
             <span style={{
-              fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em",
-              textTransform: "uppercase", color: "var(--text-dim)",
+              fontSize: "var(--text-xs)", fontWeight: 600,
+              color: "var(--text-dim)",
               marginRight: "var(--space-1)",
             }}>
               Listen on
@@ -371,8 +373,8 @@ export function AlbumPage() {
           }}>
             <div style={{
               padding: "var(--space-3) var(--space-5)",
-              fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.1em",
-              textTransform: "uppercase", color: "var(--text-dim)",
+              fontFamily: "var(--font-display)",
+              fontSize: 18, fontWeight: 400, color: "var(--text)",
             }}>
               Tracklist
             </div>
@@ -402,7 +404,7 @@ export function AlbumPage() {
 
         {/* Streaming trajectory — moved below the fold; era-adjustment is contextual, surfaced in the hero stat */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase", margin: 0 }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 400, color: "var(--text)", margin: 0 }}>
             Streaming trajectory
           </h2>
           {trajectory?.trajectory?.length > 0 ? (

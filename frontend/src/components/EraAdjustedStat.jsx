@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-const ACCENT = "#a78bfa";
+const ACCENT = "#d97a3b";
 
 function fmt(n) {
   if (!n && n !== 0) return "—";
@@ -49,31 +49,38 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
   const currentYear = new Date().getFullYear();
 
   if (variant === "hero") {
+    // Hero treatment: the era-adjusted number is the page's signature stat,
+    // so it gets the serif headline weight. Raw plays drop to a smaller line
+    // underneath. When there's no era data (recent release or missing
+    // context), fall back to showing raw plays as the headline.
+    const headlineNumber = hasEra ? eraContext.era_adjusted_streams : totalStreams;
+    const headlineLabel = hasEra ? "Era-adjusted streams" : "Total streams";
     return (
       <div style={{
-        display: "flex", flexDirection: "column", gap: "var(--space-2)",
+        display: "flex", flexDirection: "column", gap: "var(--space-1)",
         alignItems: "center", textAlign: "center",
       }}>
         <span style={{
-          fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em",
-          textTransform: "uppercase", color: "var(--text-dim)",
+          fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.01em",
+          color: "var(--text-dim)",
         }}>
-          Total Streams
+          {headlineLabel}
         </span>
         <span style={{
-          fontSize: "var(--text-4xl)", fontWeight: 800, color: "var(--text)",
-          letterSpacing: "-0.02em", lineHeight: 1,
+          fontFamily: "var(--font-display)",
+          fontSize: 76, fontWeight: 400, color: "var(--text)",
+          letterSpacing: "-0.02em", lineHeight: 0.95,
+          fontVariantNumeric: "tabular-nums",
         }}>
-          {fmt(totalStreams)}
+          {fmt(headlineNumber)}
         </span>
         {hasEra && (
-          <span ref={wrapRef} style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "var(--space-2)", marginTop: "var(--space-1)" }}>
+          <span ref={wrapRef} style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "var(--space-2)", marginTop: "var(--space-2)" }}>
             <span style={{
-              fontSize: "var(--text-sm)", color: ACCENT, fontWeight: 600,
-              padding: "4px 10px", borderRadius: "var(--radius-pill)",
-              background: "rgba(167,139,250,0.12)",
+              fontSize: "var(--text-sm)", color: "var(--text-muted)",
+              fontVariantNumeric: "tabular-nums",
             }}>
-              ≈ {fmt(eraContext.era_adjusted_streams)} era-adjusted
+              from {fmt(totalStreams)} raw · <span style={{ color: ACCENT, fontWeight: 600 }}>×{eraContext.multiplier} scale</span>
             </span>
             <button
               onClick={toggle}
@@ -82,9 +89,9 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
               style={{
                 all: "unset",
                 fontSize: 11, width: 18, height: 18, borderRadius: "50%",
-                background: "rgba(167,139,250,0.18)", color: ACCENT,
+                background: "rgba(217,122,59,0.18)", color: ACCENT,
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", fontWeight: 800,
+                cursor: "pointer", fontWeight: 700,
               }}
             >
               ?
@@ -100,7 +107,7 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
                   width: 280, zIndex: 200, boxShadow: "var(--shadow-2)",
                 }}
               >
-                <div style={{ fontWeight: 700, marginBottom: "var(--space-2)", color: ACCENT, fontSize: "var(--text-xs)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                <div style={{ fontWeight: 600, marginBottom: "var(--space-2)", color: ACCENT, fontSize: "var(--text-sm)" }}>
                   Era-adjusted streams
                 </div>
                 <div style={{ color: "var(--text-muted)", marginBottom: "var(--space-3)" }}>
@@ -118,7 +125,7 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
                   style={{ color: ACCENT, fontWeight: 600, fontSize: "var(--text-sm)", textDecoration: "none" }}
                   onClick={() => setOpen(false)}
                 >
-                  Learn more →
+                  Read the methodology
                 </Link>
               </div>
             )}
@@ -130,8 +137,8 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-        Total Streams
+      <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)" }}>
+        Total streams
       </span>
       <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
         {fmt(totalStreams)}
@@ -148,10 +155,10 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
             style={{
               all: "unset",
               fontSize: 10, width: 15, height: 15, borderRadius: "50%",
-              background: "rgba(167,139,250,0.12)", color: ACCENT,
+              background: "rgba(217,122,59,0.12)", color: ACCENT,
               display: "inline-flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer", fontWeight: 800,
-              border: `1px solid rgba(167,139,250,0.35)`,
+              border: `1px solid rgba(217,122,59,0.35)`,
             }}
           >
             ?
@@ -167,7 +174,7 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
                 width: 280, zIndex: 200, boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
               }}
             >
-              <div style={{ fontWeight: 700, marginBottom: 8, color: ACCENT, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, color: ACCENT, fontSize: 13 }}>
                 Era-adjusted streams
               </div>
               <div style={{ color: "var(--text-muted)", marginBottom: 10 }}>
@@ -185,7 +192,7 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
                 style={{ color: ACCENT, fontWeight: 600, fontSize: 12, textDecoration: "none" }}
                 onClick={() => setOpen(false)}
               >
-                Learn more →
+                Read the methodology
               </Link>
             </div>
           )}

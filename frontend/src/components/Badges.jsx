@@ -2,8 +2,8 @@ import { Link } from "react-router-dom";
 
 // ── Badge definitions ─────────────────────────────────────────────────────────
 export const BADGE_DEFS = [
-  { key: "critics",      emoji: "✍️",  label: "Top Critic",     color: "#a78bfa", title: "Top 5 most reviews written" },
-  { key: "influencers",  emoji: "⬆️",  label: "Influential",    color: "#34d399", title: "Top 5 most upvotes received" },
+  { key: "critics",      emoji: "✍️",  label: "Top Critic",     color: "#d97a3b", title: "Top 5 most reviews written" },
+  { key: "influencers",  emoji: "⬆️",  label: "Influential",    color: "#6a90b5", title: "Top 5 most upvotes received" },
   { key: "connectors",   emoji: "👥",  label: "Most Followed",  color: "#fb923c", title: "Top 5 most followers" },
 ];
 

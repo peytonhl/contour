@@ -2,14 +2,14 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 const GOLD = "#f59e0b";
 const SILVER = "#9ca3af";
 const BRONZE = "#b45309";
 
 const CLASSIFICATION_STYLES = {
-  underrated: { label: "Underrated", bg: "#34d39918", border: "#34d39940", color: "#34d399" },
+  underrated: { label: "Underrated", bg: "#6a90b518", border: "#6a90b540", color: "#6a90b5" },
   overrated:  { label: "Overrated",  bg: "#f8717118", border: "#f8717140", color: "#f87171" },
   acclaimed:  { label: "Acclaimed",  bg: "#f59e0b18", border: "#f59e0b40", color: "#f59e0b" },
 };
@@ -45,9 +45,8 @@ function ClassificationBadge({ type }) {
   const s = CLASSIFICATION_STYLES[type];
   return (
     <span style={{
-      fontSize: 10, fontWeight: 700, padding: "2px 7px",
-      borderRadius: 20, flexShrink: 0, letterSpacing: "0.04em",
-      textTransform: "uppercase",
+      fontSize: 11, fontWeight: 600, padding: "2px 8px",
+      borderRadius: 20, flexShrink: 0,
       background: s.bg, border: `1px solid ${s.border}`, color: s.color,
     }}>
       {s.label}
@@ -173,15 +172,14 @@ export function LeaderboardPage() {
       {/* Header */}
       <div>
         <h1 style={{
-          fontSize: 28, fontWeight: 800, margin: "0 0 6px",
-          background: `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`,
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          fontSize: 40, fontWeight: 400, margin: "0 0 8px",
+          color: "var(--text)",
         }}>
-          All-Time Charts
+          All-time charts
         </h1>
-        <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
+        <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0, lineHeight: 1.55, maxWidth: 540 }}>
           {sort === "era"
-            ? "The fairest ranking in music: era-adjusted so every generation competes on equal footing."
+            ? "Streams weighted by the size of Spotify's audience when the album dropped, so a 2012 release isn't punished for being early."
             : "Ranked by total lifetime plays."}
         </p>
       </div>
@@ -206,16 +204,16 @@ export function LeaderboardPage() {
 
         {/* Sort toggle */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
             Sort by
           </span>
           <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-            {[["era", "Era Score"], ["streams", "Raw Plays"]].map(([val, lbl]) => (
+            {[["era", "Era score"], ["streams", "Raw plays"]].map(([val, lbl]) => (
               <button key={val} onClick={() => setSort(val)} style={{
                 padding: "6px 16px", fontSize: 13,
                 fontWeight: sort === val ? 700 : 400,
                 background: sort === val ? ACCENT_A : "transparent",
-                color: sort === val ? "#000" : "var(--text-muted)",
+                color: sort === val ? "#fff" : "var(--text-muted)",
                 border: "none", cursor: "pointer", transition: "all 0.15s",
               }}>
                 {lbl}
@@ -228,14 +226,13 @@ export function LeaderboardPage() {
       {/* Classification legend */}
       {hasClassifications && (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
             Community verdict:
           </span>
           {Object.entries(CLASSIFICATION_STYLES).map(([key, s]) => (
             <span key={key} style={{
-              fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+              fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20,
               background: s.bg, border: `1px solid ${s.border}`, color: s.color,
-              textTransform: "uppercase", letterSpacing: "0.04em",
             }}>
               {s.label}
             </span>
@@ -245,7 +242,7 @@ export function LeaderboardPage() {
 
       {/* List */}
       {loading ? (
-        <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>
+        <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>Counting plays…</div>
       ) : entries.length === 0 ? (
         <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
           {decade === "all" ? "No data yet." : `No albums found from the ${decade}.`}
@@ -254,16 +251,16 @@ export function LeaderboardPage() {
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
           <div style={{
             display: "flex", alignItems: "center", gap: 14,
-            padding: "8px 16px", borderBottom: "1px solid var(--border)",
+            padding: "10px 16px", borderBottom: "1px solid var(--border)",
             background: "var(--surface2)",
           }}>
             <span style={{ width: 28, flexShrink: 0 }} />
             <span style={{ width: 44, flexShrink: 0 }} />
-            <span style={{ flex: 1, fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+            <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "var(--text-muted)" }}>
               Album
             </span>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", flexShrink: 0 }}>
-              {sort === "era" ? "Era Score" : "Plays"}
+            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", flexShrink: 0 }}>
+              {sort === "era" ? "Era score" : "Plays"}
             </span>
           </div>
           {entries.map((entry) => (

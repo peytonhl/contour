@@ -6,8 +6,8 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { AppleSignInButton } from "../components/AppleSignInButton.jsx";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 
-const ACCENT_A = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT_A = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 const ACCENT_C = "#fb923c";
 
 // withNativeAuthFlag appends ?from=native inside the Capacitor shell so the
@@ -159,12 +159,11 @@ export function SearchPage() {
       {/* Search bar — the hero */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <p style={{
-            fontSize: 13, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
-            color: "var(--text-muted)", margin: 0,
+          <h1 style={{
+            fontSize: 32, fontWeight: 400, color: "var(--text)", margin: 0,
           }}>
-            Contour · Rate. Review. Discover.
-          </p>
+            Search
+          </h1>
           {/* Compare entry point — the bottom-nav slot was removed to keep
               mobile chrome at 3 tabs. Search is the conceptually-closest
               surface ("find a thing" → "find two things side-by-side"), so
@@ -274,7 +273,7 @@ export function SearchPage() {
         {/* Quick hint — only while idle */}
         {!query && (
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
-            Stream trajectories, era-adjusted comparisons, and community ratings, all in one place.
+            Albums, tracks, artists, and other listeners — all in one box.
           </p>
         )}
       </div>
@@ -283,9 +282,9 @@ export function SearchPage() {
       {!query && recent.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 400, color: "var(--text)", margin: 0 }}>
               Recent
-            </span>
+            </h2>
             <button
               onClick={clearRecent}
               style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
@@ -332,9 +331,9 @@ export function SearchPage() {
           typing the query themselves. */}
       {!query && trendingSearches.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 400, color: "var(--text)", margin: 0 }}>
             Trending searches
-          </span>
+          </h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {trendingSearches.map((s) => (
               <button
@@ -406,7 +405,7 @@ export function SearchPage() {
               onClick={() => analytics.trendingModuleClicked("search_empty", "see_all", null)}
               style={{ fontSize: 12, color: ACCENT_A, textDecoration: "none", fontWeight: 600 }}
             >
-              See all →
+              See all
             </Link>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
@@ -433,8 +432,8 @@ export function SearchPage() {
 
           {featured.top_tracks?.length > 0 && (
             <div>
-              <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: "var(--text)" }}>
-                🔥 Trending right now
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 400, marginBottom: 14, color: "var(--text)" }}>
+                Trending this week
               </h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
                 {featured.top_tracks.map((track) => (
@@ -446,8 +445,8 @@ export function SearchPage() {
 
           {featured.new_releases?.length > 0 && (
             <div>
-              <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: "var(--text)" }}>
-                ✨ New releases
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 400, marginBottom: 14, color: "var(--text)" }}>
+                New releases
               </h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
                 {featured.new_releases.map((album) => (

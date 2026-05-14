@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const ACCENT = "#a78bfa";
+const ACCENT = "#d97a3b";
 const GOLD = "#f59e0b";
 
 function Star({ fill, size = 20 }) {

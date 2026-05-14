@@ -3,8 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 
-const ACCENT = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 
 function formatDate(iso) {
   if (!iso) return "";

@@ -36,8 +36,8 @@ function Callout({ children }) {
   return (
     <div style={{
       padding: "14px 16px",
-      background: "rgba(167, 139, 250, 0.08)",
-      border: "1px solid rgba(167, 139, 250, 0.25)",
+      background: "rgba(217, 122, 59, 0.08)",
+      border: "1px solid rgba(217, 122, 59, 0.25)",
       borderRadius: 8,
       fontSize: 13,
       lineHeight: 1.7,
@@ -72,9 +72,9 @@ function FeaturePill({ label }) {
       display: "inline-block",
       fontSize: 11, fontWeight: 700, padding: "2px 9px",
       borderRadius: 20,
-      background: "rgba(52, 211, 153, 0.1)",
-      border: "1px solid rgba(52, 211, 153, 0.3)",
-      color: "#34d399",
+      background: "rgba(106, 144, 181, 0.1)",
+      border: "1px solid rgba(106, 144, 181, 0.3)",
+      color: "#6a90b5",
       marginRight: 6, marginBottom: 6,
     }}>
       {label}

@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { api } from "../services/api.js";
 
-const ACCENT_ALBUM = "#a78bfa";
-const ACCENT_TRACK = "#34d399";
+const ACCENT_ALBUM = "#d97a3b";
+const ACCENT_TRACK = "#6a90b5";
 
 function formatDuration(ms) {
   if (!ms) return null;

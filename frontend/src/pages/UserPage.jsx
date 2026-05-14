@@ -10,8 +10,8 @@ import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeChips } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 
-const ACCENT = "#a78bfa";
-const ACCENT_B = "#34d399";
+const ACCENT = "#d97a3b";
+const ACCENT_B = "#6a90b5";
 const GOLD = "#f59e0b";
 
 function ListCollage({ images }) {
