@@ -392,7 +392,7 @@ export function ArtistPage() {
       {/* ── Popular Tracks (full ranked list) ── */}
       {topTracks.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 700 }}>Popular Tracks</h2>
+          <h2 style={{ fontSize: "var(--text-2xl)" }}>Popular tracks</h2>
           <div style={{
             background: "var(--surface)",
             borderRadius: "var(--radius-lg)",
@@ -409,7 +409,7 @@ export function ArtistPage() {
       {/* ── Discography ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
-          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 700 }}>Discography</h2>
+          <h2 style={{ fontSize: "var(--text-2xl)" }}>Discography</h2>
           {!albumsLoading && !albumsEmpty && (
             <div style={{ display: "flex", background: "var(--surface3)", borderRadius: "var(--radius-pill)", overflow: "hidden", flexShrink: 0, padding: 3 }}>
               {[
@@ -533,7 +533,7 @@ export function ArtistPage() {
 
       {/* ── Ratings & Reviews ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-        <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 700 }}>Ratings & Reviews</h2>
+        <h2 style={{ fontSize: "var(--text-2xl)" }}>Ratings & reviews</h2>
         <div style={{
           background: "var(--surface)",
           borderRadius: "var(--radius-lg)",
@@ -546,7 +546,7 @@ export function ArtistPage() {
       {/* ── Compare ── */}
       {albums.length >= 2 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-          <h2 style={{ fontSize: "var(--text-xl)", fontWeight: 700 }}>Compare Albums</h2>
+          <h2 style={{ fontSize: "var(--text-2xl)" }}>Compare albums</h2>
           <div style={{
             background: "var(--surface)",
             borderRadius: "var(--radius-lg)",

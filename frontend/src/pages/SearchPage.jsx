@@ -191,7 +191,9 @@ export function SearchPage() {
         <div style={{ position: "relative" }}>
           <div style={{
             display: "flex", background: "var(--surface)", border: "1px solid var(--border)",
-            borderRadius: hasResults ? "12px 12px 0 0" : 12,
+            borderRadius: hasResults
+              ? "var(--radius-lg) var(--radius-lg) 0 0"
+              : "var(--radius-lg)",
             boxShadow: "0 2px 12px rgba(0,0,0,0.25)",
           }}>
             <input
@@ -217,7 +219,7 @@ export function SearchPage() {
           </div>
 
           {hasResults && (
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 12px 12px", overflow: "hidden" }}>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 var(--radius-lg) var(--radius-lg)", overflow: "hidden" }}>
               {results.map((item, i) => (
                 <button
                   key={`${item._type}-${item.id}`}
@@ -250,10 +252,10 @@ export function SearchPage() {
                     </div>
                   </div>
                   <span style={{
-                    fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+                    fontSize: 11, fontWeight: 600,
                     color: TYPE_COLORS[item._type], flexShrink: 0,
                     background: `${TYPE_COLORS[item._type]}18`,
-                    padding: "2px 8px", borderRadius: "var(--radius-xl)",
+                    padding: "2px 9px", borderRadius: "var(--radius-pill)",
                     border: `1px solid ${TYPE_COLORS[item._type]}40`,
                   }}>
                     {TYPE_LABELS[item._type]}
@@ -264,7 +266,7 @@ export function SearchPage() {
           )}
 
           {query && !searching && results.length === 0 && (
-            <div style={{ padding: 16, background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 12px 12px", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
+            <div style={{ padding: 16, background: "var(--surface)", border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 var(--radius-lg) var(--radius-lg)", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
               No results for "{query}"
             </div>
           )}

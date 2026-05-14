@@ -32,7 +32,7 @@ export function BlocksPage() {
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "32px 20px 60px" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Blocked users</h1>
+      <h1 style={{ fontSize: 32, marginBottom: 6 }}>Blocked users</h1>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 22 }}>
         These users can't appear in your feed, reviews, or replies. They can still
         see your public content.

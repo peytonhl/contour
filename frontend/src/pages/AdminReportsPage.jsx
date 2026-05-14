@@ -56,7 +56,7 @@ export function AdminReportsPage() {
 
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px 60px" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Moderation queue</h1>
+      <h1 style={{ fontSize: 32, marginBottom: 6 }}>Moderation queue</h1>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 18 }}>
         Reports from users flagging reviews or replies as objectionable.
       </p>

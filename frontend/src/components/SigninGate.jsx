@@ -159,8 +159,8 @@ export function SigninGate() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0" }}>
           <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.12)" }} />
           <span style={{
-            fontSize: 11, color: "rgba(255,255,255,0.4)",
-            letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600,
+            fontFamily: "var(--font-display)",
+            fontSize: 14, color: "rgba(255,255,255,0.45)", fontStyle: "italic",
           }}>or</span>
           <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.12)" }} />
         </div>
