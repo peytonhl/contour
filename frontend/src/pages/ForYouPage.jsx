@@ -1790,14 +1790,16 @@ function ForYouFeed() {
           position: "relative",
           overflow: "hidden",
           overscrollBehavior: "none",
-          // `none` (not `pan-y`) so iOS doesn't treat downward drags at
-          // idx 0 as a native vertical pan. Our JS handler clamps dy=0 at
-          // the boundary, but with pan-y, iOS still routed the gesture to
-          // body-rubber-band, exposing the page bg above the deck (the
-          // "blank screen when you swipe down at the first card" report).
-          // We handle all swipes ourselves via touchstart/move/end, so
-          // there's no native gesture left to preserve.
-          touchAction: "none",
+          // `pan-y` (restored from `none`). On iOS WebKit, setting
+          // touch-action: none on the deck appears to suppress the
+          // touchend → JS-advance gesture entirely (forward swipe broke).
+          // pan-y lets iOS interpret vertical drags natively, and our JS
+          // touchstart/move/end handlers still fire for the gesture logic.
+          // The rubber-band that originally motivated touch-action: none
+          // is independently blocked by `body.foryou-swipe-mode {
+          // position: fixed; overflow: hidden }` (see index.css) — with no
+          // scrollable document, iOS has nothing to rubber-band against.
+          touchAction: "pan-y",
           // Defensive: during a snap animation, nothing inside the deck
           // should accept pointer events. Belt-and-suspenders with the
           // `if (transitioning) return` early-out in handleTouchStart —
