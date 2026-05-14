@@ -762,7 +762,16 @@ async def search_tracks_by_genre(
             responses = await asyncio.gather(*[
                 _spotify_get(
                     client, "https://api.spotify.com/v1/search", token,
-                    params={"q": q, "type": "track", "limit": 30, "market": "US"},
+                    # limit=20: Spotify's /v1/search selectively rejects higher
+                    # limits for non-Extended-Access apps with a disguised
+                    # 400 "Invalid limit" error — same pattern documented in
+                    # CLAUDE.md for /artists/{id}/albums. Our /admin/test-
+                    # genre-search probe confirmed limit=5 works but limit=30
+                    # returns 400 across every variant, which silently broke
+                    # the For You feed (every batch fell through to tier 2
+                    # Deezer chart). 20 stays under the cap and still gives
+                    # a ~40-50 deduped pool across the three variants.
+                    params={"q": q, "type": "track", "limit": 20, "market": "US"},
                 )
                 for q, _, _ in variants
             ], return_exceptions=True)
