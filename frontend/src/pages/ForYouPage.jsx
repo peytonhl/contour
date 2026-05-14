@@ -1225,6 +1225,32 @@ function ForYouFeed() {
     touchStartRef.current = { y: e.touches[0].clientY, t: Date.now() };
     setDragging(true);
   }
+
+  // Non-passive native touchmove listener — calls e.preventDefault() while
+  // we're handling a gesture (touchStartRef.current is set). React attaches
+  // its onTouchMove as a PASSIVE listener since React 17+, which means our
+  // React handler cannot block the browser's native gesture. `touch-action:
+  // none` on the deck container is the primary defense, but iOS WKWebView
+  // has shipped versions where touch-action alone isn't honored when the
+  // body is also position:fixed. This is belt-and-suspenders: a hard
+  // preventDefault on every touchmove during a deck gesture, which
+  // categorically stops iOS from rubber-banding the document OR translating
+  // anything outside our React-controlled wrapper. The early-return when
+  // touchStartRef.current is null preserves native behavior on touches
+  // that started on interactive elements (textareas, buttons) — those
+  // touches never set touchStartRef, so we don't intervene with them.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    function block(e) {
+      if (!touchStartRef.current) return;
+      if (!e.cancelable) return;
+      e.preventDefault();
+    }
+    el.addEventListener("touchmove", block, { passive: false });
+    return () => el.removeEventListener("touchmove", block);
+  }, []);
+
   function handleTouchMove(e) {
     const start = touchStartRef.current;
     if (!start) return;
@@ -1811,13 +1837,29 @@ function ForYouFeed() {
             // Pure-percent transform. dragOffset is stored as %-of-cardHeight
             // (touchmove handler converts the finger's px delta on the way in),
             // so the whole expression resolves consistently against the
-            // wrapper's own height. The previous hybrid form `calc(-N*100% +
-            // dragOffset_px)` mixed two units; `100%` resolves to the
-            // wrapper's rendered (potentially subpixel) height, while
-            // dragOffset_px was JS clientHeight (integer), and the half-
-            // pixel discrepancy at the commit moment was the "snaps too low
-            // first, then auto-adjusts higher" jump the user reported.
-            transform: `translate3d(0, ${-activeIdx * 100 + dragOffset}%, 0)`,
+            // wrapper's own height.
+            //
+            // Boundary clamp applied at RENDER time as well as in the touchmove
+            // handler. The handler clamps dy=0 at the deck boundaries, but if
+            // a stale dragOffset state ever paints for a frame (React batching,
+            // an out-of-order touchmove, etc.) the wrapper would briefly
+            // translate past the boundary and reveal the void above card[0]
+            // (the "blank card when you pull down at idx 0" report). Inlining
+            // the same clamp into the transform expression makes the boundary
+            // a hard visual invariant: no value of dragOffset can push the
+            // wrapper past the first or last card. During an in-flight
+            // advance() the wrapper transitions through the clamped value
+            // because activeIdx hasn't updated yet (only changes on commit),
+            // so the snap animation is unaffected.
+            transform: `translate3d(0, ${
+              -activeIdx * 100 + (
+                activeIdx === 0 && dragOffset > 0
+                  ? 0
+                  : activeIdx >= tracks.length - 1 && dragOffset < 0
+                    ? 0
+                    : dragOffset
+              )
+            }%, 0)`,
             // Snappier ease-out curve (cubic-bezier-iOS-style) + shorter
             // duration so the snap feels closer to Tinder / TikTok's native
             // animation. The previous (0.2, 0, 0, 1) was a linear-snappy
