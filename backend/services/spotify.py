@@ -725,15 +725,38 @@ async def search_tracks_by_genre(
       kind); then a fixed `w(p) = (p+10)**0.7` curve (popular favored
       but uniform across users, no adaptation to taste).
     """
-    cache_key = f"spotify:genre_pool_v2:{genre}"
+    # Synthetic popularity: Spotify gated real `popularity` behind Extended
+    # Access in late-2024. Without it the Laplace curve becomes uniform
+    # sampling (every track gets the same weight) — algorithm degrades to
+    # random pick. To preserve the popularity gradient we synthesize a
+    # popularity value from which query variant returned the track AND
+    # its rank within that variant's results. Spotify search returns
+    # tracks ordered by their internal popularity-weighted relevance, so
+    # rank is a usable proxy.
+    #
+    #   `{genre}` default ranking:
+    #     rank 0 → synth 90 (top hit in genre)
+    #     rank 29 → synth 30 (still relevant but less popular)
+    #   `{genre} tag:hipster` (low-popularity filter):
+    #     rank 0 → synth 5  (deepest cut)
+    #     rank 29 → synth 40 (edge of mainstream)
+    #   `{genre} year:2023-2026` (recent):
+    #     rank 0 → synth 70 (popular recent)
+    #     rank 29 → synth 40 (less popular recent)
+    #
+    # If Spotify ever returns real popularity again (Extended Access
+    # approval, policy change), the real value is preserved — synth only
+    # fills the None case.
+    cache_key = f"spotify:genre_pool_v3:{genre}"  # v3: pool entries now carry synth popularity
     pool = await redis_cache.get(cache_key)
 
     if not pool:
-        queries = (
-            genre,
-            f"{genre} tag:hipster",
-            f"{genre} year:2023-2026",
-        )
+        # (query, synth_pop_at_rank_0, synth_pop_at_last_rank)
+        variants = [
+            (genre, 90, 30),
+            (f"{genre} tag:hipster", 5, 40),
+            (f"{genre} year:2023-2026", 70, 40),
+        ]
         async with httpx.AsyncClient() as client:
             token = await _get_token(client)
             responses = await asyncio.gather(*[
@@ -741,22 +764,32 @@ async def search_tracks_by_genre(
                     client, "https://api.spotify.com/v1/search", token,
                     params={"q": q, "type": "track", "limit": 30, "market": "US"},
                 )
-                for q in queries
+                for q, _, _ in variants
             ], return_exceptions=True)
 
         seen: set[str] = set()
         pool = []
-        for resp in responses:
+        for (q, pop_start, pop_end), resp in zip(variants, responses):
             if isinstance(resp, Exception):
                 continue
             try:
                 items = resp.json().get("tracks", {}).get("items", [])
             except Exception:
                 continue
-            for t in items:
+            n = max(len(items) - 1, 1)
+            for rank, t in enumerate(items):
                 if t and t.get("id") and t["id"] not in seen:
                     seen.add(t["id"])
-                    pool.append(_parse_track(t))
+                    parsed = _parse_track(t)
+                    # Synthesize popularity if Spotify didn't include it
+                    # (the common case post late-2024 for non-Extended-
+                    # Access apps). Linear interpolation across the variant's
+                    # rank range.
+                    if parsed.get("popularity") is None:
+                        ratio = rank / n
+                        synth = pop_start + (pop_end - pop_start) * ratio
+                        parsed["popularity"] = max(0, min(100, int(round(synth))))
+                    pool.append(parsed)
 
         if pool:  # don't cache an empty pool — let next call retry
             await redis_cache.set(cache_key, pool, ttl=_TTL_7D)

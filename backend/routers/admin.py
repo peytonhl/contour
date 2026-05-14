@@ -22,11 +22,13 @@ import traceback
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import json as _json
+
 from database import get_db
-from models import TrackCache, User
+from models import Rating, TrackCache, User, UserTasteProfile
 from routers.auth import require_user_id
 from services import enrichment_sweeper, instrumentation, spotify
 
@@ -265,4 +267,121 @@ async def backfill_track_popularity(
         "elapsed_seconds": round(time.time() - start, 2),
         "sample": sample,
         "probe": probe,
+    }
+
+
+@router.get("/inspect-my-feed")
+async def inspect_my_feed(
+    user_id: str = Depends(require_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    End-to-end view of what tier 1 of the For You feed produces for the
+    calling user RIGHT NOW.
+
+    Shows:
+      - profile.genres (the source data for tier 1 sampling)
+      - liked_artist_ids count (depth of taste history)
+      - onboarding_done flag
+      - computed target_popularity (drives the Laplace curve center)
+      - which 3 genres tier 1 WOULD sample this batch (live weighted-sample
+        from profile.genres with position decay 0.85^i)
+      - per-genre track counts + a sample of the first 3 tracks returned
+        from search_tracks_by_genre, including their (synthetic) popularity
+
+    Tells us in one fetch whether the "For You doesn't match my genres"
+    complaint is caused by:
+      (a) profile.genres is empty (no onboarding signal, no high ratings) →
+          fix is in the onboarding flow or signal pipeline
+      (b) profile.genres has the right genres but search returns 0 →
+          Spotify is rate-limiting or the genre name doesn't text-search well
+      (c) profile.genres + search both produce results but the tracks don't
+          feel genre-relevant → quality issue with Spotify's text search
+          on niche genres, separate fix needed
+
+    Admin-only because it includes user-specific state. The endpoint scopes
+    to the *calling* admin's own profile — no way to inspect other users.
+    """
+    await _require_admin(db, user_id)
+
+    # Local imports to avoid coupling admin.py to discover.py at module load.
+    from routers.discover import _compute_target_popularity, _weighted_sample
+
+    profile = await db.get(UserTasteProfile, user_id)
+    genres = _json.loads(profile.genres or "[]") if profile else []
+    liked_artists = _json.loads(profile.liked_artist_ids or "[]") if profile else []
+
+    target_pop = None
+    try:
+        target_pop = await _compute_target_popularity(db, user_id)
+    except Exception as exc:
+        target_pop_error = f"{type(exc).__name__}: {exc}"
+    else:
+        target_pop_error = None
+
+    # Total ratings by this user — context for whether the profile is
+    # under-developed (low count → cold-start, expected to feel generic).
+    total_track_ratings = await db.scalar(
+        select(func.count()).select_from(Rating).where(
+            Rating.user_id == user_id,
+            Rating.entity_type == "track",
+        )
+    ) or 0
+    high_track_ratings = await db.scalar(
+        select(func.count()).select_from(Rating).where(
+            Rating.user_id == user_id,
+            Rating.entity_type == "track",
+            Rating.value >= 4.0,
+        )
+    ) or 0
+
+    # Simulate tier 1 with the user's current profile.
+    sampled_genres: list[str] = []
+    per_genre: list[dict] = []
+    if genres:
+        n_pick = min(3, len(genres))
+        weights = [0.85 ** i for i in range(len(genres))]
+        sampled_genres = _weighted_sample(genres, weights, k=n_pick)
+        for g in sampled_genres:
+            try:
+                tracks = await spotify.search_tracks_by_genre(
+                    g, limit=15, target_popularity=target_pop,
+                )
+                per_genre.append({
+                    "genre": g,
+                    "tracks_returned": len(tracks),
+                    "sample": [
+                        {
+                            "name": t.get("name"),
+                            "artists": t.get("artists"),
+                            "popularity": t.get("popularity"),
+                        }
+                        for t in tracks[:3]
+                    ],
+                })
+            except Exception as exc:
+                per_genre.append({
+                    "genre": g,
+                    "tracks_returned": 0,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+
+    return {
+        "user_id": user_id,
+        "profile": {
+            "has_row": profile is not None,
+            "onboarding_done": profile.onboarding_done if profile else None,
+            "genres": genres,
+            "liked_artist_count": len(liked_artists),
+        },
+        "rating_history": {
+            "total_track_ratings": total_track_ratings,
+            "high_rated_4_plus": high_track_ratings,
+        },
+        "computed_target_popularity": target_pop,
+        "target_popularity_error": target_pop_error,
+        "tier1_simulation": {
+            "sampled_genres": sampled_genres,
+            "per_genre": per_genre,
+        },
     }
