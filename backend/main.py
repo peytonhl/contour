@@ -116,6 +116,16 @@ _STARTUP_STATE: dict = {
     "sweeper_scheduled": False,
 }
 
+# Strong reference for the long-running sweeper task. Python 3.11+ asyncio
+# docs warn that asyncio.create_task return values must be held by a strong
+# reference, otherwise the event loop's weak-set may GC the task mid-sleep.
+# A 60-second initial-delay sleep at the top of run_forever() is the exact
+# pattern that gets bitten — task suspends, no caller holds it, GC runs,
+# task vanishes silently with "Task was destroyed but it is pending" if you
+# happen to be looking. This is the most likely reason the sweeper was
+# scheduled but did zero work in the last hour of production.
+_sweeper_task = None
+
 
 @app.on_event("startup")
 async def startup():
@@ -162,7 +172,8 @@ async def startup():
     # the only enrichment path.
     try:
         from services import enrichment_sweeper
-        asyncio.create_task(enrichment_sweeper.run_forever())
+        global _sweeper_task
+        _sweeper_task = asyncio.create_task(enrichment_sweeper.run_forever())
         _STARTUP_STATE["sweeper_scheduled"] = True
     except Exception as exc:
         logger.warning("Enrichment sweeper failed to schedule (non-fatal): %s", exc)
@@ -209,6 +220,27 @@ async def debug_version():
     """
     import time as _time
     now = _time.time()
+
+    # Report the sweeper task's actual runtime state — not just "was it
+    # scheduled" but "is it still alive". done()=True means the task
+    # finished (which for an infinite loop means it crashed or was GC'd
+    # — both bad). cancelled()=True also means it's dead.
+    sweeper_state = "not-scheduled"
+    sweeper_exception = None
+    if _sweeper_task is not None:
+        if _sweeper_task.cancelled():
+            sweeper_state = "cancelled"
+        elif _sweeper_task.done():
+            sweeper_state = "done"  # infinite loop ended = bad
+            try:
+                exc = _sweeper_task.exception()
+                if exc is not None:
+                    sweeper_exception = f"{type(exc).__name__}: {exc}"
+            except Exception:
+                pass
+        else:
+            sweeper_state = "running"
+
     return {
         "git_sha": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "unknown"),
         "git_branch": os.environ.get("RAILWAY_GIT_BRANCH", "unknown"),
@@ -219,6 +251,8 @@ async def debug_version():
         "startup_complete": _STARTUP_STATE["complete"],
         "startup_complete_at_utc": _STARTUP_STATE["complete_at_utc"],
         "sweeper_scheduled": _STARTUP_STATE["sweeper_scheduled"],
+        "sweeper_state": sweeper_state,
+        "sweeper_exception": sweeper_exception,
         "now_utc": now,
     }
 
