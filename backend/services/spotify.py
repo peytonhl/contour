@@ -605,55 +605,106 @@ async def get_new_releases(limit: int = 10) -> list[dict]:
 
 async def search_tracks_by_genre(genre: str, limit: int = 20) -> list[dict]:
     """
-    Search for tracks by genre using a keyword search.
+    Genre-based track search with popularity-weighted sampling.
 
-    Note: Spotify deprecated the `genre:` filter in 2024. We use a plain
-    keyword query instead, but rotate across three variants per call so
-    niche-genre users actually see niche tracks:
+    Two-stage so niche-taste users actually get niche music while popular
+    tracks still dominate (the user wants discovery, not random noise):
 
-      1. `{genre}` — default popularity ranking (the "mainstream of the niche")
-      2. `{genre} tag:hipster` — Spotify's documented low-popularity filter,
-         returns deep cuts that wouldn't surface from default ranking
-      3. `{genre} year:2023-2026` — recent tracks regardless of popularity,
-         tilts toward what's fresh in the niche right now
+      1. CANDIDATE POOL (cached 7d per genre). Fetched in parallel from
+         three queries that stratify across the popularity / recency
+         space, then deduped by track ID:
+           a. `{genre}`                 — default ranking, popular bias
+           b. `{genre} tag:hipster`     — Spotify's documented low-pop
+                                          filter; returns actual deep cuts
+           c. `{genre} year:2023-2026`  — recent regardless of popularity
+         Result: ~50-60 candidates covering the full popularity range,
+         from chart-toppers down to tracks with popularity scores in the
+         single digits.
 
-    The prior version always used `{genre} hits`, which both forced a
-    popularity skew AND prepended the lazy word "hits" into the query —
-    a user whose seed-artist genre was e.g. "shoegaze" or "math rock"
-    saw chart-of-the-niche tracks every batch instead of discovery.
-    Per-call random.choice means tier 1's three parallel genre searches
-    are a 1/3-ish mix of variants on average — over a session you land
-    on each variant repeatedly, which is what supplies the "I keep
-    finding stuff" feel the algorithm was missing for niche tastes.
+      2. WEIGHTED SAMPLE (per call, fresh randomness). Sample `limit`
+         tracks from the pool without replacement, weighted by
+             w(t) = (popularity + 10) ** 0.7
+         The exponent < 1 flattens the curve so the tail has real
+         probability. Numerical feel:
+             popularity 85 → weight ≈ 23
+             popularity 50 → weight ≈ 17
+             popularity 15 → weight ≈ 9
+             popularity  5 → weight ≈ 6
+         So a chart track is ~3-4x more likely than a popularity-5
+         deep cut to land in a given slot — not 17x as linear weighting
+         would give, not 1x as uniform would give. Niche users keep
+         seeing popular-of-the-niche AND obscure-of-the-niche in every
+         batch, and the long tail is in genuine rotation rather than
+         being a 1/3 lottery for the whole call.
 
-    Cache key includes the chosen variant so each variant caches
-    independently — popular `{genre}` results are hit far more often
-    than `tag:hipster`, and caching them together would let one variant
-    starve the other.
+      Sampling uses Efraimidis-Spirakis: key = U ** (1/w), sort
+      descending, take top N. Standard weighted-reservoir-without-
+      replacement; equivalent to drawing N times from the discrete
+      distribution and removing the picked item each time, but in a
+      single sort pass.
+
+      Pool fetch is cached because it's the expensive part (3 Spotify
+      calls). Sampling is per-call so every batch sees a different
+      cross-section of the same pool.
+
+      Earlier versions: `{genre} hits` (forced popularity skew + the
+      word "hits" prepended into the query — niche users saw chart-of-
+      niche every batch); then a per-call random.choice between three
+      queries (better but still 1/3 chance of an all-mainstream batch
+      for the whole genre tier).
     """
-    variants = (
-        genre,
-        f"{genre} tag:hipster",
-        f"{genre} year:2023-2026",
-    )
-    query = random.choice(variants)
-    cache_key = f"spotify:genre_kw:{query}:{limit}"
-    cached = await redis_cache.get(cache_key)
-    if cached:  # guard: don't use an empty cached result
-        return cached
+    cache_key = f"spotify:genre_pool_v2:{genre}"
+    pool = await redis_cache.get(cache_key)
 
-    async with httpx.AsyncClient() as client:
-        token = await _get_token(client)
-        resp = await _spotify_get(
-            client, "https://api.spotify.com/v1/search", token,
-            params={"q": query, "type": "track", "limit": limit, "market": "US"},
+    if not pool:
+        queries = (
+            genre,
+            f"{genre} tag:hipster",
+            f"{genre} year:2023-2026",
         )
-        resp.raise_for_status()
-        items = resp.json().get("tracks", {}).get("items", [])
-    result = [_parse_track(t) for t in items if t.get("id")]
-    if result:  # only cache non-empty results
-        await redis_cache.set(cache_key, result, ttl=_TTL_7D)
-    return result
+        async with httpx.AsyncClient() as client:
+            token = await _get_token(client)
+            responses = await asyncio.gather(*[
+                _spotify_get(
+                    client, "https://api.spotify.com/v1/search", token,
+                    params={"q": q, "type": "track", "limit": 30, "market": "US"},
+                )
+                for q in queries
+            ], return_exceptions=True)
+
+        seen: set[str] = set()
+        pool = []
+        for resp in responses:
+            if isinstance(resp, Exception):
+                continue
+            try:
+                items = resp.json().get("tracks", {}).get("items", [])
+            except Exception:
+                continue
+            for t in items:
+                if t and t.get("id") and t["id"] not in seen:
+                    seen.add(t["id"])
+                    pool.append(_parse_track(t))
+
+        if pool:  # don't cache an empty pool — let next call retry
+            await redis_cache.set(cache_key, pool, ttl=_TTL_7D)
+
+    if not pool:
+        return []
+
+    def _weight(t: dict) -> float:
+        # popularity can be None for very obscure tracks; treat as mid-low
+        # so they're in play but not over-weighted.
+        p = t.get("popularity")
+        if p is None:
+            p = 30
+        return (p + 10) ** 0.7
+
+    # random.random() returns [0.0, 1.0). 0.0 ** anything = 0 which sorts
+    # to the bottom — fine, just means that track loses this round.
+    keyed = [(random.random() ** (1.0 / _weight(t)), t) for t in pool]
+    keyed.sort(key=lambda x: x[0], reverse=True)
+    return [t for _, t in keyed[:limit]]
 
 
 async def get_global_top_tracks(limit: int = 10) -> list[dict]:
