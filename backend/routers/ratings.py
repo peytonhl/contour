@@ -10,7 +10,7 @@ from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, AsyncSessionLocal
-from models import Rating, Review, ReviewLike, ReviewVote, ReviewReply, User, UserTasteProfile
+from models import AlbumCache, AppleMusicLink, Rating, Review, ReviewLike, ReviewVote, ReviewReply, TrackCache, User, UserTasteProfile
 from routers.auth import optional_user_id
 from routers.moderation import blocked_user_ids
 from routers.notifications import create_notification
@@ -424,6 +424,110 @@ async def upsert_review(
                       entity_id=entity_id, body=body.body.strip()))
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/reviews/{review_id}/card-data")
+async def get_review_card_data(
+    review_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    One-shot payload for the Vercel-OG shareable-card renderer.
+
+    Returns everything the renderer needs in a single round-trip:
+      - review body, created_at, stars
+      - author display name + avatar
+      - entity name, primary artist, cover URL (Apple Music preferred,
+        Spotify fallback)
+
+    No auth required — review cards are public artifacts representing
+    public reviews. The renderer is a Vercel Edge Function and must not
+    need a session token to fetch this.
+
+    Cover preference: AppleMusicLink.artwork_url when present (Apple's
+    1200×1200 art beats Spotify's 640 cap). Falls back to the cached
+    Spotify image. No live Apple Music API call here — if we don't have
+    a cached match for the entity yet, the user just gets a Spotify-art
+    card. Lazy backfill happens elsewhere (apple_music router).
+    """
+    review = (await db.execute(
+        select(Review).where(Review.id == review_id)
+    )).scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    user = (await db.execute(
+        select(User).where(User.id == review.user_id)
+    )).scalar_one_or_none()
+
+    # Entity meta from the local cache. We deliberately don't fall through
+    # to a live Spotify call here — keeping this endpoint fast and free of
+    # rate-limit risk matters more than the edge-case of a review on an
+    # entity we've never cached (it'd render with no cover, which is
+    # acceptable degradation).
+    entity_name: Optional[str] = None
+    entity_artist: Optional[str] = None
+    spotify_cover: Optional[str] = None
+    if review.entity_type == "album":
+        row = (await db.execute(
+            select(AlbumCache).where(AlbumCache.spotify_id == review.entity_id)
+        )).scalar_one_or_none()
+        if row:
+            entity_name, entity_artist, spotify_cover = row.name, row.artist, row.image_url
+    elif review.entity_type == "track":
+        row = (await db.execute(
+            select(TrackCache).where(TrackCache.spotify_id == review.entity_id)
+        )).scalar_one_or_none()
+        if row:
+            entity_name, entity_artist, spotify_cover = row.name, row.artist, row.image_url
+
+    # Apple Music artwork lookup — cached match only (no live fetch).
+    # storefront defaults to "us" everywhere else in this codebase so we
+    # match that here for cache-hit alignment.
+    apple_artwork: Optional[str] = None
+    if review.entity_type in ("album", "track"):
+        apple_link = (await db.execute(
+            select(AppleMusicLink).where(
+                AppleMusicLink.spotify_id == review.entity_id,
+                AppleMusicLink.entity_type == review.entity_type,
+                AppleMusicLink.storefront == "us",
+            )
+        )).scalar_one_or_none()
+        if apple_link and apple_link.artwork_url:
+            apple_artwork = apple_link.artwork_url
+
+    cover_url = apple_artwork or spotify_cover
+
+    # Star rating: pull the author's Rating row for the same entity (if any).
+    rating_row = (await db.execute(
+        select(Rating).where(
+            Rating.user_id == review.user_id,
+            Rating.entity_type == review.entity_type,
+            Rating.entity_id == review.entity_id,
+        )
+    )).scalar_one_or_none()
+
+    return {
+        "review": {
+            "id": review.id,
+            "body": review.body,
+            "created_at": review.created_at.isoformat() + "Z",
+            "rating": rating_row.value if rating_row else None,
+        },
+        "author": {
+            "id": review.user_id,
+            "display_name": (user.display_name if user else "Unknown"),
+            "image_url": (user.image_url if user else None),
+        },
+        "entity": {
+            "type": review.entity_type,
+            "id": review.entity_id,
+            "name": entity_name,
+            "artist": entity_artist,
+            "cover_url": cover_url,
+            "cover_source": "apple" if apple_artwork else ("spotify" if spotify_cover else None),
+        },
+    }
 
 
 @router.delete("/reviews/{review_id}")
