@@ -57,10 +57,13 @@ function saveLanguage(val) {
 // banner. Personalization itself kicks in from rating #1; this number only
 // controls the banner UI, NOT whether the backend sees the user's signals.
 //
-// Was 5 — dropped to 3 so the user sees real momentum (and a real reward
-// for finishing) within the first minute, matching the "Rate a few tracks"
-// copy in OnboardingModal's value-prop card.
-const PERSONALIZATION_RAMP = 3;
+// Bumped back to 5 alongside the onboarding rebuild (2026-05-14). The
+// genre picker is gone — ratings are now the *only* taste signal — so the
+// calibration bar carries a heavier load and 5 chunks of feedback give
+// the user a clearer sense of "you're tuning this." Tier-2 of the For You
+// feed (UserTasteProfile.genres) grows organically as each 4–5★ rating
+// folds in the rated artist's Spotify genres.
+const PERSONALIZATION_RAMP = 5;
 
 // ── Seen-track history ────────────────────────────────────────────────────────
 // Records every track the user has actively swiped past. Used by the
@@ -1099,10 +1102,10 @@ function ColdStartBanner({ ratingCount }) {
   if (ratingCount >= PERSONALIZATION_RAMP) return null;
   const remaining = PERSONALIZATION_RAMP - ratingCount;
   const label = ratingCount === 0
-    ? "Rate a track to tune your feed"
+    ? "Rate 5 tracks to calibrate your feed"
     : remaining === 1
-      ? "One more — almost dialed in"
-      : `${ratingCount} of ${PERSONALIZATION_RAMP} — feed is sharpening`;
+      ? "One more to dial it in"
+      : `${ratingCount} of ${PERSONALIZATION_RAMP}: feed is sharpening`;
 
   return (
     <div style={{
@@ -1166,6 +1169,16 @@ function ForYouFeed() {
   const containerRef = useRef(null);
   const genresRef = useRef(loadGenres());
   const fetchingMoreRef = useRef(false);
+  // Continuous recalibration counter: how many ratings the user has made
+  // in THIS session. When this hits a multiple of RECALIBRATE_EVERY, the
+  // feed refreshes its unseen queue with the latest taste signal so the
+  // user starts feeling the personalization within the same scroll
+  // instead of waiting for the prefetch boundary 10 tracks out.
+  //
+  // Session-only (not total ratingCount) so a returning user with 47 prior
+  // ratings doesn't immediately refresh on the first /auth/me sync.
+  const sessionRatingsRef = useRef(0);
+  const RECALIBRATE_EVERY = 5;
 
   async function fetchBatch(append = false, attempt = 0) {
     if (append && fetchingMoreRef.current) return;
@@ -1270,6 +1283,22 @@ function ForYouFeed() {
     setTracks([]);
     setActiveIdx(0);
     fetchBatch();
+  }
+
+  // Continuous recalibration: trim the unseen queue past the current card
+  // and append a fresh batch built from the latest taste signal. The
+  // currently-active track and anything the user already swiped past stay
+  // put — the refresh is invisible to where the user is right now, but
+  // their *next* card reflects the ratings they just gave.
+  //
+  // Triggered from handleRate when sessionRatingsRef hits a multiple of
+  // RECALIBRATE_EVERY. Keep this distinct from the contour:taste-updated
+  // event handler (which fully resets activeIdx to 0) — that's for
+  // discrete state changes like the onboarding genre save; this is for
+  // the ambient "every 5 ratings the feed sharpens a little" loop.
+  async function recalibrate() {
+    setTracks((prev) => prev.slice(0, activeIdx + 1));
+    await fetchBatch(true);
   }
 
   useEffect(() => { fetchBatch(); }, []);
@@ -1661,6 +1690,14 @@ function ForYouFeed() {
       // when the user is just updating an existing rating (no row added).
       if (!userRatings[track.id]) {
         setRatingCount((prev) => prev + 1);
+        sessionRatingsRef.current += 1;
+        // Continuous recalibration: every RECALIBRATE_EVERY ratings within
+        // this session, refresh the unseen queue with the latest taste
+        // signal. queueMicrotask defers past this turn so we don't
+        // refetch in the middle of the current render.
+        if (sessionRatingsRef.current % RECALIBRATE_EVERY === 0) {
+          queueMicrotask(() => recalibrate());
+        }
       }
 
       // Also update local genre cache for logged-out / cold-start scenarios
