@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select, delete
+from sqlalchemy import func, select, delete, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, AsyncSessionLocal
@@ -139,17 +139,24 @@ async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None
     )).scalars().all()
     user_map = {u.id: u for u in user_objs}
 
-    # Batch: ratings (only when scoped to a single entity)
+    # Batch: ratings keyed by (user_id, entity_type, entity_id). Works for
+    # both the scoped per-entity reviews list AND the unscoped global feed
+    # where each review may target a different entity. The previous version
+    # only populated rating_map when scoped, so every Community-tab review
+    # carried rating=null and the star badge silently hid — which is what
+    # the "Community tab shows one star for everything" bug looked like
+    # from the UI side.
+    rating_keys = [(rev.user_id, rev.entity_type, rev.entity_id) for rev in reviews]
     rating_map: dict = {}
-    if entity_type and entity_id:
+    if rating_keys:
         rating_rows = (await db.execute(
             select(Rating).where(
-                Rating.entity_type == entity_type,
-                Rating.entity_id == entity_id,
-                Rating.user_id.in_(user_ids),
+                tuple_(Rating.user_id, Rating.entity_type, Rating.entity_id).in_(rating_keys)
             )
         )).scalars().all()
-        rating_map = {r.user_id: r.value for r in rating_rows}
+        rating_map = {
+            (r.user_id, r.entity_type, r.entity_id): r.value for r in rating_rows
+        }
 
     out = []
     for rev in reviews:
@@ -168,7 +175,7 @@ async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None
             "created_at": rev.created_at.isoformat() + "Z",
             "updated_at": rev.updated_at.isoformat() + "Z",
             "edited": edited,
-            "rating": rating_map.get(rev.user_id),
+            "rating": rating_map.get((rev.user_id, rev.entity_type, rev.entity_id)),
             "upvotes": up,
             "downvotes": down,
             "user_vote": user_vote_map.get(rev.id),
