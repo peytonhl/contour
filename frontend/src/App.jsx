@@ -34,6 +34,8 @@ const DislikedArtistsPage = lazyNamed(() => import("./pages/DislikedArtistsPage.
 const AdminReportsPage   = lazyNamed(() => import("./pages/AdminReportsPage.jsx"),   "AdminReportsPage");
 const ImportPage         = lazyNamed(() => import("./pages/ImportPage.jsx"),         "ImportPage");
 const TrendingPage       = lazyNamed(() => import("./pages/TrendingPage.jsx"),       "TrendingPage");
+const FriendsPage        = lazyNamed(() => import("./pages/FriendsPage.jsx"),        "FriendsPage");
+const SettingsPage       = lazyNamed(() => import("./pages/SettingsPage.jsx"),       "SettingsPage");
 
 /**
  * Listens for Capacitor `appUrlOpen` events — fired when iOS / Android
@@ -120,6 +122,8 @@ export default function App() {
           <Route path="admin/reports" element={<AdminReportsPage />} />
           <Route path="import" element={<ImportPage />} />
           <Route path="trending" element={<TrendingPage />} />
+          <Route path="friends" element={<FriendsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>
     </Suspense>

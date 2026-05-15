@@ -188,7 +188,7 @@ export function SigninGate() {
           lineHeight: 1.6,
         }}>
           Browse albums, charts, and reviews freely. Sign in any time to start
-          rating, reviewing, and saving your taste — ratings only count when
+          rating, reviewing, and saving your taste. Ratings only count when
           you're signed in.
         </p>
 

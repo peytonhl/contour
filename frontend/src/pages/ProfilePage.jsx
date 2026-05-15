@@ -92,123 +92,6 @@ function EntityRow({ item, right }) {
   );
 }
 
-// ── Settings popover (gear icon) ─────────────────────────────────────────────
-// Lives here rather than in its own file because it's tiny and profile-specific.
-// Click-away dismissal is handled by a transparent fixed backdrop.
-function SettingsMenu({ open, onClose }) {
-  if (!open) return null;
-  return (
-    <>
-      <div
-        onClick={onClose}
-        style={{ position: "fixed", inset: 0, zIndex: 80 }}
-      />
-      <div style={{
-        position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 81,
-        background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: "var(--radius)", padding: 6, minWidth: 200,
-        boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
-      }}>
-        <Link
-          to="/import"
-          onClick={onClose}
-          style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: "var(--radius-sm)",
-            color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
-          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          Import ratings
-        </Link>
-        <Link
-          to="/disliked-artists"
-          onClick={onClose}
-          style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: "var(--radius-sm)",
-            color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
-          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18.364 5.636L5.636 18.364" />
-            <circle cx="12" cy="12" r="9" />
-          </svg>
-          Disliked artists
-        </Link>
-        <Link
-          to="/blocks"
-          onClick={onClose}
-          style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: "var(--radius-sm)",
-            color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
-          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-          </svg>
-          Blocked users
-        </Link>
-        <button
-          onClick={() => {
-            // Fires the listener inside OnboardingModal to re-open it from
-            // step 0. No reload, keeps the user's place on the profile page.
-            window.dispatchEvent(new CustomEvent("contour:replay-onboarding"));
-            onClose();
-          }}
-          style={{
-            width: "100%", textAlign: "left",
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: "var(--radius-sm)",
-            background: "transparent", border: "none",
-            color: "var(--text)", fontSize: 13, fontWeight: 600, cursor: "pointer",
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
-          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
-          Show tutorial again
-        </button>
-        <Link
-          to="/methodology"
-          onClick={onClose}
-          style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: "var(--radius-sm)",
-            color: "var(--text)", textDecoration: "none", fontSize: 13, fontWeight: 600,
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface2)"}
-          onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="16" x2="12" y2="12" />
-            <line x1="12" y1="8" x2="12.01" y2="8" />
-          </svg>
-          How it works
-        </Link>
-      </div>
-    </>
-  );
-}
-
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function ProfilePage() {
   const { user, logout } = useAuth();
@@ -222,7 +105,6 @@ export function ProfilePage() {
   // Deep-link support: /profile?tab=backlog opens directly to the Backlog tab.
   const initialTab = searchParams.get("tab") || "ratings";
   const [tab, setTab] = useState(initialTab);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Keep ?tab= in sync with state so refresh / share preserves the selection.
   useEffect(() => {
@@ -434,8 +316,12 @@ export function ProfilePage() {
                 </h1>
               </div>
               <div style={{ display: "flex", gap: 6, flexShrink: 0, position: "relative" }}>
-                <button
-                  onClick={() => setSettingsOpen((v) => !v)}
+                {/* Gear icon → /settings. The old in-place popover was
+                    replaced by a dedicated settings page so account /
+                    preference / content / about live in one consolidated
+                    surface rather than a 5-item dropdown. */}
+                <Link
+                  to="/settings"
                   aria-label="Settings"
                   title="Settings"
                   style={{
@@ -443,14 +329,14 @@ export function ProfilePage() {
                     border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
                     cursor: "pointer", display: "inline-flex",
                     alignItems: "center", justifyContent: "center",
+                    textDecoration: "none",
                   }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="3" />
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                   </svg>
-                </button>
-                <SettingsMenu open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+                </Link>
                 <button
                   onClick={logout}
                   style={{

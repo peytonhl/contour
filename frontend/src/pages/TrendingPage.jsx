@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { EmptyHint } from "../components/Skeleton.jsx";
+import { ChartsTabs } from "../components/ChartsTabs.jsx";
 
 const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -400,7 +401,9 @@ export function TrendingPage() {
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", padding: "32px 20px 80px", display: "flex", flexDirection: "column", gap: 36 }}>
 
-      <div>
+      <ChartsTabs />
+
+      <div style={{ marginTop: -20 }}>
         <h1 style={{ fontSize: 40, margin: "0 0 6px", color: "var(--text)" }}>
           Trending
         </h1>

@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { AppleSignInButton } from "../components/AppleSignInButton.jsx";
+import { ChartsTabs } from "../components/ChartsTabs.jsx";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 
 const ACCENT_A = "#d97a3b";
@@ -222,38 +223,11 @@ export function SearchPage() {
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px 60px", display: "flex", flexDirection: "column", gap: 28 }}>
 
+      {/* Tabs: Search / Trending / Charts. Active = Search on this route. */}
+      <ChartsTabs />
+
       {/* Search bar — the hero */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <h1 style={{
-            fontSize: 32, fontWeight: 400, color: "var(--text)", margin: 0,
-          }}>
-            Search
-          </h1>
-          {/* Compare entry point — the bottom-nav slot was removed to keep
-              mobile chrome at 3 tabs. Search is the conceptually-closest
-              surface ("find a thing" → "find two things side-by-side"), so
-              the affordance lives here. Keeps /compare reachable for
-              users who knew about it via desktop top nav / direct URL. */}
-          <Link
-            to="/compare"
-            style={{
-              fontSize: 12, fontWeight: 600,
-              padding: "6px 12px", borderRadius: "var(--radius-lg)",
-              background: "var(--surface)", border: "1px solid var(--border)",
-              color: "var(--text-muted)", textDecoration: "none",
-              display: "inline-flex", alignItems: "center", gap: 6,
-              whiteSpace: "nowrap",
-            }}
-            title="Side-by-side streaming trajectory comparison"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M8 3L4 7l4 4" /><path d="M4 7h16" />
-              <path d="M16 21l4-4-4-4" /><path d="M20 17H4" />
-            </svg>
-            Compare two albums
-          </Link>
-        </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: -12 }}>
         <div style={{ position: "relative" }}>
           <div style={{
             display: "flex", background: "var(--surface)", border: "1px solid var(--border)",
@@ -362,11 +336,34 @@ export function SearchPage() {
           )}
         </div>
 
-        {/* Quick hint — only while idle */}
+        {/* Quick hint + Compare affordance — only while idle. Compare moved
+            here from its old slot in the page header now that ChartsTabs
+            occupies the top. The Search↔Compare adjacency still reads
+            naturally (find one thing → find two side-by-side). */}
         {!query && (
-          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
-            Albums, tracks, artists, and other listeners — all in one box.
-          </p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+              Albums, tracks, artists, and other listeners, all in one box.
+            </p>
+            <Link
+              to="/compare"
+              style={{
+                fontSize: 12, fontWeight: 600,
+                padding: "6px 12px", borderRadius: "var(--radius-lg)",
+                background: "var(--surface)", border: "1px solid var(--border)",
+                color: "var(--text-muted)", textDecoration: "none",
+                display: "inline-flex", alignItems: "center", gap: 6,
+                whiteSpace: "nowrap",
+              }}
+              title="Side-by-side streaming trajectory comparison"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 3L4 7l4 4" /><path d="M4 7h16" />
+                <path d="M16 21l4-4-4-4" /><path d="M20 17H4" />
+              </svg>
+              Compare two albums
+            </Link>
+          </div>
         )}
       </div>
 

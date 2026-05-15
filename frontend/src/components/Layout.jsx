@@ -156,15 +156,15 @@ export function Layout() {
     return () => clearInterval(interval);
   }, [user]);
 
-  // Primary nav: For You is the home (audio swipe, Friends timeline, and
-  // Community reviews all live there as tabs). /feed was retired.
-  // "How It Works" was moved to the profile settings menu — keeps the top
-  // nav focused on primary navigation and not explainer content.
+  // Primary nav: For You is the home (algorithmic feed). Friends is its own
+  // dedicated surface for followed-users activity (also still reachable as
+  // a sub-tab inside For You for now). Charts moved out of the top nav —
+  // it now lives as a tab on the Search page along with Trending.
   const desktopNavLinks = [
     { to: "/", label: "For You", end: true },
+    { to: "/friends", label: "Friends" },
     { to: "/search", label: "Search" },
     { to: "/compare", label: "Compare" },
-    { to: "/charts", label: "Charts" },
     ...(user?.is_admin ? [{ to: "/admin/reports", label: "Admin" }] : []),
   ];
 
@@ -347,15 +347,14 @@ export function Layout() {
         }}
       >
         <div style={{ display: "flex", alignItems: "stretch", height: 56 }}>
-          {/* For You first — it's the home. Discover / Friends / Community
-              live as sub-tabs inside it.
-              Compare consolidated into Search page (light integration —
-              "Compare two albums" affordance near the search bar) so
-              mobile nav stays at 3 tabs and Compare gains discoverability
-              through the conceptually-adjacent Search surface. /compare
-              still works as a direct URL. Charts reachable via desktop
-              top nav + direct URL (lower frequency-of-use). */}
+          {/* 4 tabs: For You (algorithmic) → Friends (social) → Search
+              (which now contains Trending + Charts as sub-tabs) → Profile.
+              Compare lives inside Search via the "Compare two albums" link
+              near the search bar — kept off the bottom nav so the 4-tab
+              chrome stays uncrowded on small phones. /compare still works
+              as a direct URL. */}
           <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
+          <BottomTab to="/friends" label="Friends" icon={<CommunityIcon />} />
           <BottomTab to="/search" label="Search" icon={<SearchIcon />} />
 
           {user ? (

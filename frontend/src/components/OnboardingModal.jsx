@@ -93,7 +93,7 @@ function Dots({ total, active }) {
 // The RYM import upsell that used to sit at step 2 was cut — putting a
 // CSV-import workflow 30 seconds into a casual user's first run contradicted
 // the low-friction positioning. The /import route is still reachable from
-// the profile settings menu for the rare power user migrating from RYM.
+// the /settings page for the rare power user migrating from RYM.
 export function OnboardingModal() {
   const { user } = useAuth();
   const navigate = useNavigate();

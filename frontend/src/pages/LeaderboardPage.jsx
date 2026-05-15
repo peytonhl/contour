@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
+import { ChartsTabs } from "../components/ChartsTabs.jsx";
 
 const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -169,8 +170,10 @@ export function LeaderboardPage() {
   return (
     <div style={{ maxWidth: 780, margin: "0 auto", padding: "32px 20px 60px", display: "flex", flexDirection: "column", gap: 24 }}>
 
+      <ChartsTabs />
+
       {/* Header */}
-      <div>
+      <div style={{ marginTop: -8 }}>
         <h1 style={{
           fontSize: 40, fontWeight: 400, margin: "0 0 8px",
           color: "var(--text)",
