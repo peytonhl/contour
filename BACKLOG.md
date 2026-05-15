@@ -55,13 +55,59 @@ loop is missing.
 - See "Peyton todos" below for the credentials/store work that goes with this.
 
 ### Shareable cards (v1: three card types)
-1. **Review card** — album/track cover + user avatar + review quote + name.
-2. **Comparison card** — side-by-side album covers + era-adjusted score + verdict.
-   *This is the only card that markets the era-adjustment differentiator,
-   so it's strategically important to ship alongside the review card.*
+
+**Design direction (Peyton, 2026-05-15):** treat each card like a famous-
+quote postcard (think the John Quincy Adams meme template) — editorial,
+serif-heavy, the user's review reads as a quote with attribution. The
+visual anchor is the album cover (the subject of the quote), not the
+user's face. Same dark `#08080a` background and Instrument Serif type
+as the app — no gradients, no busy backgrounds.
+
+**Renderer + cover preference (decided 2026-05-15):** Vercel OG Edge
+Function at `frontend/api/og/review.jsx`. Cover URL preference: Apple
+Music's 1200×1200 art (`AppleMusicLink.artwork_url` when cached) over
+Spotify's 640 cap, falling back to a dark placeholder block when neither
+is available. The endpoint hits a backend `card-data` route that wraps
+the lookup so the renderer needs exactly one network round-trip.
+
+**Cross-platform rollout — Android is not left behind:** The OG endpoint
+is just an HTTP route returning a PNG; iOS, Android, web, and Capacitor
+WebViews on both platforms all consume it identically. The share button
+uses `navigator.share({ files: [...] })` (Web Share Level 2), supported
+on:
+- iOS Safari + WKWebView (14.3+)
+- Android Chrome (89+) + Capacitor Android WebView
+- Older Android falls back to URL share via the same handler — graceful
+  degradation, no broken-feature state.
+
+No native plugin or Capacitor capability change is required, so this
+feature ships to Android users via the same Vercel deploy that ships
+it to iOS users (and to the web). **No Codemagic rebuild, no APK
+rebuild, no app-store review wait** — both shells pick up the new
+share behavior on next launch because they load the live web app
+from Vercel.
+
+If later we want a richer Android-specific path (download-to-photos
+button via `@capacitor/share`, sharing to Instagram Story's open
+graph endpoint, etc.) that's an incremental layer on top of this v1.
+
+1. **Review card** — small Contour wordmark top, album/track cover on
+   the left, the review body as a big Instrument Serif quote on the
+   right with curly `"…"` smart quotes, ★ rating in the bottom corner,
+   and `— [display name] [tiny avatar]` attribution beneath. Aspect
+   ratio: 4:5 portrait (1080×1350) so it fits Instagram feed and IG
+   Story cropping. Review text truncates ~220 chars with ellipsis so
+   the typography stays generous.
+2. **Comparison card** — side-by-side album covers + era-adjusted score
+   + verdict. *Only card that markets the era-adjustment differentiator,
+   strategically important to ship alongside the review card.* Same
+   editorial-quote vocabulary applied to a "vs." layout.
 3. **Hot take card** — one of your ratings that diverges most from the
    community average (e.g. you gave 1.5★ to a 4★ community-darling, or
    5★ to something under-rated). Needs a "divergence" query — cheap.
+   The quote here is something programmatic like *"My 1.5★ on
+   [Album]"* over the community's 4.2★ — leans into the contrarian
+   identity-expression angle.
 - Implementation: probably Vercel OG image-render endpoint, or a server-side
   Playwright/Satori render. Either way: shareable URL + downloadable PNG.
 

@@ -392,16 +392,39 @@ function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
   const isOwn = user && user.id === rev.user.id;
 
   async function handleShare() {
-    const url = `${window.location.origin}/${entityType}/${entityId}#review-${rev.id}`;
-    if (navigator.share) {
-      try { await navigator.share({ url }); } catch { /* cancelled */ }
-    } else {
+    const reviewUrl = `${window.location.origin}/${entityType}/${entityId}#review-${rev.id}`;
+    const cardUrl  = `${window.location.origin}/api/og/review?id=${rev.id}`;
+    const shareText = `${rev.user.display_name}'s review on Contour`;
+
+    // Best UX path: fetch the shareable card PNG and hand it to the native
+    // share sheet as a file. Works on iOS Safari/WKWebView (14.3+), Android
+    // Chrome (89+), and both Capacitor WebViews via Web Share Level 2.
+    // Fallback chain: file share → URL share → clipboard.
+    const supportsFileShare = !!navigator.canShare && !!navigator.share;
+    if (supportsFileShare) {
       try {
-        await navigator.clipboard.writeText(url);
-        setCopiedShare(true);
-        setTimeout(() => setCopiedShare(false), 2000);
-      } catch { /* blocked */ }
+        const res = await fetch(cardUrl);
+        if (res.ok) {
+          const blob = await res.blob();
+          const file = new File([blob], `contour-review-${rev.id}.png`, { type: blob.type || 'image/png' });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], text: shareText, url: reviewUrl });
+            return;
+          }
+        }
+      } catch { /* fall through to URL share */ }
     }
+
+    if (navigator.share) {
+      try { await navigator.share({ url: reviewUrl, text: shareText }); return; }
+      catch { /* cancelled or failed — try clipboard */ }
+    }
+
+    try {
+      await navigator.clipboard.writeText(reviewUrl);
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 2000);
+    } catch { /* blocked */ }
   }
 
   function handleDelete() {
