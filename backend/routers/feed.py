@@ -184,6 +184,10 @@ async def get_feed(
             "user_vote": user_vote_map.get(r.id),
             "replies_count": reply_counts.get(r.id, 0),
             "created_at": created_at.isoformat() + "Z",
+            # Surface edit state so the Friends feed renders "(edited)" the
+            # same way the album-page review section does. Mirrors the 2s
+            # threshold used in ratings._enrich_reviews.
+            "edited": (r.updated_at - r.created_at).total_seconds() > 2,
         })
 
     # Then bare ratings (not absorbed by any review)

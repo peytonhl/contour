@@ -124,7 +124,10 @@ function ReviewCardItem({ item, user, onVote, badges }) {
             {item.rating && <RatingBadge value={item.rating} />}
           </div>
         </div>
-        <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{timeAgo(item.created_at)}</span>
+        <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+          {timeAgo(item.created_at)}
+          {item.edited && <span style={{ marginLeft: 6, fontStyle: "italic", opacity: 0.85 }}>(edited)</span>}
+        </span>
       </div>
 
       <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.65, margin: 0, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>

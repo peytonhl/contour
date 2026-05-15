@@ -148,7 +148,10 @@ function FollowingItem({ item }) {
             {item.body}
           </p>
         )}
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{timeAgo(item.created_at)}</span>
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          {timeAgo(item.created_at)}
+          {item.edited && <span style={{ marginLeft: 6, fontStyle: "italic", opacity: 0.85 }}>(edited)</span>}
+        </span>
         {isReview && item.id != null && (
           <ReviewActionRow item={item} viewer={viewer} />
         )}

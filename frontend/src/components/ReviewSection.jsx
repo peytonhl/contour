@@ -386,9 +386,10 @@ export function ReplyThread({ reviewId, user, initialCount }) {
 }
 
 // ── Single review card ────────────────────────────────────────────────────────
-function ReviewCard({ rev, onVote, user, entityType, entityId }) {
+function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
   const [copiedShare, setCopiedShare] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const isOwn = user && user.id === rev.user.id;
 
   async function handleShare() {
     const url = `${window.location.origin}/${entityType}/${entityId}#review-${rev.id}`;
@@ -401,6 +402,11 @@ function ReviewCard({ rev, onVote, user, entityType, entityId }) {
         setTimeout(() => setCopiedShare(false), 2000);
       } catch { /* blocked */ }
     }
+  }
+
+  function handleDelete() {
+    if (!window.confirm("Delete this review? Your star rating will be kept.")) return;
+    onDelete?.(rev.id);
   }
 
   return (
@@ -423,7 +429,10 @@ function ReviewCard({ rev, onVote, user, entityType, entityId }) {
             </Link>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {rev.rating && <Stars value={rev.rating} size={13} />}
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{timeAgo(rev.created_at)}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {timeAgo(rev.created_at)}
+                {rev.edited && <span style={{ marginLeft: 6, fontStyle: "italic", opacity: 0.85 }}>(edited)</span>}
+              </span>
             </div>
           </div>
         </div>
@@ -437,8 +446,17 @@ function ReviewCard({ rev, onVote, user, entityType, entityId }) {
           >
             {copiedShare ? "✓" : "↗"}
           </button>
-          {/* Report — only show for signed-in users, and never on your own review */}
-          {user && user.id !== rev.user.id && (
+          {/* Own-review delete vs. other-user report — these occupy the same
+              slot since they're never both applicable on the same row. */}
+          {isOwn ? (
+            <button
+              onClick={handleDelete}
+              title="Delete this review"
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: "4px 6px", flexShrink: 0 }}
+            >
+              Delete
+            </button>
+          ) : user && (
             <button
               onClick={() => setReportOpen(true)}
               title="Report this review"
@@ -520,7 +538,9 @@ export function ReviewSection({ entityType, entityId, user }) {
     setSummary(sum);
     setReviews(revs);
     if (sum.user_rating) setSelectedRating(sum.user_rating);
-    if (sum.user_review) setReviewText(sum.user_review);
+    // Always sync — clears local state when the user just deleted their
+    // review so the textarea doesn't keep a stale draft.
+    setReviewText(sum.user_review ?? "");
   }
 
   useEffect(() => { load(); }, [entityType, entityId]);
@@ -556,6 +576,16 @@ export function ReviewSection({ entityType, entityId, user }) {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete(reviewId) {
+    try {
+      await api.deleteReview(reviewId);
+      setShowForm(false);
+      await load(sort);
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -703,6 +733,7 @@ export function ReviewSection({ entityType, entityId, user }) {
               key={rev.id}
               rev={rev}
               onVote={handleVote}
+              onDelete={handleDelete}
               user={user}
               entityType={entityType}
               entityId={entityId}

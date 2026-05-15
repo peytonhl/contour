@@ -104,6 +104,7 @@ export const api = {
   rateEntity: (entityType, entityId, value, artistId = null) =>
     post(`/ratings/${entityType}/${entityId}/rate`, { value, ...(artistId ? { artist_id: artistId } : {}) }),
   submitReview: (entityType, entityId, body, value) => post(`/ratings/${entityType}/${entityId}/review`, { body, value }),
+  deleteReview: (reviewId) => del(`/ratings/reviews/${reviewId}`),
   getReviews: (entityType, entityId, sort = "recent") => request(`/ratings/${entityType}/${entityId}/reviews?sort=${sort}`),
   voteReview: (reviewId, value) => post(`/ratings/reviews/${reviewId}/vote`, { value }),
   getReplies: (reviewId) => request(`/ratings/reviews/${reviewId}/replies`),

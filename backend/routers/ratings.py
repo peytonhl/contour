@@ -156,12 +156,18 @@ async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None
         votes = vote_map.get(rev.id, {"up": 0, "down": 0})
         up, down = votes["up"], votes["down"]
         u = user_map.get(rev.user_id)
+        # `edited` covers user-visible edits, not the microsecond skew between
+        # the two `default=datetime.utcnow` columns at insert time. 2s is well
+        # above that skew and well below any real edit's response loop.
+        edited = (rev.updated_at - rev.created_at).total_seconds() > 2
         out.append({
             "id": rev.id,
             "entity_type": rev.entity_type,
             "entity_id": rev.entity_id,
             "body": rev.body,
             "created_at": rev.created_at.isoformat() + "Z",
+            "updated_at": rev.updated_at.isoformat() + "Z",
+            "edited": edited,
             "rating": rating_map.get(rev.user_id),
             "upvotes": up,
             "downvotes": down,
@@ -416,6 +422,39 @@ async def upsert_review(
     else:
         db.add(Review(user_id=user_id, entity_type=entity_type,
                       entity_id=entity_id, body=body.body.strip()))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/reviews/{review_id}")
+async def delete_review(
+    review_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(optional_user_id),
+):
+    """Delete the caller's own review. Cascades to votes/replies/likes.
+
+    The user's underlying Rating row is preserved — a user may want to retain
+    their star rating while removing the written words. Admins can delete
+    other users' reviews via the moderation router, not this endpoint.
+    """
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in to delete reviews")
+
+    review = (await db.execute(
+        select(Review).where(Review.id == review_id)
+    )).scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    if review.user_id != user_id:
+        raise HTTPException(status_code=403, detail="You can only delete your own review")
+
+    # Mirror the cascade order used by moderation._resolve_report — no FKs
+    # are enforced at the DB level so the API has to spell it out.
+    await db.execute(delete(ReviewVote).where(ReviewVote.review_id == review_id))
+    await db.execute(delete(ReviewLike).where(ReviewLike.review_id == review_id))
+    await db.execute(delete(ReviewReply).where(ReviewReply.review_id == review_id))
+    await db.execute(delete(Review).where(Review.id == review_id))
     await db.commit()
     return {"ok": True}
 
