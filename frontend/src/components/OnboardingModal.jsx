@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
-import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 
 const STORAGE_KEY = "contour_onboarded_v2";
-const GENRES_KEY = "contour_genres_v1";
 const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 
@@ -86,21 +84,27 @@ function Dots({ total, active }) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 // Steps:
-//   0 — value prop
-//   1 — genre picker
-//   2 — Backlog explainer (informational, skippable)
+//   0 — welcome / value prop
+//   1 — Backlog explainer (informational, skippable)
 //
-// The RYM import upsell that used to sit at step 2 was cut — putting a
-// CSV-import workflow 30 seconds into a casual user's first run contradicted
-// the low-friction positioning. The /import route is still reachable from
-// the /settings page for the rare power user migrating from RYM.
+// The genre picker that used to sit at step 1 was cut — the For You feed's
+// ColdStartBanner asks the user to rate 5 tracks to calibrate, which produces
+// a higher-fidelity taste signal than 18 boxy chips. UserTasteProfile.genres
+// gets auto-populated from each 4–5★ rating via ratings._update_taste_from_rating,
+// so the calibration bar drives the same signal the picker used to seed.
+//
+// The RYM import upsell that used to sit even earlier was cut for the same
+// "don't put a CSV workflow 30 seconds into a casual first run" reason.
+// /import is still reachable from /settings.
+//
+// GENRE_OPTIONS + GenreChip are still exported above because TasteSection
+// renders them on the profile page — kept exported, dropped from onboarding.
 export function OnboardingModal() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
   const [exiting, setExiting] = useState(false);
-  const [selectedGenres, setSelectedGenres] = useState([]);
 
   // Defer showing until the user has passed the SigninGate — either by
   // signing in (user becomes non-null) or by opting into guest browse mode.
@@ -126,13 +130,12 @@ export function OnboardingModal() {
     };
   }, [user]);
 
-  // Replay-tutorial hook: any caller (e.g. profile settings menu) can fire
-  // this CustomEvent to re-open the onboarding from step 0 without a reload.
+  // Replay-tutorial hook: any caller (e.g. /settings) can fire this
+  // CustomEvent to re-open the onboarding from step 0 without a reload.
   useEffect(() => {
     function handler() {
       localStorage.removeItem(STORAGE_KEY);
       setStep(0);
-      setSelectedGenres([]);
       setExiting(false);
       setVisible(true);
     }
@@ -147,37 +150,6 @@ export function OnboardingModal() {
       setVisible(false);
       setExiting(false);
     }, 220);
-  }
-
-  // Save genres ASAP (after step 1) so that progress isn't lost if the user
-  // bails on the backlog explainer step.
-  //
-  // Note on the dispatched event: ForYouPage fetches its first batch on mount,
-  // which happens before this modal opens for a new user. Without the event,
-  // the user picks genres and then keeps scrolling the cold-start batch until
-  // they reach the prefetch boundary ~10 tracks later — the personalization
-  // signal is saved server-side but invisible to them. Firing
-  // contour:taste-updated tells the For You feed to drop its current batch
-  // and refetch with the new genres applied.
-  async function saveGenresAndAdvance() {
-    if (selectedGenres.length > 0) {
-      localStorage.setItem(GENRES_KEY, JSON.stringify(selectedGenres));
-      if (user) {
-        try { await api.saveTasteProfile(selectedGenres, [], true); }
-        catch { /* non-fatal; localStorage copy still drives logged-out path */ }
-      }
-      window.dispatchEvent(new CustomEvent("contour:taste-updated", {
-        detail: { source: "onboarding", genres: selectedGenres },
-      }));
-    }
-    analytics.onboardingStepCompleted("genres", selectedGenres.length === 0);
-    setStep(2);
-  }
-
-  function toggleGenre(slug) {
-    setSelectedGenres((prev) =>
-      prev.includes(slug) ? prev.filter((g) => g !== slug) : [...prev, slug]
-    );
   }
 
   function finishBacklogStep(deepLink) {
@@ -228,10 +200,9 @@ export function OnboardingModal() {
           <div style={{ width: 36, height: 4, borderRadius: "var(--radius-sm)", background: "var(--surface3)", margin: "0 auto 22px" }} />
 
           {/* ── Step 0: Welcome ──
-              Collapsed from the previous 3-card value-prop carousel. The
-              pitch lives on the sign-in gate; by this point the user is
-              already in, so step 0 is just an orientation beat: a single
-              line, no marketing, then straight into genres. */}
+              Anchored on the rate-to-calibrate concept now that the
+              genre picker is out. The actual progress bar lives in
+              ForYouPage's ColdStartBanner — this is just orientation. */}
           {step === 0 && (
             <>
               <div style={{ textAlign: "center", marginBottom: 28, padding: "12px 4px 0" }}>
@@ -243,13 +214,13 @@ export function OnboardingModal() {
                   Glad you're here.
                 </h2>
                 <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0, lineHeight: 1.55, maxWidth: 320, marginInline: "auto" }}>
-                  A couple of taste questions so the feed knows where to start.
-                  Takes about thirty seconds.
+                  Rate a few tracks and your feed sharpens around your taste.
+                  Takes about a minute.
                 </p>
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={3} active={0} />
+                <Dots total={2} active={0} />
               </div>
 
               <button onClick={() => { analytics.onboardingStepCompleted("value_prop", false); setStep(1); }} style={{
@@ -258,65 +229,13 @@ export function OnboardingModal() {
                 color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer",
                 letterSpacing: "0.01em",
               }}>
-                Pick your genres
+                Continue
               </button>
             </>
           )}
 
-          {/* ── Step 1: Genre picker ── */}
+          {/* ── Step 1: Backlog explainer ── */}
           {step === 1 && (
-            <>
-              <div style={{ textAlign: "center", marginBottom: 20 }}>
-                <h2 style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: 30, fontWeight: 400, margin: "0 0 8px",
-                  color: "var(--text)", lineHeight: 1.1,
-                }}>
-                  What do you listen to?
-                </h2>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-                  Pick the genres you reach for most.
-                  {selectedGenres.length > 0 && (
-                    <span style={{ color: ACCENT_A, fontWeight: 700 }}> {selectedGenres.length} selected</span>
-                  )}
-                </p>
-              </div>
-
-              <div style={{
-                display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center",
-                marginBottom: 20,
-                maxHeight: 220, overflowY: "auto",
-              }}>
-                {GENRE_OPTIONS.map((g) => (
-                  <GenreChip key={g.slug} genre={g} selected={selectedGenres} onToggle={toggleGenre} />
-                ))}
-              </div>
-
-              <div style={{ marginBottom: 18 }}>
-                <Dots total={3} active={1} />
-              </div>
-
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => { analytics.onboardingStepCompleted("genres", true); setStep(2); }} style={{
-                  flex: 1, padding: "12px 0", borderRadius: "var(--radius-lg)",
-                  background: "none", border: "1px solid var(--border)",
-                  color: "var(--text-muted)", fontSize: 14, cursor: "pointer",
-                }}>
-                  Skip
-                </button>
-                <button onClick={saveGenresAndAdvance} style={{
-                  flex: 2, padding: "12px 0", borderRadius: "var(--radius-lg)",
-                  background: ACCENT_A, border: "none",
-                  color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
-                }}>
-                  {selectedGenres.length > 0 ? "Continue" : "Skip for now"}
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* ── Step 2: Backlog explainer ── */}
-          {step === 2 && (
             <>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h2 style={{
@@ -365,7 +284,7 @@ export function OnboardingModal() {
               </button>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={3} active={2} />
+                <Dots total={2} active={1} />
               </div>
 
               <button onClick={() => finishBacklogStep(false)} style={{
