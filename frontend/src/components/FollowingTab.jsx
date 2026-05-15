@@ -192,9 +192,24 @@ function SuggestedUser({ u, onFollow }) {
         }
       </Link>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <Link to={`/user/${u.id}`} style={{ color: "var(--text)", fontWeight: 600, fontSize: 14, textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {u.display_name}
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Link to={`/user/${u.id}`} style={{ color: "var(--text)", fontWeight: 600, fontSize: 14, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {u.display_name}
+          </Link>
+          {/* "Similar taste" / "Active reviewer" badge — backend's ranking
+              reason. Surfaces *why* this person was recommended without
+              exposing the raw similarity score. */}
+          {u.reason && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+              padding: "2px 7px", borderRadius: "var(--radius-xl)",
+              background: `${ACCENT_A}1a`, color: ACCENT_A,
+              flexShrink: 0, whiteSpace: "nowrap",
+            }}>
+              {u.reason}
+            </span>
+          )}
+        </div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}>
           {u.bio ? u.bio.slice(0, 60) + (u.bio.length > 60 ? "…" : "") : `${u.reviews_count} review${u.reviews_count !== 1 ? "s" : ""}`}
         </div>
@@ -272,6 +287,24 @@ export function FollowingTab() {
       {user && !loadingFollowing && following.map((item, i) => (
         <FollowingItem key={`${item.type}-${item.user?.id}-${item.entity_id}-${i}`} item={item} />
       ))}
+
+      {/* "More people to follow" tail — shown alongside the activity feed
+          for users with some follows so the recommendations engine keeps
+          working past the empty state. Backend ranks by taste similarity
+          (artist Jaccard) so this stays relevant rather than spammy as
+          the user's follow graph grows. Hidden when the empty-state above
+          is already rendering the same suggestions (mutually exclusive on
+          following.length). */}
+      {user && !loadingFollowing && following.length > 0 && suggested.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "28px 0 8px", borderTop: "1px solid var(--border)", marginTop: 12 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
+            More people to follow
+          </p>
+          {suggested.map((u) => (
+            <SuggestedUser key={u.id} u={u} onFollow={(id) => setSuggested((prev) => prev.filter((x) => x.id !== id))} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

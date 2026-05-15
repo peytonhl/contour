@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import math
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -9,8 +11,9 @@ from sqlalchemy import select, func, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import User, UserFollow, Rating, Review, ReviewVote, UserList, UserListItem, AlbumCache, TrackCache
+from models import User, UserFollow, Rating, Review, ReviewVote, UserList, UserListItem, UserTasteProfile, AlbumCache, TrackCache
 from routers.auth import decode_jwt, optional_user_id
+from routers.moderation import blocked_user_ids
 from routers.notifications import create_notification
 from services import spotify
 from services import artist_cache
@@ -156,47 +159,142 @@ async def get_suggested_users(
     viewer_id: Optional[str] = Depends(optional_user_id),
 ):
     """
-    Return up to 6 active users (most reviews) that the viewer doesn't already follow.
-    Works for logged-out users too — just excludes nobody.
+    Recommended users to follow.
+
+    Ranking is taste-aware when the viewer has a populated UserTasteProfile:
+      score = 2.0 × Jaccard(liked_artist_ids)
+            + 1.0 × Jaccard(genres)
+            + 0.3 × recent_activity_signal     (max +0.3 for ≥10 ratings/30d)
+            + 0.05 × log(1 + total_reviews)    (small baseline boost)
+
+    The artist-Jaccard term dominates so users with overlapping liked
+    artists land first. The genre term is the secondary signal (broader
+    overlap). Recent-activity surfaces users who are *currently* engaged
+    rather than dormant accounts that happened to write a lot of reviews
+    once. Review-count baseline gives a tie-breaker when taste signals
+    are absent or evenly split.
+
+    For viewers with no taste profile (logged-out, brand-new accounts):
+    falls through to recent-activity + review-count only. Same ordering
+    logic, no taste term — they still get a useful list.
+
+    Returns up to 6, excluding already-followed users, blocked users, and
+    self. Each row carries an optional `reason` string ("Similar taste",
+    "Active reviewer", or None) so the UI can surface why each person
+    was recommended without exposing the raw score.
     """
-    # Users already followed
-    already_following: set = set()
+    # ── 1. Exclusion set: already-following + blocked + self ────────────────
+    excluded: set[str] = set()
     if viewer_id:
-        rows = (await db.execute(
+        already_following = (await db.execute(
             select(UserFollow.following_id).where(UserFollow.follower_id == viewer_id)
         )).scalars().all()
-        already_following = set(rows)
-        already_following.add(viewer_id)  # don't suggest yourself
+        excluded.update(already_following)
+        excluded.add(viewer_id)
+        blocked = await blocked_user_ids(db, viewer_id)
+        excluded.update(blocked)
 
-    # Most reviewed users
-    review_counts = (await db.execute(
+    # ── 2. Viewer's taste signal (if any) ────────────────────────────────────
+    viewer_liked: set[str] = set()
+    viewer_genres: set[str] = set()
+    if viewer_id:
+        viewer_profile = await db.get(UserTasteProfile, viewer_id)
+        if viewer_profile:
+            viewer_liked = set(json.loads(viewer_profile.liked_artist_ids or "[]"))
+            viewer_genres = set(json.loads(viewer_profile.genres or "[]"))
+
+    # ── 3. Candidate pool ───────────────────────────────────────────────────
+    # Top-50 by review count gives us enough headroom that after the exclusion
+    # filter we still have 6+ candidates to rank. Counts also become the
+    # baseline activity signal for the score.
+    review_count_rows = (await db.execute(
         select(Review.user_id, func.count(Review.id).label("n"))
         .group_by(Review.user_id)
         .order_by(func.count(Review.id).desc())
-        .limit(30)
+        .limit(50)
     )).all()
-
-    user_ids = [r.user_id for r in review_counts if r.user_id not in already_following][:6]
-    if not user_ids:
+    review_count_map = {r.user_id: r.n for r in review_count_rows}
+    candidate_ids = [r.user_id for r in review_count_rows if r.user_id not in excluded]
+    if not candidate_ids:
         return []
 
+    # ── 4. Per-candidate taste profile + recent activity ────────────────────
+    profile_rows = (await db.execute(
+        select(UserTasteProfile).where(UserTasteProfile.user_id.in_(candidate_ids))
+    )).scalars().all()
+    profile_map = {
+        p.user_id: (
+            set(json.loads(p.liked_artist_ids or "[]")),
+            set(json.loads(p.genres or "[]")),
+        )
+        for p in profile_rows
+    }
+
+    # Recent rating activity (last 30d), used as a "is this account live?"
+    # signal. One DB round-trip aggregated over all candidates.
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    recent_rating_rows = (await db.execute(
+        select(Rating.user_id, func.count(Rating.id).label("n"))
+        .where(Rating.user_id.in_(candidate_ids), Rating.created_at >= thirty_days_ago)
+        .group_by(Rating.user_id)
+    )).all()
+    recent_count_map = {r.user_id: r.n for r in recent_rating_rows}
+
+    # ── 5. Score each candidate ─────────────────────────────────────────────
+    def _jaccard(a: set, b: set) -> float:
+        if not a or not b:
+            return 0.0
+        union = a | b
+        return len(a & b) / len(union) if union else 0.0
+
+    scored: list[tuple[str, float, float]] = []  # (user_id, score, artist_overlap)
+    for cid in candidate_ids:
+        c_liked, c_genres = profile_map.get(cid, (set(), set()))
+        artist_jacc = _jaccard(viewer_liked, c_liked)
+        genre_jacc = _jaccard(viewer_genres, c_genres)
+        # Recent-activity term saturates at 10 ratings/30d — past that, all
+        # active accounts look the same to the ranker and we let taste +
+        # baseline counts break the tie.
+        recent_n = recent_count_map.get(cid, 0)
+        activity_term = 0.3 * min(1.0, recent_n / 10.0)
+        baseline = 0.05 * math.log1p(review_count_map.get(cid, 0))
+        score = 2.0 * artist_jacc + 1.0 * genre_jacc + activity_term + baseline
+        scored.append((cid, score, artist_jacc))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    top = scored[:6]
+    top_ids = [t[0] for t in top]
+
+    # ── 6. Hydrate user rows ────────────────────────────────────────────────
     users = (await db.execute(
-        select(User).where(User.id.in_(user_ids))
+        select(User).where(User.id.in_(top_ids))
     )).scalars().all()
     user_map = {u.id: u for u in users}
 
-    count_map = {r.user_id: r.n for r in review_counts}
+    artist_overlap_map = {t[0]: t[2] for t in top}
+
     result = []
-    for uid in user_ids:
+    for uid in top_ids:
         u = user_map.get(uid)
-        if u:
-            result.append({
-                "id": u.id,
-                "display_name": u.display_name,
-                "image_url": u.image_url,
-                "bio": u.bio,
-                "reviews_count": count_map.get(uid, 0),
-            })
+        if not u:
+            continue
+        # Reason badge: "Similar taste" wins when artist overlap is meaningful
+        # (Jaccard ≥ 0.1 = at least one shared artist in a small profile, or
+        # several in a larger one). Otherwise an activity-based reason for
+        # users with recent ratings. Otherwise None — UI just shows the bio.
+        reason = None
+        if artist_overlap_map.get(uid, 0.0) >= 0.10:
+            reason = "Similar taste"
+        elif recent_count_map.get(uid, 0) >= 5:
+            reason = "Active reviewer"
+        result.append({
+            "id": u.id,
+            "display_name": u.display_name,
+            "image_url": u.image_url,
+            "bio": u.bio,
+            "reviews_count": review_count_map.get(uid, 0),
+            "reason": reason,
+        })
     return result
 
 
