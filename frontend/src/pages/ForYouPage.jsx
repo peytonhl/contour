@@ -26,13 +26,16 @@ const HISTORY_KEY = "contour_history_v1";
 const DISLIKED_KEY = "contour_disliked_v1";
 const ENGLISH_ONLY_KEY = "contour_english_only_v1";  // legacy boolean key
 const LANGUAGE_KEY = "contour_language_v1";          // new 3-state key
-// Persistent "seen" list — every track the user has swiped past in the For
-// You feed, whether they rated it or not. Drives cross-session dedup so a
-// user who closed the app and reopened doesn't see the same chart-toppers
-// they already skipped yesterday. Capped at the most recent 500 IDs to keep
-// localStorage and the exclude-param URL size bounded.
+// Persistent "seen" list — every track the user has either swiped past
+// OR just had displayed as the active card in the For You feed. Drives
+// cross-session dedup so a user who closed the app on a track they hadn't
+// rated yet doesn't see it again next launch. Capped at the most recent
+// 1000 IDs (was 500) — a power user can burn through that in a session
+// or two and 1000 is still cheap localStorage (~12KB) and fits in the
+// exclude-param URL well under any proxy/CDN limit when we slice for
+// transport.
 const SEEN_KEY = "contour_seen_v1";
-const SEEN_CAP = 500;
+const SEEN_CAP = 1000;
 
 // Language filter — three modes:
 //   "english" → Latin script only, no Spanish-leaning bias (default; matches
@@ -80,11 +83,21 @@ function markSeen(trackId) {
   try {
     const prev = loadSeen();
     // Move-to-front if already present, otherwise prepend. Keeps the most
-    // recently seen IDs at the front so the slice(0, 250) we send to the
-    // backend always reflects the user's most current scroll history.
+    // recently seen IDs at the front so the slice we send to the backend
+    // always reflects the user's most current scroll history.
     const next = [trackId, ...prev.filter((id) => id !== trackId)].slice(0, SEEN_CAP);
     localStorage.setItem(SEEN_KEY, JSON.stringify(next));
   } catch { /* localStorage may be full or disabled */ }
+}
+
+// Reset the cross-session dedup state — user-triggered from the feed's
+// settings panel via "Reset feed". The user is explicitly asking to see
+// previously-skipped tracks again, so we wipe SEEN_KEY entirely. Rated
+// tracks are NOT cleared (those are server-side in the Rating table,
+// authoritative). Disliked artists are NOT cleared (separate "Clear
+// not-interested" affordance handles that).
+function clearSeen() {
+  try { localStorage.removeItem(SEEN_KEY); } catch {}
 }
 
 // ── Genre prefs ───────────────────────────────────────────────────────────────
@@ -1220,15 +1233,17 @@ function ForYouFeed() {
       //      prefetch from repeating tracks visible in the same scroll
       //      session when the Deezer chart cache is still warm.
       //
-      // Cap conservatively to keep the URL bounded: ~12 chars per ID +
-      // comma. 250 seen + 150 rated + 80 in-session = max ~480 IDs ≈ 5.8KB
-      // serialized, well under any proxy/CDN limit. dedup via Set means
-      // overlap (a seen+rated track) only counts once.
-      const seenIds = loadSeen().slice(0, 250);
+      // Cap to keep the URL bounded: ~12 chars per ID + comma. 500 seen +
+      // 200 rated + 80 in-session = max ~780 IDs ≈ 9.4KB serialized, still
+      // well under any proxy/CDN limit. Bumped from 250/150 alongside the
+      // active-card-mark-seen fix so users with longer histories don't get
+      // chart-toppers re-surfacing once they push past the old 250 window.
+      // dedup via Set means overlap (a seen+rated track) only counts once.
+      const seenIds = loadSeen().slice(0, 500);
       const ratedSourceIds = loadHistory()
         .map((h) => h.trackId)
         .filter(Boolean)
-        .slice(0, 150);
+        .slice(0, 200);
       const inSession = append
         ? tracks.slice(-80).map((t) => t.id).filter(Boolean)
         : [];
@@ -1301,7 +1316,32 @@ function ForYouFeed() {
     await fetchBatch(true);
   }
 
+  // User-triggered "I'm seeing the same songs" escape hatch. Wipes the
+  // cross-session SEEN_KEY (and the current queue) and refetches. Rated
+  // tracks stay excluded server-side via the Rating table; only the
+  // skipped-but-not-rated history gets cleared. Closes the settings panel
+  // so the user lands on a fresh card without an interim chrome state.
+  function resetFeed() {
+    clearSeen();
+    setSettingsOpen(false);
+    setTracks([]);
+    setActiveIdx(0);
+    fetchBatch();
+  }
+
   useEffect(() => { fetchBatch(); }, []);
+
+  // Mark the active card as seen as soon as it's displayed. Previously
+  // only the LEAVING track got marked on a swipe, which meant the
+  // currently-viewed card never made it into SEEN_KEY if the user closed
+  // the app while looking at it. That created a "same songs over and over"
+  // feeling on session restart because the active-but-not-yet-swiped card
+  // kept reappearing. markSeen dedups against the existing list so this
+  // is safe to fire on every active-id change.
+  const activeTrackId = tracks[activeIdx]?.id;
+  useEffect(() => {
+    if (activeTrackId) markSeen(activeTrackId);
+  }, [activeTrackId]);
 
   // Refetch when taste signals change mid-session — primarily fired by
   // OnboardingModal after the genre picker saves. Without this, a new user
@@ -1994,6 +2034,37 @@ function ForYouFeed() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Reset feed — user-facing escape hatch when the algorithm
+              feels stuck on the same songs. Clears the SEEN_KEY history
+              (skipped-but-not-rated tracks) so the next batch can pull
+              from the full chart pool again. Rated tracks stay excluded
+              via the server-side Rating table. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 13, color: "#fff", fontWeight: 600 }}>Reset feed</p>
+              <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+                Seeing the same songs? Clear your skip history and pull a fresh batch.
+                Your ratings stay.
+              </p>
+            </div>
+            <button
+              onClick={resetFeed}
+              style={{
+                padding: "9px 14px", fontSize: 12, fontWeight: 700,
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: "var(--radius-md)",
+                color: "rgba(255,255,255,0.9)",
+                cursor: "pointer", alignSelf: "flex-start",
+                transition: "background 0.12s",
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.12)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
+            >
+              Reset feed
+            </button>
           </div>
         </div>
       )}

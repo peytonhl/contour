@@ -367,8 +367,14 @@ async def get_discover_feed(
     # Uses Deezer's /chart/0/tracks endpoint (actual chart data) instead of
     # searching text like "top hits" which was matching a karaoke artist of
     # the same name and flooding the feed with cover tracks.
+    #
+    # Bumped from 50 → 100 to give cold-start users a wider pool. With 50 a
+    # user could exhaust the chart in ~5 batches and then start seeing the
+    # same tracks recur (or fall through to weaker tier-3 results). 100 is
+    # the practical max Deezer's chart endpoint serves; doubling the pool
+    # doubles the time until exhaustion. Same Akamai-signed-URL TTL applies.
     if len(tracks) < limit:
-        chart_tracks = await deezer_svc.get_chart_tracks(limit=50)
+        chart_tracks = await deezer_svc.get_chart_tracks(limit=100)
         if isinstance(chart_tracks, list):
             random.shuffle(chart_tracks)
             add_baseline(chart_tracks)
