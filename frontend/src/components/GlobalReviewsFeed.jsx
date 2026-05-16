@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-import { BadgeMark, BadgeLeaderboard } from "./Badges.jsx";
+import { BadgeLeaderboard } from "./Badges.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
 
@@ -119,8 +119,13 @@ function ReviewCardItem({ item, user, onVote, badges }) {
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <Link to={`/user/${item.user?.id}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>
               {item.user?.display_name}
-              <BadgeMark badges={badges} userId={item.user?.id} />
             </Link>
+            {/* BadgeMark (the "Community Top 5" gold star next to a user's
+                name) was removed from this surface — it sat next to the
+                review's rating stars and read as "this person rated it 1
+                star" even though it's a recognition marker, not a rating.
+                Still rendered on profile heroes where it can't be confused
+                with a rating display. */}
             {item.rating && <RatingBadge value={item.rating} />}
           </div>
         </div>
