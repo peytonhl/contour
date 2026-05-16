@@ -52,6 +52,39 @@ async function shareHotTakeCard(userId, displayName) {
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
+// Empty-state block that gives the user somewhere to go. Replaces the flat
+// "No X yet." EmptyHint on tabs where the next action is obvious — Ratings,
+// Reviews, and Following all have a clear destination (For You feed or
+// Friends page) that turns the empty state from a dead end into a
+// one-tap onramp.
+function ActionableEmpty({ message, ctaLabel, to }) {
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center",
+      gap: 12, padding: "40px 20px", textAlign: "center",
+    }}>
+      <p style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)", margin: 0 }}>
+        {message}
+      </p>
+      <Link
+        to={to}
+        style={{
+          padding: "8px 18px",
+          background: `${ACCENT}18`,
+          border: `1px solid ${ACCENT}66`,
+          borderRadius: "var(--radius-xl)",
+          color: ACCENT,
+          fontSize: 13, fontWeight: 700,
+          textDecoration: "none",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {ctaLabel}
+      </Link>
+    </div>
+  );
+}
+
 function ListCollage({ images }) {
   const slots = [0, 1, 2, 3];
   return (
@@ -638,7 +671,13 @@ export function ProfilePage() {
         {/* ── Ratings ── */}
         {tab === "ratings" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {!profile?.ratings?.length && <EmptyHint>No ratings yet.</EmptyHint>}
+            {!profile?.ratings?.length && (
+              <ActionableEmpty
+                message="No ratings yet."
+                ctaLabel="Find something to rate"
+                to="/"
+              />
+            )}
             {profile?.ratings?.map((r, i) => (
               <EntityRow key={i} item={r} right={<RatingBadge value={r.value} />} />
             ))}
@@ -648,7 +687,13 @@ export function ProfilePage() {
         {/* ── Reviews ── */}
         {tab === "reviews" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {!profile?.reviews?.length && <EmptyHint>No reviews yet.</EmptyHint>}
+            {!profile?.reviews?.length && (
+              <ActionableEmpty
+                message="No reviews yet."
+                ctaLabel="Rate something to get started"
+                to="/"
+              />
+            )}
             {profile?.reviews?.map((r, i) => (
               <div key={i} style={{ padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
                 <EntityRow item={r} right={r.value ? <RatingBadge value={r.value} /> : null} />
@@ -743,7 +788,13 @@ export function ProfilePage() {
         {/* ── Following ── */}
         {tab === "following" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {!following.length && <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>Not following anyone yet.</p>}
+            {!following.length && (
+              <ActionableEmpty
+                message="Not following anyone yet."
+                ctaLabel="Find people to follow"
+                to="/friends"
+              />
+            )}
             {following.map((u) => (
               <Link
                 key={u.id}

@@ -87,7 +87,10 @@ function BellIcon() {
 }
 
 // ── Bottom nav tab item ───────────────────────────────────────────────────────
-function BottomTab({ to, label, icon, end = false }) {
+// `dot` renders a small accent-colored unread indicator over the icon's
+// top-right corner — used by the Friends tab to signal "your followed
+// users have new activity since you last looked." Hidden when null/false.
+function BottomTab({ to, label, icon, end = false, dot = false }) {
   return (
     <NavLink
       to={to}
@@ -107,19 +110,55 @@ function BottomTab({ to, label, icon, end = false }) {
         color: isActive ? ACCENT_A : "var(--text-muted)",
         transition: "color 0.12s",
         minWidth: 0,
+        position: "relative",
       })}
     >
-      {icon}
+      <span style={{ position: "relative", display: "inline-flex" }}>
+        {icon}
+        {dot && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: -2, right: -4,
+              width: 8, height: 8,
+              borderRadius: "50%",
+              background: ACCENT_A,
+              boxShadow: "0 0 0 2px var(--bg)",
+            }}
+          />
+        )}
+      </span>
       <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.02em" }}>{label}</span>
     </NavLink>
   );
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
+// localStorage key for "when did you last look at the Friends tab?" Used to
+// decide whether the activity dot should be lit on the bottom nav. Same shape
+// as the LAST_VIEW_* keys we used inside ForYouPage before the Friends
+// sub-tab was retired — now that signal lives at the bottom-nav level
+// alongside /friends as its own route.
+const FRIENDS_LAST_VIEW_KEY = "contour_lastview_friends_v2";
+
+function readFriendsLastView() {
+  try { return Number(localStorage.getItem(FRIENDS_LAST_VIEW_KEY)) || 0; }
+  catch { return 0; }
+}
+function writeFriendsLastView() {
+  try { localStorage.setItem(FRIENDS_LAST_VIEW_KEY, String(Date.now())); }
+  catch {}
+}
+
 export function Layout() {
   const { user, loading, logout } = useAuth();
   const location = useLocation();
   const [unread, setUnread] = useState(0);
+  // Friends-tab activity dot — true when the most-recent /feed item is
+  // newer than the user's last visit to /friends. Cleared via the
+  // location-watching effect below as soon as the user lands there.
+  const [hasNewFriends, setHasNewFriends] = useState(false);
   const headerRef = useRef(null);
 
   // On native, append ?from=native so the OAuth callback redirects via the
@@ -155,6 +194,37 @@ export function Layout() {
     const interval = setInterval(fetchCount, 60_000);
     return () => clearInterval(interval);
   }, [user]);
+
+  // Probe the Friends feed every 90s while signed in. Pulls only the top
+  // item and compares its created_at to the stored last-view timestamp.
+  // 90s is a deliberate offset from the 60s notifications poll so the two
+  // network calls don't always fire on the same tick.
+  useEffect(() => {
+    if (!user) { setHasNewFriends(false); return; }
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const feed = await api.getFeed?.();
+        if (cancelled) return;
+        const newest = feed?.[0]?.created_at ? new Date(feed[0].created_at).getTime() : 0;
+        setHasNewFriends(newest > readFriendsLastView());
+      } catch { /* network blip — leave the dot in its current state */ }
+    };
+    probe();
+    const interval = setInterval(probe, 90_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [user]);
+
+  // Clear the dot the moment the user lands on /friends. Uses location
+  // (router-aware) rather than a click handler so the dot also clears
+  // when the user reaches /friends via the desktop top-nav link, a
+  // browser-back navigation, or a direct URL load.
+  useEffect(() => {
+    if (location.pathname === "/friends" && hasNewFriends) {
+      writeFriendsLastView();
+      setHasNewFriends(false);
+    }
+  }, [location.pathname, hasNewFriends]);
 
   // Primary nav: For You is the home (algorithmic feed). Friends is its own
   // dedicated surface for followed-users activity (also still reachable as
@@ -354,7 +424,7 @@ export function Layout() {
               chrome stays uncrowded on small phones. /compare still works
               as a direct URL. */}
           <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
-          <BottomTab to="/friends" label="Friends" icon={<CommunityIcon />} />
+          <BottomTab to="/friends" label="Friends" icon={<CommunityIcon />} dot={hasNewFriends} />
           <BottomTab to="/search" label="Search" icon={<SearchIcon />} />
 
           {user ? (
