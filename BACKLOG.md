@@ -54,7 +54,7 @@ loop is missing.
 - Requires Capacitor `@capacitor/push-notifications` plugin → IPA rebuild.
 - See "Peyton todos" below for the credentials/store work that goes with this.
 
-### Shareable cards (v1: three card types)
+### Shareable cards (v1: three card types) — **shipped**
 
 **Design direction (Peyton, 2026-05-15):** treat each card like a famous-
 quote postcard (think the John Quincy Adams meme template) — editorial,

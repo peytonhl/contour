@@ -14,6 +14,42 @@ const GOLD = "#f59e0b";
 const ACCENT = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 
+// Same share pattern as the review and comparison cards — fetch the PNG
+// from the Vercel-OG endpoint and hand it to navigator.share({ files })
+// when supported, fall back to URL share, then clipboard. Works on iOS
+// 14.3+ / Android Chrome 89+ / both Capacitor WebViews.
+async function shareHotTakeCard(userId, displayName) {
+  const profileUrl = `${window.location.origin}/user/${userId}`;
+  const cardUrl    = `${window.location.origin}/api/og/hot-take?user_id=${encodeURIComponent(userId)}`;
+  const label      = `${displayName}'s hot take on Contour`;
+
+  if (navigator.canShare && navigator.share) {
+    try {
+      const res = await fetch(cardUrl);
+      // 404 here means the backend's hot-take endpoint reported "your
+      // ratings line up with the community" — no qualifying take to share.
+      // We bubble that up so the caller can surface a friendly message
+      // instead of trying to share an empty file.
+      if (res.status === 404) return "no-hot-take";
+      if (res.ok) {
+        const blob = await res.blob();
+        const file = new File([blob], `contour-hot-take-${userId}.png`, { type: blob.type || "image/png" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], text: label, url: profileUrl });
+          return "shared";
+        }
+      }
+    } catch { /* fall through */ }
+  }
+
+  if (navigator.share) {
+    try { await navigator.share({ url: profileUrl, text: label }); return "shared"; }
+    catch { /* fall through */ }
+  }
+  try { await navigator.clipboard.writeText(profileUrl); return "copied"; }
+  catch { return "failed"; }
+}
+
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 function ListCollage({ images }) {
@@ -120,6 +156,19 @@ export function ProfilePage() {
   const [editingBio, setEditingBio] = useState(false);
   const [bioInput, setBioInput] = useState("");
   const [savingBio, setSavingBio] = useState(false);
+
+  // Hot-take share state: idle | sharing | none (no qualifying take)
+  const [hotTakeState, setHotTakeState] = useState("idle");
+  async function handleShareHotTake() {
+    setHotTakeState("sharing");
+    const result = await shareHotTakeCard(user.id, user.display_name);
+    if (result === "no-hot-take") {
+      setHotTakeState("none");
+      setTimeout(() => setHotTakeState("idle"), 3000);
+    } else {
+      setHotTakeState("idle");
+    }
+  }
 
   const [editingPhoto, setEditingPhoto] = useState(false);
   const [photoInput, setPhotoInput] = useState("");
@@ -372,6 +421,39 @@ export function ProfilePage() {
                   </svg>
                 </button>
               </div>
+            )}
+
+            {/* Hot take share — only when there's enough rated history that
+                the backend has a reasonable chance of finding a qualifying
+                take (≥ 5 community ratings on a rated entity, ≥ 1.0 stars
+                divergence). Showing this on fresh accounts would mostly
+                produce the "ratings line up with the community" 404. */}
+            {!editingBio && (profile?.ratings?.length ?? 0) >= 5 && (
+              <button
+                onClick={handleShareHotTake}
+                disabled={hotTakeState === "sharing"}
+                style={{
+                  alignSelf: "flex-start",
+                  marginBottom: 18,
+                  padding: "7px 14px",
+                  background: hotTakeState === "none" ? "var(--surface2)" : `${ACCENT}18`,
+                  border: `1px solid ${hotTakeState === "none" ? "var(--border)" : `${ACCENT}66`}`,
+                  borderRadius: "var(--radius-xl)",
+                  color: hotTakeState === "none" ? "var(--text-muted)" : ACCENT,
+                  fontSize: 12, fontWeight: 700,
+                  cursor: hotTakeState === "sharing" ? "default" : "pointer",
+                  opacity: hotTakeState === "sharing" ? 0.6 : 1,
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  whiteSpace: "nowrap",
+                }}
+                title={hotTakeState === "none" ? "Your ratings line up with the community — no hot take yet" : "Share the rating where you diverge most from the community"}
+              >
+                {hotTakeState === "none"
+                  ? "No hot takes yet"
+                  : hotTakeState === "sharing"
+                    ? "Preparing…"
+                    : "Share my hot take"}
+              </button>
             )}
 
             {editingBio && (

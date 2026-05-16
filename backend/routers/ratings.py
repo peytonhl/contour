@@ -433,6 +433,122 @@ async def upsert_review(
     return {"ok": True}
 
 
+@router.get("/users/{user_id}/hot-take")
+async def get_user_hot_take(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Find the user's most-divergent rating versus community consensus, for
+    the "hot take" shareable card.
+
+    A rating qualifies as a hot take when:
+      - the entity has ≥ 5 community ratings (so there's a real consensus
+        to be contrarian against; one-rating entities trivially have 100%
+        divergence with no signal)
+      - the user's rating exists for that entity (filtered by the join)
+      - |user_rating − community_avg| ≥ 1.0 (less than a star apart isn't
+        a "take" — they basically agree)
+
+    Returns the single biggest divergence as the headline hot take.
+    404 when no rating qualifies — the frontend hides the share button
+    in that case rather than offering a card with nothing punchy to say.
+    """
+    # ── 1. User's ratings ───────────────────────────────────────────────────
+    user_ratings = (await db.execute(
+        select(Rating).where(Rating.user_id == user_id)
+    )).scalars().all()
+    if not user_ratings:
+        raise HTTPException(status_code=404, detail="No ratings to draw from")
+
+    rated_keys = [(r.entity_type, r.entity_id) for r in user_ratings]
+
+    # ── 2. Community avg + count for each rated entity ──────────────────────
+    # GROUP BY (entity_type, entity_id), then filter to >= 5 ratings. The
+    # tuple_().in_() form keeps this one query.
+    community = (await db.execute(
+        select(
+            Rating.entity_type,
+            Rating.entity_id,
+            func.avg(Rating.value).label("avg"),
+            func.count(Rating.id).label("n"),
+        )
+        .where(tuple_(Rating.entity_type, Rating.entity_id).in_(rated_keys))
+        .group_by(Rating.entity_type, Rating.entity_id)
+        .having(func.count(Rating.id) >= 5)
+    )).all()
+    community_map = {(c.entity_type, c.entity_id): (float(c.avg), int(c.n)) for c in community}
+
+    # ── 3. Score each rating by divergence; pick the biggest ────────────────
+    best = None  # (divergence, rating_row, community_avg, community_count)
+    for r in user_ratings:
+        comm = community_map.get((r.entity_type, r.entity_id))
+        if not comm:
+            continue
+        avg, count = comm
+        divergence = abs(r.value - avg)
+        if divergence < 1.0:
+            continue
+        if best is None or divergence > best[0]:
+            best = (divergence, r, avg, count)
+
+    if best is None:
+        raise HTTPException(status_code=404, detail="No hot takes yet — your ratings line up with the community")
+
+    _, rating_row, comm_avg, comm_count = best
+
+    # ── 4. Hydrate entity meta + Apple cover (same approach as review card) ─
+    entity_name = entity_artist = spotify_cover = None
+    if rating_row.entity_type == "album":
+        row = (await db.execute(
+            select(AlbumCache).where(AlbumCache.spotify_id == rating_row.entity_id)
+        )).scalar_one_or_none()
+        if row:
+            entity_name, entity_artist, spotify_cover = row.name, row.artist, row.image_url
+    elif rating_row.entity_type == "track":
+        row = (await db.execute(
+            select(TrackCache).where(TrackCache.spotify_id == rating_row.entity_id)
+        )).scalar_one_or_none()
+        if row:
+            entity_name, entity_artist, spotify_cover = row.name, row.artist, row.image_url
+
+    apple_artwork = None
+    if rating_row.entity_type in ("album", "track"):
+        apple_link = (await db.execute(
+            select(AppleMusicLink).where(
+                AppleMusicLink.spotify_id == rating_row.entity_id,
+                AppleMusicLink.entity_type == rating_row.entity_type,
+                AppleMusicLink.storefront == "us",
+            )
+        )).scalar_one_or_none()
+        if apple_link and apple_link.artwork_url:
+            apple_artwork = apple_link.artwork_url
+    cover_url = apple_artwork or spotify_cover
+
+    user = (await db.execute(
+        select(User).where(User.id == user_id)
+    )).scalar_one_or_none()
+
+    return {
+        "user": {
+            "id": user_id,
+            "display_name": (user.display_name if user else "Unknown"),
+            "image_url": (user.image_url if user else None),
+        },
+        "rating": rating_row.value,
+        "community_avg": round(comm_avg, 2),
+        "community_count": comm_count,
+        "divergence": round(rating_row.value - comm_avg, 2),  # signed: + = hotter, − = cooler
+        "entity": {
+            "type": rating_row.entity_type,
+            "id": rating_row.entity_id,
+            "name": entity_name,
+            "artist": entity_artist,
+            "cover_url": cover_url,
+        },
+    }
+
+
 @router.get("/reviews/{review_id}/card-data")
 async def get_review_card_data(
     review_id: int,
