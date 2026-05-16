@@ -28,6 +28,7 @@ const LeaderboardPage    = lazyNamed(() => import("./pages/LeaderboardPage.jsx")
 const NotificationsPage  = lazyNamed(() => import("./pages/NotificationsPage.jsx"),  "NotificationsPage");
 const Methodology        = lazyNamed(() => import("./components/Methodology.jsx"),   "Methodology");
 const PrivacyPage        = lazyNamed(() => import("./pages/PrivacyPage.jsx"),        "PrivacyPage");
+const TermsPage          = lazyNamed(() => import("./pages/TermsPage.jsx"),          "TermsPage");
 const ListDetailPage     = lazyNamed(() => import("./pages/ListDetailPage.jsx"),     "ListDetailPage");
 const BlocksPage         = lazyNamed(() => import("./pages/BlocksPage.jsx"),         "BlocksPage");
 const DislikedArtistsPage = lazyNamed(() => import("./pages/DislikedArtistsPage.jsx"), "DislikedArtistsPage");
@@ -116,6 +117,7 @@ export default function App() {
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="auth/success" element={<AuthSuccessPage />} />
           <Route path="privacy" element={<PrivacyPage />} />
+          <Route path="terms" element={<TermsPage />} />
           <Route path="list/:id" element={<ListDetailPage />} />
           <Route path="blocks" element={<BlocksPage />} />
           <Route path="disliked-artists" element={<DislikedArtistsPage />} />

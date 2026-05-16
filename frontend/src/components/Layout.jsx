@@ -404,6 +404,7 @@ export function Layout() {
         <span>© {new Date().getFullYear()} Contour</span>
         <span>Made by Peyton Lindogan</span>
         <Link to="/privacy" style={{ color: "var(--text-muted)" }}>Privacy Policy</Link>
+        <Link to="/terms" style={{ color: "var(--text-muted)" }}>Terms of Service</Link>
         <Link to="/methodology" style={{ color: "var(--text-muted)" }}>How It Works</Link>
       </footer>
 

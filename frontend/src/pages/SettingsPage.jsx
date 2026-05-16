@@ -132,7 +132,8 @@ export function SettingsPage() {
         </p>
         <Section label="About">
           <RowLink to="/methodology" title="How it works" description="Era-adjusted streaming, charts methodology, and more" />
-          <RowLink to="/privacy" title="Privacy policy" isLast />
+          <RowLink to="/privacy" title="Privacy policy" />
+          <RowLink to="/terms" title="Terms of service" isLast />
         </Section>
       </div>
     );
@@ -171,7 +172,8 @@ export function SettingsPage() {
 
       <Section label="About">
         <RowLink to="/methodology" title="How it works" description="Era-adjusted streaming, charts methodology, and more" />
-        <RowLink to="/privacy" title="Privacy policy" isLast />
+        <RowLink to="/privacy" title="Privacy policy" />
+        <RowLink to="/terms" title="Terms of service" isLast />
       </Section>
 
     </div>

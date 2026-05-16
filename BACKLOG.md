@@ -115,13 +115,11 @@ graph endpoint, etc.) that's an incremental layer on top of this v1.
 
 ## Queued — lower priority
 
-- **Weekly digest email** — "your week on Contour" + 5 picks based on taste.
-  Needs email service (SendGrid / Resend). Reaches users not on iOS push.
 - **Friends activity feed surface (real page, not sub-tab)** — once the
   Friends bottom-nav tab exists, upgrade it from "redirects to For You's
   Friends sub-tab" to a dedicated activity surface with rich rendering.
 - **Settings: notification preferences** — per-type toggles (follow / reply
-  / vote-milestone / push / email). Backend needs a `UserNotificationPrefs`
+  / vote-milestone / push). Backend needs a `UserNotificationPrefs`
   table. Pair with the push notifications roll-out.
 
 ---
@@ -177,8 +175,6 @@ actually deliver.
       and adds the iOS push capability to `Info.plist`, tag `ios-v*` to
       trigger Codemagic rebuild
 - [ ] **TestFlight**: submit the new build for TestFlight review
-- [ ] *(deferred until email digests)* Pick email provider (Resend or
-      SendGrid) + capture API key as `EMAIL_API_KEY` env var
 
 ---
 
