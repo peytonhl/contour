@@ -85,7 +85,7 @@ function ReviewCardItem({ item, user, onVote, badges }) {
     <div style={{ padding: "16px 0", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
       <Link to={`/${item.entity_type}/${item.entity_id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
         {item.entity_image_url
-          ? <img src={item.entity_image_url} alt="" style={{ width: 42, height: 42, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover", flexShrink: 0 }} />
+          ? <img src={item.entity_image_url} alt="" loading="lazy" decoding="async" style={{ width: 42, height: 42, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover", flexShrink: 0 }} />
           : <div style={{ width: 42, height: 42, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
         }
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -111,7 +111,7 @@ function ReviewCardItem({ item, user, onVote, badges }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <Link to={`/user/${item.user?.id}`} style={{ flexShrink: 0 }}>
           {item.user?.image_url
-            ? <img src={item.user.image_url} alt="" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover" }} />
+            ? <img src={item.user.image_url} alt="" loading="lazy" decoding="async" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover" }} />
             : <div style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--surface2)" }} />
           }
         </Link>

@@ -1850,9 +1850,34 @@ function ForYouFeed() {
   }
 
   if (loading) {
+    // First thing the user sees after the boot splash snaps off. Used to be
+    // a bare "Loading…" text label, which felt like a placeholder against
+    // an editorial serif app. Replaced with an italic serif "Tuning your
+    // feed" + a subtle pulsing dot — keeps the brand voice intact and
+    // signals motion so the wait reads as active rather than stalled.
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "rgba(255,255,255,0.4)" }}>
-        Loading…
+      <div style={{
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        height: "100%", gap: 14,
+      }}>
+        <div
+          className="loading-pulse"
+          aria-hidden="true"
+          style={{
+            width: 10, height: 10, borderRadius: "50%",
+            background: "rgba(255,255,255,0.5)",
+          }}
+        />
+        <p style={{
+          fontFamily: "var(--font-display)",
+          fontStyle: "italic",
+          fontSize: 17,
+          margin: 0,
+          color: "rgba(255,255,255,0.55)",
+        }}>
+          Tuning your feed
+        </p>
       </div>
     );
   }

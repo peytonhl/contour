@@ -121,7 +121,7 @@ function FollowingItem({ item }) {
     <div style={{ display: "flex", gap: 14, padding: "16px 0", borderBottom: "1px solid var(--border)" }}>
       <Link to={userPath} style={{ flexShrink: 0 }}>
         {item.user?.image_url
-          ? <img src={item.user.image_url} alt={item.user.display_name} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover" }} />
+          ? <img src={item.user.image_url} alt={item.user.display_name} loading="lazy" decoding="async" style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover" }} />
           : <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--surface2)" }} />
         }
       </Link>
@@ -158,7 +158,7 @@ function FollowingItem({ item }) {
       </div>
       {item.entity_image_url && (
         <Link to={entityPath} style={{ flexShrink: 0 }}>
-          <img src={item.entity_image_url} alt={item.entity_name} style={{ width: 48, height: 48, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover" }} />
+          <img src={item.entity_image_url} alt={item.entity_name} loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover" }} />
         </Link>
       )}
     </div>

@@ -27,21 +27,35 @@ createRoot(document.getElementById("root")).render(
   </StrictMode>
 );
 
-// Fade out the inline HTML boot splash now that React has mounted. The
-// splash lives outside #root (see index.html) so React doesn't replace it
-// on mount — instead we add a class here that runs the opacity transition
-// in CSS. Done in a microtask so React's first paint commits BEFORE the
-// fade starts; otherwise the splash could vanish before the app's first
-// frame is on screen and the user sees a brief flash of empty bg.
+// Hide the native LaunchScreen so the WebView (with our matching HTML boot
+// splash) is visible. Without this the plugin stays up forever
+// (launchAutoHide: false). The storyboard and the HTML boot splash are
+// visually identical (Georgia 52pt "Contour" on #08080a), so the user sees
+// one continuous wordmark from process launch through to here.
+// SplashScreen.hide() is a no-op on web — safe to call unconditionally.
+SplashScreen.hide().catch(() => {});
+
+// Snap the HTML boot splash off (display:none) after a brand-moment window.
+// We deliberately do NOT cross-fade — that produced a "logo jumping around"
+// glitch on mobile (reported 2026-05-16). Here's what was happening:
 //
-// On native (Capacitor), the SplashScreen plugin is also still showing the
-// LaunchScreen storyboard over the WebView — hide that here too. Without
-// this call the plugin stays up forever (launchAutoHide: false). The
-// storyboard and the HTML boot splash are visually identical (Georgia 52pt
-// "Contour" on #08080a), so the user sees one continuous wordmark from
-// process launch through to the React app fade-in. SplashScreen.hide() is
-// a no-op on web, so it's safe to call unconditionally.
-queueMicrotask(() => {
-  document.getElementById("boot-splash")?.classList.add("boot-splash--done");
-  SplashScreen.hide().catch(() => {});
+//   1. Boot splash: Georgia 52pt "Contour" CENTERED on #08080a.
+//   2. React Layout header: Instrument Serif 26pt "Contour" TOP-LEFT.
+//
+// During a 320ms opacity transition on the boot splash, intermediate
+// opacities (~0.3–0.7) made BOTH wordmarks visible at the same time, in
+// different positions, in different fonts. The eye reads two
+// simultaneous wordmarks-at-different-positions as the logo translating
+// or "jumping around." A clean display:none snap after the wordmark has
+// been stable for 700ms feels like an intentional reveal instead of a
+// cross-fade ghost.
+//
+// requestAnimationFrame gates the timer on React's first paint: we want
+// the brand moment to start counting from when the wordmark is actually
+// on screen, not from the moment main.jsx parsed.
+requestAnimationFrame(() => {
+  setTimeout(() => {
+    const splash = document.getElementById("boot-splash");
+    if (splash) splash.style.display = "none";
+  }, 700);
 });

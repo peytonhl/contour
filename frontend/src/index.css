@@ -216,6 +216,22 @@ button, a, [role="button"] {
   border-radius: 6px;
 }
 
+/* ── Loading pulse ──
+   Used by lightweight indeterminate-loading indicators where a full
+   skeleton would be overkill (e.g. the For You feed's first-batch
+   wait). One pulsing dot that breathes; reduced-motion users get a
+   static dim dot instead so the animation isn't a vestibular nuisance. */
+@keyframes loading-pulse-anim {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1.1);  }
+}
+.loading-pulse {
+  animation: loading-pulse-anim 1.3s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-pulse { animation: none; opacity: 0.55; }
+}
+
 /* Prevent iOS from zooming into inputs */
 @media (max-width: 640px) {
   input, textarea, select {
