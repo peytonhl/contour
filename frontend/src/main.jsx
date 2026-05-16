@@ -32,8 +32,18 @@ createRoot(document.getElementById("root")).render(
 // (launchAutoHide: false). The storyboard and the HTML boot splash are
 // visually identical (Georgia 52pt "Contour" on #08080a), so the user sees
 // one continuous wordmark from process launch through to here.
+//
+// fadeOutDuration: 0 — SNAP off, don't cross-fade. The plugin's default
+// 200ms fade exposed both the native splash (fading) and the HTML splash
+// (already at full opacity behind it) simultaneously; sub-pixel positioning
+// differences between the storyboard's centerY and the HTML's flex-center
+// inside the safe-area-inset showed up during the fade as the wordmark
+// "ghosting" or "jumping." Pair this with the boot splash's negative
+// safe-area offsets in index.html which align the two centers, and the
+// snap is invisible.
+//
 // SplashScreen.hide() is a no-op on web — safe to call unconditionally.
-SplashScreen.hide().catch(() => {});
+SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
 
 // Snap the HTML boot splash off (display:none) after a brand-moment window.
 // We deliberately do NOT cross-fade — that produced a "logo jumping around"

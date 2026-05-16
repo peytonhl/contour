@@ -91,7 +91,18 @@
       }
       .boot-splash {
         position: fixed;
-        inset: 0;
+        /* Extend the splash PAST the WebView's safe-area inset so the
+           flex-centered wordmark lands on the FULL-SCREEN center, matching
+           the iOS LaunchScreen storyboard's centerY constraint (which is
+           against the entire view, not the safe area). Without these
+           negative offsets the WebView's contentInset:"always" centers the
+           HTML wordmark ~5-10px below where the storyboard wordmark sat,
+           and the user sees the logo "jump down" at the native → WebView
+           handoff. Falls back gracefully on platforms where env(...) is 0. */
+        top: calc(-1 * env(safe-area-inset-top, 0px));
+        left: 0;
+        right: 0;
+        bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
         display: flex;
         align-items: center;
         justify-content: center;
