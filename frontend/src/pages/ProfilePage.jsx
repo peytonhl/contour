@@ -138,7 +138,7 @@ function EntityRow({ item, right }) {
       padding: "13px 0", borderBottom: "1px solid var(--border)",
     }}>
       {item.entity_image_url
-        ? <img src={item.entity_image_url} alt={item.entity_name} style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+        ? <img src={item.entity_image_url} alt={item.entity_name} loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
         : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
       }
       <div style={{ flex: 1, minWidth: 0 }}>

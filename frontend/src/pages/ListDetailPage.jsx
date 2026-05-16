@@ -99,7 +99,7 @@ function AddItemSearch({ onAdd, existingIds }) {
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
                       {item.image_url
-                        ? <img src={item.image_url} alt="" style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                        ? <img src={item.image_url} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
                         : <div style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                       }
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -145,7 +145,7 @@ function ListItemRow({ item, index, isOwner, isRanked, onMoveUp, onMoveDown, onR
       {/* Thumbnail */}
       <Link to={entityPath} style={{ flexShrink: 0 }}>
         {item.entity_image_url
-          ? <img src={item.entity_image_url} alt="" style={{ width: 48, height: 48, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover" }} />
+          ? <img src={item.entity_image_url} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover" }} />
           : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)" }} />
         }
       </Link>

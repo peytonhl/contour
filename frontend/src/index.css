@@ -143,6 +143,15 @@ body {
 }
 html {
   overscroll-behavior: none;
+  /* Smooth-scroll hash-anchor navigation so opening a shared review link
+     like /album/X#review-Y glides to the review instead of hard-jumping.
+     Honors prefers-reduced-motion below. Doesn't affect the For You feed's
+     swipe deck (which uses CSS transforms, not scroll) or programmatic
+     element.scrollIntoView calls (which can opt in/out per-call). */
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
 }
 
 a {
@@ -159,6 +168,34 @@ button {
 button, a, [role="button"] {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;   /* remove 300ms delay */
+}
+
+/* Keyboard-only focus rings. -webkit-tap-highlight is off and the browser
+   default outline is suppressed by most buttons' inline styles — keyboard
+   users had no focus indicator at all, which makes Tab-navigation through
+   the app effectively invisible. :focus-visible only fires on keyboard
+   focus (not mouse clicks), so mouse interaction stays clean. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent-a);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Active-press feedback. -webkit-tap-highlight is off, so touch users
+   currently get NO confirmation that their tap registered before the
+   click handler fires. A small instant opacity dip gives back that
+   "this is being pressed" signal without fighting per-button styles.
+   transition:none keeps it immediate — a fade-in feels like lag. */
+button:active,
+a:active,
+[role="button"]:active {
+  opacity: 0.65;
+  transition: none;
 }
 button, [role="button"] {
   -webkit-user-select: none;
