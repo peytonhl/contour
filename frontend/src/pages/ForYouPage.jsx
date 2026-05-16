@@ -12,7 +12,10 @@ function tierSourceOf(track) {
 }
 
 import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
-import { FollowingTab } from "../components/FollowingTab.jsx";
+// FollowingTab moved to the dedicated /friends route (FriendsPage). The
+// in-page "Friends" sub-tab here was retired alongside that move so users
+// have one canonical entry point to followed-user activity (bottom-nav
+// Friends icon → /friends) instead of two competing surfaces.
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { AlertIcon } from "../components/Icons.jsx";
 
@@ -2185,8 +2188,7 @@ function ForYouFeed() {
 // "is there new activity since the user last looked here?" → drives the
 // purple-dot activity badge.
 // `TABS_HINT_SEEN`: flag set after the user dismisses the first-launch
-// coachmark pointing at the Friends + Community tabs.
-const LAST_VIEW_FRIENDS = "contour_lastview_friends_v1";
+// coachmark pointing at the Community tab.
 const LAST_VIEW_COMMUNITY = "contour_lastview_community_v1";
 const TABS_HINT_SEEN = "contour_tabs_hint_v1";
 
@@ -2199,19 +2201,19 @@ function writeTs(key, v = Date.now()) {
 
 // ── Page shell with tabs ──────────────────────────────────────────────────────
 export function ForYouPage() {
-  // Internal state values are "discover" / "friends" / "community" — the
-  // user-facing rename from "For You" → "Discover" lets the bottom-nav
-  // "For You" label keep its meaning of "go to home" without colliding
-  // with the home-page sub-tab name.
+  // Internal state values are "discover" / "community" — the user-facing
+  // rename from "For You" → "Discover" lets the bottom-nav "For You"
+  // label keep its meaning of "go to home" without colliding with the
+  // home-page sub-tab name. "Friends" was a third value here; that
+  // surface lives at /friends (own bottom-nav slot) now.
   const [tab, setTab] = useState("discover");
   const { user } = useAuth();
 
-  // Activity badges + first-launch hint state.
-  // `hasNewFriends` / `hasNewCommunity` drive the small purple dot on
-  // each tab — set true when the latest activity timestamp on that
-  // surface is newer than the user's last viewed-at timestamp (stored
-  // in localStorage). Clearing the dot updates the stored timestamp.
-  const [hasNewFriends, setHasNewFriends] = useState(false);
+  // Activity badge + first-launch hint state.
+  // `hasNewCommunity` drives the small purple dot on the Community tab
+  // — set true when the latest activity timestamp on that surface is
+  // newer than the user's last viewed-at timestamp (stored in
+  // localStorage). Clearing the dot updates the stored timestamp.
   const [hasNewCommunity, setHasNewCommunity] = useState(false);
   const [showTabsHint, setShowTabsHint] = useState(false);
 
@@ -2234,19 +2236,15 @@ export function ForYouPage() {
     try { localStorage.setItem(TABS_HINT_SEEN, "1"); } catch {}
   }
 
-  // Probe Friends + Community feeds for newer-than-last-viewed activity.
-  // Lightweight — pulls the top entry off each endpoint and compares its
-  // created_at to the stored "last opened this tab" timestamp.
+  // Probe Community feed for newer-than-last-viewed activity. Pulls the
+  // top entry and compares its created_at to the stored "last opened
+  // this tab" timestamp. (The Friends probe was retired with the
+  // sub-tab itself; the same signal would belong on the bottom-nav
+  // /friends route now — a follow-up if we want a dot there.)
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      try {
-        const feed = await api.getFeed?.();
-        if (cancelled) return;
-        const newest = feed?.[0]?.created_at ? new Date(feed[0].created_at).getTime() : 0;
-        setHasNewFriends(newest > readTs(LAST_VIEW_FRIENDS));
-      } catch {}
       try {
         const reviews = await api.getGlobalReviews?.("recent", "all");
         if (cancelled) return;
@@ -2262,10 +2260,7 @@ export function ForYouPage() {
   // the first-launch hint on any tab interaction.
   function selectTab(next) {
     if (showTabsHint) dismissTabsHint();
-    if (next === "friends") {
-      writeTs(LAST_VIEW_FRIENDS);
-      setHasNewFriends(false);
-    } else if (next === "community") {
+    if (next === "community") {
       writeTs(LAST_VIEW_COMMUNITY);
       setHasNewCommunity(false);
     }
@@ -2408,20 +2403,18 @@ export function ForYouPage() {
         isolation: "isolate",
       }}>
         <button style={tabStyle(tab === "discover")} onClick={() => selectTab("discover")}>Discover</button>
-        <button style={tabStyle(tab === "friends")} onClick={() => selectTab("friends")}>
-          Friends
-          {hasNewFriends && tab !== "friends" && activityDot}
-        </button>
         <button style={tabStyle(tab === "community")} onClick={() => selectTab("community")}>
           Community
           {hasNewCommunity && tab !== "community" && activityDot}
         </button>
       </div>
 
-      {/* First-launch coachmark — points users at the Friends + Community
-          tabs which were previously easy to overlook ("everything I want
-          is on Discover, what are these other tabs for?"). Auto-dismisses
-          on any tab interaction; explicit X for impatient users. */}
+      {/* First-launch coachmark — points users at the Community tab so
+          they discover the global review feed. Auto-dismisses on any
+          tab interaction; explicit X for impatient users. The Friends
+          mention was removed when that sub-tab moved to the bottom-nav
+          /friends route — the bottom-nav icon is now the canonical
+          discovery surface for followed-user activity. */}
       {showTabsHint && (
         <div style={{
           position: "relative",
@@ -2434,8 +2427,8 @@ export function ForYouPage() {
           color: "rgba(255,255,255,0.85)",
         }}>
           <span style={{ fontWeight: 700, color: ACCENT_A }}>Tip:</span>{" "}
-          tap <strong>Friends</strong> to see what people you follow are rating,
-          or <strong>Community</strong> for the global review feed.
+          tap <strong>Community</strong> for the global review feed,
+          or the <strong>Friends</strong> icon below for people you follow.
           <button
             onClick={dismissTabsHint}
             aria-label="Dismiss tip"
@@ -2452,8 +2445,8 @@ export function ForYouPage() {
         </div>
       )}
 
-      {/* Content — all three panels stay mounted so ForYouFeed never loses
-          its track list or scroll position when the user flips tabs.
+      {/* Content — both panels stay mounted so ForYouFeed never loses its
+          track list or scroll position when the user flips tabs.
           isolation: isolate scopes any inner zIndex shenanigans to this
           subtree — children cannot paint above the tab strip. */}
       <div style={{
@@ -2463,9 +2456,6 @@ export function ForYouPage() {
       }}>
         <div style={{ display: tab === "discover" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <ForYouFeed />
-        </div>
-        <div style={{ display: tab === "friends" ? "block" : "none" }}>
-          <FollowingTab />
         </div>
         <div style={{ display: tab === "community" ? "block" : "none" }}>
           <GlobalReviewsFeed />
