@@ -172,6 +172,12 @@ export function ProfilePage() {
   // Hot-take share state: idle | probing | none (no qualifying take)
   const [hotTakeState, setHotTakeState] = useState("idle");
   const [hotTakeModalOpen, setHotTakeModalOpen] = useState(false);
+  // Which of the user's own reviews is open in the card-share modal.
+  // null = closed. Looked up against profile.reviews to build the modal props.
+  const [shareReviewId, setShareReviewId] = useState(null);
+  const shareReview = shareReviewId
+    ? profile?.reviews?.find((r) => r.id === shareReviewId)
+    : null;
   async function handleShareHotTake() {
     setHotTakeState("probing");
     const result = await probeHotTake(user.id);
@@ -479,6 +485,19 @@ export function ProfilePage() {
                 fileName={`contour-hot-take-${user.id}.png`}
               />
             )}
+            {/* Card-share modal for the user's own reviews. Same component
+                used by ReviewSection / UserPage / SavedComparison — single
+                source of truth for the preview-then-share UX. */}
+            {shareReview && (
+              <CardPreviewModal
+                open={shareReviewId !== null}
+                onClose={() => setShareReviewId(null)}
+                cardUrl={`${window.location.origin}/api/og/review?id=${shareReview.id}`}
+                shareUrl={`${window.location.origin}/${shareReview.entity_type}/${shareReview.entity_id}#review-${shareReview.id}`}
+                shareText={`${user?.display_name ?? "A Contour user"}'s review on Contour`}
+                fileName={`contour-review-${shareReview.id}.png`}
+              />
+            )}
 
             {editingBio && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18, maxWidth: 400 }}>
@@ -685,14 +704,73 @@ export function ProfilePage() {
                 to="/"
               />
             )}
-            {profile?.reviews?.map((r, i) => (
-              <div key={i} style={{ padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
-                <EntityRow item={r} right={r.value ? <RatingBadge value={r.value} /> : null} />
-                <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, margin: "8px 0 0 62px" }}>
-                  {r.body}
-                </p>
-              </div>
-            ))}
+            {/* Own-profile review rows. Mirrors UserPage's review row layout
+                but skips vote buttons (no self-voting) and keeps Reply +
+                Share so the user can act on their own reviews from here.
+                Previously the row used EntityRow inside a wrapper that also
+                drew its own borderBottom → doubled separator lines. Now the
+                single borderBottom on the outer row is the only separator. */}
+            {profile?.reviews?.map((r) => {
+              const threadPath = `/${r.entity_type}/${r.entity_id}#review-${r.id}`;
+              return (
+                <Link
+                  key={r.id}
+                  to={threadPath}
+                  style={{
+                    padding: "16px 0",
+                    borderBottom: "1px solid var(--border)",
+                    display: "flex", flexDirection: "column", gap: 10,
+                    textDecoration: "none", color: "inherit",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    {r.entity_image_url
+                      ? <img src={r.entity_image_url} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                      : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
+                    }
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.entity_name ?? `Unknown ${r.entity_type ?? "item"}`}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                        {r.entity_artists?.join(", ")}
+                        {r.entity_artists?.length > 0 && <span style={{ margin: "0 5px", opacity: 0.4 }}>·</span>}
+                        {timeAgo(r.created_at)}
+                      </div>
+                    </div>
+                    {r.value && <RatingBadge value={r.value} />}
+                  </div>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {r.body}
+                  </p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = threadPath; }}
+                      title="Reply on the thread"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        background: "none", border: "none", padding: "2px 4px",
+                        fontSize: 12, cursor: "pointer", color: "var(--text-muted)",
+                      }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                      {(r.replies_count ?? r.reply_count ?? 0) > 0 ? (r.replies_count ?? r.reply_count) : ""}
+                    </button>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShareReviewId(r.id); }}
+                      title="Share this review"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        background: "none", border: "none", padding: "2px 4px",
+                        fontSize: 12, cursor: "pointer", color: "var(--text-muted)",
+                      }}
+                    >
+                      ↗
+                    </button>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         )}
 

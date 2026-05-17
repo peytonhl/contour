@@ -429,11 +429,13 @@ async def get_profile(
         ],
         "reviews": [
             {
+                "id": r.id,
                 "entity_type": r.entity_type,
                 "entity_id": r.entity_id,
                 "entity_name": enriched.get((r.entity_type, r.entity_id), {}).get("name"),
                 "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
                 "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
+                "value": r.value,
                 "body": r.body,
                 "created_at": r.created_at.isoformat() + "Z",
             }
