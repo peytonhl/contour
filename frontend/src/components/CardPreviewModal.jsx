@@ -16,7 +16,9 @@ const ACCENT = "#d97a3b";
 //                   vertically-centered body row, 560×560 cover.
 //  v4 (2026-05-17): wordmark 40 → 64, quote column vertically centered
 //                   within cover height (no more right-side dead zone).
-const CARD_VERSION = "4";
+//  v5 (2026-05-17): inline error surfacing + Media→Share fallback when
+//                   the save plugin can't reach the Photos library.
+const CARD_VERSION = "5";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
@@ -45,6 +47,11 @@ export function CardPreviewModal({
   const [blobUrl, setBlobUrl] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);  // "share" | "save" | null
+  // Error from the share / save action itself. Distinct from `error`
+  // (which only covers the initial PNG fetch); rendered as an inline
+  // line below the action buttons so the user sees what went wrong
+  // instead of "nothing happens when you tap it".
+  const [actionError, setActionError] = useState(null);
 
   // Append the version stamp so the WebView/browser cache treats new card
   // designs as a fresh URL instead of serving the stale 1080×1350 layout
@@ -92,19 +99,45 @@ export function CardPreviewModal({
 
   if (!open) return null;
 
+  // Surface errors in the modal instead of swallowing them. Previously a
+  // failed save (plugin missing, permission denied, sandbox issue, etc.)
+  // produced "nothing happens when you tap it" because every catch was
+  // empty — caller and user both blind. Now any failure renders an inline
+  // error line below the buttons; cleared on the next tap or modal close.
+  // User-cancelled share/save (AbortError on Web Share, Cancel button on
+  // share sheet) are filtered out so we don't accuse iOS of failing when
+  // the user just changed their mind.
+  function isUserCancel(e) {
+    const msg = (e && (e.message || e.name || "")) + "";
+    return msg.includes("Abort") || msg.includes("cancel") || msg.includes("Cancel");
+  }
+
   async function handleShare() {
     if (busy) return;
+    setActionError(null);
     setBusy("share");
     try { await shareCard({ cardUrl: versionedCardUrl, shareUrl, shareText, fileName }); }
-    catch { /* user cancelled or share failed — keep the modal open */ }
+    catch (e) {
+      if (!isUserCancel(e)) setActionError(`Share failed: ${e?.message || e}`);
+    }
     setBusy(null);
   }
 
   async function handleSave() {
     if (busy) return;
+    setActionError(null);
     setBusy("save");
-    try { await saveCard({ cardUrl: versionedCardUrl, fileName }); }
-    catch { /* same */ }
+    try {
+      const result = await saveCard({ cardUrl: versionedCardUrl, fileName });
+      // Plugin not available on this build → we fell back to the share
+      // sheet, which IS a usable save path (Save Image is on it) but not
+      // what the button label promises. Let the user know.
+      if (result === "shared-fallback") {
+        setActionError("Save plugin not available in this build — opened share sheet instead. Tap \"Save Image\" there.");
+      }
+    } catch (e) {
+      if (!isUserCancel(e)) setActionError(`Save failed: ${e?.message || e}`);
+    }
     setBusy(null);
   }
 
@@ -182,10 +215,22 @@ export function CardPreviewModal({
           )}
         </div>
 
+        {/* Inline error line — surfaces share/save failures (plugin missing,
+            permission denied, fallback used, etc.) so the user can see what
+            went wrong instead of nothing-happening on tap. */}
+        {actionError && (
+          <div style={{
+            padding: "10px 16px", borderTop: "1px solid var(--border)",
+            color: "var(--danger, #f87171)",
+            fontSize: 12, lineHeight: 1.4,
+            flexShrink: 0,
+          }}>
+            {actionError}
+          </div>
+        )}
+
         {/* Footer — two CTAs side by side. Save is secondary (outlined) so
-            Share reads as the primary action; both ultimately route through
-            the system share sheet on native, but the labels communicate
-            distinct intent. */}
+            Share reads as the primary action. */}
         <div style={{
           padding: 16, borderTop: "1px solid var(--border)",
           display: "flex", gap: 10, flexShrink: 0,

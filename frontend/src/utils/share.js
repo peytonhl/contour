@@ -67,11 +67,32 @@ async function shareCardNative({ cardUrl, shareUrl, shareText, fileName }) {
 // "didn't actually save, just allowed me to export"). iOS requires
 // NSPhotoLibraryAddUsageDescription in Info.plist (injected by
 // codemagic.yaml); first call prompts the user once.
+//
+// If the Media plugin isn't available (older shell, plugin failed to link
+// during cap sync, etc.) OR throws at runtime, we fall back to
+// Share.share with just the file — that opens the iOS share sheet
+// pre-positioned with "Save Image" / "Add to Photos" as a prominent
+// option. Worse UX (one extra tap) but the button still does something
+// useful instead of failing silently.
 async function saveCardNative({ cardUrl, fileName }) {
-  const { Media } = await import("@capacitor-community/media");
   const uri = await writeCardToCache(cardUrl, fileName);
-  await Media.savePhoto({ path: uri });
-  return "saved";
+
+  try {
+    const mod = await import("@capacitor-community/media");
+    if (!mod?.Media?.savePhoto) {
+      throw new Error("Media plugin loaded but savePhoto is missing");
+    }
+    await mod.Media.savePhoto({ path: uri });
+    return "saved";
+  } catch (mediaErr) {
+    // Surface the underlying error so the caller can decide whether to
+    // display it. The fallback below may also throw (e.g. user cancels
+    // the share sheet) — that's distinct and handled by the caller.
+    console.warn("Media.savePhoto failed, falling back to share sheet:", mediaErr);
+    const { Share } = await import("@capacitor/share");
+    await Share.share({ files: [uri], dialogTitle: "Save image" });
+    return "shared-fallback";
+  }
 }
 
 async function shareCardWeb({ cardUrl, shareUrl, shareText, fileName }) {
