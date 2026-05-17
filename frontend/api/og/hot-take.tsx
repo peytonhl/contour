@@ -110,13 +110,15 @@ export default async function handler(request) {
           </span>
         </div>
 
-        {/* Body — no `flex: 1`, content stacks naturally from top */}
-        <div style={{ display: 'flex', padding: '40px 50px 50px', gap: 44 }}>
-          {/* Cover anchors the left, same pattern as the review card */}
+        {/* Body wrapper — fills remaining vertical space and centers the
+            body row, same fix as review.tsx. Cover bumped to 560×560 to
+            fill more of the square canvas. */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 50px 50px' }}>
+        <div style={{ display: 'flex', gap: 44, width: '100%' }}>
           <div
             style={{
-              width: 440,
-              height: 440,
+              width: 560,
+              height: 560,
               borderRadius: 8,
               overflow: 'hidden',
               flexShrink: 0,
@@ -126,7 +128,7 @@ export default async function handler(request) {
             }}
           >
             {entity.cover_url ? (
-              <img src={entity.cover_url} width={440} height={440} style={{ objectFit: 'cover' }} />
+              <img src={entity.cover_url} width={560} height={560} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
@@ -263,6 +265,7 @@ export default async function handler(request) {
               </span>
             </div>
           </div>
+        </div>
         </div>
       </div>
     ),

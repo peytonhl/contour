@@ -145,18 +145,19 @@ export default async function handler(request) {
           </span>
         </div>
 
-        {/* Body row — cover left, quote right.
-            No `flex: 1` on this row, no `justifyContent: space-between` on
-            the column: with a square card and natural top-anchored stacking,
-            short reviews collapse tightly to the top and the bottom of the
-            card stays a deliberate dark canvas instead of a 600px gap. */}
-        <div style={{ display: 'flex', padding: '40px 50px 50px', gap: 44 }}>
-          {/* Cover — square, slightly larger than before to fill more of
-              the smaller (1080×1080) canvas without overpowering the quote. */}
+        {/* Body wrapper — fills the remaining vertical space below the
+            header and centers the body row vertically. With a square card
+            and a compact body row (cover + quote column), the previous
+            top-anchored layout left ~500px of dead canvas at the bottom;
+            vertical centering balances that empty space top/bottom instead.
+            Cover sized up to 560×560 to fill more of the canvas without
+            overpowering the quote. */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 50px 50px' }}>
+        <div style={{ display: 'flex', gap: 44, width: '100%' }}>
           <div
             style={{
-              width: 440,
-              height: 440,
+              width: 560,
+              height: 560,
               borderRadius: 8,
               overflow: 'hidden',
               flexShrink: 0,
@@ -166,7 +167,7 @@ export default async function handler(request) {
             }}
           >
             {coverUrl ? (
-              <img src={coverUrl} width={440} height={440} style={{ objectFit: 'cover' }} />
+              <img src={coverUrl} width={560} height={560} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
@@ -269,6 +270,7 @@ export default async function handler(request) {
               </span>
             </div>
           </div>
+        </div>
         </div>
       </div>
     ),
