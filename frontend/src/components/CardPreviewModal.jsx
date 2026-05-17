@@ -14,7 +14,9 @@ const ACCENT = "#d97a3b";
 // Bump history:
 //  v3 (2026-05-17): square 1080×1080, SVG star, Spotify cover for tracks,
 //                   vertically-centered body row, 560×560 cover.
-const CARD_VERSION = "3";
+//  v4 (2026-05-17): wordmark 40 → 64, quote column vertically centered
+//                   within cover height (no more right-side dead zone).
+const CARD_VERSION = "4";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

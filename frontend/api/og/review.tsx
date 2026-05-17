@@ -133,14 +133,15 @@ export default async function handler(request) {
           <span
             style={{
               fontFamily: 'Instrument Serif',
-              fontSize: 40,
+              fontSize: 64,
               letterSpacing: '-0.01em',
               color: TEXT,
+              lineHeight: 1,
             }}
           >
             Contour
           </span>
-          <span style={{ fontSize: 16, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 18, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             Review
           </span>
         </div>
@@ -173,12 +174,16 @@ export default async function handler(request) {
             )}
           </div>
 
-          {/* Quote column — flex-start, no space-between */}
+          {/* Quote column — vertically centered within the cover's height
+              (the row's `display: flex` stretches the column to match the
+              cover's 560px), so a short review sits in the middle of the
+              cover instead of pinned to the top with empty space below. */}
           <div
             style={{
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
+              justifyContent: 'center',
             }}
           >
             {/* Subject: entity name */}

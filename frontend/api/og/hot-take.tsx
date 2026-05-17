@@ -104,8 +104,8 @@ export default async function handler(request) {
             padding: '40px 50px 0',
           }}
         >
-          <span style={{ fontFamily: 'Instrument Serif', fontSize: 40, color: TEXT }}>Contour</span>
-          <span style={{ fontSize: 16, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          <span style={{ fontFamily: 'Instrument Serif', fontSize: 64, color: TEXT, lineHeight: 1, letterSpacing: '-0.01em' }}>Contour</span>
+          <span style={{ fontSize: 18, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             Hot take
           </span>
         </div>
@@ -134,12 +134,15 @@ export default async function handler(request) {
             )}
           </div>
 
-          {/* Quote column — top-anchored, natural stacking */}
+          {/* Quote column — vertically centered within the cover's height,
+              same fix as review.tsx. Short takes sit in the middle of the
+              cover instead of top-anchored with empty space below. */}
           <div
             style={{
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
+              justifyContent: 'center',
             }}
           >
             {/* Subject: entity name */}
