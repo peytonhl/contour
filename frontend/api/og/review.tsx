@@ -151,12 +151,12 @@ export default async function handler(request) {
             cover lifts toward the top of the canvas without leaving a
             ~160px empty band above it. Cover bumped to 640×640 to
             dominate more of the width and reduce overall negative space. */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', padding: '20px 40px 40px' }}>
-        <div style={{ display: 'flex', gap: 36, width: '100%' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', padding: '20px 36px 36px' }}>
+        <div style={{ display: 'flex', gap: 32, width: '100%' }}>
           <div
             style={{
-              width: 640,
-              height: 640,
+              width: 600,
+              height: 600,
               borderRadius: 8,
               overflow: 'hidden',
               flexShrink: 0,
@@ -166,7 +166,7 @@ export default async function handler(request) {
             }}
           >
             {coverUrl ? (
-              <img src={coverUrl} width={640} height={640} style={{ objectFit: 'cover' }} />
+              <img src={coverUrl} width={600} height={600} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}

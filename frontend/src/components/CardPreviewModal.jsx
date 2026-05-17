@@ -20,7 +20,9 @@ const ACCENT = "#d97a3b";
 //                   the save plugin can't reach the Photos library.
 //  v6 (2026-05-17): wordmark 64 → 88, cover 560 → 640, body top-anchored
 //                   so canvas fills better (no more empty band above).
-const CARD_VERSION = "6";
+//  v7 (2026-05-17): cover 640 → 600, tighter gap/padding to give the
+//                   quote column room (v6 was cramping meta + quote).
+const CARD_VERSION = "7";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
