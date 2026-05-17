@@ -323,6 +323,48 @@ gh api "repos/peytonhl/contour/deployments?per_page=5" --jq \
 Look for `env: "gallant-unity / production"` — that's the current prod sha.
 Compare to `master` tip; if they differ, somebody promoted a preview.
 
+### A successful merge is not a successful deploy
+
+`git push origin master` succeeds the instant GitHub accepts the push. It
+says nothing about whether Vercel actually built and deployed the result.
+We learned this the hard way on 2026-05-17: three back-to-back master
+pushes to enable the OG card endpoints all silently failed the Vercel
+build, while production kept serving the prior bundle. Each push
+appeared "shipped" from the git side; nothing reached users.
+
+Always verify the deploy after pushing a change that needs to actually
+land somewhere:
+
+```bash
+# Commit status — Vercel + Railway both write here
+gh api "repos/peytonhl/contour/commits/master/status" --jq \
+  '.statuses | .[] | "\(.context): \(.state) - \(.target_url // "")"'
+
+# Probe the actual endpoint you changed
+curl -I "https://contour-rosy.vercel.app/<your-route>"
+```
+
+For Vercel function changes specifically (e.g. `frontend/api/**`), check
+both the deploy succeeded AND the function registered — a successful
+build doesn't guarantee Vercel auto-registered your file. A `404` with
+`X-Vercel-Error: NOT_FOUND` from the edge proxy means the function
+isn't there at all; a `4xx` with `Content-Type: text/plain` means the
+handler ran and returned its own error. Tell them apart before assuming
+the code is wrong.
+
+If the deploy log isn't accessible without auth, the typical signals
+that something Vercel-side broke even though the build "succeeded":
+
+- `tsc` errors in the log (`TS17004: Cannot use JSX...`) — your `.tsx`
+  function needs a `tsconfig.json` with `"jsx": "react-jsx"`.
+  See [CLAUDE.md](CLAUDE.md) → "Vercel Edge Functions in `frontend/api/`".
+- "Edge Function is referencing unsupported modules: @vercel/og" —
+  downstream of the TS error; once compile succeeds, the bundle pulls
+  the dep in fine.
+- File extension is `.jsx` — Vercel autoregisters `.tsx` / `.js` /
+  `.ts` / `.mjs` in `/api/`. `.jsx` builds (the file is just shipped
+  as a static asset) but never becomes a function.
+
 ### Rate limits (now moot since Pro)
 
 The Hobby tier had a 100-build-per-day soft cap. We hit it during one

@@ -166,12 +166,24 @@ workflow defined in `codemagic.yaml`. End-to-end build time is ~10–15 min:
   API changes. New features that don't require new Capacitor plugins.
   Bug fixes. Copy edits. Theme tweaks.
 - ✅ **Do rebuild for:** new Capacitor plugin (`@capacitor/push-notifications`,
-  native Sign in with Apple, haptics, camera, share sheet). App icon /
-  splash screen update. New entitlement on the App ID. iOS SDK / target
-  bump (Apple-mandated, ~annual).
+  native Sign in with Apple, haptics, camera). App icon / splash screen
+  update. New entitlement on the App ID. iOS SDK / target bump
+  (Apple-mandated, ~annual).
 
 Rule of thumb during active beta: maybe 1–3 native rebuilds per month.
 Web deploys: every day, often multiple times.
+
+### Currently bundled native plugins
+
+Reflects the latest `ios-v*` tag (`ios-v0.1.15` as of 2026-05-17).
+Anything you add to `frontend/package.json` here lands in the next tag.
+
+| Plugin | Purpose | Shipped in |
+|---|---|---|
+| `@capacitor/app` | `contour://` URL scheme + appUrlOpen handler | `ios-v0.1.11` |
+| `@capacitor/splash-screen` | Boot splash control | included from day 1 |
+| `@capacitor/share` | Native share sheet for card PNGs (workaround for WKWebView's `canShare({ files })` false-negative) | `ios-v0.1.15` |
+| `@capacitor/filesystem` | Write card PNG to `Directory.Cache` so `@capacitor/share` can pass a `file://` URI to `UIActivityViewController` | `ios-v0.1.15` |
 
 ---
 

@@ -64,32 +64,37 @@ user's face. Same dark `#08080a` background and Instrument Serif type
 as the app — no gradients, no busy backgrounds.
 
 **Renderer + cover preference (decided 2026-05-15):** Vercel OG Edge
-Function at `frontend/api/og/review.jsx`. Cover URL preference: Apple
+Function at `frontend/api/og/review.tsx`. Cover URL preference: Apple
 Music's 1200×1200 art (`AppleMusicLink.artwork_url` when cached) over
 Spotify's 640 cap, falling back to a dark placeholder block when neither
 is available. The endpoint hits a backend `card-data` route that wraps
 the lookup so the renderer needs exactly one network round-trip.
 
-**Cross-platform rollout — Android is not left behind:** The OG endpoint
-is just an HTTP route returning a PNG; iOS, Android, web, and Capacitor
-WebViews on both platforms all consume it identically. The share button
-uses `navigator.share({ files: [...] })` (Web Share Level 2), supported
-on:
-- iOS Safari + WKWebView (14.3+)
-- Android Chrome (89+) + Capacitor Android WebView
-- Older Android falls back to URL share via the same handler — graceful
-  degradation, no broken-feature state.
+**Cross-platform rollout + UX (corrected 2026-05-17 after `ios-v0.1.15`):**
+The original plan assumed `navigator.share({ files: [...] })` would Just
+Work in iOS Capacitor WKWebView. It doesn't — `canShare({ files })`
+returns `false` there even when share-with-file would succeed, so every
+share was silently falling through to URL-only. iMessage got a link
+tile, no PNG attached.
 
-No native plugin or Capacitor capability change is required, so this
-feature ships to Android users via the same Vercel deploy that ships
-it to iOS users (and to the web). **No Codemagic rebuild, no APK
-rebuild, no app-store review wait** — both shells pick up the new
-share behavior on next launch because they load the live web app
-from Vercel.
+Current architecture (see [CLAUDE.md](CLAUDE.md) → "Card share architecture"):
+- **Preview modal first.** Tap Share → `CardPreviewModal` renders the
+  PNG inline so the user verifies the card before sending. Two CTAs:
+  Save image (file only, share sheet surfaces Save Image / Photos at
+  top) and Share (file + text + url).
+- **Dispatcher in `utils/share.js`.** Native → `@capacitor/share` +
+  `@capacitor/filesystem` (write to `Directory.Cache` → `file://` URI →
+  `UIActivityViewController`). Web → Web Share Level 2 with an
+  `<a download>` fallback.
+- **IPA rebuild required.** The native plugins ship in `ios-v0.1.15+`.
+  Android shells get the same plugin support via `cap sync` whenever
+  the next AAB is built.
 
-If later we want a richer Android-specific path (download-to-photos
-button via `@capacitor/share`, sharing to Instagram Story's open
-graph endpoint, etc.) that's an incremental layer on top of this v1.
+Pre-`ios-v0.1.15` shells fall back to the web share path (which has the
+same WKWebView limitation), so testers on the new TestFlight build are
+the first to see the PNG actually attach. Earlier `ios-v*` shells still
+get the modal + preview correctly, just the system-share step degrades
+to URL-only.
 
 1. **Review card** — small Contour wordmark top, album/track cover on
    the left, the review body as a big Instrument Serif quote on the

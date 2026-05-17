@@ -8,7 +8,7 @@ multi-system runbooks (domain change, key rotation), see
 [OPERATIONS.md](OPERATIONS.md). This file is one-time setup tasks; that one
 is recurring operational work.
 
-Last updated: 2026-05-16
+Last updated: 2026-05-17
 
 ---
 
@@ -194,8 +194,13 @@ Already done (no action needed):
 
 No Apple review needed. Up to 100 testers, each added by Apple ID email.
 
-- [ ] **Install `ios-v0.1.11` on your iPhone** when Codemagic finishes,
-      smoke-test the OAuth-return-to-app fix end-to-end.
+- [ ] **Install the latest `ios-v*` build on your iPhone** when Codemagic
+      finishes, smoke-test recent native-only changes. Current tip is
+      `ios-v0.1.15` (2026-05-17, bundles `@capacitor/share` +
+      `@capacitor/filesystem` so the card-share PNG actually attaches in
+      iMessage — see [BACKLOG.md](BACKLOG.md) "Shareable cards" §
+      "Cross-platform rollout + UX"). Pre-`v0.1.15` builds still show the
+      card preview modal but the share fallback drops to URL-only on iOS.
 - [ ] **Invite first round of internal testers** in App Store Connect →
       Users and Access. Friends, family, anyone with an Apple ID. They
       install via TestFlight on their phone within minutes of the invite

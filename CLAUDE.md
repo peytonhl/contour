@@ -235,6 +235,46 @@ or accept that successive batches may repeat tracks from the chart cache.
 - Recharts for all charts
 - No external UI libraries (no MUI, no Chakra) — plain CSS-in-JS style objects
 
+### Vercel Edge Functions in `frontend/api/`
+The OG-image renderers (`frontend/api/og/*.tsx`) are Vercel Edge Functions,
+not part of the Vite SPA build. Two rules:
+
+- **Use `.tsx`, not `.jsx`.** Vercel autoregisters `/api/*` files by
+  extension. `.jsx` files build but never register as functions (silent
+  404 from the edge proxy). `.tsx` registers correctly.
+- **`frontend/api/tsconfig.json` is required.** Vercel runs `tsc` over
+  the `.tsx` files independently of Vite, and without a tsconfig you
+  get `TS17004: Cannot use JSX unless the '--jsx' flag is provided`,
+  the build fails, AND `@vercel/og` shows up as "unsupported module"
+  in the deploy log. The scoped tsconfig has `"jsx": "react-jsx"` and
+  `"include": ["./**/*.ts", "./**/*.tsx"]` so it doesn't affect Vite.
+
+Verify a new function actually registered after deploy:
+
+```bash
+curl -I "https://contour-rosy.vercel.app/api/og/<name>"
+# Expect: 200 with Content-Type: image/png, OR a 4xx from the handler
+#         itself (Content-Type: text/plain). A 404 with X-Vercel-Error:
+#         NOT_FOUND means the function didn't register — check the
+#         Vercel deploy log for TS errors.
+```
+
+### Card share architecture
+- `frontend/src/components/CardPreviewModal.jsx` — modal that fetches the
+  PNG from the OG endpoint, displays it inline, and exposes Save / Share
+  CTAs. Used by review rows (`ReviewSection.jsx`, `UserPage.jsx`), the
+  comparison page, and the hot-take button on the profile.
+- `frontend/src/utils/share.js` — dispatcher. On native it writes the PNG
+  to `Directory.Cache` via `@capacitor/filesystem` and hands the `file://`
+  URI to `@capacitor/share`. On web it uses Web Share Level 2
+  (`navigator.share({ files })`) with an `<a download>` fallback.
+
+Why not direct `navigator.share({ files })` everywhere: iOS Capacitor's
+WKWebView has `navigator.canShare({ files })` returning `false` even
+when share-with-file would succeed. That false-negative was silently
+dropping every share back to URL-only — the iMessage just got a link
+tile, no PNG. The modal + native plugin path bypasses that.
+
 ### Design system (shipped 2026-05-13)
 The visual identity was deliberately rebuilt away from the default "AI app
 template" look (violet→emerald gradients, system sans, UPPERCASE tracked
@@ -295,6 +335,14 @@ shipped multiple regressions. Two things to never reintroduce:
   `touch-action: none` on iOS WebKit suppresses the touchend → JS-advance
   gesture sequence entirely. pan-y lets iOS interpret the gesture natively
   while our touchstart/move/end handlers still fire.
+- **On tablet+ viewports (>640px), the Discover swipe overlay must
+  anchor below the Layout header**, not over it. The bottom-nav is
+  `display: none` above 640px so the desktop top nav (Friends / Search /
+  Compare / Profile) is the only navigation on iPad — covering it with
+  `top: 0; zIndex: 60` strands users on Discover with no exit. Use
+  `top: var(--layout-header-h); zIndex: 40` on tablet+; keep the
+  iPhone full-bleed (`top: 0; zIndex: 60`) below 640px. See
+  `ForYouPage.jsx`'s `isTabletOrLarger` gate.
 
 For debugging future deck issues: see [DEBUGGING.md](DEBUGGING.md) — there's
 a methodology section specifically for mobile gestures since you can't see
