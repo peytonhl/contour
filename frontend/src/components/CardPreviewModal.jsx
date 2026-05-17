@@ -27,7 +27,10 @@ const ACCENT = "#d97a3b";
 //  v9 (2026-05-17): cover 660 → 720 (fills 67% of canvas width), meta
 //                   stacked on two lines (title above, artist below) so
 //                   long artist names don't break awkwardly. Quote 38px.
-const CARD_VERSION = "9";
+//  v10 (2026-05-17): switched from side-by-side to stacked (JQ Adams meme
+//                    template). Cover top-centered, meta + quote
+//                    centered below, rating + attribution bottom-bar.
+const CARD_VERSION = "10";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

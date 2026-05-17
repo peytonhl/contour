@@ -146,133 +146,123 @@ export default async function handler(request) {
           </span>
         </div>
 
-        {/* Body wrapper — fills the remaining vertical space below the
-            header. Aligned top-center (instead of fully centered) so the
-            cover lifts toward the top of the canvas without leaving a
-            ~160px empty band above it. Cover bumped to 640×640 to
-            dominate more of the width and reduce overall negative space. */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 32px 32px' }}>
-        <div style={{ display: 'flex', gap: 28, width: '100%', alignItems: 'center' }}>
+        {/* Stacked layout — cover dominates the top half, the editorial
+            quote takes the full canvas width below it, and the rating +
+            attribution row anchors the bottom. This is the literal JQ
+            Adams meme template: image up top, quote in the body,
+            attribution underneath. The side-by-side layout we tried
+            previously (cover left, narrow text column right) couldn't
+            fill the 1080-tall canvas without crushing the quote — covers
+            are square, columns can't be wider than ~300px before the
+            cover shrinks too far, and stretching the column down past
+            the cover's bottom left awkward dead canvas. Stacked
+            sidesteps all of that by letting each row use the full width.
+        */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '24px 60px 48px',
+          gap: 32,
+        }}>
+          {/* Cover — centered horizontally, 600×600. Self-aligned center
+              within the column-flex container so it doesn't stretch to
+              full width while keeping its square aspect. */}
           <div
             style={{
-              width: 720,
-              height: 720,
+              width: 600,
+              height: 600,
               borderRadius: 8,
               overflow: 'hidden',
-              flexShrink: 0,
               display: 'flex',
               backgroundColor: '#1a1a1d',
-              alignSelf: 'flex-start',
+              alignSelf: 'center',
+              flexShrink: 0,
             }}
           >
             {coverUrl ? (
-              <img src={coverUrl} width={720} height={720} style={{ objectFit: 'cover' }} />
+              <img src={coverUrl} width={600} height={600} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
           </div>
 
-          {/* Quote column — vertically centered within the cover's height
-              (the row's `display: flex` stretches the column to match the
-              cover's 560px), so a short review sits in the middle of the
-              cover instead of pinned to the top with empty space below. */}
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-            }}
-          >
-            {/* Subject — title above, artist below, on two intentional
-                lines. A single dot-separated line was wrapping awkwardly
-                for any long title or artist; this composes deliberately
-                and lets the title carry a touch more weight than the
-                attribution. */}
-            <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 18, gap: 4 }}>
+          {/* Subject — title centered above the quote, artist below.
+              Caps-tracked for the editorial feel. */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <span
+              style={{
+                fontSize: 22,
+                color: TEXT,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                fontWeight: 600,
+                textAlign: 'center',
+              }}
+            >
+              {entityName}
+            </span>
+            {entityArtist && (
               <span
                 style={{
                   fontSize: 18,
-                  color: TEXT,
-                  letterSpacing: '0.06em',
+                  color: MUTED,
+                  letterSpacing: '0.08em',
                   textTransform: 'uppercase',
-                  fontWeight: 600,
+                  textAlign: 'center',
                 }}
               >
-                {entityName}
+                {entityArtist}
               </span>
-              {entityArtist && (
-                <span
-                  style={{
-                    fontSize: 16,
-                    color: MUTED,
-                    letterSpacing: '0.06em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {entityArtist}
-                </span>
-              )}
-            </div>
-
-            {/* The quote — sized to fit a ~300px column alongside the
-                720px cover. 38px keeps a short review at 3 lines, a long
-                one at ~7. */}
-            <p
-              style={{
-                fontFamily: 'Instrument Serif',
-                fontSize: 38,
-                lineHeight: 1.2,
-                margin: 0,
-                color: TEXT,
-              }}
-            >
-              {`“${reviewBody}”`}
-            </p>
-
-            {/* Rating — number in Instrument Serif + inline SVG star
-                (Unicode ★ rendered as tofu because the embedded Serif
-                font doesn't include U+2605). */}
-            {rating != null && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 28 }}>
-                <span
-                  style={{
-                    fontFamily: 'Instrument Serif',
-                    fontSize: 36,
-                    color: GOLD,
-                    fontWeight: 400,
-                    lineHeight: 1,
-                  }}
-                >
-                  {rating.toFixed(1)}
-                </span>
-                <StarIcon size={30} color={GOLD} />
-              </div>
             )}
+          </div>
 
-            {/* Attribution */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 24 }}>
+          {/* The quote — centered, big serif, full canvas width. With the
+              wider line it can drop back to a generous size and a short
+              review still reads as a single hero line. */}
+          <p
+            style={{
+              fontFamily: 'Instrument Serif',
+              fontSize: 56,
+              lineHeight: 1.15,
+              margin: 0,
+              color: TEXT,
+              textAlign: 'center',
+            }}
+          >
+            {`“${reviewBody}”`}
+          </p>
+
+          {/* Rating + attribution row — anchored to the bottom of the
+              flex column (`marginTop: auto`) so it sits against the
+              card's lower edge regardless of how long the quote is. */}
+          <div style={{
+            marginTop: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingTop: 24,
+            borderTop: '1px solid rgba(250, 250, 250, 0.12)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               {authorImage ? (
                 <img
                   src={authorImage}
-                  width={52}
-                  height={52}
-                  style={{
-                    borderRadius: 26,
-                    objectFit: 'cover',
-                  }}
+                  width={56}
+                  height={56}
+                  style={{ borderRadius: 28, objectFit: 'cover' }}
                 />
               ) : (
                 <div
                   style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
+                    width: 56,
+                    height: 56,
+                    borderRadius: 28,
                     backgroundColor: ACCENT,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: 26,
+                    fontSize: 28,
                     fontWeight: 700,
                     color: BG,
                   }}
@@ -284,15 +274,30 @@ export default async function handler(request) {
                 style={{
                   fontFamily: 'Instrument Serif',
                   fontStyle: 'italic',
-                  fontSize: 30,
+                  fontSize: 32,
                   color: TEXT,
                 }}
               >
                 — {authorName}
               </span>
             </div>
+            {rating != null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span
+                  style={{
+                    fontFamily: 'Instrument Serif',
+                    fontSize: 40,
+                    color: GOLD,
+                    fontWeight: 400,
+                    lineHeight: 1,
+                  }}
+                >
+                  {rating.toFixed(1)}
+                </span>
+                <StarIcon size={34} color={GOLD} />
+              </div>
+            )}
           </div>
-        </div>
         </div>
       </div>
     ),
