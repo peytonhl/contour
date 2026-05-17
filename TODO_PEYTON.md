@@ -8,7 +8,7 @@ multi-system runbooks (domain change, key rotation), see
 [OPERATIONS.md](OPERATIONS.md). This file is one-time setup tasks; that one
 is recurring operational work.
 
-Last updated: 2026-05-12
+Last updated: 2026-05-16
 
 ---
 
@@ -96,32 +96,17 @@ external beta review feedback. See [APP_STORE.md](APP_STORE.md) →
 
 ---
 
-## 🟠 Blocking everything visual (icon + screenshots)
+## 🟠 Blocking everything visual (screenshots + feature graphic)
 
-One 1024×1024 PNG master icon serves five destinations — produce once,
-downsample everywhere. **Same goes for screenshots:** capture once at the
-largest iOS phone size (6.7" / 1290×2796), and both Apple and Google
-accept downsampled variants.
-
-- [ ] **App icon master** — 1024 × 1024 PNG, no alpha channel for iOS
-      (Apple rejects transparent PNGs). See the image-generation prompt
-      Claude drafted in this conversation for the design brief; iterate
-      with whichever AI image tool you prefer until happy.
-
-      Downsamples needed (do once, automated):
-      - 1024×1024 → App Store listing + Apple iOS app icon master
-      - 512×512 → Play Store listing + Android adaptive icon master
-      - 192×192 + 512×512 (PNG, with alpha OK) → PWA `manifest.json` icons
-      - 180×180 → `apple-touch-icon.png` for iOS "Add to Home Screen"
-      - 32×32 + 16×16 → favicon for the website
-
-      Easiest one-stop tool: https://realfavicongenerator.net/ takes the
-      1024 master and spits out every variant + the HTML snippet for
-      `index.html`. Free, no signup.
+- [x] **App icon master** — 1024 × 1024 PNG with downsampled variants.
+      Variants live in `frontend/public/` (favicon, favicon-96x96,
+      apple-touch-icon at 180×180, icon-192, icon-512). Manifest icons
+      and `apple-touch-icon` link in `index.html` are wired.
 
 - [ ] **Feature graphic** — 1024 × 500 PNG, Play Console banner shown
       atop the listing. Can be the icon enlarged with the wordmark
-      "Contour" + tagline "Rate. Review. Discover." beside it.
+      "Contour" + tagline "Rate. Review. Discover." beside it. Only
+      needed when actually submitting to the Play Store.
 
 - [ ] **Phone screenshots** — capture on a real iPhone (or simulator)
       at 6.7" (iPhone 15 Pro Max viewport, 1290 × 2796). Recommended set
@@ -170,12 +155,14 @@ the live web app from Vercel on every launch. Implications:
 This is documented at length in `CLAUDE.md` → "iOS & Android: live-update
 shell model". Do not switch back to bundled mode without thinking through
 the upgrade-cadence implications.
-- [ ] **Privacy Policy page** at https://contour-rosy.vercel.app/privacy
-      (route exists — content needs writing). Required for Play Store, App
-      Store, and Apple Music API ToS.
-- [ ] **Terms of Service page.** Required for Play Store + App Store.
-- [ ] **Graphics** — covered in the "Blocking everything visual" section
-      above (one icon master serves Play Store + App Store + PWA).
+- [x] **Privacy Policy page** at https://contour-rosy.vercel.app/privacy.
+      244-line policy with 12 sections, contact email, account-deletion
+      flow.
+- [x] **Terms of Service page** at https://contour-rosy.vercel.app/terms.
+      Linked from the desktop footer and the in-app Settings → About.
+- [x] **App icon** — see "Blocking everything visual" section above.
+- [ ] **Feature graphic** — see "Blocking everything visual."
+- [ ] **Phone screenshots** — see "Blocking everything visual."
 - [ ] **Google Play Console account** ($25 one-time).
 - [ ] Build the AAB and upload to internal testing track — full sequence in
       [PLAY_STORE.md](PLAY_STORE.md).
@@ -226,18 +213,18 @@ builds within the same version usually pass through in minutes. Up to
 
 Additional blockers before submitting (none of these are needed for Tier 1):
 
-- [ ] **App icon** — covered in the "Blocking everything visual" section
-      above. Apple's beta reviewers reject builds with default/placeholder
-      icons. This is the main thing gating Tier 2 right now.
+- [x] **App icon** — done (see "Blocking everything visual" above).
 - [ ] **App Review demo account.** Create a throwaway Gmail like
-      `contour.appstorereview@gmail.com`. Sign into Contour with it once
-      via Google OAuth (creates the user record on the backend). Paste
-      the credentials into App Store Connect → TestFlight → Test
-      Information → Sign-in Required → Yes → Demo Account.
+      `contour.appstorereview@gmail.com` — distinct from the
+      `contour.app.demo@gmail.com` already used as the contact email in
+      the Privacy Policy. Sign into Contour with it once via Google OAuth
+      (creates the user record on the backend). Paste the credentials
+      into App Store Connect → TestFlight → Test Information → Sign-in
+      Required → Yes → Demo Account.
 - [ ] **Create the External Testing group** in App Store Connect →
       TestFlight → External Testing → `+`. Name it "Public Beta" or
       "Friends & Family." Enable public link in Settings.
-- [ ] **Assign `ios-v0.1.11+` to the external group** and click
+- [ ] **Assign latest `ios-v*` build to the external group** and click
       "Submit for Beta App Review."
 - [ ] **Wait ~24h.** Apple emails when approved. External testers can
       then install via the public link.
@@ -252,9 +239,8 @@ Additional blockers (on top of everything in Tier 2):
 - [ ] **Screenshots** — covered in "Blocking everything visual" section.
       Required, ≥3 per device size class. The 6.7" set covers 6.5" and
       5.5" via Apple's auto-downsampling.
-- [ ] **Privacy Policy content** at https://contour-rosy.vercel.app/privacy.
-      Route exists, content TBD. Required.
-- [ ] **Terms of Service page.** Required.
+- [x] **Privacy Policy content** at https://contour-rosy.vercel.app/privacy.
+- [x] **Terms of Service page** at https://contour-rosy.vercel.app/terms.
 - [ ] **Native Sign in with Apple plugin (optional / risk-dependent).**
       Guideline 4.8 may still demand the native flow even though
       OAuth-via-Safari + URL scheme works for Google. Decide based on
@@ -271,41 +257,20 @@ Additional blockers (on top of everything in Tier 2):
 
 ---
 
-## 🟡 PWA / installable web app
+## 🟢 PWA / installable web app — done
 
-Make `contour-rosy.vercel.app` installable to the home screen on desktop
-Chrome, Android, and iOS — gives users an "app" experience without going
-through any store. Some of this is already started but needs finishing.
+All the previously-listed PWA prerequisites have shipped:
+- `frontend/public/manifest.json` with current "Rate, review, and discover
+  music with friends." description, icon-192 + icon-512 entries (both
+  `any` and `maskable` purposes), theme + background colors.
+- Service worker: `frontend/public/sw.js` registered via `sw-register.js`
+  (runs after `window load`, skipped in dev).
+- iOS meta tags in `index.html`: `apple-mobile-web-app-capable`,
+  `apple-mobile-web-app-status-bar-style`, `apple-mobile-web-app-title`,
+  plus the 180×180 `apple-touch-icon` link.
 
-**Already done:**
-- `frontend/public/manifest.json` exists and is linked from `index.html`.
-- Theme color, background color, and standalone display mode are set.
-
-**Outstanding (mostly gated on icon assets):**
-- [ ] **Icons in real raster sizes** — produced as part of the
-      "Blocking everything visual" section above. Drop the PNG outputs
-      into `frontend/public/` once available.
-- [ ] **Update the manifest description.** Currently reads "Era-adjusted
-      music streaming data, community ratings, and reviews" — stale after
-      the social-first pivot. Should match the new "Rate. Review. Discover."
-      tagline / something like "Rate, review, and discover music with friends."
-- [ ] **Service worker.** Without one, Chrome doesn't surface the "Install app"
-      prompt in the address bar. Easiest path is dropping in `vite-plugin-pwa`
-      (~5 lines of `vite.config.js` config, ~30 min). Auto-generates the SW
-      and handles asset precaching. Side benefit: offline support for the
-      shell so the app at least loads without network.
-- [ ] **iOS meta tags in `index.html`.** Add `<link rel="apple-touch-icon">`,
-      `<meta name="apple-mobile-web-app-capable" content="yes">`, and
-      `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
-      so iOS "Add to Home Screen" produces a proper full-screen app instead
-      of a Safari-chrome shortcut.
-- [ ] **Verify the install prompt.** Once the above is in place, open Chrome
-      DevTools → Application → Manifest, click "Install app" — should produce
-      a real-looking install dialog with the right icon and name.
-
-Ask me to wire all of this once you have the icon PNGs in hand — it's
-straightforward and the bulk of the work is just dropping files into
-`frontend/public/`.
+Spot-check anytime: open Chrome DevTools → Application → Manifest on the
+live URL. The "Install app" prompt should be available.
 
 ---
 
@@ -327,18 +292,6 @@ Things I genuinely can't verify from here — please poke at them when you can:
 - [ ] **Report + Block flows** — flag a test review on a throwaway account,
       verify it shows up in `/admin/reports`, action it, confirm the content
       gets deleted.
-
----
-
-## 🟡 Marketing / GTM
-
-- [ ] **Draft r/musicboard launch post.** Share with the main Claude
-      conversation (not Claude Code) for review before posting.
-- [ ] **Confirm Musicboard is still down** before posting — the window is
-      time-sensitive. If they've restored service, the angle needs to shift
-      from "alternative" to "compare-and-stay-or-switch."
-- [ ] Decide on tone for the launch — "Musicboard alternative" vs. "social
-      music app." Probably alternative since the window is real.
 
 ---
 
@@ -370,8 +323,6 @@ Things I genuinely can't verify from here — please poke at them when you can:
       [OPERATIONS.md](OPERATIONS.md#domain-migration-runbook).
 - [ ] **Contact email on Privacy Policy / About page.** Apple expects a way
       for users to file data-rights requests.
-- [ ] **Status / uptime monitor** (UptimeRobot free tier) pointed at the
-      `/health` endpoint.
 - [ ] **Heatmaps + Web Vitals capture** in PostHog (~1-line change each in
       `analytics.js`). Useful but not required.
 - [ ] **Native Sign in with Apple plugin** — listed under App Store blockers
