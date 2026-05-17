@@ -3,71 +3,46 @@ import { useParams, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ComparisonChart } from "../components/ComparisonChart.jsx";
 import { AlbumCard } from "../components/AlbumCard.jsx";
+import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 
 const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 const ACCENT_C = "#fb923c";
 
-// Share the comparison as a card image via the Vercel-OG renderer. Mirrors
-// the review-card share flow: try Web Share Level 2 (file share via
-// navigator.share({ files })) first, fall back to URL share, then
-// clipboard. Works on iOS 14.3+, Android Chrome 89+, and both Capacitor
-// WebViews — no platform-specific code.
-async function shareComparisonCard(comparisonId, label) {
-  const reviewUrl = `${window.location.origin}/compare/${comparisonId}`;
-  const cardUrl   = `${window.location.origin}/api/og/comparison?id=${comparisonId}`;
-
-  if (navigator.canShare && navigator.share) {
-    try {
-      const res = await fetch(cardUrl);
-      if (res.ok) {
-        const blob = await res.blob();
-        const file = new File([blob], `contour-comparison-${comparisonId}.png`, { type: blob.type || "image/png" });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], text: label, url: reviewUrl });
-          return "shared";
-        }
-      }
-    } catch { /* fall through */ }
-  }
-
-  if (navigator.share) {
-    try { await navigator.share({ url: reviewUrl, text: label }); return "shared"; }
-    catch { /* fall through */ }
-  }
-  try {
-    await navigator.clipboard.writeText(reviewUrl);
-    return "copied";
-  } catch {
-    return "failed";
-  }
-}
-
+// "Share card" button — opens the CardPreviewModal which renders the
+// generated comparison PNG inline and dispatches share/save through
+// @capacitor/share on native (reliable) or Web Share Level 2 on web.
+// Replaces the older direct-share-on-tap flow which silently fell back
+// to URL share on iOS Capacitor (canShare({ files }) false-negative).
 function ShareCardButton({ id, label }) {
-  const [state, setState] = useState("idle"); // idle | sharing | copied
-  async function onClick() {
-    setState("sharing");
-    const result = await shareComparisonCard(id, label);
-    setState(result === "copied" ? "copied" : "idle");
-    if (result === "copied") setTimeout(() => setState("idle"), 2000);
-  }
+  const [open, setOpen] = useState(false);
+  const reviewUrl = `${window.location.origin}/compare/${id}`;
+  const cardUrl   = `${window.location.origin}/api/og/comparison?id=${id}`;
   return (
-    <button
-      onClick={onClick}
-      disabled={state === "sharing"}
-      style={{
-        padding: "8px 16px",
-        background: state === "copied" ? "var(--surface2)" : ACCENT_A,
-        border: "none",
-        borderRadius: "var(--radius-sm)",
-        color: state === "copied" ? "var(--text-muted)" : "#000",
-        fontSize: 13, fontWeight: 700,
-        cursor: state === "sharing" ? "default" : "pointer",
-        opacity: state === "sharing" ? 0.6 : 1,
-      }}
-    >
-      {state === "copied" ? "Link copied" : state === "sharing" ? "Preparing…" : "Share card"}
-    </button>
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          padding: "8px 16px",
+          background: ACCENT_A,
+          border: "none",
+          borderRadius: "var(--radius-sm)",
+          color: "#000",
+          fontSize: 13, fontWeight: 700,
+          cursor: "pointer",
+        }}
+      >
+        Share card
+      </button>
+      <CardPreviewModal
+        open={open}
+        onClose={() => setOpen(false)}
+        cardUrl={cardUrl}
+        shareUrl={reviewUrl}
+        shareText={label}
+        fileName={`contour-comparison-${id}.png`}
+      />
+    </>
   );
 }
 

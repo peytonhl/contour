@@ -10,6 +10,7 @@ import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
+import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 
 const ACCENT = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -69,6 +70,11 @@ export function UserPage() {
   const [followLoading, setFollowLoading] = useState(false);
   const [tab, setTab] = useState("taste");
   const [badges, setBadges] = useState(null);
+  // Which review the user is sharing (id) — null = modal closed.
+  const [shareReviewId, setShareReviewId] = useState(null);
+  const shareReview = shareReviewId
+    ? reviews.find((r) => r.id === shareReviewId)
+    : null;
 
   useEffect(() => {
     api.getBadges().then(setBadges).catch(() => {});
@@ -348,6 +354,41 @@ export function UserPage() {
                       <svg width="11" height="11" viewBox="0 0 24 24" fill={r.user_vote === -1 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                       {r.downvotes > 0 ? r.downvotes : ""}
                     </button>
+                    {/* Reply ↦ jump to the review thread on the entity page,
+                        which is where the reply composer + chain live. The
+                        whole row is already a Link to the same anchor — this
+                        button mirrors the same destination with an explicit
+                        "Reply" affordance so users don't have to discover
+                        the tap-to-thread interaction. */}
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = threadPath; }}
+                      title="Reply on the thread"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        background: "none", border: "none", padding: "2px 4px",
+                        fontSize: 12, cursor: "pointer",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                      {(r.replies_count ?? r.reply_count ?? 0) > 0 ? (r.replies_count ?? r.reply_count) : ""}
+                    </button>
+                    {/* Share — opens the CardPreviewModal scoped to this
+                        review id. Same modal used everywhere; native iOS
+                        Capacitor share goes through @capacitor/share so the
+                        PNG actually attaches to the iMessage. */}
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShareReviewId(r.id); }}
+                      title="Share this review"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        background: "none", border: "none", padding: "2px 4px",
+                        fontSize: 12, cursor: "pointer",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      ↗
+                    </button>
                   </div>
                 </Link>
               );
@@ -394,6 +435,18 @@ export function UserPage() {
           <BacklogTabContent userId={id} isOwner={false} showSuggestions={false} />
         )}
       </div>
+      {/* Card-share modal — mounted once at the page root and driven by
+          shareReviewId so any review row can trigger it. */}
+      {shareReview && (
+        <CardPreviewModal
+          open={shareReviewId !== null}
+          onClose={() => setShareReviewId(null)}
+          cardUrl={`${window.location.origin}/api/og/review?id=${shareReview.id}`}
+          shareUrl={`${window.location.origin}/${shareReview.entity_type}/${shareReview.entity_id}#review-${shareReview.id}`}
+          shareText={`${profile?.display_name ?? "A Contour user"}'s review on Contour`}
+          fileName={`contour-review-${shareReview.id}.png`}
+        />
+      )}
     </div>
   );
 }

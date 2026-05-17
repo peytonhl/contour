@@ -9,45 +9,24 @@ import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
+import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 
-// Same share pattern as the review and comparison cards — fetch the PNG
-// from the Vercel-OG endpoint and hand it to navigator.share({ files })
-// when supported, fall back to URL share, then clipboard. Works on iOS
-// 14.3+ / Android Chrome 89+ / both Capacitor WebViews.
-async function shareHotTakeCard(userId, displayName) {
-  const profileUrl = `${window.location.origin}/user/${userId}`;
-  const cardUrl    = `${window.location.origin}/api/og/hot-take?user_id=${encodeURIComponent(userId)}`;
-  const label      = `${displayName}'s hot take on Contour`;
-
-  if (navigator.canShare && navigator.share) {
-    try {
-      const res = await fetch(cardUrl);
-      // 404 here means the backend's hot-take endpoint reported "your
-      // ratings line up with the community" — no qualifying take to share.
-      // We bubble that up so the caller can surface a friendly message
-      // instead of trying to share an empty file.
-      if (res.status === 404) return "no-hot-take";
-      if (res.ok) {
-        const blob = await res.blob();
-        const file = new File([blob], `contour-hot-take-${userId}.png`, { type: blob.type || "image/png" });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], text: label, url: profileUrl });
-          return "shared";
-        }
-      }
-    } catch { /* fall through */ }
-  }
-
-  if (navigator.share) {
-    try { await navigator.share({ url: profileUrl, text: label }); return "shared"; }
-    catch { /* fall through */ }
-  }
-  try { await navigator.clipboard.writeText(profileUrl); return "copied"; }
-  catch { return "failed"; }
+// Pre-flight check: ask the backend whether this user has a qualifying hot
+// take BEFORE opening the modal. A 404 means "your ratings line up with the
+// community" — we surface a friendly inline message rather than opening a
+// modal with a broken-image state. Any other non-2xx still opens the modal
+// and lets it render its own error UI.
+async function probeHotTake(userId) {
+  const cardUrl = `${window.location.origin}/api/og/hot-take?user_id=${encodeURIComponent(userId)}`;
+  try {
+    const res = await fetch(cardUrl, { method: "HEAD" });
+    if (res.status === 404) return "no-hot-take";
+    return "ok";
+  } catch { return "ok"; }  // network blip — let the modal handle it
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -190,16 +169,18 @@ export function ProfilePage() {
   const [bioInput, setBioInput] = useState("");
   const [savingBio, setSavingBio] = useState(false);
 
-  // Hot-take share state: idle | sharing | none (no qualifying take)
+  // Hot-take share state: idle | probing | none (no qualifying take)
   const [hotTakeState, setHotTakeState] = useState("idle");
+  const [hotTakeModalOpen, setHotTakeModalOpen] = useState(false);
   async function handleShareHotTake() {
-    setHotTakeState("sharing");
-    const result = await shareHotTakeCard(user.id, user.display_name);
+    setHotTakeState("probing");
+    const result = await probeHotTake(user.id);
     if (result === "no-hot-take") {
       setHotTakeState("none");
       setTimeout(() => setHotTakeState("idle"), 3000);
     } else {
       setHotTakeState("idle");
+      setHotTakeModalOpen(true);
     }
   }
 
@@ -464,7 +445,7 @@ export function ProfilePage() {
             {!editingBio && (profile?.ratings?.length ?? 0) >= 5 && (
               <button
                 onClick={handleShareHotTake}
-                disabled={hotTakeState === "sharing"}
+                disabled={hotTakeState === "probing"}
                 style={{
                   alignSelf: "flex-start",
                   marginBottom: 18,
@@ -474,8 +455,8 @@ export function ProfilePage() {
                   borderRadius: "var(--radius-xl)",
                   color: hotTakeState === "none" ? "var(--text-muted)" : ACCENT,
                   fontSize: 12, fontWeight: 700,
-                  cursor: hotTakeState === "sharing" ? "default" : "pointer",
-                  opacity: hotTakeState === "sharing" ? 0.6 : 1,
+                  cursor: hotTakeState === "probing" ? "default" : "pointer",
+                  opacity: hotTakeState === "probing" ? 0.6 : 1,
                   display: "inline-flex", alignItems: "center", gap: 6,
                   whiteSpace: "nowrap",
                 }}
@@ -483,10 +464,20 @@ export function ProfilePage() {
               >
                 {hotTakeState === "none"
                   ? "No hot takes yet"
-                  : hotTakeState === "sharing"
+                  : hotTakeState === "probing"
                     ? "Preparing…"
                     : "Share my hot take"}
               </button>
+            )}
+            {user && (
+              <CardPreviewModal
+                open={hotTakeModalOpen}
+                onClose={() => setHotTakeModalOpen(false)}
+                cardUrl={`${window.location.origin}/api/og/hot-take?user_id=${encodeURIComponent(user.id)}`}
+                shareUrl={`${window.location.origin}/user/${user.id}`}
+                shareText={`${user.display_name}'s hot take on Contour`}
+                fileName={`contour-hot-take-${user.id}.png`}
+              />
             )}
 
             {editingBio && (

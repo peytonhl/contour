@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { ReportModal } from "./ReportModal.jsx";
+import { CardPreviewModal } from "./CardPreviewModal.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#d97a3b";
@@ -387,45 +388,23 @@ export function ReplyThread({ reviewId, user, initialCount }) {
 
 // ── Single review card ────────────────────────────────────────────────────────
 function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
-  const [copiedShare, setCopiedShare] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [cardOpen, setCardOpen] = useState(false);
   const isOwn = user && user.id === rev.user.id;
 
-  async function handleShare() {
-    const reviewUrl = `${window.location.origin}/${entityType}/${entityId}#review-${rev.id}`;
-    const cardUrl  = `${window.location.origin}/api/og/review?id=${rev.id}`;
-    const shareText = `${rev.user.display_name}'s review on Contour`;
+  const reviewUrl = `${window.location.origin}/${entityType}/${entityId}#review-${rev.id}`;
+  const cardUrl   = `${window.location.origin}/api/og/review?id=${rev.id}`;
+  const shareText = `${rev.user.display_name}'s review on Contour`;
+  const fileName  = `contour-review-${rev.id}.png`;
 
-    // Best UX path: fetch the shareable card PNG and hand it to the native
-    // share sheet as a file. Works on iOS Safari/WKWebView (14.3+), Android
-    // Chrome (89+), and both Capacitor WebViews via Web Share Level 2.
-    // Fallback chain: file share → URL share → clipboard.
-    const supportsFileShare = !!navigator.canShare && !!navigator.share;
-    if (supportsFileShare) {
-      try {
-        const res = await fetch(cardUrl);
-        if (res.ok) {
-          const blob = await res.blob();
-          const file = new File([blob], `contour-review-${rev.id}.png`, { type: blob.type || 'image/png' });
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], text: shareText, url: reviewUrl });
-            return;
-          }
-        }
-      } catch { /* fall through to URL share */ }
-    }
-
-    if (navigator.share) {
-      try { await navigator.share({ url: reviewUrl, text: shareText }); return; }
-      catch { /* cancelled or failed — try clipboard */ }
-    }
-
-    try {
-      await navigator.clipboard.writeText(reviewUrl);
-      setCopiedShare(true);
-      setTimeout(() => setCopiedShare(false), 2000);
-    } catch { /* blocked */ }
-  }
+  // Share button opens the card preview modal instead of dispatching directly
+  // to the system share sheet. The modal renders the PNG inline so the user
+  // can verify it before sending, and offers explicit Save / Share CTAs that
+  // route through @capacitor/share (native) or Web Share Level 2 (web).
+  // Previous direct-share path (navigator.share + canShare gate) silently
+  // false-negatived on iOS Capacitor WKWebView, dropping every file-attached
+  // share back to URL-only — see utils/share.js for the dispatch details.
+  function handleShare() { setCardOpen(true); }
 
   function handleDelete() {
     if (!window.confirm("Delete this review? Your star rating will be kept.")) return;
@@ -465,9 +444,9 @@ function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
           <button
             onClick={handleShare}
             title="Share this review"
-            style={{ background: "none", border: "none", cursor: "pointer", color: copiedShare ? "var(--accent-b)" : "var(--text-muted)", fontSize: 12, padding: "4px 6px", flexShrink: 0 }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: "4px 6px", flexShrink: 0 }}
           >
-            {copiedShare ? "✓" : "↗"}
+            ↗
           </button>
           {/* Own-review delete vs. other-user report — these occupy the same
               slot since they're never both applicable on the same row. */}
@@ -495,6 +474,14 @@ function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
         onClose={() => setReportOpen(false)}
         targetType="review"
         targetId={rev.id}
+      />
+      <CardPreviewModal
+        open={cardOpen}
+        onClose={() => setCardOpen(false)}
+        cardUrl={cardUrl}
+        shareUrl={reviewUrl}
+        shareText={shareText}
+        fileName={fileName}
       />
 
       {/* Body */}
