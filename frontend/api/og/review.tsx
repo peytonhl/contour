@@ -17,13 +17,39 @@ import { ImageResponse } from '@vercel/og';
 export const config = { runtime: 'edge' };
 
 const API_BASE = 'https://contour-production.up.railway.app';
+// Square (1:1) instead of 4:5 portrait — the previous 1080×1350 layout used
+// `justifyContent: space-between` on the quote column, which pushed the
+// rating + attribution to the bottom of the card and left ~600px of dead
+// black space in the middle whenever the review body was short. Square
+// crops fine for both Instagram feed and Stories (centered crop) and
+// avoids the variable-content-height problem entirely.
 const WIDTH = 1080;
-const HEIGHT = 1350;
+const HEIGHT = 1080;
 const BG = '#08080a';
 const TEXT = '#fafafa';
 const MUTED = 'rgba(250, 250, 250, 0.55)';
 const GOLD = '#f59e0b';
 const ACCENT = '#d97a3b';
+
+// Inline SVG star — Satori renders SVG natively, which is more reliable
+// than relying on Unicode glyphs being present in the embedded TTF.
+// Previously the code used U+2605 "★" rendered in Instrument Serif, and
+// Instrument Serif doesn't include that codepoint → Satori drew a missing-
+// glyph tofu box. The path below is a standard 5-point star sized to fill
+// a 24×24 viewBox, rendered in GOLD wherever it appears.
+function StarIcon({ size = 28, color = GOLD }: { size?: number; color?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={color}
+      style={{ display: 'block' }}
+    >
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+    </svg>
+  );
+}
 
 // Fetch a Google Font as ArrayBuffer for @vercel/og's `fonts` option.
 // Module-level promises so this only runs on cold start, not per request —
@@ -48,14 +74,6 @@ function truncate(text, max = 220) {
   return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 }
 
-function ratingDisplay(value) {
-  // "4.5 ★" rather than rendering five star glyphs — small footprint, no
-  // half-star unicode quirks across fonts, and reads cleanly at the
-  // ~24pt size we render it.
-  if (value == null) return null;
-  return `${value.toFixed(1)} ★`;
-}
-
 export default async function handler(request) {
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
@@ -78,7 +96,7 @@ export default async function handler(request) {
   if (fontItalic)  fonts.push({ name: 'Instrument Serif', data: fontItalic,  weight: 400, style: 'italic'  });
 
   const reviewBody = truncate(data.review.body, 220);
-  const rating = ratingDisplay(data.review.rating);
+  const rating = data.review.rating;  // raw number; rendered with inline SVG star below
   const entityName = data.entity.name ?? 'Unknown';
   const entityArtist = data.entity.artist ?? '';
   const coverUrl = data.entity.cover_url;
@@ -121,13 +139,18 @@ export default async function handler(request) {
           </span>
         </div>
 
-        {/* Body row — cover left, quote right */}
-        <div style={{ display: 'flex', flex: 1, padding: '40px 50px 50px', gap: 48 }}>
-          {/* Cover — square, ~45% width */}
+        {/* Body row — cover left, quote right.
+            No `flex: 1` on this row, no `justifyContent: space-between` on
+            the column: with a square card and natural top-anchored stacking,
+            short reviews collapse tightly to the top and the bottom of the
+            card stays a deliberate dark canvas instead of a 600px gap. */}
+        <div style={{ display: 'flex', padding: '40px 50px 50px', gap: 44 }}>
+          {/* Cover — square, slightly larger than before to fill more of
+              the smaller (1080×1080) canvas without overpowering the quote. */}
           <div
             style={{
-              width: 420,
-              height: 420,
+              width: 440,
+              height: 440,
               borderRadius: 8,
               overflow: 'hidden',
               flexShrink: 0,
@@ -137,96 +160,107 @@ export default async function handler(request) {
             }}
           >
             {coverUrl ? (
-              <img src={coverUrl} width={420} height={420} style={{ objectFit: 'cover' }} />
+              <img src={coverUrl} width={440} height={440} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
           </div>
 
-          {/* Quote column */}
+          {/* Quote column — flex-start, no space-between */}
           <div
             style={{
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'space-between',
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {/* Subject: entity name */}
-              <span
-                style={{
-                  fontSize: 22,
-                  color: MUTED,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                  marginBottom: 18,
-                }}
-              >
-                {entityArtist ? `${entityName} · ${entityArtist}` : entityName}
-              </span>
+            {/* Subject: entity name */}
+            <span
+              style={{
+                fontSize: 20,
+                color: MUTED,
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                marginBottom: 16,
+              }}
+            >
+              {entityArtist ? `${entityName} · ${entityArtist}` : entityName}
+            </span>
 
-              {/* The quote itself */}
-              <p
-                style={{
-                  fontFamily: 'Instrument Serif',
-                  fontSize: 54,
-                  lineHeight: 1.15,
-                  margin: 0,
-                  color: TEXT,
-                }}
-              >
-                {`“${reviewBody}”`}
-              </p>
-            </div>
+            {/* The quote itself. Smaller (48px vs 54px) so a full 220-char
+                review still fits comfortably alongside the cover. */}
+            <p
+              style={{
+                fontFamily: 'Instrument Serif',
+                fontSize: 48,
+                lineHeight: 1.15,
+                margin: 0,
+                color: TEXT,
+              }}
+            >
+              {`“${reviewBody}”`}
+            </p>
 
-            {/* Bottom: rating + attribution */}
-            <div style={{ display: 'flex', flexDirection: 'column', marginTop: 32 }}>
-              {rating && (
-                <span style={{ fontSize: 32, color: GOLD, fontWeight: 700, marginBottom: 18 }}>
-                  {rating}
-                </span>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                {authorImage ? (
-                  <img
-                    src={authorImage}
-                    width={56}
-                    height={56}
-                    style={{
-                      borderRadius: 28,
-                      objectFit: 'cover',
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: 28,
-                      backgroundColor: ACCENT,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 28,
-                      fontWeight: 700,
-                      color: BG,
-                    }}
-                  >
-                    {(authorName || '?').slice(0, 1).toUpperCase()}
-                  </div>
-                )}
+            {/* Rating — number in Instrument Serif + inline SVG star
+                (Unicode ★ rendered as tofu because the embedded Serif
+                font doesn't include U+2605). */}
+            {rating != null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 28 }}>
                 <span
                   style={{
                     fontFamily: 'Instrument Serif',
-                    fontStyle: 'italic',
-                    fontSize: 32,
-                    color: TEXT,
+                    fontSize: 36,
+                    color: GOLD,
+                    fontWeight: 400,
+                    lineHeight: 1,
                   }}
                 >
-                  — {authorName}
+                  {rating.toFixed(1)}
                 </span>
+                <StarIcon size={30} color={GOLD} />
               </div>
+            )}
+
+            {/* Attribution */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 24 }}>
+              {authorImage ? (
+                <img
+                  src={authorImage}
+                  width={52}
+                  height={52}
+                  style={{
+                    borderRadius: 26,
+                    objectFit: 'cover',
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    backgroundColor: ACCENT,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 26,
+                    fontWeight: 700,
+                    color: BG,
+                  }}
+                >
+                  {(authorName || '?').slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <span
+                style={{
+                  fontFamily: 'Instrument Serif',
+                  fontStyle: 'italic',
+                  fontSize: 30,
+                  color: TEXT,
+                }}
+              >
+                — {authorName}
+              </span>
             </div>
           </div>
         </div>

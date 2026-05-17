@@ -15,14 +15,35 @@ import { ImageResponse } from '@vercel/og';
 export const config = { runtime: 'edge' };
 
 const API_BASE = 'https://contour-production.up.railway.app';
+// Square (1:1) — see the same comment in review.tsx. Short take + community
+// line + divergence badge collapses to ~700px of actual content; a 1350px
+// canvas left a dead zone at the bottom and the `justifyContent:
+// space-between` on the column made it worse.
 const WIDTH = 1080;
-const HEIGHT = 1350;
+const HEIGHT = 1080;
 const BG = '#08080a';
 const TEXT = '#fafafa';
 const MUTED = 'rgba(250, 250, 250, 0.55)';
 const GOLD = '#f59e0b';
 const ACCENT = '#d97a3b';
 const DANGER = '#f87171';
+
+// SVG star — Satori draws missing-glyph tofu when Unicode ★ (U+2605) is
+// rendered in Instrument Serif because the embedded TTF doesn't include
+// that codepoint. Inline SVG sidesteps the issue. Same pattern as review.tsx.
+function StarIcon({ size = 28, color = GOLD }: { size?: number; color?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={color}
+      style={{ display: 'block' }}
+    >
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+    </svg>
+  );
+}
 
 async function loadFont(family, italic = false) {
   const css = await fetch(
@@ -36,13 +57,6 @@ async function loadFont(family, italic = false) {
 
 const fontPromise = loadFont('Instrument Serif').catch(() => null);
 const fontItalicPromise = loadFont('Instrument Serif', true).catch(() => null);
-
-function fmtStars(value) {
-  // "1.5 ★" — same convention as the review card. Tabular nums make the
-  // user vs. community comparison line up vertically when the digits
-  // differ in width.
-  return `${value.toFixed(1)} ★`;
-}
 
 export default async function handler(request) {
   const url = new URL(request.url);
@@ -96,13 +110,13 @@ export default async function handler(request) {
           </span>
         </div>
 
-        {/* Body */}
-        <div style={{ display: 'flex', flex: 1, padding: '40px 50px 50px', gap: 48 }}>
+        {/* Body — no `flex: 1`, content stacks naturally from top */}
+        <div style={{ display: 'flex', padding: '40px 50px 50px', gap: 44 }}>
           {/* Cover anchors the left, same pattern as the review card */}
           <div
             style={{
-              width: 420,
-              height: 420,
+              width: 440,
+              height: 440,
               borderRadius: 8,
               overflow: 'hidden',
               flexShrink: 0,
@@ -112,112 +126,124 @@ export default async function handler(request) {
             }}
           >
             {entity.cover_url ? (
-              <img src={entity.cover_url} width={420} height={420} style={{ objectFit: 'cover' }} />
+              <img src={entity.cover_url} width={440} height={440} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
           </div>
 
-          {/* Quote column */}
+          {/* Quote column — top-anchored, natural stacking */}
           <div
             style={{
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'space-between',
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {/* Subject: entity name */}
+            {/* Subject: entity name */}
+            <span
+              style={{
+                fontSize: 20,
+                color: MUTED,
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                marginBottom: 16,
+              }}
+            >
+              {entity.artist ? `${entity.name} · ${entity.artist}` : entity.name}
+            </span>
+
+            {/* The take — "I gave it 1.5 ★". Star is a flex-aligned SVG
+                next to the number so it renders correctly regardless of
+                what's in the embedded TTF. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
               <span
                 style={{
-                  fontSize: 22,
-                  color: MUTED,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                  marginBottom: 18,
-                }}
-              >
-                {entity.artist ? `${entity.name} · ${entity.artist}` : entity.name}
-              </span>
-
-              {/* The take, in big serif. The "★" carries the same visual
-                  weight as the number so the eye reads them together. */}
-              <p
-                style={{
                   fontFamily: 'Instrument Serif',
-                  fontSize: 64,
+                  fontSize: 56,
                   lineHeight: 1.1,
-                  margin: 0,
                   color: TEXT,
                 }}
               >
-                {`I gave it ${fmtStars(data.rating)}`}
-              </p>
+                I gave it {data.rating.toFixed(1)}
+              </span>
+              <StarIcon size={48} color={GOLD} />
+            </div>
 
-              {/* Community line. Smaller, muted, italic serif so it sits
-                  as commentary on the take rather than competing. The
-                  count ("from N listeners") adds credibility — this isn't
-                  the user being contrarian against one other person. */}
-              <p
+            {/* Community line — smaller, muted italic serif */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
+              <span
                 style={{
                   fontFamily: 'Instrument Serif',
                   fontStyle: 'italic',
-                  fontSize: 32,
-                  lineHeight: 1.3,
-                  margin: '24px 0 0',
+                  fontSize: 28,
                   color: MUTED,
                 }}
               >
-                {`Everyone else: ${fmtStars(data.community_avg)} (${data.community_count} listeners)`}
-              </p>
-
-              {/* Divergence badge — gold when hotter, danger when cooler.
-                  Reads as a "+1.5★ hotter than the room" stat at a glance. */}
-              <div
+                Everyone else: {data.community_avg.toFixed(1)}
+              </span>
+              <StarIcon size={22} color={MUTED} />
+              <span
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  marginTop: 28,
+                  fontFamily: 'Instrument Serif',
+                  fontStyle: 'italic',
+                  fontSize: 28,
+                  color: MUTED,
                 }}
               >
-                <span
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 700,
-                    padding: '6px 16px',
-                    borderRadius: 999,
-                    backgroundColor: `${swingColor}26`,
-                    color: swingColor,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {`${isHotter ? '+' : '−'}${Math.abs(data.divergence).toFixed(1)} ★ ${swingWord}`}
-                </span>
-              </div>
+                ({data.community_count} listeners)
+              </span>
+            </div>
+
+            {/* Divergence badge — gold when hotter, danger when cooler */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 24,
+                padding: '8px 16px',
+                borderRadius: 999,
+                backgroundColor: `${swingColor}26`,
+                alignSelf: 'flex-start',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  color: swingColor,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {isHotter ? '+' : '−'}{Math.abs(data.divergence).toFixed(1)}
+              </span>
+              <StarIcon size={20} color={swingColor} />
+              <span style={{ fontSize: 24, fontWeight: 700, color: swingColor }}>
+                {swingWord}
+              </span>
             </div>
 
             {/* Attribution */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 32 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 28 }}>
               {data.user.image_url ? (
                 <img
                   src={data.user.image_url}
-                  width={56}
-                  height={56}
-                  style={{ borderRadius: 28, objectFit: 'cover' }}
+                  width={52}
+                  height={52}
+                  style={{ borderRadius: 26, objectFit: 'cover' }}
                 />
               ) : (
                 <div
                   style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 28,
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
                     backgroundColor: ACCENT,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: 28,
+                    fontSize: 26,
                     fontWeight: 700,
                     color: BG,
                   }}
@@ -229,7 +255,7 @@ export default async function handler(request) {
                 style={{
                   fontFamily: 'Instrument Serif',
                   fontStyle: 'italic',
-                  fontSize: 32,
+                  fontSize: 30,
                   color: TEXT,
                 }}
               >
