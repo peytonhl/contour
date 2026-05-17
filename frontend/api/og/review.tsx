@@ -1,5 +1,11 @@
 // Vercel Edge Function — renders a shareable review card as a PNG.
 //
+// Note: this comment line exists to force a Vercel rebuild after the
+// 828282d backend cover-preference change. Vercel's edge cache holds OG
+// renders for 1h per query; we need a new deployment ID to invalidate it
+// so the next /api/og/review?id=X request re-renders against the updated
+// Railway backend (which now prefers Spotify covers for tracks).
+//
 // Triggered by /api/og/review?id=<review_id>. The frontend share button
 // fetches this URL and hands the PNG to navigator.share() (Web Share API,
 // works on both iOS and Android Capacitor shells without any native plugin).
