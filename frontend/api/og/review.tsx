@@ -133,32 +133,30 @@ export default async function handler(request) {
           <span
             style={{
               fontFamily: 'Instrument Serif',
-              fontSize: 64,
-              letterSpacing: '-0.01em',
+              fontSize: 88,
+              letterSpacing: '-0.02em',
               color: TEXT,
               lineHeight: 1,
             }}
           >
             Contour
           </span>
-          <span style={{ fontSize: 18, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 20, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             Review
           </span>
         </div>
 
         {/* Body wrapper — fills the remaining vertical space below the
-            header and centers the body row vertically. With a square card
-            and a compact body row (cover + quote column), the previous
-            top-anchored layout left ~500px of dead canvas at the bottom;
-            vertical centering balances that empty space top/bottom instead.
-            Cover sized up to 560×560 to fill more of the canvas without
-            overpowering the quote. */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 50px 50px' }}>
-        <div style={{ display: 'flex', gap: 44, width: '100%' }}>
+            header. Aligned top-center (instead of fully centered) so the
+            cover lifts toward the top of the canvas without leaving a
+            ~160px empty band above it. Cover bumped to 640×640 to
+            dominate more of the width and reduce overall negative space. */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', padding: '20px 40px 40px' }}>
+        <div style={{ display: 'flex', gap: 36, width: '100%' }}>
           <div
             style={{
-              width: 560,
-              height: 560,
+              width: 640,
+              height: 640,
               borderRadius: 8,
               overflow: 'hidden',
               flexShrink: 0,
@@ -168,7 +166,7 @@ export default async function handler(request) {
             }}
           >
             {coverUrl ? (
-              <img src={coverUrl} width={560} height={560} style={{ objectFit: 'cover' }} />
+              <img src={coverUrl} width={640} height={640} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}

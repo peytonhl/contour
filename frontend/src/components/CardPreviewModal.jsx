@@ -18,7 +18,9 @@ const ACCENT = "#d97a3b";
 //                   within cover height (no more right-side dead zone).
 //  v5 (2026-05-17): inline error surfacing + Media→Share fallback when
 //                   the save plugin can't reach the Photos library.
-const CARD_VERSION = "5";
+//  v6 (2026-05-17): wordmark 64 → 88, cover 560 → 640, body top-anchored
+//                   so canvas fills better (no more empty band above).
+const CARD_VERSION = "6";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
