@@ -151,12 +151,12 @@ export default async function handler(request) {
             cover lifts toward the top of the canvas without leaving a
             ~160px empty band above it. Cover bumped to 640×640 to
             dominate more of the width and reduce overall negative space. */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 36px 36px' }}>
-        <div style={{ display: 'flex', gap: 32, width: '100%', alignItems: 'center' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 32px 32px' }}>
+        <div style={{ display: 'flex', gap: 28, width: '100%', alignItems: 'center' }}>
           <div
             style={{
-              width: 660,
-              height: 660,
+              width: 720,
+              height: 720,
               borderRadius: 8,
               overflow: 'hidden',
               flexShrink: 0,
@@ -166,7 +166,7 @@ export default async function handler(request) {
             }}
           >
             {coverUrl ? (
-              <img src={coverUrl} width={660} height={660} style={{ objectFit: 'cover' }} />
+              <img src={coverUrl} width={720} height={720} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
@@ -184,27 +184,45 @@ export default async function handler(request) {
               justifyContent: 'center',
             }}
           >
-            {/* Subject: entity name */}
-            <span
-              style={{
-                fontSize: 20,
-                color: MUTED,
-                letterSpacing: '0.05em',
-                textTransform: 'uppercase',
-                marginBottom: 16,
-              }}
-            >
-              {entityArtist ? `${entityName} · ${entityArtist}` : entityName}
-            </span>
+            {/* Subject — title above, artist below, on two intentional
+                lines. A single dot-separated line was wrapping awkwardly
+                for any long title or artist; this composes deliberately
+                and lets the title carry a touch more weight than the
+                attribution. */}
+            <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 18, gap: 4 }}>
+              <span
+                style={{
+                  fontSize: 18,
+                  color: TEXT,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                }}
+              >
+                {entityName}
+              </span>
+              {entityArtist && (
+                <span
+                  style={{
+                    fontSize: 16,
+                    color: MUTED,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {entityArtist}
+                </span>
+              )}
+            </div>
 
-            {/* The quote — sized to fit the narrower column alongside a
-                660px cover. Bigger covers compress the column; 44px keeps
-                a typical short review at 2-3 lines, a long one at 5-6. */}
+            {/* The quote — sized to fit a ~300px column alongside the
+                720px cover. 38px keeps a short review at 3 lines, a long
+                one at ~7. */}
             <p
               style={{
                 fontFamily: 'Instrument Serif',
-                fontSize: 44,
-                lineHeight: 1.18,
+                fontSize: 38,
+                lineHeight: 1.2,
                 margin: 0,
                 color: TEXT,
               }}

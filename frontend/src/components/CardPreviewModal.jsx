@@ -24,7 +24,10 @@ const ACCENT = "#d97a3b";
 //                   quote column room (v6 was cramping meta + quote).
 //  v8 (2026-05-17): cover 600 → 660, vertically center body row again,
 //                   quote 48 → 44 so the narrower column doesn't cramp.
-const CARD_VERSION = "8";
+//  v9 (2026-05-17): cover 660 → 720 (fills 67% of canvas width), meta
+//                   stacked on two lines (title above, artist below) so
+//                   long artist names don't break awkwardly. Quote 38px.
+const CARD_VERSION = "9";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
