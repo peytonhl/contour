@@ -523,7 +523,16 @@ async def get_user_hot_take(
         )).scalar_one_or_none()
         if apple_link and apple_link.artwork_url:
             apple_artwork = apple_link.artwork_url
-    cover_url = apple_artwork or spotify_cover
+
+    # Track covers prefer Spotify; album covers prefer Apple. See the review
+    # card-data endpoint below for the full rationale — short version: Apple's
+    # ISRC search can return a non-canonical "primary album" for tracks that
+    # appear on multiple releases (single + studio album + curated playlists),
+    # so for tracks we anchor to Spotify's reliable track.album.images.
+    if rating_row.entity_type == "track":
+        cover_url = spotify_cover or apple_artwork
+    else:
+        cover_url = apple_artwork or spotify_cover
 
     user = (await db.execute(
         select(User).where(User.id == user_id)
@@ -619,7 +628,25 @@ async def get_review_card_data(
         if apple_link and apple_link.artwork_url:
             apple_artwork = apple_link.artwork_url
 
-    cover_url = apple_artwork or spotify_cover
+    # Cover preference depends on entity type:
+    #   - Albums: Apple first. When the user picked an album directly, Apple's
+    #     by-album-id lookup is reliable AND ships at 1200×1200 vs Spotify's
+    #     640px cap. Resolution win, no ambiguity.
+    #   - Tracks: Spotify first. Apple's ISRC search returns a song with one
+    #     primary album, but for tracks that appear on multiple releases
+    #     (single + studio album + curated playlists), Apple may pick the
+    #     "wrong" one — e.g. a curated-playlist cover instead of the single
+    #     the user actually rated. Spotify's `track.album.images` is always
+    #     the album the user saw in the search result they tapped, so it
+    #     stays anchored to user intent even at lower resolution.
+    # Apple stays as a fallback for tracks when Spotify's cache is empty
+    # (rare — TrackCache.image_url populates on every track view).
+    if review.entity_type == "track":
+        cover_url = spotify_cover or apple_artwork
+        cover_source = "spotify" if spotify_cover else ("apple" if apple_artwork else None)
+    else:
+        cover_url = apple_artwork or spotify_cover
+        cover_source = "apple" if apple_artwork else ("spotify" if spotify_cover else None)
 
     # Star rating: pull the author's Rating row for the same entity (if any).
     rating_row = (await db.execute(
@@ -648,7 +675,7 @@ async def get_review_card_data(
             "name": entity_name,
             "artist": entity_artist,
             "cover_url": cover_url,
-            "cover_source": "apple" if apple_artwork else ("spotify" if spotify_cover else None),
+            "cover_source": cover_source,
         },
     }
 
