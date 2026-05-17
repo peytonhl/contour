@@ -553,8 +553,17 @@ async def get_user_lists(user_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{user_id}/reviews")
-async def get_user_reviews(user_id: str, db: AsyncSession = Depends(get_db)):
-    """Return a user's most recent reviews, enriched with entity metadata."""
+async def get_user_reviews(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    viewer_id: Optional[str] = Depends(optional_user_id),
+):
+    """
+    Return a user's most recent reviews, enriched with entity metadata + vote
+    counts + the viewer's current vote on each (so the UserPage Reviews tab
+    can render an interactive vote row that mirrors the album-page review
+    section).
+    """
     reviews = (await db.execute(
         select(Review)
         .where(Review.user_id == user_id)
@@ -584,6 +593,27 @@ async def get_user_reviews(user_id: str, db: AsyncSession = Depends(get_db)):
     )).scalars().all()
     rating_map: dict[tuple, float] = {(r.entity_type, r.entity_id): r.value for r in rating_rows}
 
+    # Batch-fetch all votes for this set of reviews. Same shape ratings._enrich_reviews
+    # builds elsewhere — kept inline here rather than importing _enrich_reviews so
+    # the response shape stays focused (no replies_count, no controversial sort
+    # key — the UserPage list is intentionally lighter-weight than the album
+    # review section).
+    from models import ReviewVote
+    review_ids = [r.id for r in reviews]
+    vote_rows = (await db.execute(
+        select(ReviewVote).where(ReviewVote.review_id.in_(review_ids))
+    )).scalars().all()
+    vote_map: dict[int, dict] = {}        # review_id -> {"up": int, "down": int}
+    user_vote_map: dict[int, int] = {}    # review_id -> viewer's vote
+    for v in vote_rows:
+        vm = vote_map.setdefault(v.review_id, {"up": 0, "down": 0})
+        if v.value == 1:
+            vm["up"] += 1
+        else:
+            vm["down"] += 1
+        if viewer_id and v.user_id == viewer_id:
+            user_vote_map[v.review_id] = v.value
+
     return [
         {
             "id": r.id,
@@ -595,6 +625,9 @@ async def get_user_reviews(user_id: str, db: AsyncSession = Depends(get_db)):
             "body": r.body,
             "rating": rating_map.get((r.entity_type, r.entity_id)),
             "created_at": r.created_at.isoformat() + "Z",
+            "upvotes": vote_map.get(r.id, {"up": 0, "down": 0})["up"],
+            "downvotes": vote_map.get(r.id, {"up": 0, "down": 0})["down"],
+            "user_vote": user_vote_map.get(r.id),
         }
         for r in reviews
     ]

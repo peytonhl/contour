@@ -14,6 +14,7 @@ import { EmptyHint } from "../components/Skeleton.jsx";
 const ACCENT = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 const GOLD = "#f59e0b";
+const DANGER = "#f87171";
 
 function ListCollage({ images }) {
   const slots = [0, 1, 2, 3];
@@ -104,6 +105,34 @@ export function UserPage() {
       setProfile((p) => ({ ...p, is_following: res.following, followers_count: p.followers_count + (res.following ? 1 : -1) }));
     } catch {}
     setFollowLoading(false);
+  }
+
+  // Optimistic vote on someone else's review from their profile page. Same
+  // pattern as ReviewSection.handleVote — tap the active arrow to clear it,
+  // tap the opposite to swap. Server reconciles the totals via the response.
+  async function handleVote(reviewId, value) {
+    if (!me) return;
+    setReviews((prev) => prev.map((r) => {
+      if (r.id !== reviewId) return r;
+      const prevVote = r.user_vote ?? 0;
+      const nextVote = prevVote === value ? 0 : value;
+      let up = r.upvotes ?? 0;
+      let down = r.downvotes ?? 0;
+      if (prevVote === 1) up -= 1;
+      if (prevVote === -1) down -= 1;
+      if (nextVote === 1) up += 1;
+      if (nextVote === -1) down += 1;
+      return { ...r, upvotes: Math.max(0, up), downvotes: Math.max(0, down), user_vote: nextVote || undefined };
+    }));
+    analytics.reviewVoted?.(value === 1 ? "up" : "down");
+    try {
+      const res = await api.voteReview(reviewId, value);
+      setReviews((prev) => prev.map((r) =>
+        r.id === reviewId
+          ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote }
+          : r
+      ));
+    } catch { /* leave optimistic state; not worth a refetch for a vote */ }
   }
 
   if (loading) return <div style={{ padding: 80, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>Loading…</div>;
@@ -243,20 +272,34 @@ export function UserPage() {
           <div style={{ display: "flex", flexDirection: "column" }}>
             {reviews.length === 0 && <EmptyHint>No reviews yet.</EmptyHint>}
             {reviews.map((r) => {
-              const entityPath = `/${r.entity_type}/${r.entity_id}`;
+              // Anchor link drops the viewer onto the entity page scrolled
+              // to the actual review thread, so vote ↦ jump-to-thread is
+              // one tap and lands them where the reply chain lives.
+              const threadPath = `/${r.entity_type}/${r.entity_id}#review-${r.id}`;
+              const canVote = me && id !== me.id;
               return (
-                <div key={r.id} style={{ padding: "16px 0", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
+                <Link
+                  key={r.id}
+                  to={threadPath}
+                  style={{
+                    padding: "16px 0",
+                    borderBottom: "1px solid var(--border)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                    textDecoration: "none",
+                    color: "inherit",
+                  }}
+                >
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Link to={entityPath}>
-                      {r.entity_image_url
-                        ? <img src={r.entity_image_url} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
-                        : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
-                      }
-                    </Link>
+                    {r.entity_image_url
+                      ? <img src={r.entity_image_url} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                      : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
+                    }
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <Link to={entityPath} style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {r.entity_name ?? `Unknown ${r.entity_type ?? "item"}`}
-                      </Link>
+                      </div>
                       <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                         {r.entity_artists?.join(", ")}
                         {r.entity_artists?.length > 0 && <span style={{ margin: "0 5px", opacity: 0.4 }}>·</span>}
@@ -268,7 +311,45 @@ export function UserPage() {
                   <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                     {r.body}
                   </p>
-                </div>
+
+                  {/* Vote row. Buttons stop propagation so tapping ▲/▼
+                      doesn't also fire the row's navigation to the thread.
+                      Hidden on the viewer's own profile (no self-voting)
+                      and for signed-out users (canVote === false → buttons
+                      render disabled with no action). */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (canVote) handleVote(r.id, 1); }}
+                      disabled={!canVote}
+                      title={canVote ? "Upvote this review" : (me ? "Can't vote on your own review" : "Sign in to vote")}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        background: "none", border: "none", padding: "2px 4px",
+                        fontSize: 12, cursor: canVote ? "pointer" : "default",
+                        color: r.user_vote === 1 ? ACCENT : "var(--text-muted)",
+                        fontWeight: r.user_vote === 1 ? 700 : 400,
+                      }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill={r.user_vote === 1 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                      {r.upvotes > 0 ? r.upvotes : ""}
+                    </button>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (canVote) handleVote(r.id, -1); }}
+                      disabled={!canVote}
+                      title={canVote ? "Downvote this review" : (me ? "Can't vote on your own review" : "Sign in to vote")}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        background: "none", border: "none", padding: "2px 4px",
+                        fontSize: 12, cursor: canVote ? "pointer" : "default",
+                        color: r.user_vote === -1 ? DANGER : "var(--text-muted)",
+                        fontWeight: r.user_vote === -1 ? 700 : 400,
+                      }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill={r.user_vote === -1 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                      {r.downvotes > 0 ? r.downvotes : ""}
+                    </button>
+                  </div>
+                </Link>
               );
             })}
           </div>

@@ -51,9 +51,22 @@
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
                         <color key="backgroundColor" red="0.03137254901960784" green="0.03137254901960784" blue="0.0392156862745098" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <!--
+                          Centers against the safeArea layout guide, NOT the view.
+                          Why: when the WKWebView mounts with `contentInset: "always"`
+                          (see capacitor.config.json), its content area is inset
+                          below the status bar and above the home indicator. The
+                          HTML boot splash inside the WebView naturally centers
+                          within that safe area. Constraining this label against
+                          the view (full screen) instead put it ~5-12px below
+                          the HTML wordmark, producing a visible "logo jumping"
+                          flicker at the native → WebView handoff on iOS.
+                          Anchoring to safeArea here makes the two centers
+                          match pixel-for-pixel.
+                        -->
                         <constraints>
-                            <constraint firstItem="cnt-lb-01" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="cx-01"/>
-                            <constraint firstItem="cnt-lb-01" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="cy-01"/>
+                            <constraint firstItem="cnt-lb-01" firstAttribute="centerX" secondItem="6Tk-OE-BBY" secondAttribute="centerX" id="cx-01"/>
+                            <constraint firstItem="cnt-lb-01" firstAttribute="centerY" secondItem="6Tk-OE-BBY" secondAttribute="centerY" id="cy-01"/>
                         </constraints>
                     </view>
                 </viewController>

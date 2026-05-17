@@ -435,15 +435,15 @@ button, a, [role="button"] {
      document underneath wasn't pinned, leaving iOS room to elastic-
      scroll the whole viewport even though there was no real content
      to expose.
-     overflow:hidden + height:100% on html + body removes the scrollable
-     area entirely while in swipe mode. The Discover deck handles its
-     own gestures internally; Friends/Community sub-tabs do their own
-     overflow:auto on their containers. Scoped to .foryou-swipe-mode so
-     other pages (Profile, Album, Community, etc.) keep their normal
-     document scroll. CLAUDE.md notes position:fixed on body broke
-     forward swipe — overflow:hidden doesn't have that side effect
-     because it doesn't reset the gesture origin. */
-  html:has(body.foryou-swipe-mode),
+
+     Pin both <html> and <body>. ForYouPage adds .foryou-swipe-html to
+     the documentElement in addition to .foryou-swipe-mode on the body
+     so we can target both directly without :has() — :has() is iOS
+     Safari 15.4+ only and we'd rather not gate this fix on browser
+     version. CLAUDE.md notes position:fixed on body broke forward
+     swipe — overflow:hidden doesn't have that side effect because
+     it doesn't reset the gesture origin. */
+  html.foryou-swipe-html,
   body.foryou-swipe-mode {
     overflow: hidden !important;
     height: 100% !important;

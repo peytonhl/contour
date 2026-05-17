@@ -90,19 +90,19 @@
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       }
       .boot-splash {
+        /* Simple inset:0 layout. The flex-centered wordmark lands at the
+           center of the WebView's safe-area content (since
+           contentInset:"always" makes inset:0 align with the safe area).
+           The iOS LaunchScreen.storyboard ALSO centers against the
+           safe-area layout guide (not the full view), so the storyboard
+           wordmark and the HTML wordmark sit at the exact same screen
+           coordinates — invisible handoff.
+           Earlier iteration tried negative env() offsets to compensate
+           for a storyboard that centered against the full view; switching
+           the storyboard to safeArea instead is cleaner because it
+           doesn't depend on env() resolution timing during boot. */
         position: fixed;
-        /* Extend the splash PAST the WebView's safe-area inset so the
-           flex-centered wordmark lands on the FULL-SCREEN center, matching
-           the iOS LaunchScreen storyboard's centerY constraint (which is
-           against the entire view, not the safe area). Without these
-           negative offsets the WebView's contentInset:"always" centers the
-           HTML wordmark ~5-10px below where the storyboard wordmark sat,
-           and the user sees the logo "jump down" at the native → WebView
-           handoff. Falls back gracefully on platforms where env(...) is 0. */
-        top: calc(-1 * env(safe-area-inset-top, 0px));
-        left: 0;
-        right: 0;
-        bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+        inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
