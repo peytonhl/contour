@@ -87,6 +87,43 @@ async def _cached_link(
     return result.scalar_one_or_none()
 
 
+async def _persist_apple_release_date(
+    db: AsyncSession, spotify_id: str, entity_type: str, release_date: Optional[str]
+) -> None:
+    """Side-channel write: stash Apple's releaseDate on the entity's cache row.
+
+    Apple's date is generally more accurate than Spotify's catalog-upload
+    date for vintage music (Spotify often shows the remaster reissue year,
+    Apple preserves the original). The discover decade ranker prefers
+    original_release_date when populated. Failure here is non-fatal — if
+    we can't write it, the ranker just falls back to Spotify's date, which
+    is the prior behavior. No-op when the date isn't present in the Apple
+    response (it usually is, but some compilations omit it).
+    """
+    if not release_date:
+        return
+    try:
+        if entity_type == "track":
+            row = (await db.execute(
+                select(TrackCache).where(TrackCache.spotify_id == spotify_id)
+            )).scalar_one_or_none()
+            if row and row.original_release_date != release_date:
+                row.original_release_date = release_date
+                await db.commit()
+        elif entity_type == "album":
+            row = (await db.execute(
+                select(AlbumCache).where(AlbumCache.spotify_id == spotify_id)
+            )).scalar_one_or_none()
+            if row and row.original_release_date != release_date:
+                row.original_release_date = release_date
+                await db.commit()
+    except Exception as exc:
+        logger.warning(
+            "apple_music original_release_date persist failed for %s/%s: %s",
+            entity_type, spotify_id, exc,
+        )
+
+
 async def _persist(
     db: AsyncSession,
     spotify_id: str,
@@ -172,6 +209,10 @@ async def match_entity(
     apple_music_id: Optional[str] = None
     match_method = "none"
     artwork_url: Optional[str] = None
+    # Apple's releaseDate from whichever match path succeeds. Side-channel
+    # persisted to TrackCache.original_release_date / AlbumCache.original_release_date
+    # below — see _persist_apple_release_date for rationale.
+    apple_release_date: Optional[str] = None
 
     try:
         if entity_type == "track":
@@ -190,6 +231,7 @@ async def match_entity(
                 if match and match.get("track_id"):
                     apple_music_id = match["track_id"]
                     artwork_url = match.get("artwork_url")
+                    apple_release_date = match.get("release_date")
                     match_method = "isrc"
             if not apple_music_id and track_meta.get("name"):
                 search = await apple_music.search_by_text(
@@ -201,6 +243,7 @@ async def match_entity(
                 if search and search.get("id"):
                     apple_music_id = search["id"]
                     artwork_url = search.get("artwork_url")
+                    apple_release_date = search.get("release_date")
                     match_method = "text"
         else:  # album
             album_data = await _get_album_meta(spotify_id, db)
@@ -216,6 +259,7 @@ async def match_entity(
                     # The ISRC search hits /songs; song artwork == album cover
                     # on Apple Music, so we get the right image for free.
                     artwork_url = match.get("artwork_url")
+                    apple_release_date = match.get("release_date")
                     match_method = "isrc"
             if not apple_music_id and album_data.get("name"):
                 search = await apple_music.search_by_text(
@@ -227,6 +271,7 @@ async def match_entity(
                 if search and search.get("id"):
                     apple_music_id = search["id"]
                     artwork_url = search.get("artwork_url")
+                    apple_release_date = search.get("release_date")
                     match_method = "text"
     except Exception as exc:
         logger.warning("apple_music match failed for %s/%s: %s", entity_type, spotify_id, exc)
@@ -249,6 +294,10 @@ async def match_entity(
                 db, spotify_id, entity_type, storefront,
                 apple_music_id, match_method, artwork_url,
             )
+        # Side-channel: store Apple's releaseDate on the entity's cache row
+        # so the discover decade ranker can prefer it over Spotify's
+        # (less-accurate-for-vintage) date.
+        await _persist_apple_release_date(db, spotify_id, entity_type, apple_release_date)
     else:
         raise HTTPException(status_code=404, detail="No Apple Music match")
 

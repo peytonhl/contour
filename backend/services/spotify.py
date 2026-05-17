@@ -665,6 +665,7 @@ async def search_tracks_by_genre(
     limit: int = 20,
     target_popularity: float | None = None,
     market: str = "US",
+    year_range: str | None = None,
 ) -> list[dict]:
     """
     Genre-based track search with popularity-weighted sampling.
@@ -753,16 +754,31 @@ async def search_tracks_by_genre(
     # would lock the cache to their market for 7d, and subsequent users
     # on different language settings would get the wrong region's
     # popular tracks. Bumped from v4 since the cache-key shape changed.
-    cache_key = f"spotify:genre_pool_v5:{genre}:{market}"
+    # year_range pins all variant queries to a year-of-release range — e.g.
+    # "1980-1989" for a user with a concentrated 80s decade preference. When
+    # set, the cache key forks so a hipster sample from one decade doesn't
+    # bleed into another decade's pool. The "recent (year:2023-2026)"
+    # variant is dropped in year-locked mode because it'd contradict the
+    # user's explicit decade pick.
+    if year_range:
+        cache_key = f"spotify:genre_pool_v5:{genre}:{market}:y{year_range}"
+    else:
+        cache_key = f"spotify:genre_pool_v5:{genre}:{market}"
     pool = await redis_cache.get(cache_key)
 
     if not pool:
         # (query, synth_pop_at_rank_0, synth_pop_at_last_rank)
-        variants = [
-            (genre, 90, 30),
-            (f"{genre} tag:hipster", 5, 40),
-            (f"{genre} year:2023-2026", 70, 40),
-        ]
+        if year_range:
+            variants = [
+                (f"{genre} year:{year_range}", 90, 30),
+                (f"{genre} tag:hipster year:{year_range}", 5, 40),
+            ]
+        else:
+            variants = [
+                (genre, 90, 30),
+                (f"{genre} tag:hipster", 5, 40),
+                (f"{genre} year:2023-2026", 70, 40),
+            ]
         async with httpx.AsyncClient() as client:
             token = await _get_token(client)
             responses = await asyncio.gather(*[
