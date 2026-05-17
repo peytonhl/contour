@@ -409,6 +409,14 @@ async def get_profile(
     )
     enriched = {k: v for k, v in raw if isinstance(v, dict)}
 
+    # Ratings live on the Rating model; reviews live on Review and have no
+    # `value` column of their own. To surface the star rating beside each
+    # review row on the profile, look it up from the user's Ratings via
+    # (entity_type, entity_id). Build the map once here, used below.
+    rating_value_by_entity = {
+        (r.entity_type, r.entity_id): r.value for r in ratings
+    }
+
     return {
         "user": {
             "id": user.id,
@@ -435,7 +443,7 @@ async def get_profile(
                 "entity_name": enriched.get((r.entity_type, r.entity_id), {}).get("name"),
                 "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
                 "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
-                "value": r.value,
+                "value": rating_value_by_entity.get((r.entity_type, r.entity_id)),
                 "body": r.body,
                 "created_at": r.created_at.isoformat() + "Z",
             }
