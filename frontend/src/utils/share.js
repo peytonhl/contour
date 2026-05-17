@@ -25,36 +25,53 @@ export async function shareCard({ cardUrl, shareUrl, shareText, fileName }) {
 
 export async function saveCard({ cardUrl, fileName }) {
   if (isNativePlatform()) {
-    return shareCardNative({ cardUrl, fileName, mode: "save" });
+    return saveCardNative({ cardUrl, fileName });
   }
   return downloadCardWeb({ cardUrl, fileName });
 }
 
-async function shareCardNative({ cardUrl, shareUrl, shareText, fileName, mode }) {
-  const [{ Share }, { Filesystem, Directory }] = await Promise.all([
-    import("@capacitor/share"),
-    import("@capacitor/filesystem"),
-  ]);
-
+// Write the OG card PNG to the app's Cache directory and return its file://
+// URI. Used by both share and save flows on native — the Share + Media
+// plugins both take filesystem paths, not blobs. Cache lives entirely
+// inside the app sandbox so no user permission is required to write here;
+// iOS reclaims it when the device is low on space.
+async function writeCardToCache(cardUrl, fileName) {
+  const { Filesystem, Directory } = await import("@capacitor/filesystem");
   const res = await fetch(cardUrl);
   if (!res.ok) throw new Error(`Card fetch failed: ${res.status}`);
   const blob = await res.blob();
   const base64 = await blobToBase64(blob);
-
-  // Write to Cache so iOS can hand the file:// URI to UIActivityViewController.
-  // Cache directory needs no user permission and gets cleaned up by the OS.
   const { uri } = await Filesystem.writeFile({
     path: fileName,
     data: base64,
     directory: Directory.Cache,
   });
+  return uri;
+}
 
-  const args = mode === "save"
-    ? { files: [uri], dialogTitle: "Save your card" }
-    : { files: [uri], text: shareText, url: shareUrl, dialogTitle: "Share your card" };
-
-  await Share.share(args);
+async function shareCardNative({ cardUrl, shareUrl, shareText, fileName }) {
+  const { Share } = await import("@capacitor/share");
+  const uri = await writeCardToCache(cardUrl, fileName);
+  await Share.share({
+    files: [uri],
+    text: shareText,
+    url: shareUrl,
+    dialogTitle: "Share your card",
+  });
   return "shared";
+}
+
+// Save the card directly to the iOS / Android photo library. Uses
+// @capacitor-community/media (Share.share would only open the share sheet,
+// which is what users had to navigate through previously — they reported it
+// "didn't actually save, just allowed me to export"). iOS requires
+// NSPhotoLibraryAddUsageDescription in Info.plist (injected by
+// codemagic.yaml); first call prompts the user once.
+async function saveCardNative({ cardUrl, fileName }) {
+  const { Media } = await import("@capacitor-community/media");
+  const uri = await writeCardToCache(cardUrl, fileName);
+  await Media.savePhoto({ path: uri });
+  return "saved";
 }
 
 async function shareCardWeb({ cardUrl, shareUrl, shareText, fileName }) {

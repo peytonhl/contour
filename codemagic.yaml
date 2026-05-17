@@ -183,8 +183,18 @@ workflows:
             }
           ]' "$INFO_PLIST"
 
+          # NSPhotoLibraryAddUsageDescription — required for the Save Image
+          # action in CardPreviewModal (saveCardNative in utils/share.js).
+          # We use the ADD variant rather than NSPhotoLibraryUsageDescription
+          # so the system prompts for write-only permission, not full
+          # library access — we only ever write the OG card PNG, never read
+          # the user's photos.
+          plutil -replace NSPhotoLibraryAddUsageDescription \
+            -string "Save your shareable Contour card to Photos." \
+            "$INFO_PLIST"
+
           echo ">>> Info.plist values now set:"
-          plutil -p "$INFO_PLIST" | grep -E 'ITSAppUsesNonExemptEncryption|CFBundleURLTypes|CFBundleURLSchemes' || true
+          plutil -p "$INFO_PLIST" | grep -E 'ITSAppUsesNonExemptEncryption|CFBundleURLTypes|CFBundleURLSchemes|NSPhotoLibraryAddUsageDescription' || true
 
       - name: Set the build number
         script: |
