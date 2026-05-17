@@ -2343,10 +2343,21 @@ export function ForYouPage() {
   useEffect(() => {
     if (isSwipe) {
       document.body.classList.add("foryou-swipe-mode");
+      // Also tag <html> so the body-scroll lockdown CSS can pin BOTH
+      // elements without relying on :has() (which is iOS Safari 15.4+
+      // only). The CSS rule that locks overflow + height + overscroll
+      // targets `html.foryou-swipe-html, body.foryou-swipe-mode` so
+      // either selector matching is enough on the body side, and the
+      // html side gets pinned regardless of :has() support.
+      document.documentElement.classList.add("foryou-swipe-html");
     } else {
       document.body.classList.remove("foryou-swipe-mode");
+      document.documentElement.classList.remove("foryou-swipe-html");
     }
-    return () => document.body.classList.remove("foryou-swipe-mode");
+    return () => {
+      document.body.classList.remove("foryou-swipe-mode");
+      document.documentElement.classList.remove("foryou-swipe-html");
+    };
   }, [isSwipe]);
 
   return (
