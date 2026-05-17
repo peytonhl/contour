@@ -16,10 +16,13 @@ get 403. No-auth users get 401 via require_user_id.
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 import traceback
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -28,9 +31,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import json as _json
 
 from database import get_db
-from models import Rating, TrackCache, User, UserTasteProfile
+from models import AlbumCache, AppleMusicLink, Rating, TrackCache, User, UserTasteProfile
 from routers.auth import require_user_id
-from services import enrichment_sweeper, instrumentation, spotify
+from services import apple_music, enrichment_sweeper, instrumentation, spotify
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -267,6 +270,200 @@ async def backfill_track_popularity(
         "elapsed_seconds": round(time.time() - start, 2),
         "sample": sample,
         "probe": probe,
+    }
+
+
+@router.post("/backfill-apple-dates")
+async def backfill_apple_dates(
+    max_rows: int = 50,
+    user_id: str = Depends(require_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Backfill `original_release_date` on TrackCache/AlbumCache rows that have
+    a positive AppleMusicLink but no cached Apple release date — i.e. rows
+    that landed before the original_release_date column existed, or whose
+    lazy-on-access backfill hasn't been triggered yet because nobody's
+    viewed the entity recently.
+
+    Rate-limited internally to 5 requests/sec (200ms sleep between Apple
+    calls) — well under Apple's documented 20 req/sec cap and even further
+    under any plausible daily quota. Caller picks max_rows to bound total
+    runtime. With max_rows=50 a single call takes ~10 seconds.
+
+    Resumable: just call again. The query always picks rows where
+    original_release_date IS NULL, so progress is implicit in the data —
+    no cursor required.
+
+    Body params:
+      max_rows: how many AppleMusicLink rows to process this call. The
+                hard ceiling is enforced server-side at 500 to prevent
+                accidentally pinning a worker for minutes.
+
+    Returns: {ok, scanned, fetched, updated, skipped, elapsed_seconds,
+             remaining_estimate, sample, throttled_at_qps}.
+    """
+    await _require_admin(db, user_id)
+
+    if not apple_music.is_configured():
+        return {
+            "ok": False,
+            "error": "Apple Music API not configured (missing env vars).",
+        }
+
+    # Cap so an accidental "max_rows=99999" doesn't pin a worker for hours.
+    # 500 × 200ms = 100s worst case; longer than typical request budgets
+    # but acceptable for a manually-triggered admin call.
+    max_rows = max(1, min(int(max_rows), 500))
+
+    start = time.time()
+
+    # Find AppleMusicLink rows whose entity cache row needs the date.
+    # We select the LINK rows (which have the apple_music_id we need)
+    # and filter by the corresponding cache row's NULL original_release_date.
+    # Two queries — one for tracks, one for albums — kept separate because
+    # the join targets differ.
+    track_targets = (await db.execute(
+        select(AppleMusicLink.spotify_id, AppleMusicLink.apple_music_id, AppleMusicLink.storefront)
+        .join(TrackCache, TrackCache.spotify_id == AppleMusicLink.spotify_id)
+        .where(
+            AppleMusicLink.entity_type == "track",
+            AppleMusicLink.apple_music_id.is_not(None),
+            TrackCache.original_release_date.is_(None),
+        )
+        .limit(max_rows)
+    )).all()
+
+    remaining_budget = max_rows - len(track_targets)
+    album_targets = []
+    if remaining_budget > 0:
+        album_targets = (await db.execute(
+            select(AppleMusicLink.spotify_id, AppleMusicLink.apple_music_id, AppleMusicLink.storefront)
+            .join(AlbumCache, AlbumCache.spotify_id == AppleMusicLink.spotify_id)
+            .where(
+                AppleMusicLink.entity_type == "album",
+                AppleMusicLink.apple_music_id.is_not(None),
+                AlbumCache.original_release_date.is_(None),
+            )
+            .limit(remaining_budget)
+        )).all()
+
+    targets: list[tuple[str, str, str, str]] = [
+        (row.spotify_id, row.apple_music_id, row.storefront, "track")
+        for row in track_targets
+    ] + [
+        (row.spotify_id, row.apple_music_id, row.storefront, "album")
+        for row in album_targets
+    ]
+
+    if not targets:
+        return {
+            "ok": True,
+            "scanned": 0,
+            "fetched": 0,
+            "updated": 0,
+            "skipped": 0,
+            "elapsed_seconds": round(time.time() - start, 2),
+            "remaining_estimate": 0,
+            "throttled_at_qps": 5.0,
+            "note": "no entities with NULL original_release_date — backfill is up to date",
+        }
+
+    # ── Throttled fetch + persist loop ────────────────────────────────────
+    # asyncio.sleep(0.2) between Apple calls keeps us at 5 req/sec sustained.
+    # We could parallelize at higher QPS but staying serial here means we
+    # NEVER overshoot — if the loop ever takes longer than expected
+    # (Apple rate-limits us, network slowness, whatever) we self-throttle
+    # automatically instead of compounding the problem.
+    import asyncio as _asyncio
+    fetched = 0
+    updated = 0
+    skipped = 0
+    sample: list[dict] = []
+    for spotify_id, apple_music_id, storefront, entity_type in targets:
+        try:
+            meta = await apple_music.fetch_meta_for_id(
+                apple_music_id, entity_type, storefront,
+            )
+        except Exception as exc:
+            logger.warning(
+                "admin backfill-apple-dates fetch failed for %s/%s: %s",
+                entity_type, spotify_id, exc,
+            )
+            skipped += 1
+            await _asyncio.sleep(0.2)
+            continue
+
+        if not meta or not meta.get("release_date"):
+            skipped += 1
+            await _asyncio.sleep(0.2)
+            continue
+
+        fetched += 1
+        release_date = meta["release_date"]
+        try:
+            if entity_type == "track":
+                row = (await db.execute(
+                    select(TrackCache).where(TrackCache.spotify_id == spotify_id)
+                )).scalar_one_or_none()
+            else:
+                row = (await db.execute(
+                    select(AlbumCache).where(AlbumCache.spotify_id == spotify_id)
+                )).scalar_one_or_none()
+            if row and row.original_release_date != release_date:
+                row.original_release_date = release_date
+                await db.commit()
+                updated += 1
+                if len(sample) < 5:
+                    sample.append({
+                        "spotify_id": spotify_id,
+                        "entity_type": entity_type,
+                        "original_release_date": release_date,
+                    })
+        except Exception as exc:
+            await db.rollback()
+            logger.warning(
+                "admin backfill-apple-dates persist failed for %s/%s: %s",
+                entity_type, spotify_id, exc,
+            )
+            skipped += 1
+
+        await _asyncio.sleep(0.2)
+
+    # Estimate remaining — counts of NULL rows on each cache that still
+    # have an AppleMusicLink. Just informational so the operator knows
+    # how many more batches to run.
+    track_remaining = (await db.execute(
+        select(func.count())
+        .select_from(AppleMusicLink)
+        .join(TrackCache, TrackCache.spotify_id == AppleMusicLink.spotify_id)
+        .where(
+            AppleMusicLink.entity_type == "track",
+            AppleMusicLink.apple_music_id.is_not(None),
+            TrackCache.original_release_date.is_(None),
+        )
+    )).scalar() or 0
+    album_remaining = (await db.execute(
+        select(func.count())
+        .select_from(AppleMusicLink)
+        .join(AlbumCache, AlbumCache.spotify_id == AppleMusicLink.spotify_id)
+        .where(
+            AppleMusicLink.entity_type == "album",
+            AppleMusicLink.apple_music_id.is_not(None),
+            AlbumCache.original_release_date.is_(None),
+        )
+    )).scalar() or 0
+
+    return {
+        "ok": True,
+        "scanned": len(targets),
+        "fetched": fetched,
+        "updated": updated,
+        "skipped": skipped,
+        "elapsed_seconds": round(time.time() - start, 2),
+        "remaining_estimate": int(track_remaining + album_remaining),
+        "throttled_at_qps": 5.0,
+        "sample": sample,
     }
 
 

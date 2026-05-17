@@ -57,14 +57,18 @@ Release-date accuracy: we COALESCE TrackCache/AlbumCache.original_release_date
 (populated from Apple Music when matched — more accurate for vintage
 catalog) over Spotify's release_date (often the remaster/reissue date).
 
-Concentrated-decade year-lock (tier 1 only)
-───────────────────────────────────────────
+Concentrated-decade year-lock (tier 1 AND tier 2)
+─────────────────────────────────────────────────
 When the user's positive decade preference is ≥ 60% concentrated in a
 single decade, tier 1's Spotify search appends a year:YYYY-YYYY filter
 so candidates COME FROM that decade rather than being filtered after
-the fact. Vintage devotees stop wasting candidate slots on modern hits.
-Mixed-taste users (no dominant decade) keep the unfiltered search and
-let within-tier rerank do the bias.
+the fact. Tier 2-4 also swap: Deezer has no year-filter syntax, so
+in vintage mode tier 2 becomes a Spotify year-locked baseline across
+3 high-coverage genres (pop/rock/hip-hop), and tiers 3-4 (Deezer new
+music + keyword fallbacks) are skipped entirely — they'd contribute
+modern candidates that contradict the user's explicit decade pick.
+Mixed-taste users (no dominant decade) keep the unfiltered Spotify
+search at tier 1 AND the Deezer baseline at tiers 2-4.
 
 Negative signal (1–2★ ratings)
 ──────────────────────────────
@@ -701,38 +705,71 @@ async def get_discover_feed(
             len(genre_list) - len(eligible_genres),
         )
 
-    # ── Tier 2: Deezer chart baseline ────────────────────────────────────────
-    # Uses Deezer's /chart/0/tracks endpoint (actual chart data) instead of
-    # searching text like "top hits" which was matching a karaoke artist of
-    # the same name and flooding the feed with cover tracks.
-    #
-    # Bumped from 50 → 100 to give cold-start users a wider pool. With 50 a
-    # user could exhaust the chart in ~5 batches and then start seeing the
-    # same tracks recur (or fall through to weaker tier-3 results). 100 is
-    # the practical max Deezer's chart endpoint serves; doubling the pool
-    # doubles the time until exhaustion. Same Akamai-signed-URL TTL applies.
-    if len(tracks) < limit:
-        chart_tracks = await deezer_svc.get_chart_tracks(limit=100)
-        if isinstance(chart_tracks, list):
-            random.shuffle(chart_tracks)
-            add_baseline(chart_tracks)
-        logger.info("discover: tier2 (deezer chart) → %d tracks", len(tracks))
+    if year_range:
+        # ── Tier 2 (vintage mode): Spotify year-locked baseline ──────────
+        # Deezer doesn't support year-filtered queries — its /chart and
+        # /search both return current-era tracks. For a user with a
+        # concentrated decade preference, that meant tier 2-4 contributed
+        # candidates that could only be re-ranked downward, never
+        # filtered out at the source.
+        # Substitution: query Spotify with the year_range across a few
+        # high-coverage baseline genres. Tier 1 already picks the user's
+        # preferred genres with year_range applied; tier 2 here uses
+        # genre-agnostic baselines so the user gets era-appropriate
+        # popular tracks even when their tier 1 genre choices come up
+        # thin. The shared 7-day Redis pool cache absorbs the quota
+        # impact — distinct year/genre combos cache independently and
+        # are reused across users.
+        if len(tracks) < limit:
+            baseline_genres = ["pop", "rock", "hip-hop"]
+            baseline_results = await asyncio.gather(*[
+                spotify.search_tracks_by_genre(
+                    g,
+                    limit=15,
+                    target_popularity=target_popularity,
+                    market=spotify_market,
+                    year_range=year_range,
+                )
+                for g in baseline_genres
+            ], return_exceptions=True)
+            _flatten_shuffle_add(baseline_results, add_baseline)
+            logger.info(
+                "discover: tier2 (vintage spotify baseline) → %d tracks (year_range=%s, baseline_genres=%s)",
+                len(tracks), year_range, baseline_genres,
+            )
+    else:
+        # ── Tier 2: Deezer chart baseline ────────────────────────────────────────
+        # Uses Deezer's /chart/0/tracks endpoint (actual chart data) instead of
+        # searching text like "top hits" which was matching a karaoke artist of
+        # the same name and flooding the feed with cover tracks.
+        #
+        # Bumped from 50 → 100 to give cold-start users a wider pool. With 50 a
+        # user could exhaust the chart in ~5 batches and then start seeing the
+        # same tracks recur (or fall through to weaker tier-3 results). 100 is
+        # the practical max Deezer's chart endpoint serves; doubling the pool
+        # doubles the time until exhaustion. Same Akamai-signed-URL TTL applies.
+        if len(tracks) < limit:
+            chart_tracks = await deezer_svc.get_chart_tracks(limit=100)
+            if isinstance(chart_tracks, list):
+                random.shuffle(chart_tracks)
+                add_baseline(chart_tracks)
+            logger.info("discover: tier2 (deezer chart) → %d tracks", len(tracks))
 
-    # ── Tier 3: Deezer new music ──────────────────────────────────────────────
-    if len(tracks) < limit:
-        new_results = await asyncio.gather(*[
-            deezer_svc.search_tracks(q, limit=15)
-            for q in _DEEZER_NEW_QUERIES
-        ], return_exceptions=True)
-        _flatten_shuffle_add(new_results, add_baseline)
+        # ── Tier 3: Deezer new music ──────────────────────────────────────────────
+        if len(tracks) < limit:
+            new_results = await asyncio.gather(*[
+                deezer_svc.search_tracks(q, limit=15)
+                for q in _DEEZER_NEW_QUERIES
+            ], return_exceptions=True)
+            _flatten_shuffle_add(new_results, add_baseline)
 
-    # ── Tier 4: Deezer keyword fallbacks — always produces results ────────────
-    if len(tracks) < limit:
-        fallback_results = await asyncio.gather(*[
-            deezer_svc.search_tracks(q, limit=10)
-            for q in _DEEZER_FALLBACK_QUERIES
-        ], return_exceptions=True)
-        _flatten_shuffle_add(fallback_results, add_baseline)
+        # ── Tier 4: Deezer keyword fallbacks — always produces results ────────────
+        if len(tracks) < limit:
+            fallback_results = await asyncio.gather(*[
+                deezer_svc.search_tracks(q, limit=10)
+                for q in _DEEZER_FALLBACK_QUERIES
+            ], return_exceptions=True)
+            _flatten_shuffle_add(fallback_results, add_baseline)
 
     # ── Tier 4.5: Nuclear fallback — ignore even hard dislikes ───────────────
     # Only triggers when every tier above produced zero. Keeps the feed alive

@@ -170,22 +170,52 @@ async def match_entity(
     if not force:
         cached = await _cached_link(db, spotify_id, entity_type, storefront)
         if cached and cached.apple_music_id:
-            # Lazy backfill for rows that predate the artwork_url column.
-            # One Apple API call on the next hit fills it in; subsequent
-            # hits are free DB reads. Backfill failures are swallowed so a
-            # transient Apple outage never blocks the deep-link response.
+            # Lazy backfill for rows that predate the artwork_url and/or
+            # original_release_date columns. Same Apple API call covers
+            # both fields — extract them together, persist whichever is
+            # missing. One round-trip per backfilled entity, then free
+            # DB reads forever after. Backfill failures are swallowed so
+            # a transient Apple outage never blocks the deep-link
+            # response (the button stays usable; the missing data just
+            # waits for the next try).
             artwork_url = cached.artwork_url
-            if not artwork_url and apple_music.is_configured():
+            needs_artwork = not artwork_url
+
+            # Check the entity's cache row for missing original_release_date.
+            # This is the same row the discover decade ranker reads, so it
+            # has to be on TrackCache / AlbumCache, not AppleMusicLink.
+            entity_row = None
+            needs_release_date = False
+            if entity_type == "track":
+                entity_row = (await db.execute(
+                    select(TrackCache).where(TrackCache.spotify_id == spotify_id)
+                )).scalar_one_or_none()
+            elif entity_type == "album":
+                entity_row = (await db.execute(
+                    select(AlbumCache).where(AlbumCache.spotify_id == spotify_id)
+                )).scalar_one_or_none()
+            if entity_row is not None and entity_row.original_release_date is None:
+                needs_release_date = True
+
+            if (needs_artwork or needs_release_date) and apple_music.is_configured():
                 try:
-                    artwork_url = await apple_music.fetch_artwork_for_id(
+                    meta = await apple_music.fetch_meta_for_id(
                         cached.apple_music_id, entity_type, storefront,
                     )
-                    if artwork_url:
-                        cached.artwork_url = artwork_url
-                        await db.commit()
+                    if meta:
+                        wrote = False
+                        if needs_artwork and meta.get("artwork_url"):
+                            artwork_url = meta["artwork_url"]
+                            cached.artwork_url = artwork_url
+                            wrote = True
+                        if needs_release_date and meta.get("release_date") and entity_row is not None:
+                            entity_row.original_release_date = meta["release_date"]
+                            wrote = True
+                        if wrote:
+                            await db.commit()
                 except Exception as exc:
                     logger.warning(
-                        "apple_music artwork backfill failed for %s/%s: %s",
+                        "apple_music lazy backfill failed for %s/%s: %s",
                         entity_type, spotify_id, exc,
                     )
             return {
