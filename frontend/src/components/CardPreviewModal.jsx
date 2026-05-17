@@ -3,6 +3,19 @@ import { shareCard, saveCard } from "../utils/share.js";
 
 const ACCENT = "#d97a3b";
 
+// Version stamp appended to every OG card URL. Bump this when the card
+// design changes meaningfully — the OG handler sends Cache-Control with
+// max-age=3600, and the iOS WebView honors that aggressively (the PNG
+// stays cached for up to an hour even after we redeploy the renderer).
+// A version param doesn't break Vercel's edge cache because each (id, v)
+// pair is its own cache key, so once everyone's on v=N the new key gets
+// edge-cached normally; old (id, v=N-1) URLs just go cold.
+//
+// Bump history:
+//  v3 (2026-05-17): square 1080×1080, SVG star, Spotify cover for tracks,
+//                   vertically-centered body row, 560×560 cover.
+const CARD_VERSION = "3";
+
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
  *
@@ -31,16 +44,25 @@ export function CardPreviewModal({
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);  // "share" | "save" | null
 
+  // Append the version stamp so the WebView/browser cache treats new card
+  // designs as a fresh URL instead of serving the stale 1080×1350 layout
+  // it cached when the design first shipped. Same versioned URL is used
+  // for the preview fetch AND the share/save dispatches so the modal
+  // preview and the actual shared PNG can't drift apart.
+  const versionedCardUrl = cardUrl
+    ? cardUrl + (cardUrl.includes("?") ? "&" : "?") + "v=" + CARD_VERSION
+    : cardUrl;
+
   // Fetch the PNG when the modal opens so the user sees the card immediately.
   // Revoke the object URL on close to free memory.
   useEffect(() => {
-    if (!open || !cardUrl) return;
+    if (!open || !versionedCardUrl) return;
     let cancelled = false;
     let createdUrl = null;
     setBlobUrl(null);
     setError(null);
 
-    fetch(cardUrl)
+    fetch(versionedCardUrl)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.blob();
@@ -56,7 +78,7 @@ export function CardPreviewModal({
       cancelled = true;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [open, cardUrl]);
+  }, [open, versionedCardUrl]);
 
   // Escape closes
   useEffect(() => {
@@ -71,7 +93,7 @@ export function CardPreviewModal({
   async function handleShare() {
     if (busy) return;
     setBusy("share");
-    try { await shareCard({ cardUrl, shareUrl, shareText, fileName }); }
+    try { await shareCard({ cardUrl: versionedCardUrl, shareUrl, shareText, fileName }); }
     catch { /* user cancelled or share failed — keep the modal open */ }
     setBusy(null);
   }
@@ -79,7 +101,7 @@ export function CardPreviewModal({
   async function handleSave() {
     if (busy) return;
     setBusy("save");
-    try { await saveCard({ cardUrl, fileName }); }
+    try { await saveCard({ cardUrl: versionedCardUrl, fileName }); }
     catch { /* same */ }
     setBusy(null);
   }
