@@ -2327,6 +2327,21 @@ export function ForYouPage() {
   // what allows the tab strip's `position: sticky` to actually stick.
   const isSwipe = tab === "discover";
 
+  // Viewport-width gate: on tablet+ (>640px) the Layout top header is the
+  // canonical navigation (desktop nav links — Friends / Search / Compare /
+  // Profile — and the bottom-nav is display:none). The swipe overlay below
+  // anchors to top:0 on phones (full-bleed feed) but must NOT cover the
+  // header on tablets — otherwise Discover loses access to navigation
+  // entirely on iPad while Community keeps it. Reported 2026-05-17.
+  const [isTabletOrLarger, setIsTabletOrLarger] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth > 640 : false
+  );
+  useEffect(() => {
+    const onResize = () => setIsTabletOrLarger(window.innerWidth > 640);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   // While the Discover sub-tab is active, hide the Layout header and zero
   // out the page-content's padding-bottom (both come from CSS rules keyed
   // on this body class). Reasons:
@@ -2384,23 +2399,26 @@ export function ForYouPage() {
       // from the Discover tab (which goes back to normal flow).
       ...(isSwipe ? {
         position: "fixed",
-        // Anchor to top:0, not env(safe-area-inset-top) — on iOS Safari
-        // the URL bar collapses opportunistically on upward gestures
-        // (even with overflow:hidden body). When that happens, the
-        // safe-area-inset-top value can shift, leaving a black gap
-        // between the device top and where this element re-anchored.
-        // Anchoring to 0 keeps the surface continuous to the top edge;
-        // the tabs strip below pads its content past the safe area so
-        // tab buttons aren't under the notch / status bar.
-        top: 0,
+        // Phone: anchor to top:0 so the surface stays continuous through
+        // iOS Safari's opportunistic URL-bar collapse (a non-zero top with
+        // env(safe-area-inset-top) shifted under it would expose a black
+        // gap). Tablet+: anchor BELOW the Layout header — the desktop top
+        // nav (Friends / Search / Compare / Profile) is the only nav on
+        // iPad since bottom-nav is hidden >640px, so covering the header
+        // strands the user on Discover with no way out.
+        top: isTabletOrLarger ? STICKY_TOP : 0,
         left: 0,
         right: 0,
-        bottom: "calc(56px + env(safe-area-inset-bottom, 0px))",
+        // Phone reserves room for the bottom-nav (56px). Tablet+ has no
+        // bottom-nav (display:none >640px) so the deck can extend to the
+        // viewport bottom; safe-area still pads the iPad home indicator.
+        bottom: isTabletOrLarger
+          ? "env(safe-area-inset-bottom, 0px)"
+          : "calc(56px + env(safe-area-inset-bottom, 0px))",
         overflow: "hidden",
-        // z 60 puts us ABOVE Layout's header (z 50) so the swipe page can
-        // cover it. The bottom-nav (z 50) is outside our `bottom:` clamp so
-        // there's no overlap to fight over.
-        zIndex: 60,
+        // Phone: z 60 covers Layout's header (z 50) for full-bleed feed.
+        // Tablet+: stay UNDER the header (z 40 < 50) so it remains tappable.
+        zIndex: isTabletOrLarger ? 40 : 60,
       } : {}),
     }}>
       {/* Three modes — Discover (audio swipe), Friends (followed users'
