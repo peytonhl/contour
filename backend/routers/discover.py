@@ -52,6 +52,38 @@ or vintage-leaning playlists. Decades not in the user's history still
 flow through at a 0.05 floor so the feed never goes empty when the
 preferred pool is thin. Tier ORDER is preserved (tier 1 still adds
 before tier 2 etc.) — only WITHIN-tier ordering changes.
+
+Release-date accuracy: we COALESCE TrackCache/AlbumCache.original_release_date
+(populated from Apple Music when matched — more accurate for vintage
+catalog) over Spotify's release_date (often the remaster/reissue date).
+
+Concentrated-decade year-lock (tier 1 only)
+───────────────────────────────────────────
+When the user's positive decade preference is ≥ 60% concentrated in a
+single decade, tier 1's Spotify search appends a year:YYYY-YYYY filter
+so candidates COME FROM that decade rather than being filtered after
+the fact. Vintage devotees stop wasting candidate slots on modern hits.
+Mixed-taste users (no dominant decade) keep the unfiltered search and
+let within-tier rerank do the bias.
+
+Negative signal (1–2★ ratings)
+──────────────────────────────
+_compute_negative_preferences mirrors the positive computation but on
+1-2★ ratings:
+  • negative_decade_pref: applied as a half-strength penalty to
+    _decade_score for matching decades. A user who 1★s 2010s tracks
+    sees 2010s candidates ranked lower in every tier's batch.
+  • negative_genre_pref: tier 1's seed genre list is filtered to drop
+    genres where ≥ 30% of the down-weighted-artists belong. Fallback
+    keeps ≥ 2 genres eligible so a heavy negative signal can't empty
+    the seed pool.
+
+Multi-genre diversity
+─────────────────────
+Tier 1 samples k=4 genres per batch (bumped from 3) with position
+decay 0.90 (flattened from 0.85). Users with a wide profile see more
+of their tail genres surface instead of the top genre dominating every
+batch.
 """
 
 import asyncio
@@ -215,15 +247,22 @@ async def _compute_decade_preference(
     track_ids = [r.entity_id for r in high_ratings if r.entity_type == "track"]
     album_ids = [r.entity_id for r in high_ratings if r.entity_type == "album"]
 
+    # Prefer original_release_date (populated from Apple Music when matched)
+    # over Spotify's release_date — Apple is generally more accurate for
+    # vintage catalog where Spotify shows the remaster upload date. COALESCE
+    # picks Apple's value first, Spotify's as fallback, NULL when neither
+    # is populated.
     release_dates: list[str] = []
     if track_ids:
         rows = (await db.execute(
-            select(TrackCache.release_date).where(TrackCache.spotify_id.in_(track_ids))
+            select(func.coalesce(TrackCache.original_release_date, TrackCache.release_date))
+            .where(TrackCache.spotify_id.in_(track_ids))
         )).scalars().all()
         release_dates.extend(d for d in rows if d)
     if album_ids:
         rows = (await db.execute(
-            select(AlbumCache.release_date).where(AlbumCache.spotify_id.in_(album_ids))
+            select(func.coalesce(AlbumCache.original_release_date, AlbumCache.release_date))
+            .where(AlbumCache.spotify_id.in_(album_ids))
         )).scalars().all()
         release_dates.extend(d for d in rows if d)
 
@@ -246,7 +285,9 @@ async def _compute_decade_preference(
 
 
 def _decade_score(
-    release_date: Optional[str], decade_pref: Optional[dict[str, float]]
+    release_date: Optional[str],
+    decade_pref: Optional[dict[str, float]],
+    negative_decade_pref: Optional[dict[str, float]] = None,
 ) -> float:
     """
     Score 0–1 for how well a candidate track's release decade matches the
@@ -259,6 +300,12 @@ def _decade_score(
     rated get a small floor (0.05) so candidates from "other" decades
     can still surface when the preferred pool is thin, instead of the
     feed going empty.
+
+    negative_decade_pref dampens the score for decades the user has
+    consistently 1–2★'d. The penalty is half-strength of the positive
+    weight so a single down-rating can't blackhole a decade with one
+    counter-data-point — the user has to consistently dislike a decade
+    for it to drop noticeably.
     """
     if not decade_pref:
         return 0.5
@@ -269,7 +316,105 @@ def _decade_score(
         return 0.3
     year = int(m.group(1))
     decade_key = f"{(year // 10) * 10}s"
-    return max(decade_pref.get(decade_key, 0.05), 0.05)
+    base = max(decade_pref.get(decade_key, 0.05), 0.05)
+    if negative_decade_pref:
+        penalty = negative_decade_pref.get(decade_key, 0.0) * 0.5
+        base = max(base - penalty, 0.01)
+    return base
+
+
+async def _compute_negative_preferences(
+    db: AsyncSession, user_id: str
+) -> tuple[Optional[dict[str, float]], Optional[dict[str, float]]]:
+    """
+    Decade + genre distributions from the user's 1–2★ ratings — the "what
+    they actively dislike" signal that complements the positive 4–5★ one.
+
+    Returns (negative_decade_pref, negative_genre_pref). Either can be
+    None when there's not enough data; both can be None on a clean
+    profile. Mirrors _compute_decade_preference's lazy DB-only approach —
+    no Spotify/external calls.
+
+    Decade: bin 1–2★ ratings by release year (Apple's date when
+    populated, Spotify's as fallback — same COALESCE as positive).
+    Genre: take the user's down_weighted_artist_ids (already maintained
+    by ratings._down_weight_from_rating on every 1–2★ track rating),
+    fetch each artist's ArtistCache.genres, count.
+
+    Returns dicts normalized to proportions: {"2010s": 0.6, "2020s": 0.4}
+    and {"trap": 0.5, "soundcloud rap": 0.3, ...}.
+    """
+    low_ratings = (await db.execute(
+        select(Rating).where(
+            Rating.user_id == user_id,
+            Rating.value <= 2,
+            Rating.entity_type.in_(("track", "album")),
+        )
+    )).scalars().all()
+    if len(low_ratings) < 3:
+        return None, None
+
+    # ── Decade signal ────────────────────────────────────────────────
+    track_ids = [r.entity_id for r in low_ratings if r.entity_type == "track"]
+    album_ids = [r.entity_id for r in low_ratings if r.entity_type == "album"]
+    release_dates: list[str] = []
+    if track_ids:
+        rows = (await db.execute(
+            select(func.coalesce(TrackCache.original_release_date, TrackCache.release_date))
+            .where(TrackCache.spotify_id.in_(track_ids))
+        )).scalars().all()
+        release_dates.extend(d for d in rows if d)
+    if album_ids:
+        rows = (await db.execute(
+            select(func.coalesce(AlbumCache.original_release_date, AlbumCache.release_date))
+            .where(AlbumCache.spotify_id.in_(album_ids))
+        )).scalars().all()
+        release_dates.extend(d for d in rows if d)
+
+    decade_counts: dict[str, int] = {}
+    for date_str in release_dates:
+        m = re.match(r"^(\d{4})", date_str or "")
+        if not m:
+            continue
+        year = int(m.group(1))
+        if year < 1950 or year > 2100:
+            continue
+        decade_counts[f"{(year // 10) * 10}s"] = decade_counts.get(f"{(year // 10) * 10}s", 0) + 1
+    total_decades = sum(decade_counts.values())
+    negative_decade_pref = (
+        {d: c / total_decades for d, c in decade_counts.items()}
+        if total_decades >= 2
+        else None
+    )
+
+    # ── Genre signal ─────────────────────────────────────────────────
+    # Read down_weighted_artist_ids out of the profile — already populated
+    # by ratings._down_weight_from_rating on every 1-2★ track rating. Then
+    # bin each artist's cached Spotify genres.
+    from models import ArtistCache, UserTasteProfile
+    profile = await db.get(UserTasteProfile, user_id)
+    negative_genre_pref: Optional[dict[str, float]] = None
+    if profile and profile.down_weighted_artist_ids:
+        down_artists: list[str] = json.loads(profile.down_weighted_artist_ids or "[]")
+        if down_artists:
+            artist_rows = (await db.execute(
+                select(ArtistCache.genres).where(ArtistCache.spotify_id.in_(down_artists))
+            )).scalars().all()
+            genre_counts: dict[str, int] = {}
+            for genres_json in artist_rows:
+                if not genres_json:
+                    continue
+                try:
+                    for g in json.loads(genres_json):
+                        if isinstance(g, str) and g.strip():
+                            genre_counts[g] = genre_counts.get(g, 0) + 1
+                except Exception:
+                    continue
+            total_genres = sum(genre_counts.values())
+            if total_genres >= 3:
+                negative_genre_pref = {g: c / total_genres for g, c in genre_counts.items()}
+
+    return negative_decade_pref, negative_genre_pref
 
 
 def _flatten_shuffle_add(results: list, adder) -> None:
@@ -389,11 +534,40 @@ async def get_discover_feed(
     # 80s candidates within each tier. Cold-start users (< 5 high ratings)
     # get None back and the ranker is a no-op. See _decade_score().
     decade_pref: Optional[dict[str, float]] = None
+    # Negative signals from 1–2★ ratings — what the user actively dislikes.
+    # Negative decade dampens decade_score for low-rated eras; negative
+    # genre is used below to filter out heavily-down-rated genres from
+    # tier 1's seed pool.
+    negative_decade_pref: Optional[dict[str, float]] = None
+    negative_genre_pref: Optional[dict[str, float]] = None
     if user_id:
         try:
             decade_pref = await _compute_decade_preference(db, user_id)
         except Exception:
             decade_pref = None
+        try:
+            negative_decade_pref, negative_genre_pref = await _compute_negative_preferences(db, user_id)
+        except Exception:
+            negative_decade_pref, negative_genre_pref = None, None
+
+    # When the positive decade preference is concentrated (≥ 60% in one
+    # decade), pin Spotify search to that year range so we don't waste a
+    # candidate slot on modern hits for a user who reliably wants vintage.
+    # Mixed-taste users (no single decade dominant) still get the
+    # unfiltered search — they get within-tier re-ranking but full
+    # year breadth in the candidate pool. The +0.0001 epsilon avoids
+    # rounding-tie cases.
+    year_range: Optional[str] = None
+    if decade_pref:
+        top_decade, top_share = max(decade_pref.items(), key=lambda kv: kv[1])
+        if top_share >= 0.60 - 0.0001:
+            # decade key is "1980s" — strip the trailing "s" and turn into
+            # a Spotify year-range filter like "1980-1989".
+            try:
+                start = int(top_decade[:-1])
+                year_range = f"{start}-{start + 9}"
+            except Exception:
+                year_range = None
 
     tracks: list[dict] = []
     seen: set[str] = set()
@@ -431,7 +605,9 @@ async def get_discover_feed(
             if decade_pref:
                 local = sorted(
                     batch,
-                    key=lambda t: _decade_score(t.get("release_date"), decade_pref),
+                    key=lambda t: _decade_score(
+                        t.get("release_date"), decade_pref, negative_decade_pref
+                    ),
                     reverse=True,
                 )
             for t in local:
@@ -478,21 +654,51 @@ async def get_discover_feed(
     #   - Tier 2 was profile.genres[:3], deterministic top-3 every batch.
     # Both treated all liked genres as equal once they entered the
     # profile. The new tier 1 unifies them into one probabilistic pick.
+    # Tier 1 multi-genre diversity:
+    #   - k bumped 3 → 4 so users with multiple liked genres see breadth
+    #     across them in every batch (rather than the top-weighted one
+    #     dominating). User reported wanting "diverse set of music I like,
+    #     not just one genre at a time."
+    #   - decay flattened 0.85 → 0.90 so secondary genres aren't as starved.
+    #     At k=4, simulation:
+    #       position 0 → in ~50% of batches (was ~43% at k=3, decay=0.85)
+    #       position 5 → in ~28%             (was ~21%)
+    #       position 10 → in ~16%            (was ~10%)
+    #       position 19 → in ~6%             (was ~2%)
+    #     Top genre still dominates but the tail surfaces meaningfully more.
+    #   - When negative_genre_pref reports the user has consistently
+    #     down-rated a particular genre (proportion ≥ 0.30 of their
+    #     down-weighted artists' genres), drop it from the candidate
+    #     genre list before sampling. Fallback: if the filter would leave
+    #     fewer than 2 genres, ignore it — better stale picks than empty.
     tier1_added_before = len(tracks)
-    if genre_list and len(tracks) < limit:
-        n_pick = min(3, len(genre_list))
-        position_weights = [0.85 ** i for i in range(len(genre_list))]
-        sampled_genres = _weighted_sample(genre_list, position_weights, k=n_pick)
+    eligible_genres = genre_list
+    if negative_genre_pref and len(genre_list) >= 2:
+        filtered = [g for g in genre_list if negative_genre_pref.get(g, 0.0) < 0.30]
+        if len(filtered) >= 2:
+            eligible_genres = filtered
+    if eligible_genres and len(tracks) < limit:
+        n_pick = min(4, len(eligible_genres))
+        position_weights = [0.90 ** i for i in range(len(eligible_genres))]
+        sampled_genres = _weighted_sample(eligible_genres, position_weights, k=n_pick)
         genre_results = await asyncio.gather(*[
-            spotify.search_tracks_by_genre(g, limit=15, target_popularity=target_popularity, market=spotify_market)
+            spotify.search_tracks_by_genre(
+                g,
+                limit=15,
+                target_popularity=target_popularity,
+                market=spotify_market,
+                year_range=year_range,
+            )
             for g in sampled_genres
         ], return_exceptions=True)
         _flatten_shuffle_add(genre_results, add_personalized)
         logger.info(
-            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, target_pop=%s, profile_size=%d)",
+            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, target_pop=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d)",
             len(tracks) - tier1_added_before, sampled_genres,
             f"{target_popularity:.1f}" if target_popularity is not None else "default",
             len(genre_list),
+            year_range or "none",
+            len(genre_list) - len(eligible_genres),
         )
 
     # ── Tier 2: Deezer chart baseline ────────────────────────────────────────
@@ -541,22 +747,25 @@ async def get_discover_feed(
             if len(tracks) >= limit:
                 break
 
-    # Compact decade-pref summary for the log: "1980s:65%,1990s:20%" etc.
+    # Compact preference summary for the log: "1980s:65%,1990s:20%" etc.
     # Only the top three contribute; "none" when no preference signal.
-    if decade_pref:
-        decade_summary = ",".join(
-            f"{d}:{int(p * 100)}%"
-            for d, p in sorted(decade_pref.items(), key=lambda kv: kv[1], reverse=True)[:3]
+    def _pref_summary(pref: Optional[dict[str, float]]) -> str:
+        if not pref:
+            return "none"
+        return ",".join(
+            f"{k}:{int(v * 100)}%"
+            for k, v in sorted(pref.items(), key=lambda kv: kv[1], reverse=True)[:3]
         )
-    else:
-        decade_summary = "none"
 
     logger.info(
-        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, target_pop=%s, decade_pref=%s, genres=%s)",
+        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, target_pop=%s, decade_pref=%s, neg_decade=%s, neg_genres=%s, year_range=%s, genres=%s)",
         len(tracks), len(exclude_ids), len(seed_artist_ids),
         len(disliked_set), len(down_weighted_set),
         f"{target_popularity:.1f}" if target_popularity is not None else "default",
-        decade_summary,
+        _pref_summary(decade_pref),
+        _pref_summary(negative_decade_pref),
+        _pref_summary(negative_genre_pref),
+        year_range or "none",
         genre_list[:2],
     )
 

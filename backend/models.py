@@ -221,6 +221,11 @@ class TrackCache(Base):
     album_name: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     album_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     release_date: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    # Apple Music's releaseDate when we've matched the entity — generally more
+    # accurate for vintage music than Spotify's catalog-upload date. The
+    # discover decade ranker prefers this when populated. See the
+    # v2w3x4y5z6a7 migration for the rationale.
+    original_release_date: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     explicit: Mapped[bool] = mapped_column(Integer, default=False)
     popularity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -238,6 +243,10 @@ class AlbumCache(Base):
     artist: Mapped[str] = mapped_column(String(256))
     release_date: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     release_date_precision: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    # Apple Music's releaseDate when we've matched the entity — generally more
+    # accurate for vintage music than Spotify's catalog-upload date. See
+    # migration v2w3x4y5z6a7 + the discover decade-preference docs.
+    original_release_date: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     label: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     popularity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

@@ -117,11 +117,29 @@ def _extract_artwork_url(item: dict, size: int = _ARTWORK_RENDER_SIZE) -> Option
     return template.replace("{w}", str(size)).replace("{h}", str(size))
 
 
+def _extract_release_date(item: dict) -> Optional[str]:
+    """Apple Music's attributes.releaseDate, generally the original release
+    year for vintage catalog (Apple curates this more carefully than Spotify,
+    which uses the upload date). Format is "YYYY-MM-DD" or "YYYY-MM" or
+    "YYYY" depending on what Apple has. The discover decade ranker only
+    parses the leading year so all three forms work."""
+    if not item:
+        return None
+    attrs = item.get("attributes") or {}
+    rd = attrs.get("releaseDate")
+    if isinstance(rd, str) and rd.strip():
+        return rd.strip()
+    return None
+
+
 async def match_track_by_isrc(isrc: str, storefront: str = DEFAULT_STOREFRONT) -> Optional[dict]:
     """Resolve a Spotify track to an Apple Music song by ISRC.
 
-    Returns {track_id, album_id, artwork_url} — artwork_url is the album
-    cover (Apple songs use the album image), sized to _ARTWORK_RENDER_SIZE.
+    Returns {track_id, album_id, artwork_url, release_date} — artwork_url is
+    the album cover (Apple songs use the album image), sized to
+    _ARTWORK_RENDER_SIZE. release_date is Apple's date for the song; for
+    vintage catalog this is generally the original release year rather than
+    a remaster/reissue date.
     """
     if not isrc:
         return None
@@ -145,6 +163,7 @@ async def match_track_by_isrc(isrc: str, storefront: str = DEFAULT_STOREFRONT) -
         "track_id": song["id"],
         "album_id": album_id,
         "artwork_url": _extract_artwork_url(song),
+        "release_date": _extract_release_date(song),
     }
 
 
@@ -179,6 +198,7 @@ async def search_by_text(
     return {
         "id": item.get("id"),
         "artwork_url": _extract_artwork_url(item),
+        "release_date": _extract_release_date(item),
     }
 
 
