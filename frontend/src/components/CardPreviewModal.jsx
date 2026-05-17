@@ -22,7 +22,9 @@ const ACCENT = "#d97a3b";
 //                   so canvas fills better (no more empty band above).
 //  v7 (2026-05-17): cover 640 → 600, tighter gap/padding to give the
 //                   quote column room (v6 was cramping meta + quote).
-const CARD_VERSION = "7";
+//  v8 (2026-05-17): cover 600 → 660, vertically center body row again,
+//                   quote 48 → 44 so the narrower column doesn't cramp.
+const CARD_VERSION = "8";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

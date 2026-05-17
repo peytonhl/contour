@@ -151,12 +151,12 @@ export default async function handler(request) {
             cover lifts toward the top of the canvas without leaving a
             ~160px empty band above it. Cover bumped to 640×640 to
             dominate more of the width and reduce overall negative space. */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', padding: '20px 36px 36px' }}>
-        <div style={{ display: 'flex', gap: 32, width: '100%' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 36px 36px' }}>
+        <div style={{ display: 'flex', gap: 32, width: '100%', alignItems: 'center' }}>
           <div
             style={{
-              width: 600,
-              height: 600,
+              width: 660,
+              height: 660,
               borderRadius: 8,
               overflow: 'hidden',
               flexShrink: 0,
@@ -166,7 +166,7 @@ export default async function handler(request) {
             }}
           >
             {coverUrl ? (
-              <img src={coverUrl} width={600} height={600} style={{ objectFit: 'cover' }} />
+              <img src={coverUrl} width={660} height={660} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
@@ -197,13 +197,14 @@ export default async function handler(request) {
               {entityArtist ? `${entityName} · ${entityArtist}` : entityName}
             </span>
 
-            {/* The quote itself. Smaller (48px vs 54px) so a full 220-char
-                review still fits comfortably alongside the cover. */}
+            {/* The quote — sized to fit the narrower column alongside a
+                660px cover. Bigger covers compress the column; 44px keeps
+                a typical short review at 2-3 lines, a long one at 5-6. */}
             <p
               style={{
                 fontFamily: 'Instrument Serif',
-                fontSize: 48,
-                lineHeight: 1.15,
+                fontSize: 44,
+                lineHeight: 1.18,
                 margin: 0,
                 color: TEXT,
               }}
