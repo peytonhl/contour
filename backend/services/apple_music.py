@@ -202,16 +202,20 @@ async def search_by_text(
     }
 
 
-async def fetch_artwork_for_id(
+async def fetch_meta_for_id(
     apple_music_id: str,
     entity_type: str,
     storefront: str = DEFAULT_STOREFRONT,
-) -> Optional[str]:
-    """Look up artwork URL by Apple Music ID. Used to backfill existing
-    cache rows that predate the artwork_url column on AppleMusicLink.
+) -> Optional[dict]:
+    """Look up metadata by Apple Music ID. Used to backfill cache rows that
+    predate the artwork_url + original_release_date columns.
 
-    One Apple API call per backfilled entity. Cheap and one-shot — once
-    the row gets its URL, future hits return from the cache."""
+    Returns {"artwork_url": str|None, "release_date": str|None} on success
+    or None on failure. One Apple API call per backfilled entity. The
+    response already contains both fields, so we extract them together
+    rather than burning two round-trips. Once the cache row has both,
+    future hits return from the DB for free.
+    """
     if not apple_music_id:
         return None
     resource = "albums" if entity_type == "album" else "songs"
@@ -222,7 +226,23 @@ async def fetch_artwork_for_id(
     data = body.get("data") or []
     if not data:
         return None
-    return _extract_artwork_url(data[0])
+    item = data[0]
+    return {
+        "artwork_url": _extract_artwork_url(item),
+        "release_date": _extract_release_date(item),
+    }
+
+
+# Backwards-compat shim so any external caller that's still importing
+# fetch_artwork_for_id keeps working. Forwards to the new function and
+# returns just the URL.
+async def fetch_artwork_for_id(
+    apple_music_id: str,
+    entity_type: str,
+    storefront: str = DEFAULT_STOREFRONT,
+) -> Optional[str]:
+    meta = await fetch_meta_for_id(apple_music_id, entity_type, storefront)
+    return meta.get("artwork_url") if meta else None
 
 
 def deep_link(entity_type: str, apple_music_id: str, storefront: str = DEFAULT_STOREFRONT) -> str:
