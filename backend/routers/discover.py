@@ -40,6 +40,18 @@ Tier ladder (in order, until `limit` tracks are gathered)
 Tier 1 honors down-weighted artists. Tiers 2–4 only honor hard dislikes.
 This means a single low rating won't blackhole an artist from charts, but
 explicit "Not interested" will.
+
+Cross-tier decade rerank
+────────────────────────
+Inside each tier's add-batch loop, candidates are re-sorted by how well
+their release_date matches the user's 4–5★ decade distribution (see
+_compute_decade_preference / _decade_score). A user who rates mostly
+80s tracks gets 80s-era candidates surfaced at the top of every tier's
+slice — including tier 2 chart candidates that happen to be reissues
+or vintage-leaning playlists. Decades not in the user's history still
+flow through at a 0.05 floor so the feed never goes empty when the
+preferred pool is thin. Tier ORDER is preserved (tier 1 still adds
+before tier 2 etc.) — only WITHIN-tier ordering changes.
 """
 
 import asyncio
@@ -168,6 +180,98 @@ async def _compute_target_popularity(db: AsyncSession, user_id: str) -> float | 
     return float(avg) if avg is not None else None
 
 
+async def _compute_decade_preference(
+    db: AsyncSession, user_id: str
+) -> Optional[dict[str, float]]:
+    """
+    Distribution of release decades across the user's 4–5★ ratings.
+
+    Returns something like {"1980s": 0.65, "1990s": 0.20, "2010s": 0.15}
+    when there's enough signal, or None otherwise. The For You feed uses
+    this to bias candidate ordering inside each tier so a user who
+    consistently 5★s 80s tracks doesn't get the feed dominated by
+    current-week chart hits.
+
+    Thresholds: requires ≥ 5 high ratings AND ≥ 3 of them resolving to
+    a parseable release year. Below those, no signal — the rest of the
+    feed code treats None as "no decade preference yet, keep tier order
+    as-is" so cold-start users see normal variety.
+
+    Reads release_date out of the local TrackCache / AlbumCache (already
+    populated for everything the user has interacted with). No Spotify
+    fetch — cheap query.
+    """
+    high_ratings = (await db.execute(
+        select(Rating).where(
+            Rating.user_id == user_id,
+            Rating.value >= 4,
+            Rating.entity_type.in_(("track", "album")),
+        )
+    )).scalars().all()
+
+    if len(high_ratings) < 5:
+        return None
+
+    track_ids = [r.entity_id for r in high_ratings if r.entity_type == "track"]
+    album_ids = [r.entity_id for r in high_ratings if r.entity_type == "album"]
+
+    release_dates: list[str] = []
+    if track_ids:
+        rows = (await db.execute(
+            select(TrackCache.release_date).where(TrackCache.spotify_id.in_(track_ids))
+        )).scalars().all()
+        release_dates.extend(d for d in rows if d)
+    if album_ids:
+        rows = (await db.execute(
+            select(AlbumCache.release_date).where(AlbumCache.spotify_id.in_(album_ids))
+        )).scalars().all()
+        release_dates.extend(d for d in rows if d)
+
+    decade_counts: dict[str, int] = {}
+    for date_str in release_dates:
+        m = re.match(r"^(\d{4})", date_str or "")
+        if not m:
+            continue
+        year = int(m.group(1))
+        if year < 1950 or year > 2100:
+            continue
+        decade_key = f"{(year // 10) * 10}s"
+        decade_counts[decade_key] = decade_counts.get(decade_key, 0) + 1
+
+    total = sum(decade_counts.values())
+    if total < 3:
+        return None
+
+    return {d: c / total for d, c in decade_counts.items()}
+
+
+def _decade_score(
+    release_date: Optional[str], decade_pref: Optional[dict[str, float]]
+) -> float:
+    """
+    Score 0–1 for how well a candidate track's release decade matches the
+    viewer's decade preference. Used to re-rank within a tier so the
+    user's preferred era surfaces at the top of the candidate pool.
+
+    Returns 0.5 (neutral) when there's no preference signal yet — keeps
+    cold-start ordering unchanged. For users with a preference, decades
+    they've rated get their proportional weight; decades they haven't
+    rated get a small floor (0.05) so candidates from "other" decades
+    can still surface when the preferred pool is thin, instead of the
+    feed going empty.
+    """
+    if not decade_pref:
+        return 0.5
+    if not release_date:
+        return 0.3  # unknown date — minor penalty, not exclusion
+    m = re.match(r"^(\d{4})", release_date)
+    if not m:
+        return 0.3
+    year = int(m.group(1))
+    decade_key = f"{(year // 10) * 10}s"
+    return max(decade_pref.get(decade_key, 0.05), 0.05)
+
+
 def _flatten_shuffle_add(results: list, adder) -> None:
     """
     Flatten per-query results from an asyncio.gather() call, shuffle as a
@@ -280,6 +384,17 @@ async def get_discover_feed(
             # silently to the cold-start default.
             target_popularity = None
 
+    # Decade-preference signal. Computed from the user's 4–5★ ratings —
+    # if they consistently rate 80s tracks high, the feed should favor
+    # 80s candidates within each tier. Cold-start users (< 5 high ratings)
+    # get None back and the ranker is a no-op. See _decade_score().
+    decade_pref: Optional[dict[str, float]] = None
+    if user_id:
+        try:
+            decade_pref = await _compute_decade_preference(db, user_id)
+        except Exception:
+            decade_pref = None
+
     tracks: list[dict] = []
     seen: set[str] = set()
 
@@ -302,7 +417,24 @@ async def get_discover_feed(
 
     def _make_adder(excluded: set[str]):
         def _add(batch: list[dict]) -> None:
-            for t in batch:
+            # Decade re-rank, applied WITHIN each tier's batch before the
+            # filter loop. Tracks that match the user's preferred decade
+            # surface first within this tier's slice of the batch; tracks
+            # from other decades still flow through (with a 0.05 floor)
+            # so the feed never goes empty when the preferred pool is thin.
+            # Tier order is preserved — tier 1 still adds before tier 2 etc.
+            # — so a strong-80s-leaning user gets tier 1 personalized 80s
+            # at the top of the batch and tier 2 chart hits below, in
+            # decade-preferred order within each. Stable-sort so the
+            # _flatten_shuffle_add randomness is preserved on ties.
+            local = batch
+            if decade_pref:
+                local = sorted(
+                    batch,
+                    key=lambda t: _decade_score(t.get("release_date"), decade_pref),
+                    reverse=True,
+                )
+            for t in local:
                 artist_id = (t.get("artist_ids") or [None])[0]
                 if active_language != "all":
                     title_ok = _passes_language_filter(t.get("name", ""), active_language)
@@ -409,11 +541,22 @@ async def get_discover_feed(
             if len(tracks) >= limit:
                 break
 
+    # Compact decade-pref summary for the log: "1980s:65%,1990s:20%" etc.
+    # Only the top three contribute; "none" when no preference signal.
+    if decade_pref:
+        decade_summary = ",".join(
+            f"{d}:{int(p * 100)}%"
+            for d, p in sorted(decade_pref.items(), key=lambda kv: kv[1], reverse=True)[:3]
+        )
+    else:
+        decade_summary = "none"
+
     logger.info(
-        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, target_pop=%s, genres=%s)",
+        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, target_pop=%s, decade_pref=%s, genres=%s)",
         len(tracks), len(exclude_ids), len(seed_artist_ids),
         len(disliked_set), len(down_weighted_set),
         f"{target_popularity:.1f}" if target_popularity is not None else "default",
+        decade_summary,
         genre_list[:2],
     )
 
