@@ -296,6 +296,40 @@ _DEEZER_FALLBACK_QUERIES = [
 ]
 
 
+# Explicit non-English language tags often appear in romanized form inside
+# album metadata: "Jetlee (Dialogues) [TELUGU]", "Bharat Anthem (Hindi)",
+# "Sajni (Tamil Version)". The track title and primary artist name are
+# often romanized ASCII (passing the Latin-script gate), so the album-name
+# tag is the only reliable signal. This list is the major non-English
+# language tags we've seen pollute the english-mode feed; matched
+# case-insensitively against both bracketed and parenthesized forms.
+#
+# Spanish is intentionally NOT on this list — Spanish-language tracks are
+# allowed in english mode (their text is Latin-script and they're a
+# significant fraction of US streaming). When the user explicitly picks
+# language=spanish we don't apply this filter at all.
+_NON_ENGLISH_ALBUM_TAG_PATTERNS = re.compile(
+    # `[language]` / `(language)` / `[language version]` / `(tamil dub)` etc.
+    # The opening bracket + optional whitespace anchor prevents matches
+    # against legit text like "Hindi Zahra" or "My Telugu Cousin" — the
+    # language word has to be RIGHT after the bracket. After the language
+    # word, allow either an immediate closing bracket, or a space followed
+    # by non-bracket content up to the close (covers "(Tamil Version)",
+    # "[Hindi Songs]", "(Telugu Movie)" etc.).
+    r"[\[\(]\s*(?:"
+    r"telugu|hindi|tamil|punjabi|bengali|malayalam|kannada|marathi"
+    r"|gujarati|urdu|nepali|sinhala|odia|assamese"
+    r"|arabic|farsi|persian|hebrew|turkish"
+    r"|mandarin|cantonese|chinese|korean|japanese|thai|vietnamese|indonesian|tagalog|filipino"
+    r"|russian|polish|czech|slovak|hungarian|romanian|bulgarian|serbian|croatian|ukrainian"
+    r"|greek"
+    # Common short tags
+    r"|tel(?:ugu)?|hin(?:di)?|tam(?:il)?|pun(?:jabi)?|ben(?:gali)?"
+    r")(?:\s+[^\[\]\(\)]*)?[\]\)]",
+    re.IGNORECASE,
+)
+
+
 def _is_likely_english(text: str) -> bool:
     """
     Return True if the text looks like it's primarily Latin/English.
@@ -813,6 +847,18 @@ async def get_discover_feed(
                     title_ok = _passes_language_filter(t.get("name", ""), active_language)
                     artist_ok = _passes_language_filter((t.get("artists") or [""])[0], active_language)
                     if not (title_ok and artist_ok):
+                        continue
+                    # Album-name language tag check. Catches the case where
+                    # track title + primary artist are romanized ASCII (so
+                    # _is_likely_english passes) but the album metadata
+                    # explicitly says it's a non-English release — e.g.
+                    # "Jetlee (Dialogues) [TELUGU]" by an artist named
+                    # "Satya". Without this check, Spotify's wider hip-hop
+                    # text search (which I bumped to k=6/limit=20 in the
+                    # genre-locked branch) surfaces Tollywood/Bollywood
+                    # hip-hop tracks in english-mode US feeds.
+                    album_text = t.get("album_name") or ""
+                    if album_text and _NON_ENGLISH_ALBUM_TAG_PATTERNS.search(album_text):
                         continue
                 # Workout / karaoke / tribute filter. Applied here (per-track
                 # in the response path) rather than upstream so it catches

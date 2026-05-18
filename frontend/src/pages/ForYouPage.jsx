@@ -2452,12 +2452,24 @@ export function ForYouPage() {
         display: "flex",
         borderBottom: "1px solid rgba(255,255,255,0.1)",
         flexShrink: 0,
-        // In swipe mode the parent extends to top:0 (covers the safe area
-        // so URL-bar-collapse doesn't expose a black gap). Pad the strip
-        // by safe-area-inset-top so the tab buttons themselves stay
-        // below the notch / status bar — the glass background extends
-        // up into the status-bar area as a continuous header surface.
-        paddingTop: isSwipe ? "env(safe-area-inset-top, 0px)" : undefined,
+        // Pad the strip by safe-area-inset-top in BOTH modes so the tab
+        // buttons stay below the iPhone status bar. The glass background
+        // extends up into the status-bar area as a continuous header.
+        //
+        // Why unconditional (was: isSwipe-only): on mobile non-swipe modes
+        // (Community / Friends) the Layout header is hidden via the
+        // .app-header.hide-on-home-mobile CSS rule, AND the strip's CSS
+        // forces `top: 0 !important`. With no safe-area padding, the
+        // pinned strip rendered UNDER the status bar — iPhone's system
+        // time / battery indicators painted over the "Discover" /
+        // "Community" tab labels (reported in prod 2026-05-18).
+        //
+        // The cost in swipe mode is unchanged (was already applied there).
+        // The cost in scroll modes when Layout's header IS visible (i.e.
+        // tablet+, or before the user scrolls) is one safe-area-inset-top
+        // of vertical whitespace between the header and the strip — minor
+        // cosmetic, much better than the overlap glitch.
+        paddingTop: "env(safe-area-inset-top, 0px)",
         // Belt-and-suspenders: force the strip onto its own GPU layer so
         // nothing in the content panel paints above it regardless of
         // descendant stacking-context shenanigans.
