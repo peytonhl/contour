@@ -30,7 +30,10 @@ const ACCENT = "#d97a3b";
 //  v10 (2026-05-17): switched from side-by-side to stacked (JQ Adams meme
 //                    template). Cover top-centered, meta + quote
 //                    centered below, rating + attribution bottom-bar.
-const CARD_VERSION = "10";
+//  v11 (2026-05-17): bumped meta (title 22→32, artist 18→24) and REVIEW
+//                    tag (20→26) so they carry visual weight against the
+//                    600px cover above.
+const CARD_VERSION = "11";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

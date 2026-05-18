@@ -141,7 +141,7 @@ export default async function handler(request) {
           >
             Contour
           </span>
-          <span style={{ fontSize: 20, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 26, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
             Review
           </span>
         </div>
@@ -189,14 +189,14 @@ export default async function handler(request) {
 
           {/* Subject — title centered above the quote, artist below.
               Caps-tracked for the editorial feel. */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <span
               style={{
-                fontSize: 22,
+                fontSize: 32,
                 color: TEXT,
-                letterSpacing: '0.08em',
+                letterSpacing: '0.06em',
                 textTransform: 'uppercase',
-                fontWeight: 600,
+                fontWeight: 700,
                 textAlign: 'center',
               }}
             >
@@ -205,7 +205,7 @@ export default async function handler(request) {
             {entityArtist && (
               <span
                 style={{
-                  fontSize: 18,
+                  fontSize: 24,
                   color: MUTED,
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
