@@ -1643,6 +1643,15 @@ function ForYouFeed() {
     if (target < 0 || target >= tracks.length) {
       setDragging(false);
       setDragOffset(0);
+      // STUCK-AT-END recovery: a forward swipe that has nowhere to go
+      // (target >= tracks.length) was previously a silent no-op. If the
+      // initial batch came back thin (1-2 tracks — common right after the
+      // v7 pool-cache invalidation or for users with aggressive filters),
+      // the user got stuck on card 0 forever because the normal prefetch
+      // path (inside commit() at advance success) never fired. Trigger a
+      // background fetch here so the next swipe attempt has cards.
+      // fetchingMoreRef inside fetchBatch prevents overlapping fetches.
+      if (direction === 1) fetchBatch(true);
       return;
     }
     setTransitioning(true);
