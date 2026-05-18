@@ -63,34 +63,14 @@ export default async function handler(request) {
   const userId = url.searchParams.get('user_id');
   if (!userId) return new Response('Missing user_id', { status: 400 });
 
-  // TEMPORARY: `?test=1` for visual layout verification — remove after.
-  const isTest = url.searchParams.get('test') === '1';
-
   let data;
-  if (isTest) {
-    data = {
-      user: { id: userId, display_name: 'Peyton Lindogan', image_url: null },
-      rating: 1.5,
-      community_avg: 4.7,
-      community_count: 247,
-      divergence: -3.2,
-      entity: {
-        type: 'track',
-        id: 'test-entity',
-        name: 'Please Please Please',
-        artist: 'Sabrina Carpenter',
-        cover_url: 'https://i.scdn.co/image/ab67616d0000b273de84adf0e48248ea2d769c3e',
-      },
-    };
-  } else {
-    try {
-      const res = await fetch(`${API_BASE}/ratings/users/${encodeURIComponent(userId)}/hot-take`);
-      if (res.status === 404) return new Response('No hot take to show', { status: 404 });
-      if (!res.ok) return new Response('Failed to load hot take', { status: 502 });
-      data = await res.json();
-    } catch {
-      return new Response('Failed to load hot take', { status: 502 });
-    }
+  try {
+    const res = await fetch(`${API_BASE}/ratings/users/${encodeURIComponent(userId)}/hot-take`);
+    if (res.status === 404) return new Response('No hot take to show', { status: 404 });
+    if (!res.ok) return new Response('Failed to load hot take', { status: 502 });
+    data = await res.json();
+  } catch {
+    return new Response('Failed to load hot take', { status: 502 });
   }
 
   const [fontRegular, fontItalic] = await Promise.all([fontPromise, fontItalicPromise]);
