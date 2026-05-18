@@ -1764,6 +1764,32 @@ async def discover_me_state(
 
 
 @router.get("/debug")
+@router.get("/probe-artist-raw")
+async def discover_probe_artist_raw(id: str = Query(..., description="Single Spotify artist ID")):
+    """Raw Spotify /v1/artists/{id} response — bypasses get_artist and
+    _parse_artist to see what Spotify actually returns. Confirms whether
+    Spotify is stripping genres/popularity or our parser is dropping them."""
+    import httpx as _httpx
+    from services import spotify as _spotify
+    try:
+        async with _httpx.AsyncClient() as client:
+            token = await _spotify._get_token(client)
+            resp = await client.get(
+                f"https://api.spotify.com/v1/artists/{id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            try:
+                body = resp.json()
+            except Exception:
+                body = None
+        return {
+            "status_code": resp.status_code,
+            "raw_body": body,
+        }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 @router.get("/probe-artist-single")
 async def discover_probe_artist_single(id: str = Query(..., description="Single Spotify artist ID")):
     """Probe /v1/artists/{id} (per-artist endpoint) to see what Spotify
