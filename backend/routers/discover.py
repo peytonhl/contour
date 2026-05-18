@@ -315,10 +315,9 @@ _DEEZER_FALLBACK_QUERIES = [
 # language tags we've seen pollute the english-mode feed; matched
 # case-insensitively against both bracketed and parenthesized forms.
 #
-# Spanish is intentionally NOT on this list — Spanish-language tracks are
-# allowed in english mode (their text is Latin-script and they're a
-# significant fraction of US streaming). When the user explicitly picks
-# language=spanish we don't apply this filter at all.
+# Note: this only catches EXPLICITLY TAGGED tracks. Romanized Spanish
+# (no language tag, all Latin script) is caught by _is_spanish_content
+# below, applied when active_language == "english".
 _NON_ENGLISH_ALBUM_TAG_PATTERNS = re.compile(
     # `[language]` / `(language)` / `[language version]` / `(tamil dub)` etc.
     # The opening bracket + optional whitespace anchor prevents matches
@@ -339,6 +338,90 @@ _NON_ENGLISH_ALBUM_TAG_PATTERNS = re.compile(
     r")(?:\s+[^\[\]\(\)]*)?[\]\)]",
     re.IGNORECASE,
 )
+
+
+# Romanized Spanish detection. Spanish-language tracks pass the Latin-script
+# gate (their text is mostly ASCII, sometimes one accented char like ñ/ó)
+# AND have no language tag like [SPANISH] in the album name. The existing
+# filters can't tell them apart from English. Reported case (2026-05-18):
+# "Eterna Navidad" by "Los Hermanos Chacón" on "Cantad Alegres a Dios"
+# surfaced in an english-mode feed.
+#
+# Two-tier match: a single STRONG marker (unambiguous Spanish vocab — verb
+# conjugations, Spanish-only nouns) is enough to flag, or ≥3 MILD markers
+# (common short words like "los"/"la"/"el" that occasionally appear in
+# English place names — single occurrence not flagged to avoid clobbering
+# "Los Angeles"-style legit content).
+_SPANISH_STRONG = re.compile(
+    r"\b(?:"
+    # Verbs and conjugations — basically never appear in English
+    r"canci[óo]n|canciones|cantad|cantan|cantando|cantante"
+    r"|alegre|alegres|alegr[íi]a|alegrad"
+    r"|bienvenid[oa]s?"
+    r"|querid[oa]|querer|quiero|quieres|quiere|quieren"
+    # Strong Spanish-only nouns
+    r"|navidad|cristian[oa]s?|coraz[óo]n|gracias"
+    r"|hermana|hermanas|hermano|hermanos"
+    r"|iglesia|abuelit[oa]|abuel[oa]"
+    r"|ni[ñn]o|ni[ñn]a|ni[ñn]os"
+    r"|amig[oa]s?|pueblo"
+    # Latin-music subgenre words (these almost always indicate Spanish/
+    # Portuguese-language content even when used without other markers)
+    r"|reggaeton|reggaet[óo]n|salsa|mariachi|ranchera|cumbia|bachata|merengue"
+    r"|vallenato|corrido|nortenã|norte[ñn]a|champeta|trova"
+    # Inverted punctuation is a near-perfect Spanish/Catalan tell
+    r"|[¿¡]"
+    r")\b",
+    re.IGNORECASE,
+)
+_SPANISH_MILD = re.compile(
+    r"\b(?:"
+    r"los|las|del|para|por|sin|que|y|o"
+    r"|m[úu]sica|noche|noches|d[íi]a|d[íi]as|hoy|ma[ñn]ana"
+    r"|vida|tiempo|amor|sue[ñn]os?"
+    r"|hijo|hija|padre|madre|dios"
+    r"|qu[ée]|c[óo]mo|d[óo]nde|cu[áa]ndo"
+    r"|buen|buena|buenas|buenos|peque[ñn][oa]"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _is_spanish_content(track: dict) -> bool:
+    """Detect Spanish-language tracks via romanized text markers.
+
+    Applied to tracks in english mode (when the user explicitly picked
+    'English' in the language toggle, they want non-English filtered out
+    even when the script is Latin). Combined check across track name,
+    album name, and ALL credited artist names.
+
+    Triggers on either:
+      - ≥1 STRONG marker (unambiguous Spanish vocab)
+      - ≥3 MILD markers (common short Spanish words; threshold avoids
+        false-positiving English content like "Los Angeles", "El Camino")
+
+    Trade-offs:
+      - Catches "Eterna Navidad" / "Los Hermanos Chacón" / "Cantad Alegres
+        a Dios" via multiple strong markers (navidad, cantad, alegres,
+        hermanos). ✓
+      - Misses crossover artists whose track titles are single-word
+        Spanish proper names ("Despacito") or who release English-titled
+        tracks. False-negative; tier-1's artist-genre verification can
+        catch some of those if the artist is tagged latin/reggaeton.
+      - Preserves "Los Angeles"-style English content (single "los" mild
+        match isn't enough). ✓
+    """
+    parts = [
+        track.get("name") or "",
+        track.get("album_name") or "",
+        " ".join(track.get("artists") or []),
+    ]
+    text = " ".join(p for p in parts if p)
+    if not text.strip():
+        return False
+    if _SPANISH_STRONG.search(text):
+        return True
+    return len(_SPANISH_MILD.findall(text)) >= 3
 
 
 def _is_likely_english(text: str) -> bool:
@@ -974,6 +1057,17 @@ async def get_discover_feed(
                     # hip-hop tracks in english-mode US feeds.
                     album_text = t.get("album_name") or ""
                     if album_text and _NON_ENGLISH_ALBUM_TAG_PATTERNS.search(album_text):
+                        continue
+                    # Romanized Spanish-language detection. The two checks
+                    # above only catch (a) non-Latin scripts and (b)
+                    # explicit [SPANISH]/[TELUGU]/etc tags. Spanish tracks
+                    # with romanized ASCII text and no language tag — e.g.
+                    # "Eterna Navidad" by "Los Hermanos Chacón" — slip past
+                    # both. Only apply in english mode (not spanish; not
+                    # all). _is_spanish_content checks combined title +
+                    # album + artist text for unambiguous Spanish vocab
+                    # or ≥3 short common Spanish words.
+                    if active_language == "english" and _is_spanish_content(t):
                         continue
                 # Workout / karaoke / tribute filter. Applied here (per-track
                 # in the response path) rather than upstream so it catches
