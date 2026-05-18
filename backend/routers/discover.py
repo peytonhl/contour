@@ -1292,15 +1292,51 @@ async def get_discover_feed(
         # Genre-aware source: query Deezer for the user's top 3 preferred
         # genres. Skipped when eligible_genres is empty (negative-only or
         # truly-cold-start state — pure chart is the only option).
+        #
+        # KEYWORD-STUFFING FILTER (re-applied 2026-05-18): Deezer search is
+        # a literal text match, so searching "hip hop" returns tracks
+        # LITERALLY titled "Hip-Hop" / "Hip Hop" / variants. Without
+        # filtering, the user sees rows of monotonous keyword-named
+        # tracks — reported regression: "songs named 'hip-hop' and have
+        # the words 'classic' are being shown to me." This filter mirrors
+        # the one inside services/spotify.py:search_tracks_by_genre and
+        # the prior tier 4 keyword-fallback filter (commit d98078a, since
+        # removed in d6e251c on the assumption tier 4 wouldn't fire —
+        # but it does fire from nuclear). Drops tracks whose title or
+        # artist name contains any of the user's genre slugs.
         if eligible_genres:
             try:
                 genre_searches = await asyncio.gather(*[
                     deezer_svc.search_tracks(g.replace("-", " "), limit=15)
                     for g in eligible_genres[:3]
                 ], return_exceptions=True)
+
+                # Build the keyword-variant set across ALL of the user's
+                # eligible genres (not just the queried ones). A hip-hop+
+                # R&B user doesn't want a track literally titled "R&B"
+                # either.
+                genre_keywords: set[str] = set()
+                for g in eligible_genres:
+                    gl = g.lower().strip()
+                    genre_keywords.update({
+                        gl, gl.replace("-", " "), gl.replace("-", ""),
+                    })
+
+                def _is_keyword_stuffed(t: dict) -> bool:
+                    fields = [
+                        (t.get("name") or "").lower(),
+                        " ".join(t.get("artists") or []).lower(),
+                    ]
+                    return any(
+                        kw and any(kw in f for f in fields)
+                        for kw in genre_keywords
+                    )
+
                 for res in genre_searches:
                     if isinstance(res, list):
-                        nuclear_pool.extend(res)
+                        nuclear_pool.extend(
+                            t for t in res if not _is_keyword_stuffed(t)
+                        )
             except Exception as exc:
                 logger.error("discover: nuclear genre search failed: %s", exc)
 
