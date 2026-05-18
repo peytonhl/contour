@@ -861,9 +861,17 @@ async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, l
             token = await _get_token(client)
             for chunk in chunks:
                 try:
+                    # Embed `ids` in the URL rather than passing via params=.
+                    # httpx's params encoder URL-encodes commas (",") as
+                    # "%2C", and Spotify's /v1/artists endpoint rejects the
+                    # encoded form (returns empty or 400 — varies). Same
+                    # trap that bit get_artist_albums via include_groups
+                    # (see CLAUDE.md). Building the URL ourselves keeps
+                    # the comma literal. _spotify_get accepts a full URL
+                    # with query string already attached.
+                    ids_param = ",".join(chunk)
                     resp = await _spotify_get(
-                        client, "https://api.spotify.com/v1/artists", token,
-                        params={"ids": ",".join(chunk)},
+                        client, f"https://api.spotify.com/v1/artists?ids={ids_param}", token,
                     )
                     resp.raise_for_status()
                     chunk_records: list[dict] = []
