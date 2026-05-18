@@ -1163,48 +1163,84 @@ async def get_discover_feed(
 
     # ── Tier 4.5: Nuclear fallback — guarantee the user sees something ──────
     # Triggers whenever every tier above produced zero, regardless of WHY.
-    # Previous condition was `not tracks and disliked_set`, which only fired
-    # when hard-dislikes were what blackholed the feed. But active raters who
-    # don't use "Not interested" can still hit empty-feed: their rated tracks
-    # accumulate in exclude_ids and can wipe out tier 1 pools entirely, and
-    # without disliked_set the safety net never kicked in. Reported in prod
-    # 2026-05-18 — feed showed "Warming up the feed" indefinitely.
+    # Pre-2026-05-18, the gate was `not tracks and disliked_set`, which only
+    # fired when hard-dislikes were the cause. Active raters who don't use
+    # "Not interested" can hit empty-feed: their rated tracks accumulate in
+    # exclude_ids and wipe out tier 1 pools entirely.
     #
-    # Two-pass: first try the chart with exclude_ids honored (preferred — no
-    # repeats of rated tracks). If that's still empty (user has rated every
-    # current chart hit, or chart unavailable), serve raw chart ignoring
-    # exclude_ids — repeating a rated track is preferable to an empty feed.
+    # Sourcing: previously the nuclear pool was just Deezer /chart, which is
+    # currently country/pop-heavy in the US market. A user who explicitly
+    # picked rap+classical was seeing 6 country/pop tracks in a row. So we
+    # also include a Deezer keyword search for each of the user's top
+    # genres — gives them their actual preferred genre family even in the
+    # desperate-recovery path, mixed with chart hits. The keyword-stuffing
+    # filter that earlier tiers apply is INTENTIONALLY skipped here: a
+    # track literally titled "Hip-Hop" by Mos Def is way better than a
+    # country chart hit for a rap fan.
+    #
+    # Two-pass exclude_ids handling: first try with exclude_ids honored
+    # (no rated repeats), then ignore exclude_ids if still empty (user
+    # has rated every nuclear candidate too).
     if not tracks:
         logger.warning(
             "discover: NUCLEAR FALLBACK — all tiers empty (user_id=%s, exclude_ids=%d, dislikes=%d, down_weighted=%d, genres=%s)",
             user_id or "anon", len(exclude_ids), len(disliked_set),
             len(down_weighted_set), genre_list[:3],
         )
+
+        nuclear_pool: list[dict] = []
+
+        # Source 1: user's preferred genres via Deezer search. Mixes real
+        # genre catalog into the desperate-recovery path. For a hip-hop
+        # user, this returns Mos Def / Dead Prez / Lil Wayne / Drake etc.
+        # — actual rap. For a classical user, real classical recordings.
+        if eligible_genres:
+            try:
+                genre_searches = await asyncio.gather(*[
+                    deezer_svc.search_tracks(g.replace("-", " "), limit=15)
+                    for g in eligible_genres[:3]
+                ], return_exceptions=True)
+                for res in genre_searches:
+                    if isinstance(res, list):
+                        nuclear_pool.extend(res)
+            except Exception as exc:
+                logger.error("discover: nuclear genre search failed: %s", exc)
+
+        # Source 2: Deezer chart. Adds mainstream variety; for users with no
+        # eligible_genres (negative-only state) this is the entire pool.
         try:
-            nuclear = await deezer_svc.get_chart_tracks(limit=50)
+            chart = await deezer_svc.get_chart_tracks(limit=50)
+            if isinstance(chart, list):
+                nuclear_pool.extend(chart)
         except Exception as exc:
             logger.error("discover: nuclear chart fetch failed: %s", exc)
-            nuclear = []
+
+        random.shuffle(nuclear_pool)
 
         # Pass 1: honor exclude_ids (no rated repeats).
-        for t in nuclear:
+        for t in nuclear_pool:
             if t.get("id") and t["id"] not in exclude_ids and t["id"] not in seen:
                 seen.add(t["id"])
                 tracks.append(t)
             if len(tracks) >= limit:
                 break
 
-        # Pass 2: still empty? Serve chart ignoring exclude_ids. Active raters
-        # who've rated every chart hit see repeats, which is acceptable in a
-        # "feed totally broken" recovery path.
-        if not tracks and nuclear:
+        # Pass 2: still empty? Serve pool ignoring exclude_ids. Active raters
+        # who've rated every nuclear candidate see repeats — acceptable in
+        # "feed totally broken" recovery.
+        if not tracks and nuclear_pool:
             logger.warning("discover: NUCLEAR FALLBACK pass 2 — ignoring exclude_ids")
-            for t in nuclear:
+            for t in nuclear_pool:
                 if t.get("id") and t["id"] not in seen:
                     seen.add(t["id"])
                     tracks.append(t)
                 if len(tracks) >= limit:
                     break
+
+        logger.warning(
+            "discover: NUCLEAR FALLBACK delivered %d tracks (genre_searches_used=%s, chart_used=%s)",
+            len(tracks), bool(eligible_genres), True,
+        )
 
     # Compact preference summary for the log: "1980s:65%,1990s:20%" etc.
     # Only the top three contribute; "none" when no preference signal.
