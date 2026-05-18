@@ -121,6 +121,43 @@
         letter-spacing: -0.01em;
         color: #fafafa;
       }
+
+      /* ── TEMPORARY splash debug overlay ──
+         Painted from first frame to capture the iOS launch sequence on a
+         real device (we can't read iPhone devtools console). main.jsx
+         appends timestamped event lines as boot events fire — rAF, font
+         load, splash hide — together with the wordmark's screen bbox at
+         each moment. User screen-records the launch, we read the actual
+         sequence off the recording and pick the right fix instead of
+         hypothesis-fishing. Auto-dismisses 5s after splash hides; tap
+         to dismiss immediately. Remove once we've diagnosed the snap. */
+      .boot-debug {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10000;   /* above .boot-splash so it stays visible during + after */
+        background: rgba(0, 0, 0, 0.78);
+        color: #b8ffce;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        line-height: 1.45;
+        padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+        max-height: 45vh;
+        overflow-y: auto;
+        white-space: pre;
+        opacity: 1;
+        transition: opacity 400ms ease;
+        pointer-events: auto;
+      }
+      .boot-debug.fading { opacity: 0; }
+      .boot-debug__hint {
+        color: #6effa3;
+        font-weight: 700;
+        padding-bottom: 4px;
+        border-bottom: 1px solid rgba(110, 255, 163, 0.3);
+        margin-bottom: 4px;
+      }
     </style>
   </head>
   <body>
@@ -129,6 +166,12 @@
          out and leaving the app visible underneath. -->
     <div id="boot-splash" class="boot-splash" aria-hidden="true">
       <div class="boot-splash__wordmark">Contour</div>
+    </div>
+    <!-- TEMPORARY: splash-twitch diagnostic overlay. Remove with main.jsx's
+         _bootDebug helper once we've identified the cause of the wordmark
+         snap on iOS launch. -->
+    <div id="boot-debug" class="boot-debug" aria-hidden="true">
+      <div class="boot-debug__hint">splash debug · tap to dismiss</div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

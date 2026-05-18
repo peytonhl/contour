@@ -9,6 +9,81 @@ import { registerServiceWorker } from "./sw-register.js";
 import App from "./App.jsx";
 import "./index.css";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPORARY: splash-twitch diagnostic instrumentation.
+//
+// Two persistent fixes for the "Contour wordmark snaps around on launch"
+// bug have shipped and both have been reported as not working. Per the
+// debugging discipline in CLAUDE.md ("before writing a fix, instrument"),
+// we now make the runtime state visible on screen so iOS users can
+// screen-record the launch and we can read off the actual event
+// sequence + wordmark coordinates instead of guessing.
+//
+// This block records into the #boot-debug overlay (see index.html):
+//   - module-parse time (t≈0)
+//   - native SplashScreen.hide() returned
+//   - requestAnimationFrame fired
+//   - document.fonts.ready resolved
+//   - Instrument Serif specific load() resolved
+//   - boot splash actually set display:none
+//   - the boot-splash wordmark's getBoundingClientRect at each event
+//   - the Layout-header wordmark's bbox once React renders it (polled)
+//
+// Remove this entire block (plus the .boot-debug styles + element in
+// index.html) once we've diagnosed the snap. Search for "boot-debug" to
+// find every touch point.
+// ─────────────────────────────────────────────────────────────────────────────
+const _bootDebugStart = performance.now();
+const _bootDebugEl = document.getElementById("boot-debug");
+let _bootDebugDismissed = false;
+
+if (_bootDebugEl) {
+  _bootDebugEl.addEventListener("click", () => {
+    _bootDebugDismissed = true;
+    _bootDebugEl.style.display = "none";
+  });
+}
+
+function _bootDebug(label) {
+  if (_bootDebugDismissed || !_bootDebugEl) return;
+  const t = (performance.now() - _bootDebugStart).toFixed(0).padStart(4, " ");
+  const splashWord = document.querySelector(".boot-splash__wordmark");
+  const headerWord = document.querySelector(".app-header span");
+  const fmtRect = (el) => {
+    if (!el) return "—";
+    const r = el.getBoundingClientRect();
+    return `x=${r.left.toFixed(0)} y=${r.top.toFixed(0)} w=${r.width.toFixed(0)} h=${r.height.toFixed(0)}`;
+  };
+  const splash = document.getElementById("boot-splash");
+  const splashDisplay = splash ? getComputedStyle(splash).display : "—";
+  const line = document.createElement("div");
+  line.textContent =
+    `+${t}ms ${label}\n` +
+    `      splash.display=${splashDisplay} splashWord=${fmtRect(splashWord)}\n` +
+    `      headerWord=${fmtRect(headerWord)}`;
+  _bootDebugEl.appendChild(line);
+  _bootDebugEl.scrollTop = _bootDebugEl.scrollHeight;
+}
+
+_bootDebug("module parse");
+
+// Poll for the Layout-header wordmark to appear (it materialises only
+// after React mounts the Layout component). Logs the first time we see
+// it so we can correlate against the splash-hide moment.
+let _headerSeen = false;
+const _headerPoll = setInterval(() => {
+  if (_headerSeen || _bootDebugDismissed) {
+    clearInterval(_headerPoll);
+    return;
+  }
+  const headerWord = document.querySelector(".app-header span");
+  if (headerWord && headerWord.getBoundingClientRect().width > 0) {
+    _headerSeen = true;
+    _bootDebug("layout header wordmark mounted");
+    clearInterval(_headerPoll);
+  }
+}, 50);
+
 initAnalytics();
 
 // Cache JS/CSS bundles for instant repeat-launch. Skipped in dev to avoid
@@ -43,7 +118,9 @@ createRoot(document.getElementById("root")).render(
 // snap is invisible.
 //
 // SplashScreen.hide() is a no-op on web — safe to call unconditionally.
-SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
+SplashScreen.hide({ fadeOutDuration: 0 })
+  .then(() => _bootDebug("native SplashScreen.hide resolved"))
+  .catch(() => _bootDebug("native SplashScreen.hide rejected"));
 
 // Snap the HTML boot splash off (display:none) once two conditions are met:
 //   a) Instrument Serif (the Layout header's font) has finished loading.
@@ -74,8 +151,16 @@ SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
 // the brand moment to start counting from when the wordmark is actually
 // on screen, not from the moment main.jsx parsed.
 requestAnimationFrame(() => {
+  _bootDebug("rAF (first paint window)");
   const start = performance.now();
   const MIN_HOLD_MS = 700;
+
+  // Also log when fonts.ready resolves — separate signal from the
+  // specific Instrument Serif load() promises below, since fonts.ready
+  // resolves when ALL pending font fetches finish (or none are pending).
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => _bootDebug("document.fonts.ready"));
+  }
 
   // Request Instrument Serif at 26px (Layout header size) and 76px (Era
   // Score) so both the header and the first signature stat have the font
@@ -85,7 +170,8 @@ requestAnimationFrame(() => {
     ? Promise.all([
         document.fonts.load("400 26px 'Instrument Serif'"),
         document.fonts.load("400 76px 'Instrument Serif'"),
-      ]).catch(() => {})
+      ]).then(() => _bootDebug("Instrument Serif loaded"))
+       .catch(() => _bootDebug("Instrument Serif load rejected"))
     : Promise.resolve();
 
   // Hard ceiling so a stalled font request never strands the user on the
@@ -93,15 +179,38 @@ requestAnimationFrame(() => {
   // brief font-swap rather than blocking the whole app.
   const fontReady = Promise.race([
     fontPromise,
-    new Promise((resolve) => setTimeout(resolve, 2000)),
+    new Promise((resolve) => setTimeout(() => {
+      _bootDebug("2s font ceiling tripped");
+      resolve();
+    }, 2000)),
   ]);
 
   fontReady.then(() => {
     const elapsed = performance.now() - start;
     const remaining = Math.max(0, MIN_HOLD_MS - elapsed);
+    _bootDebug(`font gate cleared, waiting ${remaining.toFixed(0)}ms for brand-moment`);
     setTimeout(() => {
+      _bootDebug("BEFORE splash display:none");
       const splash = document.getElementById("boot-splash");
       if (splash) splash.style.display = "none";
+      // Capture state immediately after the snap — measure on the next
+      // frame so layout has settled. This is the moment the user
+      // perceives as the wordmark "snapping around"; the bbox of the
+      // Layout header wordmark relative to where the boot-splash
+      // wordmark just was tells us exactly how far / which axis it moved.
+      requestAnimationFrame(() => _bootDebug("AFTER splash display:none"));
     }, remaining);
   });
 });
+
+// Auto-dismiss the debug overlay 5 seconds after launch settles so it
+// doesn't permanently disfigure the app for regular users — leaves
+// enough time to capture the snap in a screen recording.
+setTimeout(() => {
+  if (_bootDebugDismissed || !_bootDebugEl) return;
+  _bootDebugEl.classList.add("fading");
+  setTimeout(() => {
+    _bootDebugEl.style.display = "none";
+    _bootDebugDismissed = true;
+  }, 400);
+}, 8000);

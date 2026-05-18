@@ -85,6 +85,18 @@ async def get_artist_tracks_by_id(spotify_artist_id: str) -> Optional[list[dict]
     Fetch all tracks + stream counts for an artist using their Spotify artist ID.
     Kworb's artist track page: kworb.net/spotify/artist/{ID}.html
     Returns a list of {"name": str, "streams": int} or None on failure.
+
+    NOTE: the artist tracks page has a DIFFERENT column layout from the
+    albums page (`{ID}_albums.html`). Tracks: `[PeakDate, Title, Streams,
+    Global, US, GB, ...]`. Albums: `[Album Name, Streams]`. The previous
+    code reused _parse_album_page here, which reads cells[0] as the title
+    and cells[1] as the streams — for the tracks page that landed
+    cells[0]="2020/03/20" (PeakDate) and cells[1]="Blinding Lights"
+    (Title), int() raised on every row, and the function returned an
+    empty list. The Last.fm fallback then served lifetime SCROBBLE
+    counts (millions), which look 100× too low next to album Spotify
+    streams (billions). Switched to _parse_artist_tracks_page which
+    reads from cells[1]+cells[2] for the correct layout.
     """
     url = f"{KWORB_BASE}/{spotify_artist_id}.html"
     try:
@@ -92,7 +104,7 @@ async def get_artist_tracks_by_id(spotify_artist_id: str) -> Optional[list[dict]
             resp = await client.get(url, headers=HEADERS)
             if resp.status_code != 200:
                 return None
-            return _parse_album_page(resp.text)
+            return _parse_artist_tracks_page(resp.text)
     except Exception:
         return None
 
@@ -131,6 +143,56 @@ def _parse_album_page(html: str) -> list[dict]:
         name = cells[0].get_text(strip=True)
         # Stream count is typically the second column; strip commas
         streams_text = cells[1].get_text(strip=True).replace(",", "")
+        try:
+            streams = int(streams_text)
+        except ValueError:
+            continue
+        if name:
+            results.append({"name": name, "streams": streams})
+
+    return results
+
+
+def _parse_artist_tracks_page(html: str) -> list[dict]:
+    """
+    Parse Kworb's artist tracks page: kworb.net/spotify/artist/{ID}.html.
+
+    Column layout (verified against a live curl 2026-05-17):
+        cells[0] = Peak Date (e.g. "2020/03/20")
+        cells[1] = Title     (e.g. "Blinding Lights")
+        cells[2] = Streams   (e.g. "5,326,244,092") — total lifetime
+        cells[3..] = country-level peak positions, irrelevant here
+
+    Detects the column indices from the header row when possible (so a
+    future Kworb layout shift doesn't silently re-introduce the
+    parse-wrong-column-and-fall-through-to-Last.fm bug); falls back to
+    the verified indices if header detection fails.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    results: list[dict] = []
+
+    table = soup.find("table")
+    if not table:
+        return results
+
+    rows = table.find_all("tr")
+    if not rows:
+        return results
+
+    # Header detection. Locate the columns named "Title" and "Streams" so
+    # we don't hardcode positions. If the header doesn't have them in the
+    # expected form, fall back to the layout we observed.
+    header_cells = rows[0].find_all(["td", "th"])
+    header_text = [c.get_text(strip=True).lower() for c in header_cells]
+    title_idx = header_text.index("title") if "title" in header_text else 1
+    streams_idx = header_text.index("streams") if "streams" in header_text else 2
+
+    for row in rows[1:]:
+        cells = row.find_all("td")
+        if len(cells) <= max(title_idx, streams_idx):
+            continue
+        name = cells[title_idx].get_text(strip=True)
+        streams_text = cells[streams_idx].get_text(strip=True).replace(",", "")
         try:
             streams = int(streams_text)
         except ValueError:
