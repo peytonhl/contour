@@ -141,7 +141,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import AlbumCache, ArtistCache, Rating, TrackCache, UserTasteProfile
-from routers.auth import optional_user_id
+from routers.auth import optional_user_id, require_user_id
 from services import spotify
 from services import deezer as deezer_svc
 from services.limiter import limiter
@@ -1446,6 +1446,166 @@ async def get_discover_feed(
         )
 
     return result
+
+
+@router.get("/me-state")
+async def discover_me_state(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_user_id),
+):
+    """
+    Dump the authenticated user's discover-feed state. Mirrors the
+    state-computation block at the top of /feed so I can see what the
+    server-side flow looks like for a specific user without log access.
+    Used to diagnose "feed is showing me X / nothing / repeats" reports.
+
+    Returns:
+      - profile.{genres, excluded_genres, liked/disliked/down_weighted counts}
+      - rating counts (total, 4-5★, 1-2★)
+      - decade_pref, negative_decade_pref, negative_genre_pref
+      - year_range (vintage mode trigger)
+      - target_popularity (global)
+      - eligible_genres after negative-filter
+      - per-genre signal: (rating_count, avg_popularity) for each eligible genre
+      - predicted tier-1 sampling weights (what the next batch would prefer)
+      - exclude_ids size
+      - inferred mode: vintage | genre-locked-only | cold-start
+    """
+    # Profile
+    genre_list: list[str] = []
+    excluded_genre_set: set[str] = set()
+    liked_artist_ids: list[str] = []
+    disliked_set: set[str] = set()
+    down_weighted_set: set[str] = set()
+    onboarding_done = False
+    try:
+        profile = await db.get(UserTasteProfile, user_id)
+        if profile:
+            genre_list = json.loads(profile.genres or "[]")
+            excluded_genre_set = set(json.loads(getattr(profile, "excluded_genres", None) or "[]"))
+            liked_artist_ids = json.loads(profile.liked_artist_ids or "[]")
+            disliked_set = set(json.loads(profile.disliked_artist_ids or "[]"))
+            down_weighted_set = set(json.loads(profile.down_weighted_artist_ids or "[]"))
+            onboarding_done = bool(profile.onboarding_done)
+    except Exception as exc:
+        return {"error": f"profile read failed: {exc}"}
+
+    # Apply excluded_genres filter (same as /feed)
+    if excluded_genre_set:
+        genre_list = [g for g in genre_list if g not in excluded_genre_set]
+
+    # Rating counts
+    rating_counts = {}
+    for label, expr in [
+        ("total_track_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "track")),
+        ("high_track_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "track") & (Rating.value >= 4.0)),
+        ("low_track_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "track") & (Rating.value <= 2.0)),
+        ("total_album_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "album")),
+    ]:
+        rating_counts[label] = await db.scalar(select(func.count()).select_from(Rating).where(expr)) or 0
+
+    # Excluded track IDs (same as /feed)
+    rated_track_ids = (await db.execute(
+        select(Rating.entity_id).where(Rating.user_id == user_id, Rating.entity_type == "track")
+    )).scalars().all()
+    exclude_ids_count = len(rated_track_ids)
+
+    # Computed signals
+    try:
+        target_popularity = await _compute_target_popularity(db, user_id)
+    except Exception:
+        target_popularity = None
+    try:
+        decade_pref = await _compute_decade_preference(db, user_id)
+    except Exception:
+        decade_pref = None
+    try:
+        negative_decade_pref, negative_genre_pref = await _compute_negative_preferences(db, user_id)
+    except Exception:
+        negative_decade_pref, negative_genre_pref = None, None
+
+    # year_range trigger (same logic as /feed)
+    year_range: Optional[str] = None
+    if decade_pref:
+        top_decade, top_share = max(decade_pref.items(), key=lambda kv: kv[1])
+        if top_share >= 0.60 - 0.0001:
+            try:
+                start = int(top_decade[:-1])
+                year_range = f"{start}-{start + 9}"
+            except Exception:
+                year_range = None
+
+    # Apply negative_genre_pref filter (same as /feed)
+    eligible_genres = genre_list
+    neg_filtered_out = []
+    if negative_genre_pref and len(genre_list) >= 2:
+        filtered = [g for g in genre_list if negative_genre_pref.get(g, 0.0) < 0.30]
+        if len(filtered) >= 2:
+            neg_filtered_out = [g for g in genre_list if g not in filtered]
+            eligible_genres = filtered
+
+    # Per-genre rating-affinity signal
+    try:
+        genre_signal = await _compute_user_genre_signal(db, user_id, eligible_genres)
+    except Exception as exc:
+        genre_signal = {"_error": str(exc)}
+
+    # Predicted tier-1 sampling weights
+    sampling_weights = []
+    if eligible_genres and isinstance(genre_signal, dict) and "_error" not in genre_signal:
+        for i, g in enumerate(eligible_genres):
+            pos = 0.90 ** i
+            count = genre_signal.get(g, (0, None))[0]
+            sampling_weights.append({
+                "genre": g,
+                "position": i,
+                "position_weight": round(pos, 3),
+                "rating_count": count,
+                "final_weight": round(pos * max(count, 1), 2),
+            })
+
+    # Inferred mode
+    if year_range:
+        mode = f"vintage (year_range={year_range})"
+    elif eligible_genres:
+        mode = "genre-locked (tier 1 only; nuclear safety)"
+    else:
+        mode = "cold-start (Deezer chart + new music + keyword)"
+
+    return {
+        "user_id": user_id,
+        "profile": {
+            "genres_raw": genre_list if not excluded_genre_set else "see eligible_genres",
+            "excluded_genres": sorted(excluded_genre_set),
+            "eligible_genres_after_filters": eligible_genres,
+            "negative_genre_pref_filtered_out": neg_filtered_out,
+            "liked_artist_ids_count": len(liked_artist_ids),
+            "disliked_artist_ids_count": len(disliked_set),
+            "down_weighted_artist_ids_count": len(down_weighted_set),
+            "onboarding_done": onboarding_done,
+        },
+        "ratings": rating_counts,
+        "exclude_ids_count": exclude_ids_count,
+        "signals": {
+            "target_popularity": round(target_popularity, 1) if target_popularity is not None else None,
+            "decade_pref": decade_pref,
+            "negative_decade_pref": negative_decade_pref,
+            "negative_genre_pref": negative_genre_pref,
+            "year_range": year_range,
+        },
+        "per_genre_signal": (
+            {
+                g: {"rating_count": c, "avg_popularity": round(p, 1) if p is not None else None}
+                for g, (c, p) in genre_signal.items()
+            }
+            if isinstance(genre_signal, dict) and "_error" not in genre_signal
+            else genre_signal
+        ),
+        "predicted_tier1_sampling": sorted(
+            sampling_weights, key=lambda w: w["final_weight"], reverse=True
+        ),
+        "inferred_mode": mode,
+    }
 
 
 @router.get("/debug")
