@@ -12,6 +12,7 @@ function tierSourceOf(track) {
 }
 
 import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
+import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 // FollowingTab moved to the dedicated /friends route (FriendsPage). The
 // in-page "Friends" sub-tab here was retired alongside that move so users
 // have one canonical entry point to followed-user activity (bottom-nav
@@ -463,7 +464,14 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
   const [progress, setProgress] = useState(0);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  // After a successful review submit this holds { reviewId, spotifyId };
+  // null before. Drives both the "Review posted ✓" badge AND the
+  // "Share card" CTA that opens the CardPreviewModal scoped to this
+  // just-posted review. spotifyId is included so the share URL can
+  // deep-link to /track/<id>#review-<id> on the entity page.
+  const [submittedReview, setSubmittedReview] = useState(null);
+  const submitted = submittedReview !== null;
+  const [shareCardOpen, setShareCardOpen] = useState(false);
   const [reviewError, setReviewError] = useState("");
   const [ratedValue, setRatedValue] = useState(userRating ?? null);
   // Replaces the previous boolean `ratingDone`. Tracks actual save state
@@ -511,7 +519,8 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
     setProgress(0);
     setReviewOpen(false);
     setReviewText("");
-    setSubmitted(false);
+    setSubmittedReview(null);
+    setShareCardOpen(false);
     setReviewError("");
     setRatedValue(userRating ?? null);
     setRatingStatus(userRating != null ? "saved" : "idle");
@@ -555,9 +564,9 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
 
   async function handleSubmitReview() {
     if (!reviewText.trim()) return;
-    const ok = await onReview(track, reviewText.trim(), ratedValue);
-    if (ok) {
-      setSubmitted(true);
+    const result = await onReview(track, reviewText.trim(), ratedValue);
+    if (result?.reviewId) {
+      setSubmittedReview(result);
       setReviewOpen(false);
     } else {
       setReviewError("Couldn't save. Try again.");
@@ -969,7 +978,28 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
               </button>
             )}
             {submitted && (
-              <span style={{ fontSize: 12, color: ACCENT_B, fontWeight: 600 }}>Review posted ✓</span>
+              // Post-submit row: confirmation badge + inline Share-card CTA.
+              // The share button captures the high-intent moment right after
+              // posting — same modal as ReviewSection's share button so the
+              // user gets the editorial-quote PNG and a Save / Share sheet.
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: ACCENT_B, fontWeight: 600 }}>Review posted ✓</span>
+                <button
+                  onClick={() => setShareCardOpen(true)}
+                  style={{
+                    fontSize: 12, color: "#000",
+                    background: ACCENT,
+                    border: "none",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "5px 12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Share card
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -1101,6 +1131,21 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
           )}
         </div>
       </div>
+      {/* Card-share modal scoped to the just-posted review. Same component
+          used by ReviewSection / UserPage / ProfilePage / SavedComparison —
+          single source of truth for the preview-then-share UX. Captures
+          the high-intent post-review moment so users share before swiping
+          on to the next track. */}
+      {submittedReview && (
+        <CardPreviewModal
+          open={shareCardOpen}
+          onClose={() => setShareCardOpen(false)}
+          cardUrl={`${window.location.origin}/api/og/review?id=${submittedReview.reviewId}`}
+          shareUrl={`${window.location.origin}/track/${submittedReview.spotifyId}#review-${submittedReview.reviewId}`}
+          shareText={`${user?.display_name ?? "A Contour user"}'s review on Contour`}
+          fileName={`contour-review-${submittedReview.reviewId}.png`}
+        />
+      )}
     </div>
   );
 }
@@ -1761,12 +1806,17 @@ function ForYouFeed() {
   async function handleReview(track, body, ratingValue) {
     try {
       const spotifyId = await _resolveSpotifyId(track);
-      if (!spotifyId) return false;
-      await api.submitReview("track", spotifyId, body, ratingValue);
+      if (!spotifyId) return null;
+      const res = await api.submitReview("track", spotifyId, body, ratingValue);
       analytics.reviewSubmitted("track", body.trim().length);
-      return true;
+      // Backend returns { ok, review_id }; the id is what the share-card
+      // modal needs to render the just-posted review. Spotify id is what
+      // the share URL deep-links to (track entity page + review anchor).
+      // Returns null on failure so the caller can branch on truthiness.
+      if (!res?.review_id) return null;
+      return { reviewId: res.review_id, spotifyId };
     } catch {
-      return false;
+      return null;
     }
   }
 

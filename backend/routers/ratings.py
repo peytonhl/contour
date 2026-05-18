@@ -426,11 +426,19 @@ async def upsert_review(
     if existing_review:
         existing_review.body = body.body.strip()
         existing_review.updated_at = datetime.utcnow()
+        review = existing_review
     else:
-        db.add(Review(user_id=user_id, entity_type=entity_type,
-                      entity_id=entity_id, body=body.body.strip()))
+        review = Review(user_id=user_id, entity_type=entity_type,
+                        entity_id=entity_id, body=body.body.strip())
+        db.add(review)
     await db.commit()
-    return {"ok": True}
+    # Return the review id so the For You / Discover flow can open the
+    # CardPreviewModal directly on the just-posted review without an
+    # extra fetch. New-insert path needed an await refresh to populate
+    # the autoincrement id; existing-update path already had it.
+    if not existing_review:
+        await db.refresh(review)
+    return {"ok": True, "review_id": review.id}
 
 
 @router.get("/users/{user_id}/hot-take")
