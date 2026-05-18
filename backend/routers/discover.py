@@ -932,16 +932,27 @@ async def get_discover_feed(
         if len(filtered) >= 2:
             eligible_genres = filtered
 
-    # Genre-locked mode: user has explicit preferences (positive OR negative).
-    # When set, the ladder skips the genre-agnostic Deezer chart baseline and
-    # routes tier 2-3 through Spotify too, so a hip-hop user never gets
+    # Genre-locked mode: user has explicit POSITIVE genre preferences. When
+    # set, the ladder skips the genre-agnostic Deezer chart baseline and
+    # routes tier 2 through Spotify too, so a hip-hop user never gets
     # country chart hits in their feed just because Deezer's chart happens
-    # to be country-heavy this week. Cold-start users (no prefs, no
-    # exclusions) keep the original Deezer-based fallback ladder.
+    # to be country-heavy this week.
     # year_range (vintage decade preference) wins over genre_locked because
     # its existing Spotify year-locked branch already handles the same
     # "don't fall back to Deezer" intent.
-    genre_locked = bool(eligible_genres or excluded_genre_set) and not year_range
+    #
+    # IMPORTANT: gate on `eligible_genres` only, NOT `excluded_genre_set`.
+    # A user with only NEGATIVE signal (excluded genres, no liked genres —
+    # e.g. brand-new user who picked "Country" in the picker only to mark
+    # it as a no-go) has no genre to anchor tier 1's search on. Every tier
+    # inside the genre-locked branch gates on eligible_genres, so if we
+    # entered the branch with eligible_genres=[] all three tiers would
+    # skip and the function would return zero tracks ("Warming up the
+    # feed" UI state, reported 2026-05-18). Falling back to cold-start
+    # in this case at least serves Deezer-chart variety; excluded_genres
+    # are imperfectly honored on the chart path (we don't have genre tags
+    # for Deezer artists) but a working feed beats an empty one.
+    genre_locked = bool(eligible_genres) and not year_range
 
     sampled_genres: list[str] = []
     if eligible_genres and len(tracks) < limit:
