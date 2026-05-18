@@ -172,6 +172,37 @@ _COVER_TITLE_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Album-name denylist. Catches the "factory beat pack" sub-industry — labels
+# pushing instrumental-loop packs labeled "Hip Hop Instrumental Beats 2019,
+# Pt. 12" / "Type Beats Vol. 5" / "Lo-Fi Beats to Study To" to capture
+# royalties on playlist auto-shuffle. The track titles in these packs are
+# often just stock names ("Rompo El Tempo", "Sad", "Vibe 04") with no
+# spam signal of their own; the album name is the only tell.
+#
+# Patterns are tightly anchored to avoid clobbering real albums:
+#   - "Instrumental Beats" → only ever appears in spam packs
+#   - "Type Beat" → "Drake Type Beat", "Future Type Beats Vol 3" — spam
+#   - "Beats Vol. X" / "Beats Pt. X" / "Beats, Pt. X" — almost always a pack
+#   - "<lofi|trap|hip-hop|rap|boom-bap> Beats" with word boundary — pack pattern
+#     (legit albums name themselves "Beats, Rhymes and Life" / "Donuts" / etc.
+#     — none have a genre prefix immediately before the word "Beats")
+#   - "Music for (studying|sleeping|yoga|workout|meditation|...)" — the focus-
+#     playlist factory pattern. "Music for Airports" (Eno) is NOT in the
+#     allowed-after list, so it's safe.
+_COVER_ALBUM_PATTERNS = re.compile(
+    r"(?:"
+    r"instrumental\s+beats"
+    r"|type\s+beats?"
+    r"|beat\s+pack"
+    r"|beats?,?\s*(?:vol|pt|part)\.?\s*\d"
+    r"|royalty[-\s]?free"
+    r"|background\s+music\s+for"
+    r"|(?:lofi|lo[-\s]?fi|trap|boom[\s-]?bap|hip[-\s]?hop|hiphop|rap)\s+beats?\b"
+    r"|music\s+for\s+(?:studying|sleep(?:ing)?|yoga|workout|meditation|reading|focus|concentration|relaxation|spa|massage)"
+    r")",
+    re.IGNORECASE,
+)
+
 # Artist-name denylist. Matched against EACH artist name on the track — if
 # ANY credited artist's name fits the pattern, drop the track. Anchored with
 # word boundaries so "Tributary Music Co." (hypothetical legit artist) isn't
@@ -201,18 +232,28 @@ _COVER_ARTIST_PATTERNS = re.compile(
 
 
 def _is_low_quality_cover(track: dict) -> bool:
-    """True if the track looks like a workout / karaoke / tribute cover, not
-    the original recording. See module-level _COVER_*_PATTERNS for the
-    pattern catalog and the rationale on conservativeness.
+    """True if the track looks like a workout / karaoke / tribute cover or a
+    factory beat-pack track, not an original release. See module-level
+    _COVER_*_PATTERNS for the pattern catalog and the rationale on
+    conservativeness.
 
-    Triggers on either: a high-confidence keyword in the track title (BPM,
-    "Workout Mix", "Karaoke", "Originally Performed by", "In the Style of",
-    etc.) OR a credited artist whose name is one of the well-known cover-
-    factory labels ("Workout Music", "The Karaoke Channel", "Lullaby Players",
-    etc.). The two are independent — only one needs to match.
+    Triggers on ANY of three independent signals (one is enough):
+      1. Track title contains a known cover-spam suffix (BPM, "Workout Mix",
+         "Karaoke Version", "Originally Performed by", "In the Style of",
+         etc.).
+      2. Album name matches a factory-beat-pack pattern ("Hip Hop
+         Instrumental Beats 2019, Pt. 12", "Type Beats Vol. 5",
+         "Lo-Fi Beats to Study To"). This catches the case where the
+         track title alone is generic and gives zero signal — the album
+         name is the only tell.
+      3. Credited artist name matches a well-known cover-factory label
+         ("Workout Music", "The Karaoke Channel", "Lullaby Players").
     """
     name = track.get("name") or ""
     if name and _COVER_TITLE_PATTERNS.search(name):
+        return True
+    album_name = track.get("album_name") or ""
+    if album_name and _COVER_ALBUM_PATTERNS.search(album_name):
         return True
     artists = track.get("artists") or []
     for a in artists:
