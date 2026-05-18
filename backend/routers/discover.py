@@ -1609,6 +1609,134 @@ async def discover_me_state(
 
 
 @router.get("/debug")
+@router.get("/cache-stats")
+async def discover_cache_stats():
+    """
+    Audit what's currently in Redis. Used to assess how well the cache is
+    protecting us from Spotify quota issues, and to plan the catalog
+    pivot (serve from local DB + Redis, hit Spotify only on cold-miss).
+
+    Returns counts by key prefix, total size, sample TTLs, and a rough
+    estimate of total tracks reachable from cached genre pools.
+    """
+    from services import redis_cache as _rc
+    out: dict = {}
+    try:
+        r = await _rc._client()
+    except Exception as exc:
+        return {"error": f"redis client failed: {exc}"}
+    if r is None:
+        return {"error": "redis not configured"}
+
+    # Categories of Spotify-related cache keys. Matches the actual keys
+    # used in services/spotify.py.
+    prefixes = {
+        "genre_pool_v7":        "spotify:genre_pool_v7:*",
+        "genre_pool_v6_stale":  "spotify:genre_pool_v6:*",
+        "genre_pool_v5_stale":  "spotify:genre_pool_v5:*",
+        "artist":               "spotify:artist:*",
+        "track":                "spotify:track:*",
+        "album":                "spotify:album:*",
+        "track_search":         "spotify:track_search:*",
+        "album_tracks":         "spotify:album_tracks:*",
+        "album_search":         "spotify:album_search:*",
+        "artist_top_tracks":    "spotify:artist_top:*",
+        "artist_albums":        "spotify:artist_albums:*",
+        "popular_search":       "spotify:popular_search:*",
+        "deezer_chart":         "deezer:chart:*",
+        "deezer_search":        "deezer:search:*",
+        "deezer_preview":       "deezer:preview:*",
+    }
+
+    summary: dict[str, dict] = {}
+    total_keys = 0
+
+    for label, pattern in prefixes.items():
+        keys: list[str] = []
+        try:
+            async for k in r.scan_iter(match=pattern, count=500):
+                keys.append(k)
+                # Cap to keep this endpoint fast even on large caches
+                if len(keys) >= 5000:
+                    break
+        except Exception as exc:
+            summary[label] = {"error": str(exc)}
+            continue
+
+        if not keys:
+            summary[label] = {"count": 0}
+            continue
+
+        total_keys += len(keys)
+
+        # Sample 5 keys for size + TTL distribution
+        import random as _random
+        sample = _random.sample(keys, min(5, len(keys)))
+        sample_info = []
+        total_sample_bytes = 0
+        track_count_sample = 0
+        track_count_samples_taken = 0
+
+        for k in sample:
+            try:
+                raw = await r.get(k)
+                ttl = await r.ttl(k)
+                size = len(raw) if raw else 0
+                total_sample_bytes += size
+                info = {"key": k, "ttl_seconds": ttl, "bytes": size}
+
+                # For genre pools, count how many tracks are in the cached pool
+                if label.startswith("genre_pool") and raw:
+                    try:
+                        import json as _json
+                        parsed = _json.loads(raw)
+                        if isinstance(parsed, list):
+                            info["tracks_in_pool"] = len(parsed)
+                            track_count_sample += len(parsed)
+                            track_count_samples_taken += 1
+                    except Exception:
+                        pass
+                sample_info.append(info)
+            except Exception as exc:
+                sample_info.append({"key": k, "error": str(exc)})
+
+        avg_bytes = total_sample_bytes / len(sample) if sample else 0
+        info: dict = {
+            "count": len(keys),
+            "sample_size": len(sample),
+            "avg_bytes_per_key": round(avg_bytes),
+            "estimated_total_bytes": round(avg_bytes * len(keys)),
+            "samples": sample_info,
+        }
+        if track_count_samples_taken > 0:
+            avg_tracks = track_count_sample / track_count_samples_taken
+            info["avg_tracks_per_pool"] = round(avg_tracks, 1)
+            info["estimated_total_tracks_in_pools"] = round(avg_tracks * len(keys))
+        summary[label] = info
+
+    out["total_keys_scanned"] = total_keys
+    out["by_prefix"] = summary
+
+    # Overall Redis info — server-level stats
+    try:
+        info = await r.info("memory")
+        out["redis_memory"] = {
+            "used_memory_human": info.get("used_memory_human"),
+            "used_memory_peak_human": info.get("used_memory_peak_human"),
+            "maxmemory_human": info.get("maxmemory_human"),
+        }
+    except Exception:
+        pass
+    try:
+        keyspace = await r.info("keyspace")
+        out["redis_total_keys"] = keyspace.get("db0", {}).get("keys") if isinstance(keyspace.get("db0"), dict) else keyspace.get("db0")
+    except Exception:
+        pass
+
+    return out
+
+
+@router.get("/debug")
 async def discover_debug():
     """
     Diagnostic endpoint — tests each feed tier independently and reports
