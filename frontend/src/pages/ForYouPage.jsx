@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, Component } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -413,6 +413,62 @@ const actionRowStyle = {
   transition: "background var(--motion-fast) var(--ease)",
 };
 
+// Error boundary for DiscoverCard. Peyton reported the feed "blacks out"
+// after posting a review (2026-05-18) — symptom of an uncaught render
+// exception, since React 18 unmounts the tree when no boundary is present
+// and the position:fixed dark-background container stays visible. This
+// catches render-side failures and shows a visible error string instead,
+// so the same class of regression can never silent-fail again.
+class CardErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("[DiscoverCard] render exception:", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          height: "100%",
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          padding: "40px 24px", textAlign: "center",
+          background: "#0a0a0a", color: "#fafafa", gap: 12,
+        }}>
+          <p style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>
+            Something broke rendering this card.
+          </p>
+          <p style={{
+            fontSize: 12, color: "rgba(255,255,255,0.65)",
+            margin: 0, maxWidth: 320, wordBreak: "break-word", lineHeight: 1.5,
+          }}>
+            {String(this.state.error?.message || this.state.error)}
+          </p>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{
+              marginTop: 12, padding: "8px 16px",
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              borderRadius: 6,
+              color: "#fafafa", fontSize: 13, fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Retry render
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Individual discover card ──────────────────────────────────────────────────
 function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityClick, userRating, cardIndex, totalCards, onNext, onPrev }) {
   const audioRef = useRef(null);
@@ -564,12 +620,21 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
 
   async function handleSubmitReview() {
     if (!reviewText.trim()) return;
-    const result = await onReview(track, reviewText.trim(), ratedValue);
-    if (result?.reviewId) {
-      setSubmittedReview(result);
-      setReviewOpen(false);
-    } else {
-      setReviewError("Couldn't save. Try again.");
+    // Defensive: every state mutation inside the success branch wrapped in
+    // try/catch so an exception in the post-submit re-render path can't
+    // produce a black-screen / wedged-deck symptom Peyton reported 2026-05-18.
+    // If anything throws, surface it in-band via reviewError instead of
+    // letting React unmount the card tree silently.
+    try {
+      const result = await onReview(track, reviewText.trim(), ratedValue);
+      if (result?.reviewId) {
+        setSubmittedReview(result);
+        setReviewOpen(false);
+      } else {
+        setReviewError("Couldn't save. Try again.");
+      }
+    } catch (e) {
+      setReviewError(`Post failed: ${e?.message || e}`);
     }
   }
 
@@ -2243,19 +2308,21 @@ function ForYouFeed() {
                   willChange: "transform",
                 }}
               >
-                <DiscoverCard
-                  track={track}
-                  isActive={i === activeIdx && !transitioning}
-                  onRate={handleRate}
-                  onReview={handleReview}
-                  onDislike={handleDislike}
-                  onEntityClick={handleEntityClick}
-                  userRating={userRatings[track.id] ?? null}
-                  cardIndex={i}
-                  totalCards={tracks.length}
-                  onNext={() => goToCard(i + 1)}
-                  onPrev={() => goToCard(i - 1)}
-                />
+                <CardErrorBoundary>
+                  <DiscoverCard
+                    track={track}
+                    isActive={i === activeIdx && !transitioning}
+                    onRate={handleRate}
+                    onReview={handleReview}
+                    onDislike={handleDislike}
+                    onEntityClick={handleEntityClick}
+                    userRating={userRatings[track.id] ?? null}
+                    cardIndex={i}
+                    totalCards={tracks.length}
+                    onNext={() => goToCard(i + 1)}
+                    onPrev={() => goToCard(i - 1)}
+                  />
+                </CardErrorBoundary>
               </div>
             );
           })}
