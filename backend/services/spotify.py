@@ -281,13 +281,20 @@ async def _circuit_remaining_async() -> float:
     return _circuit_remaining()
 
 
-def _trip_circuit(retry_after_seconds: int) -> None:
+def _trip_circuit(retry_after_seconds: int) -> tuple[float, bool]:
     """Open the circuit for the supplied duration, capped at
     _MAX_CIRCUIT_OPEN_SECONDS. No-op if the circuit is already open longer.
 
-    Also persists to Redis via a fire-and-forget task — the awaitable
-    variant _trip_circuit_async should be preferred when running inside
-    async code that wants persistence to land before returning.
+    Returns (new_deadline, was_extended). The caller — always inside an
+    async function — uses these to await the Redis write so the deadline
+    persists across workers and deploys. Previously this function tried
+    to schedule the Redis write itself via asyncio.create_task wrapped
+    in a get_event_loop() lookup, but get_event_loop() is deprecated
+    and raises in newer Python; the exception was silently swallowed
+    and the Redis write never happened. Workers that tripped their
+    in-process circuit had NO way to inform other workers — which was
+    invisible until 2026-05-18, when /health (worker A) said "closed"
+    while /backfill (worker B with the trip) silently 429'd every call.
     """
     global _circuit_open_until
     capped = min(retry_after_seconds, _MAX_CIRCUIT_OPEN_SECONDS)
@@ -307,25 +314,8 @@ def _trip_circuit(retry_after_seconds: int) -> None:
                 "[spotify] CIRCUIT OPEN for %ds (until %s). All Spotify calls will short-circuit.",
                 capped, time.strftime("%H:%M:%S", time.localtime(_circuit_open_until)),
             )
-        # Persist to Redis so the deadline survives deploys / restarts.
-        # We can't await from this sync function; use create_task and
-        # hold a reference to avoid GC (the asyncio task-GC issue that
-        # bit ArtistCache writes).
-        try:
-            import asyncio as _asyncio
-            loop = _asyncio.get_event_loop()
-            if loop.is_running():
-                _circuit_persist_tasks.add(
-                    _asyncio.create_task(_write_circuit_to_redis(new_deadline, capped))
-                )
-        except Exception:
-            pass
-
-
-# Keep strong refs to in-flight Redis persistence tasks so they don't get
-# GC'd before commit. Cleared opportunistically; size stays small (a few
-# entries at most — one per circuit trip event).
-_circuit_persist_tasks: set = set()
+        return (new_deadline, True)
+    return (_circuit_open_until, False)
 
 
 async def reset_circuit() -> None:
@@ -387,8 +377,16 @@ async def _spotify_get(client: httpx.AsyncClient, url: str, token: str, params: 
             retry_after = int(resp.headers.get("Retry-After", 8))
             # Long retry-after = credential-wide block. Open the circuit so the
             # next 100 callers don't each pay the round trip and keep extending it.
+            # ALSO persist the deadline to Redis so other workers see the trip
+            # (and so it survives the next deploy). Direct await — no more
+            # fire-and-forget which was silently swallowing the write before.
             if retry_after >= _CIRCUIT_BREAKER_THRESHOLD:
-                _trip_circuit(retry_after)
+                new_deadline, was_extended = _trip_circuit(retry_after)
+                if was_extended:
+                    try:
+                        await _write_circuit_to_redis(new_deadline, retry_after)
+                    except Exception as exc:
+                        _log.warning("[spotify] failed to persist circuit deadline to Redis: %s", exc)
             if retry_after > _MAX_RETRY_WAIT:
                 _log.warning("[spotify] 429 on %s — Retry-After=%ds (>%ds threshold), bailing immediately", url, retry_after, _MAX_RETRY_WAIT)
                 return resp  # caller will treat non-200 as failure and use DB
