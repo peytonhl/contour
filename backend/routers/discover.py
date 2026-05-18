@@ -1764,6 +1764,26 @@ async def discover_me_state(
 
 
 @router.get("/debug")
+@router.get("/probe-artist-single")
+async def discover_probe_artist_single(id: str = Query(..., description="Single Spotify artist ID")):
+    """Probe /v1/artists/{id} (per-artist endpoint) to see what Spotify
+    returns and whether genres are present. Used to diagnose why
+    ArtistCache shows genres=[] across the board even though many of
+    these artists should have genre tags."""
+    from services import spotify as _spotify
+    try:
+        meta = await _spotify.get_artist(id)
+        return {
+            "id": meta.get("id"),
+            "name": meta.get("name"),
+            "genres": meta.get("genres"),
+            "popularity": meta.get("popularity"),
+            "raw_meta_keys": list(meta.keys()) if isinstance(meta, dict) else None,
+        }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 @router.get("/probe-artists")
 async def discover_probe_artists(ids: str = Query(..., description="Comma-separated Spotify artist IDs")):
     """One-shot diagnostic: make a /v1/artists?ids= call and return the raw
