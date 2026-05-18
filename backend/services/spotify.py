@@ -1031,27 +1031,47 @@ async def search_tracks_by_genre(
     # bleed into another decade's pool. The "recent (year:2023-2026)"
     # variant is dropped in year-locked mode because it'd contradict the
     # user's explicit decade pick.
-    # v6: pool now passes through _filter_pool_by_artist_genre before caching,
-    # so cached pools may be smaller than v5 (off-genre artists dropped).
-    # Bumped to force v5 entries to be re-built with the verification step.
+    # v7: pool depth expanded from ~30 → ~50 candidates per genre. The
+    # previous version fired 3 (or 2 vintage) Spotify search variants each
+    # at offset=0, which capped the pool at 30 candidates. For active
+    # raters whose exclude_ids covered the top 20-30 hip-hop tracks, that
+    # left ~0 fresh tracks → tier 1 yielded empty → eventually nuclear
+    # fallback served country chart hits ("Warming up the feed" / "all
+    # mainstream pop" complaints, 2026-05-18).
+    # v7 uses offset-based variants to slide deeper into Spotify's ranking:
+    # the same {genre} query at offsets 0, 10, 20 gives ranks 1-30 from
+    # the same relevance ordering, all in one cache entry. Cache invalidates
+    # v6 to force a rebuild with the new depth.
     if year_range:
-        cache_key = f"spotify:genre_pool_v6:{genre}:{market}:y{year_range}"
+        cache_key = f"spotify:genre_pool_v7:{genre}:{market}:y{year_range}"
     else:
-        cache_key = f"spotify:genre_pool_v6:{genre}:{market}"
+        cache_key = f"spotify:genre_pool_v7:{genre}:{market}"
     pool = await redis_cache.get(cache_key)
 
     if not pool:
-        # (query, synth_pop_at_rank_0, synth_pop_at_last_rank)
+        # Each variant: (query_string, synth_pop_at_rank_0, synth_pop_at_last_rank, offset)
+        # The synth_pop values cover the popularity gradient we'd EXPECT from
+        # each query type: a default `{genre}` query at offset=0 returns the
+        # most-popular tracks (synth=90), and at offset=20 returns ranks
+        # 21-30 which are still relevant but less popular (synth=50→20).
+        # The tag:hipster variant explicitly biases toward low-popularity
+        # tracks (synth=5→40). The year:2023-2026 variant biases toward
+        # recent popular (synth=70→40).
         if year_range:
             variants = [
-                (f"{genre} year:{year_range}", 90, 30),
-                (f"{genre} tag:hipster year:{year_range}", 5, 40),
+                (f"{genre} year:{year_range}", 90, 30, 0),
+                (f"{genre} year:{year_range}", 60, 20, 10),
+                (f"{genre} year:{year_range}", 30, 10, 20),
+                (f"{genre} tag:hipster year:{year_range}", 5, 40, 0),
+                (f"{genre} tag:hipster year:{year_range}", 5, 35, 10),
             ]
         else:
             variants = [
-                (genre, 90, 30),
-                (f"{genre} tag:hipster", 5, 40),
-                (f"{genre} year:2023-2026", 70, 40),
+                (genre, 90, 30, 0),
+                (genre, 60, 20, 10),
+                (genre, 30, 10, 20),
+                (f"{genre} tag:hipster", 5, 40, 0),
+                (f"{genre} year:2023-2026", 70, 40, 0),
             ]
         async with httpx.AsyncClient() as client:
             token = await _get_token(client)
@@ -1063,14 +1083,19 @@ async def search_tracks_by_genre(
                     # configurable so Spanish-mode requests pass "ES" and
                     # get Spanish-region-popular tracks at the top of
                     # Spotify's ranking instead of US-region tracks.
-                    params={"q": q, "type": "track", "limit": 10, "market": market},
+                    # offset slides the window deeper into Spotify's
+                    # relevance ranking — offset=10 returns ranks 11-20
+                    # of the SAME query, offset=20 returns 21-30. This
+                    # is how we get pool depth without changing the
+                    # query string (which would shift relevance).
+                    params={"q": q, "type": "track", "limit": 10, "market": market, "offset": off},
                 )
-                for q, _, _ in variants
+                for q, _, _, off in variants
             ], return_exceptions=True)
 
         seen: set[str] = set()
         pool = []
-        for (q, pop_start, pop_end), resp in zip(variants, responses):
+        for (q, pop_start, pop_end, _), resp in zip(variants, responses):
             if isinstance(resp, Exception):
                 continue
             try:

@@ -24,34 +24,34 @@ variety while the taste profile builds.
 
 Tier ladder (in order, until `limit` tracks are gathered)
 ─────────────────────────────────────────────────────────
-Three modes; mutually exclusive, chosen at request time:
+Simplified to two paths since 2026-05-18 — tier 1's deep Spotify pool
+(v7, ~50 candidates per genre × 6 sampled = ~300 candidates per batch)
+makes the older "genre-locked unsampled / Deezer keyword fallback"
+tiers redundant for users with prefs.
 
-  • Vintage (year_range set; user has ≥60% decade pref in one decade)
-      1. Weighted-genre pivot, Spotify, year-locked
-      2. Spotify genre-agnostic baselines, year-locked
+  • Tier 1 (always, when eligible_genres is non-empty)
+      Weighted-genre pivot. Sample k=6 genres from profile.genres
+      weighted by position (decay 0.90^i). For each sampled genre,
+      search_tracks_by_genre returns a popularity-curve-sampled slice
+      of the v7 pool. Pool depth comes from offset-based variants
+      inside services/spotify.py — same query at offsets 0/10/20 plus
+      tag:hipster and year:2023-2026 variants.
 
-  • Genre-locked (user has any preferred genre OR any excluded genre)
-      1. Weighted-genre pivot, Spotify — bumped to k=6, limit=20/genre
-      2. Spotify search on user's UNSAMPLED preferred genres
-      3. Deezer keyword fallback restricted to user genres (rare)
-    Deezer chart is deliberately SKIPPED here: it's genre-agnostic and was
-    the source of the "country in my hip-hop feed" leakage when the chart
-    happened to be country-heavy.
+  • Tier 2 (vintage only — user has ≥60% decade preference)
+      Spotify year-locked baselines across pop/rock/hip-hop. Tier 1
+      already handles preferred genres with year_range applied; this
+      adds era-appropriate genre-agnostic variety.
 
-  • Cold-start (no genre prefs, no exclusions)
-      1. Weighted-genre pivot (no-op if no prefs)
-      2. Deezer chart baseline /chart/0/tracks
-      3. Deezer new music search
-      4. Deezer keyword fallbacks
+  • Cold-start ladder (only when eligible_genres is empty)
+      Deezer /chart, then Deezer new music search, then keyword
+      fallbacks. ONLY fires for users with zero genre prefs — once a
+      user has any pref, tier 1's deep pool is the source of truth.
 
-Weighted-genre pivot details: sample k genres from profile.genres weighted
-by position (decay 0.90^i). Front of the list = most-recent + most-
-frequent prepend, so a user's top genre lands in ~50% of batches while
-position-15 still lands in ~6%. For each sampled genre, Spotify search
-returns a pool that's then popularity-curve-sampled to match the user's
-average liked-track popularity (target_popularity).
+  • Nuclear (Tier 4.5)
+      Deezer /chart safety net. Fires when every tier above produced
+      zero, which with the v7 pool depth should be vanishingly rare.
 
-Tier 1 honors down-weighted artists. Tiers 2–4 only honor hard dislikes.
+Tier 1 honors down-weighted artists. Other tiers only honor hard dislikes.
 This means a single low rating won't blackhole an artist from charts, but
 explicit "Not interested" will.
 
@@ -59,12 +59,13 @@ Cover-spam filter (all tiers)
 ─────────────────────────────
 _is_low_quality_cover runs per-track in the response path (inside the
 _make_adder closure, before exclusion checks). Catches the workout /
-karaoke / tribute / "Originally Performed by" / "BPM" spam that Spotify
-and Deezer both surface in volume. Independent of genre/artist filters
-because the cover-factory artists are often legitimately tagged with
-on-genre microgenres ("hip hop running workout") and pass the artist-
-genre verification. Patterns live at module level, conservative by
-design — see _COVER_TITLE_PATTERNS / _COVER_ARTIST_PATTERNS.
+karaoke / tribute / "Originally Performed by" / "BPM" / instrumental-
+beat-pack / Kidz Bop spam that Spotify and Deezer both surface in
+volume. Independent of genre/artist filters because the cover-factory
+artists are often legitimately tagged with on-genre microgenres ("hip
+hop running workout") and pass the artist-genre verification. Patterns
+live at module level, conservative by design — see _COVER_TITLE_PATTERNS
+/ _COVER_ALBUM_PATTERNS / _COVER_ARTIST_PATTERNS.
 
 Cross-tier decade rerank
 ────────────────────────
@@ -109,10 +110,20 @@ _compute_negative_preferences mirrors the positive computation but on
 
 Multi-genre diversity
 ─────────────────────
-Tier 1 samples k=4 genres per batch (bumped from 3) with position
-decay 0.90 (flattened from 0.85). Users with a wide profile see more
-of their tail genres surface instead of the top genre dominating every
-batch.
+Tier 1 samples k=6 genres per batch (bumped from 4) with position
+decay 0.90. Users with a wide profile see meaningful breadth across
+their tail genres instead of the top 3-4 dominating every batch.
+
+Pool depth (v7, 2026-05-18)
+───────────────────────────
+search_tracks_by_genre fetches 5 variant queries per genre at staggered
+offsets (0, 10, 20 for the default query plus tag:hipster and
+year:2023-2026 anchors). ~50 candidate tracks per genre × 6 sampled
+genres = ~300 candidates available to tier 1 per batch. This was the
+root-cause fix for the "Warming up the feed" / "all-pop-hits" empty-
+feed bug: active raters' exclude_ids was wiping out the older 30-track
+pool entirely, leaving the ladder to fall back to genre-agnostic
+Deezer chart hits.
 """
 
 import asyncio
@@ -932,48 +943,24 @@ async def get_discover_feed(
         if len(filtered) >= 2:
             eligible_genres = filtered
 
-    # Genre-locked mode: user has explicit POSITIVE genre preferences. When
-    # set, the ladder skips the genre-agnostic Deezer chart baseline and
-    # routes tier 2 through Spotify too, so a hip-hop user never gets
-    # country chart hits in their feed just because Deezer's chart happens
-    # to be country-heavy this week.
-    # year_range (vintage decade preference) wins over genre_locked because
-    # its existing Spotify year-locked branch already handles the same
-    # "don't fall back to Deezer" intent.
+    # Tier 1 — weighted-genre pivot, Spotify deep pool.
+    # k=6 genres per batch (capped at len(eligible_genres)), limit=20 per
+    # genre, pulled from the v7 pool (offset-expanded, ~50 candidates per
+    # genre). With 6 genres × 20 limit, tier 1 can yield up to 120 tracks
+    # for a user with rich genre prefs — more than enough to fill any
+    # 10-track batch even for users with hundreds of rated tracks in
+    # exclude_ids.
     #
-    # IMPORTANT: gate on `eligible_genres` only, NOT `excluded_genre_set`.
-    # A user with only NEGATIVE signal (excluded genres, no liked genres —
-    # e.g. brand-new user who picked "Country" in the picker only to mark
-    # it as a no-go) has no genre to anchor tier 1's search on. Every tier
-    # inside the genre-locked branch gates on eligible_genres, so if we
-    # entered the branch with eligible_genres=[] all three tiers would
-    # skip and the function would return zero tracks ("Warming up the
-    # feed" UI state, reported 2026-05-18). Falling back to cold-start
-    # in this case at least serves Deezer-chart variety; excluded_genres
-    # are imperfectly honored on the chart path (we don't have genre tags
-    # for Deezer artists) but a working feed beats an empty one.
-    genre_locked = bool(eligible_genres) and not year_range
-
-    sampled_genres: list[str] = []
+    # For cold-start users (no eligible_genres) tier 1 is a no-op; the
+    # cold-start ladder below fires instead.
     if eligible_genres and len(tracks) < limit:
-        # Tier 1 widens when genre_locked: k 4→6 (sample more user genres
-        # per batch) and per-genre limit 15→20 (draw a larger fraction of
-        # each genre's pool). Pool fetch cost is unchanged — search_tracks_
-        # by_genre caches the pool per (genre, market, year) and just
-        # samples differently per call. Higher k spends one extra cache
-        # hit per genre slot; higher limit is free.
-        if genre_locked:
-            n_pick = min(6, len(eligible_genres))
-            per_genre_limit = 20
-        else:
-            n_pick = min(4, len(eligible_genres))
-            per_genre_limit = 15
+        n_pick = min(6, len(eligible_genres))
         position_weights = [0.90 ** i for i in range(len(eligible_genres))]
         sampled_genres = _weighted_sample(eligible_genres, position_weights, k=n_pick)
         genre_results = await asyncio.gather(*[
             spotify.search_tracks_by_genre(
                 g,
-                limit=per_genre_limit,
+                limit=20,
                 target_popularity=target_popularity,
                 market=spotify_market,
                 year_range=year_range,
@@ -982,170 +969,51 @@ async def get_discover_feed(
         ], return_exceptions=True)
         _flatten_shuffle_add(genre_results, add_personalized)
         logger.info(
-            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, target_pop=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d, genre_locked=%s)",
+            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, target_pop=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d)",
             len(tracks) - tier1_added_before, sampled_genres,
             f"{target_popularity:.1f}" if target_popularity is not None else "default",
             len(genre_list),
             year_range or "none",
             len(genre_list) - len(eligible_genres),
-            genre_locked,
         )
 
-    if year_range:
-        # ── Tier 2 (vintage mode): Spotify year-locked baseline ──────────
-        # Deezer doesn't support year-filtered queries — its /chart and
-        # /search both return current-era tracks. For a user with a
-        # concentrated decade preference, that meant tier 2-4 contributed
-        # candidates that could only be re-ranked downward, never
-        # filtered out at the source.
-        # Substitution: query Spotify with the year_range across a few
-        # high-coverage baseline genres. Tier 1 already picks the user's
-        # preferred genres with year_range applied; tier 2 here uses
-        # genre-agnostic baselines so the user gets era-appropriate
-        # popular tracks even when their tier 1 genre choices come up
-        # thin. The shared 7-day Redis pool cache absorbs the quota
-        # impact — distinct year/genre combos cache independently and
-        # are reused across users.
-        if len(tracks) < limit:
-            baseline_genres = ["pop", "rock", "hip-hop"]
-            baseline_results = await asyncio.gather(*[
-                spotify.search_tracks_by_genre(
-                    g,
-                    limit=15,
-                    target_popularity=target_popularity,
-                    market=spotify_market,
-                    year_range=year_range,
-                )
-                for g in baseline_genres
-            ], return_exceptions=True)
-            _flatten_shuffle_add(baseline_results, add_baseline)
-            logger.info(
-                "discover: tier2 (vintage spotify baseline) → %d tracks (year_range=%s, baseline_genres=%s)",
-                len(tracks), year_range, baseline_genres,
+    if year_range and len(tracks) < limit:
+        # Vintage tier 2 — Spotify year-locked baselines across pop/rock/
+        # hip-hop. Fires for users with ≥60% concentration in one decade,
+        # supplementing tier 1's preferred-genre+year_range pool with
+        # era-appropriate genre-agnostic mainstream. Deezer is skipped
+        # because its chart/search don't support year filtering.
+        baseline_genres = ["pop", "rock", "hip-hop"]
+        baseline_results = await asyncio.gather(*[
+            spotify.search_tracks_by_genre(
+                g, limit=15,
+                target_popularity=target_popularity,
+                market=spotify_market, year_range=year_range,
             )
-    elif genre_locked:
-        # ── Genre-locked ladder (Spotify-only, no Deezer chart) ──────────
-        # User has explicit genre preferences (positive picks or exclusions).
-        # The original Deezer chart baseline was the source of "country in
-        # my hip-hop feed" leakage: Deezer's /chart/0/tracks is genre-
-        # agnostic and returns whatever's mainstream right now (currently
-        # country-heavy in the US market). That conflicted with the user
-        # explicitly saying they want a specific genre.
+            for g in baseline_genres
+        ], return_exceptions=True)
+        _flatten_shuffle_add(baseline_results, add_baseline)
+        logger.info(
+            "discover: tier2 (vintage spotify baseline) → %d tracks (year_range=%s, baseline_genres=%s)",
+            len(tracks), year_range, baseline_genres,
+        )
+    elif not eligible_genres and len(tracks) < limit:
+        # Cold-start ladder — user has zero genre prefs (e.g. brand-new
+        # signup who hasn't picked anything in the picker AND has no
+        # ratings yet to auto-extend profile.genres). Serve mainstream
+        # Deezer variety while their taste profile builds.
         #
-        # Replacement: when tier 1 underfills, fall back to MORE Spotify
-        # searches in the user's own genre family — not to a different
-        # source. Same pool-cache pays for itself within minutes when the
-        # site has any concurrent users on the same genres.
+        # This branch deliberately does NOT fire for users with prefs:
+        # the Deezer chart is genre-agnostic and was the source of
+        # "country in my hip-hop feed" leakage. Users with prefs rely on
+        # tier 1's deep pool; nuclear fallback below covers the rare
+        # case where tier 1 still yields zero.
+        chart_tracks = await deezer_svc.get_chart_tracks(limit=100)
+        if isinstance(chart_tracks, list):
+            random.shuffle(chart_tracks)
+            add_baseline(chart_tracks)
+        logger.info("discover: cold-start chart → %d tracks", len(tracks))
 
-        # Tier 2: Spotify search on user genres tier 1 didn't sample.
-        # No-op when tier 1 already covered every eligible genre (e.g. user
-        # picked just 1-2 genres). When useful, this gives the user breadth
-        # across THEIR genre list rather than randomness across charts.
-        if len(tracks) < limit:
-            unsampled = [g for g in eligible_genres if g not in sampled_genres]
-            if unsampled:
-                tier2_genres = unsampled[:4]
-                tier2_before = len(tracks)
-                tier2_results = await asyncio.gather(*[
-                    spotify.search_tracks_by_genre(
-                        g,
-                        limit=20,
-                        target_popularity=target_popularity,
-                        market=spotify_market,
-                    )
-                    for g in tier2_genres
-                ], return_exceptions=True)
-                _flatten_shuffle_add(tier2_results, add_baseline)
-                logger.info(
-                    "discover: tier2 (genre-locked, unsampled prefs) → %d tracks (genres=%s)",
-                    len(tracks) - tier2_before, tier2_genres,
-                )
-
-        # (Tier 3 — Spotify year:2020-2024 — was removed after first deploy.
-        # It forked the genre pool cache key onto a small year-restricted
-        # candidate set, where the existing keyword-stuffing filter's
-        # ≥3-non-stuffed safety floor often didn't activate. Result: feeds
-        # flooded with tracks literally titled "Hip-Hop" because the
-        # filtered pool was <3. Tier 1's widened k=6/limit=20 supplies
-        # enough variety alone; for the rare niche-genre case where it
-        # doesn't, tier 4 below is the safety net.)
-
-        # Tier 4: Deezer keyword fallback restricted to the user's genre
-        # words. Rare — only fires when all Spotify tiers above came up
-        # short (niche genres with thin Spotify catalogs). Without this
-        # the genre-locked feed could go empty for very-niche prefs.
-        #
-        # Deezer search is a literal text match, so a query like "hip hop"
-        # returns tracks LITERALLY titled "Hip-Hop" / "Hip Hop" / etc.
-        # That floods the feed with monotonous-looking results (10 of 18
-        # tracks titled the genre word, observed in prod after the first
-        # genre-locked deploy). Drop tracks whose title or artist name
-        # contains any of the user's genre slugs — mirrors the keyword-
-        # stuffing filter that search_tracks_by_genre already applies to
-        # Spotify pools internally.
-        if len(tracks) < limit and eligible_genres:
-            tier4_before = len(tracks)
-            fallback_queries = [g.replace("-", " ") for g in eligible_genres[:3]]
-            fallback_results = await asyncio.gather(*[
-                deezer_svc.search_tracks(q, limit=10)
-                for q in fallback_queries
-            ], return_exceptions=True)
-
-            # Build the keyword-variant set across ALL of the user's
-            # eligible genres (not just the queried ones). A "hip-hop"
-            # user with R&B in their list also doesn't want a track
-            # titled "R&B" surfaced from Deezer.
-            genre_keywords: set[str] = set()
-            for g in eligible_genres:
-                gl = g.lower().strip()
-                genre_keywords.update({gl, gl.replace("-", " "), gl.replace("-", "")})
-
-            def _is_keyword_stuffed(t: dict) -> bool:
-                fields = [
-                    (t.get("name") or "").lower(),
-                    " ".join(t.get("artists") or []).lower(),
-                ]
-                return any(
-                    kw and any(kw in f for f in fields)
-                    for kw in genre_keywords
-                )
-
-            # Filter EACH per-query result list individually so
-                # _flatten_shuffle_add still pools them; an empty list
-                # is harmless to the flatten step.
-            filtered_fallback = [
-                [t for t in res if not _is_keyword_stuffed(t)]
-                if isinstance(res, list) else res
-                for res in fallback_results
-            ]
-            _flatten_shuffle_add(filtered_fallback, add_baseline)
-            logger.info(
-                "discover: tier4 (genre-locked, deezer keyword fallback) → %d tracks (queries=%s)",
-                len(tracks) - tier4_before, fallback_queries,
-            )
-    else:
-        # ── Cold-start ladder (no genre prefs set) ──────────────────────
-        # User hasn't told us what they like; serve mainstream variety from
-        # Deezer while their taste profile builds via ratings.
-
-        # ── Tier 2: Deezer chart baseline ────────────────────────────────────────
-        # Uses Deezer's /chart/0/tracks endpoint (actual chart data) instead of
-        # searching text like "top hits" which was matching a karaoke artist of
-        # the same name and flooding the feed with cover tracks.
-        #
-        # Bumped from 50 → 100 to give cold-start users a wider pool. With 50 a
-        # user could exhaust the chart in ~5 batches and then start seeing the
-        # same tracks recur (or fall through to weaker tier-3 results). 100 is
-        # the practical max Deezer's chart endpoint serves; doubling the pool
-        # doubles the time until exhaustion. Same Akamai-signed-URL TTL applies.
-        if len(tracks) < limit:
-            chart_tracks = await deezer_svc.get_chart_tracks(limit=100)
-            if isinstance(chart_tracks, list):
-                random.shuffle(chart_tracks)
-                add_baseline(chart_tracks)
-            logger.info("discover: tier2 (deezer chart) → %d tracks", len(tracks))
-
-        # ── Tier 3: Deezer new music ──────────────────────────────────────────────
         if len(tracks) < limit:
             new_results = await asyncio.gather(*[
                 deezer_svc.search_tracks(q, limit=15)
@@ -1153,7 +1021,6 @@ async def get_discover_feed(
             ], return_exceptions=True)
             _flatten_shuffle_add(new_results, add_baseline)
 
-        # ── Tier 4: Deezer keyword fallbacks — always produces results ────────────
         if len(tracks) < limit:
             fallback_results = await asyncio.gather(*[
                 deezer_svc.search_tracks(q, limit=10)
@@ -1161,86 +1028,43 @@ async def get_discover_feed(
             ], return_exceptions=True)
             _flatten_shuffle_add(fallback_results, add_baseline)
 
-    # ── Tier 4.5: Nuclear fallback — guarantee the user sees something ──────
-    # Triggers whenever every tier above produced zero, regardless of WHY.
-    # Pre-2026-05-18, the gate was `not tracks and disliked_set`, which only
-    # fired when hard-dislikes were the cause. Active raters who don't use
-    # "Not interested" can hit empty-feed: their rated tracks accumulate in
-    # exclude_ids and wipe out tier 1 pools entirely.
+    # ── Tier 4.5: Nuclear fallback — Deezer chart safety net ────────────────
+    # Fires when every tier above produced zero tracks. With the v7 deep
+    # pool (~50 candidates × 6 genres = ~300 tier 1 candidates), this
+    # should be extremely rare for users with any prefs at all. Mostly
+    # exists for the negative-only state (excluded_genres but no
+    # eligible_genres) and as a "Spotify totally broken" recovery.
     #
-    # Sourcing: previously the nuclear pool was just Deezer /chart, which is
-    # currently country/pop-heavy in the US market. A user who explicitly
-    # picked rap+classical was seeing 6 country/pop tracks in a row. So we
-    # also include a Deezer keyword search for each of the user's top
-    # genres — gives them their actual preferred genre family even in the
-    # desperate-recovery path, mixed with chart hits. The keyword-stuffing
-    # filter that earlier tiers apply is INTENTIONALLY skipped here: a
-    # track literally titled "Hip-Hop" by Mos Def is way better than a
-    # country chart hit for a rap fan.
-    #
-    # Two-pass exclude_ids handling: first try with exclude_ids honored
-    # (no rated repeats), then ignore exclude_ids if still empty (user
-    # has rated every nuclear candidate too).
+    # Two-pass exclude_ids handling: first honor exclude_ids (no rated
+    # repeats), then if still empty, ignore exclude_ids — repeating a
+    # rated track is preferable to an empty feed.
     if not tracks:
         logger.warning(
             "discover: NUCLEAR FALLBACK — all tiers empty (user_id=%s, exclude_ids=%d, dislikes=%d, down_weighted=%d, genres=%s)",
             user_id or "anon", len(exclude_ids), len(disliked_set),
             len(down_weighted_set), genre_list[:3],
         )
-
-        nuclear_pool: list[dict] = []
-
-        # Source 1: user's preferred genres via Deezer search. Mixes real
-        # genre catalog into the desperate-recovery path. For a hip-hop
-        # user, this returns Mos Def / Dead Prez / Lil Wayne / Drake etc.
-        # — actual rap. For a classical user, real classical recordings.
-        if eligible_genres:
-            try:
-                genre_searches = await asyncio.gather(*[
-                    deezer_svc.search_tracks(g.replace("-", " "), limit=15)
-                    for g in eligible_genres[:3]
-                ], return_exceptions=True)
-                for res in genre_searches:
-                    if isinstance(res, list):
-                        nuclear_pool.extend(res)
-            except Exception as exc:
-                logger.error("discover: nuclear genre search failed: %s", exc)
-
-        # Source 2: Deezer chart. Adds mainstream variety; for users with no
-        # eligible_genres (negative-only state) this is the entire pool.
         try:
-            chart = await deezer_svc.get_chart_tracks(limit=50)
-            if isinstance(chart, list):
-                nuclear_pool.extend(chart)
+            nuclear = await deezer_svc.get_chart_tracks(limit=50)
         except Exception as exc:
             logger.error("discover: nuclear chart fetch failed: %s", exc)
+            nuclear = []
 
-        random.shuffle(nuclear_pool)
-
-        # Pass 1: honor exclude_ids (no rated repeats).
-        for t in nuclear_pool:
+        for t in nuclear:
             if t.get("id") and t["id"] not in exclude_ids and t["id"] not in seen:
                 seen.add(t["id"])
                 tracks.append(t)
             if len(tracks) >= limit:
                 break
 
-        # Pass 2: still empty? Serve pool ignoring exclude_ids. Active raters
-        # who've rated every nuclear candidate see repeats — acceptable in
-        # "feed totally broken" recovery.
-        if not tracks and nuclear_pool:
+        if not tracks and nuclear:
             logger.warning("discover: NUCLEAR FALLBACK pass 2 — ignoring exclude_ids")
-            for t in nuclear_pool:
+            for t in nuclear:
                 if t.get("id") and t["id"] not in seen:
                     seen.add(t["id"])
                     tracks.append(t)
                 if len(tracks) >= limit:
                     break
-
-        logger.warning(
-            "discover: NUCLEAR FALLBACK delivered %d tracks (genre_searches_used=%s, chart_used=%s)",
-            len(tracks), bool(eligible_genres), True,
-        )
 
     # Compact preference summary for the log: "1980s:65%,1990s:20%" etc.
     # Only the top three contribute; "none" when no preference signal.
