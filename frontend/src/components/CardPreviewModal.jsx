@@ -33,7 +33,11 @@ const ACCENT = "#d97a3b";
 //  v11 (2026-05-17): bumped meta (title 22→32, artist 18→24) and REVIEW
 //                    tag (20→26) so they carry visual weight against the
 //                    600px cover above.
-const CARD_VERSION = "11";
+//  v12 (2026-05-17): ported v10/v11 stacked layout to hot-take.tsx so
+//                    both card types share a visual language. Hot-take
+//                    cover sized 520 (vs review's 600) to leave room for
+//                    the take + community + divergence + attribution.
+const CARD_VERSION = "12";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

@@ -95,7 +95,8 @@ export default async function handler(request) {
           color: TEXT,
         }}
       >
-        {/* Header */}
+        {/* Header — same wordmark + small caps tag scheme as review.tsx
+            for visual consistency between the two card types. */}
         <div
           style={{
             display: 'flex',
@@ -104,64 +105,77 @@ export default async function handler(request) {
             padding: '40px 50px 0',
           }}
         >
-          <span style={{ fontFamily: 'Instrument Serif', fontSize: 64, color: TEXT, lineHeight: 1, letterSpacing: '-0.01em' }}>Contour</span>
-          <span style={{ fontSize: 18, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          <span style={{ fontFamily: 'Instrument Serif', fontSize: 88, color: TEXT, lineHeight: 1, letterSpacing: '-0.02em' }}>Contour</span>
+          <span style={{ fontSize: 26, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
             Hot take
           </span>
         </div>
 
-        {/* Body wrapper — fills remaining vertical space and centers the
-            body row, same fix as review.tsx. Cover bumped to 560×560 to
-            fill more of the square canvas. */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 50px 50px' }}>
-        <div style={{ display: 'flex', gap: 44, width: '100%' }}>
+        {/* Stacked layout — matches review.tsx v11. Cover sized slightly
+            smaller (520 vs 600) because the hot-take has more vertical
+            content below it: take line, community line, divergence pill,
+            and attribution. */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '24px 60px 48px',
+          gap: 28,
+        }}>
+          {/* Cover — centered, 520×520 */}
           <div
             style={{
-              width: 560,
-              height: 560,
+              width: 520,
+              height: 520,
               borderRadius: 8,
               overflow: 'hidden',
-              flexShrink: 0,
               display: 'flex',
               backgroundColor: '#1a1a1d',
-              alignSelf: 'flex-start',
+              alignSelf: 'center',
+              flexShrink: 0,
             }}
           >
             {entity.cover_url ? (
-              <img src={entity.cover_url} width={560} height={560} style={{ objectFit: 'cover' }} />
+              <img src={entity.cover_url} width={520} height={520} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
           </div>
 
-          {/* Quote column — vertically centered within the cover's height,
-              same fix as review.tsx. Short takes sit in the middle of the
-              cover instead of top-anchored with empty space below. */}
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-            }}
-          >
-            {/* Subject: entity name */}
+          {/* Subject — same caps-tracked title/artist as review.tsx v11 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <span
               style={{
-                fontSize: 20,
-                color: MUTED,
-                letterSpacing: '0.05em',
+                fontSize: 32,
+                color: TEXT,
+                letterSpacing: '0.06em',
                 textTransform: 'uppercase',
-                marginBottom: 16,
+                fontWeight: 700,
+                textAlign: 'center',
               }}
             >
-              {entity.artist ? `${entity.name} · ${entity.artist}` : entity.name}
+              {entity.name}
             </span>
+            {entity.artist && (
+              <span
+                style={{
+                  fontSize: 24,
+                  color: MUTED,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  textAlign: 'center',
+                }}
+              >
+                {entity.artist}
+              </span>
+            )}
+          </div>
 
-            {/* The take — "I gave it 1.5 ★". Star is a flex-aligned SVG
-                next to the number so it renders correctly regardless of
-                what's in the embedded TTF. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          {/* The take + community comparison — centered editorial block.
+              "I gave it X.X ★" is the hero line; the community line sits
+              just below it as italic commentary. */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <span
                 style={{
                   fontFamily: 'Instrument Serif',
@@ -172,11 +186,9 @@ export default async function handler(request) {
               >
                 I gave it {data.rating.toFixed(1)}
               </span>
-              <StarIcon size={48} color={GOLD} />
+              <StarIcon size={46} color={GOLD} />
             </div>
-
-            {/* Community line — smaller, muted italic serif */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span
                 style={{
                   fontFamily: 'Instrument Serif',
@@ -199,76 +211,86 @@ export default async function handler(request) {
                 ({data.community_count} listeners)
               </span>
             </div>
+          </div>
 
-            {/* Divergence badge — gold when hotter, danger when cooler */}
-            <div
+          {/* Divergence badge — the punchline of the card. Centered pill,
+              "+1.5 ★ Hotter" or "−2.0 ★ Cooler". Gold when hotter,
+              danger color when cooler. */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 22px',
+              borderRadius: 999,
+              backgroundColor: `${swingColor}26`,
+              alignSelf: 'center',
+            }}
+          >
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                marginTop: 24,
-                padding: '8px 16px',
-                borderRadius: 999,
-                backgroundColor: `${swingColor}26`,
-                alignSelf: 'flex-start',
+                fontSize: 28,
+                fontWeight: 700,
+                color: swingColor,
+                fontVariantNumeric: 'tabular-nums',
               }}
             >
-              <span
-                style={{
-                  fontSize: 24,
-                  fontWeight: 700,
-                  color: swingColor,
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {isHotter ? '+' : '−'}{Math.abs(data.divergence).toFixed(1)}
-              </span>
-              <StarIcon size={20} color={swingColor} />
-              <span style={{ fontSize: 24, fontWeight: 700, color: swingColor }}>
-                {swingWord}
-              </span>
-            </div>
-
-            {/* Attribution */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 28 }}>
-              {data.user.image_url ? (
-                <img
-                  src={data.user.image_url}
-                  width={52}
-                  height={52}
-                  style={{ borderRadius: 26, objectFit: 'cover' }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
-                    backgroundColor: ACCENT,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 26,
-                    fontWeight: 700,
-                    color: BG,
-                  }}
-                >
-                  {(data.user.display_name || '?').slice(0, 1).toUpperCase()}
-                </div>
-              )}
-              <span
-                style={{
-                  fontFamily: 'Instrument Serif',
-                  fontStyle: 'italic',
-                  fontSize: 30,
-                  color: TEXT,
-                }}
-              >
-                — {data.user.display_name}
-              </span>
-            </div>
+              {isHotter ? '+' : '−'}{Math.abs(data.divergence).toFixed(1)}
+            </span>
+            <StarIcon size={24} color={swingColor} />
+            <span style={{ fontSize: 28, fontWeight: 700, color: swingColor }}>
+              {swingWord}
+            </span>
           </div>
-        </div>
+
+          {/* Footer — attribution pinned to the bottom with marginTop:auto,
+              same pattern as review.tsx v11. Single-cell here (no rating
+              to pair with) since the rating is the hero line above. */}
+          <div style={{
+            marginTop: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 14,
+            paddingTop: 24,
+            borderTop: '1px solid rgba(250, 250, 250, 0.12)',
+          }}>
+            {data.user.image_url ? (
+              <img
+                src={data.user.image_url}
+                width={56}
+                height={56}
+                style={{ borderRadius: 28, objectFit: 'cover' }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 28,
+                  backgroundColor: ACCENT,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 28,
+                  fontWeight: 700,
+                  color: BG,
+                }}
+              >
+                {(data.user.display_name || '?').slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <span
+              style={{
+                fontFamily: 'Instrument Serif',
+                fontStyle: 'italic',
+                fontSize: 32,
+                color: TEXT,
+              }}
+            >
+              — {data.user.display_name}
+            </span>
+          </div>
         </div>
       </div>
     ),
