@@ -15,18 +15,18 @@ const GOLD = "#f59e0b";
 const ACCENT = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 
-// Pre-flight check: ask the backend whether this user has a qualifying hot
-// take BEFORE opening the modal. A 404 means "your ratings line up with the
-// community" — we surface a friendly inline message rather than opening a
-// modal with a broken-image state. Any other non-2xx still opens the modal
-// and lets it render its own error UI.
-async function probeHotTake(userId) {
+// Eligibility probe — runs once on profile load. The button is only
+// rendered when the backend confirms a qualifying hot take exists; this
+// avoids the dead-end interaction where the user taps and gets a quiet
+// "no hot takes yet" message that's easy to miss. A network failure
+// returns null (button stays hidden) — acceptable since the user can
+// refresh.
+async function probeHotTakeEligibility(userId) {
   const cardUrl = `${window.location.origin}/api/og/hot-take?user_id=${encodeURIComponent(userId)}`;
   try {
     const res = await fetch(cardUrl, { method: "HEAD" });
-    if (res.status === 404) return "no-hot-take";
-    return "ok";
-  } catch { return "ok"; }  // network blip — let the modal handle it
+    return res.ok;
+  } catch { return false; }
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -169,8 +169,11 @@ export function ProfilePage() {
   const [bioInput, setBioInput] = useState("");
   const [savingBio, setSavingBio] = useState(false);
 
-  // Hot-take share state: idle | probing | none (no qualifying take)
-  const [hotTakeState, setHotTakeState] = useState("idle");
+  // Hot-take button only renders when the backend confirms eligibility
+  // (qualifying rating exists). null = check pending, false = no qualifying
+  // take, true = render the button. Probed once on profile load so taps go
+  // straight to the modal without a per-tap roundtrip.
+  const [hasHotTake, setHasHotTake] = useState(null);
   const [hotTakeModalOpen, setHotTakeModalOpen] = useState(false);
   // Which of the user's own reviews is open in the card-share modal.
   // null = closed. Looked up against profile.reviews to build the modal props.
@@ -178,17 +181,6 @@ export function ProfilePage() {
   const shareReview = shareReviewId
     ? profile?.reviews?.find((r) => r.id === shareReviewId)
     : null;
-  async function handleShareHotTake() {
-    setHotTakeState("probing");
-    const result = await probeHotTake(user.id);
-    if (result === "no-hot-take") {
-      setHotTakeState("none");
-      setTimeout(() => setHotTakeState("idle"), 3000);
-    } else {
-      setHotTakeState("idle");
-      setHotTakeModalOpen(true);
-    }
-  }
 
   const [editingPhoto, setEditingPhoto] = useState(false);
   const [photoInput, setPhotoInput] = useState("");
@@ -230,6 +222,10 @@ export function ProfilePage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Probe hot-take eligibility in parallel. Independent of the main
+    // profile load so a slow / failing hot-take check doesn't block the
+    // page render. Button only renders when this resolves to true.
+    probeHotTakeEligibility(user.id).then(setHasHotTake);
   }, [user]);
 
   async function handleSaveBio() {
@@ -443,36 +439,31 @@ export function ProfilePage() {
               </div>
             )}
 
-            {/* Hot take share — only when there's enough rated history that
-                the backend has a reasonable chance of finding a qualifying
-                take (≥ 5 community ratings on a rated entity, ≥ 1.0 stars
-                divergence). Showing this on fresh accounts would mostly
-                produce the "ratings line up with the community" 404. */}
-            {!editingBio && (profile?.ratings?.length ?? 0) >= 5 && (
+            {/* Hot take share — only rendered when probeHotTakeEligibility
+                confirms a qualifying take exists. Hiding the button when
+                there's nothing to share avoids the dead-end interaction
+                Peyton reported (tap → "nothing happened" because the
+                "no hot takes yet" feedback was too subtle).
+                Style matches the SavedComparison "Share card" CTA:
+                solid accent, --radius-sm, black text. */}
+            {!editingBio && hasHotTake === true && (
               <button
-                onClick={handleShareHotTake}
-                disabled={hotTakeState === "probing"}
+                onClick={() => setHotTakeModalOpen(true)}
+                title="Share the rating where you diverge most from the community"
                 style={{
                   alignSelf: "flex-start",
                   marginBottom: 18,
-                  padding: "7px 14px",
-                  background: hotTakeState === "none" ? "var(--surface2)" : `${ACCENT}18`,
-                  border: `1px solid ${hotTakeState === "none" ? "var(--border)" : `${ACCENT}66`}`,
-                  borderRadius: "var(--radius-xl)",
-                  color: hotTakeState === "none" ? "var(--text-muted)" : ACCENT,
-                  fontSize: 12, fontWeight: 700,
-                  cursor: hotTakeState === "probing" ? "default" : "pointer",
-                  opacity: hotTakeState === "probing" ? 0.6 : 1,
-                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "8px 16px",
+                  background: ACCENT,
+                  border: "none",
+                  borderRadius: "var(--radius-sm)",
+                  color: "#000",
+                  fontSize: 13, fontWeight: 700,
+                  cursor: "pointer",
                   whiteSpace: "nowrap",
                 }}
-                title={hotTakeState === "none" ? "Your ratings line up with the community — no hot take yet" : "Share the rating where you diverge most from the community"}
               >
-                {hotTakeState === "none"
-                  ? "No hot takes yet"
-                  : hotTakeState === "probing"
-                    ? "Preparing…"
-                    : "Share my hot take"}
+                Share my hot take
               </button>
             )}
             {user && (
