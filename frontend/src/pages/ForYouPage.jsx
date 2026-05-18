@@ -1060,7 +1060,7 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
                   onClick={() => setShareCardOpen(true)}
                   style={{
                     fontSize: 12, color: "#000",
-                    background: ACCENT,
+                    background: ACCENT_A,
                     border: "none",
                     borderRadius: "var(--radius-sm)",
                     padding: "5px 12px",
