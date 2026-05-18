@@ -402,8 +402,14 @@ export function TrackPage() {
           </div>
         </div>
 
-        {/* Celebrated stat */}
-        <div style={{ position: "relative", zIndex: 2, marginTop: "var(--space-5)" }}>
+        {/* Celebrated stat.
+            zIndex 10 (not the hero default of 2) so EraAdjustedStat's
+            "?" popover renders ABOVE the hero-actions row immediately
+            below. Without this the popover's zIndex:200 is trapped
+            inside its parent's zIndex:2 stacking context and the
+            Rate/Want-to-listen buttons paint over it. See AlbumPage
+            for the longer note. */}
+        <div style={{ position: "relative", zIndex: 10, marginTop: "var(--space-5)" }}>
           <EraAdjustedStat
             eraContext={trajectory?.era_context}
             totalStreams={trajectory?.total_streams}

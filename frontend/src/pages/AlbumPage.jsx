@@ -244,8 +244,18 @@ export function AlbumPage() {
           </div>
         </div>
 
-        {/* Celebrated stat — big, the differentiated value of this app */}
-        <div style={{ position: "relative", zIndex: 2, marginTop: "var(--space-5)" }}>
+        {/* Celebrated stat — big, the differentiated value of this app.
+            zIndex bumped from 2 → 10: EraAdjustedStat's "?" popover sits
+            BELOW the celebrated number via top:calc(100% + 8px), which
+            overlaps the hero-actions row directly underneath. With
+            both wrappers at zIndex:2, the later-DOM hero-actions wins
+            and the popover rendered UNDER the Rate/Want-to-listen/etc.
+            buttons (reported 2026-05-17 with a screenshot showing the
+            popover text bleeding through the button pills). The
+            popover's own zIndex:200 only escapes within its parent's
+            stacking context, not against sibling contexts at the same
+            level — so the fix has to be on the wrapper here. */}
+        <div style={{ position: "relative", zIndex: 10, marginTop: "var(--space-5)" }}>
           <EraAdjustedStat
             eraContext={trajectory?.era_context}
             totalStreams={trajectory?.total_streams}

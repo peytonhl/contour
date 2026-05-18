@@ -9,100 +9,36 @@ import { registerServiceWorker } from "./sw-register.js";
 import App from "./App.jsx";
 import "./index.css";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TEMPORARY (v2): splash-twitch instrumentation.
+// ── Lock the boot-splash wordmark to its t=0 flex-centered pixel position ──
 //
-// First pass (commit e662cca) showed the wordmark snapping from x=8,y=8
-// (default body margin + default font) to x=102,y=352 (flex-centered
-// Georgia 52pt) between t=0 and t=26ms, caused by the boot-splash class
-// rules not being applied on the first paint. Commit a7cbb3d inlined
-// the splash styles so the element renders correctly from frame 0. The
-// user reports a twitch is still present — but says they're not sure if
-// it's the same one. This v2 overlay does three things to disambiguate:
+// The wordmark previously stayed flex-centered inside #boot-splash
+// (`position:fixed; inset:0`) for its whole life. On-device traces
+// (2026-05-17) showed the wordmark sitting at y=352 from module-parse
+// through SplashScreen.hide(), then jumping to y=392 between t=45ms and
+// t=71ms — a 40px downward shift visible to the user as a twitch.
 //
-//   1. Logs the actual outerHTML of the boot-splash element on first
-//      tick. If we see the inline style attribute, the iPhone has the
-//      new code; if we see class="boot-splash" with no inline styles,
-//      the iPhone is on a cached old bundle and we have a delivery
-//      problem, not a CSS problem.
-//   2. Logs the wordmark bbox at every event (same as v1) so we can
-//      see what's still moving. With inlined styles, the bbox at t=0
-//      should already be centered — any snap would be from there to
-//      its hide-time disappearance.
-//   3. Logs the Layout-header wordmark bbox the moment it first has
-//      width > 0. If this happens BEFORE the splash hides, React is
-//      painting through the splash, which could expose the header
-//      wordmark visually during the brand-moment.
+// Cause: the WebView's content area grew by ~80px in that window, almost
+// certainly because Capacitor's contentInset:"always" is relaxed once
+// SplashScreen.hide() resolves and the WebView re-measures into the
+// full screen area below a translucent status bar. The flex-centered
+// wordmark followed the new center.
 //
-// Build stamp is rendered in the splash itself ("build splash-v2") so
-// you can confirm the iPhone is loading this code, not a cached older
-// one, without having to read the overlay first.
-//
-// Remove this block + the #boot-debug element + the build stamp from
-// index.html once we've diagnosed the residual snap.
-// ─────────────────────────────────────────────────────────────────────────────
-const _bootDebugStart = performance.now();
-const _bootDebugEl = document.getElementById("boot-debug");
-let _bootDebugDismissed = false;
-
-if (_bootDebugEl) {
-  _bootDebugEl.addEventListener("click", () => {
-    _bootDebugDismissed = true;
-    _bootDebugEl.style.display = "none";
-  });
+// Fix: measure the wordmark's current bbox right here at module parse
+// (when WebView is still in its initial-inset state — y=352 matches the
+// native LaunchScreen storyboard's safe-area centerY), and pin it via
+// `position:absolute; top:<px>; left:<px>`. Later WebView resizes don't
+// reflow absolute-positioned descendants of #boot-splash since the
+// splash itself stays inset:0; the wordmark stays put at its pinned
+// pixel coordinates.
+const _splashWord = document.getElementById("boot-splash-wordmark");
+if (_splashWord) {
+  const r = _splashWord.getBoundingClientRect();
+  _splashWord.style.position = "absolute";
+  _splashWord.style.top = `${r.top}px`;
+  _splashWord.style.left = `${r.left}px`;
+  _splashWord.style.width = `${r.width}px`;
+  _splashWord.style.height = `${r.height}px`;
 }
-
-function _bootDebug(label) {
-  if (_bootDebugDismissed || !_bootDebugEl) return;
-  const t = (performance.now() - _bootDebugStart).toFixed(0).padStart(4, " ");
-  const splash = document.getElementById("boot-splash");
-  const splashWord = splash ? splash.firstElementChild : null;
-  const headerWord = document.querySelector(".app-header span");
-  const fmtRect = (el) => {
-    if (!el) return "—";
-    const r = el.getBoundingClientRect();
-    return `x=${r.left.toFixed(0)} y=${r.top.toFixed(0)} w=${r.width.toFixed(0)} h=${r.height.toFixed(0)}`;
-  };
-  const splashDisplay = splash ? getComputedStyle(splash).display : "—";
-  const line = document.createElement("div");
-  line.textContent =
-    `+${t}ms ${label}\n` +
-    `      splash.display=${splashDisplay} splashWord=${fmtRect(splashWord)}\n` +
-    `      headerWord=${fmtRect(headerWord)}`;
-  _bootDebugEl.appendChild(line);
-  _bootDebugEl.scrollTop = _bootDebugEl.scrollHeight;
-}
-
-// First log line: dump the actual splash element HTML so we can verify
-// the iPhone is running this build (style attribute present) vs a
-// cached older one (class only).
-(() => {
-  const splash = document.getElementById("boot-splash");
-  if (!splash || !_bootDebugEl) return;
-  const head = document.createElement("div");
-  const hasInlineStyle = splash.hasAttribute("style");
-  head.textContent =
-    `splash.outerHTML starts with: ${splash.outerHTML.slice(0, 90)}…\n` +
-    `inline style attr present: ${hasInlineStyle}`;
-  head.style.color = hasInlineStyle ? "#6effa3" : "#ff8a8a";
-  _bootDebugEl.appendChild(head);
-})();
-
-_bootDebug("module parse");
-
-let _headerSeen = false;
-const _headerPoll = setInterval(() => {
-  if (_headerSeen || _bootDebugDismissed) {
-    clearInterval(_headerPoll);
-    return;
-  }
-  const headerWord = document.querySelector(".app-header span");
-  if (headerWord && headerWord.getBoundingClientRect().width > 0) {
-    _headerSeen = true;
-    _bootDebug("layout header wordmark mounted");
-    clearInterval(_headerPoll);
-  }
-}, 50);
 
 initAnalytics();
 
@@ -138,9 +74,7 @@ createRoot(document.getElementById("root")).render(
 // snap is invisible.
 //
 // SplashScreen.hide() is a no-op on web — safe to call unconditionally.
-SplashScreen.hide({ fadeOutDuration: 0 })
-  .then(() => _bootDebug("native SplashScreen.hide resolved"))
-  .catch(() => _bootDebug("native SplashScreen.hide rejected"));
+SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
 
 // Snap the HTML boot splash off (display:none) once two conditions are met:
 //   a) Instrument Serif (the Layout header's font) has finished loading.
@@ -171,13 +105,8 @@ SplashScreen.hide({ fadeOutDuration: 0 })
 // the brand moment to start counting from when the wordmark is actually
 // on screen, not from the moment main.jsx parsed.
 requestAnimationFrame(() => {
-  _bootDebug("rAF (first paint window)");
   const start = performance.now();
   const MIN_HOLD_MS = 700;
-
-  if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(() => _bootDebug("document.fonts.ready"));
-  }
 
   // Request Instrument Serif at 26px (Layout header size) and 76px (Era
   // Score) so both the header and the first signature stat have the font
@@ -187,8 +116,7 @@ requestAnimationFrame(() => {
     ? Promise.all([
         document.fonts.load("400 26px 'Instrument Serif'"),
         document.fonts.load("400 76px 'Instrument Serif'"),
-      ]).then(() => _bootDebug("Instrument Serif loaded"))
-       .catch(() => _bootDebug("Instrument Serif load rejected"))
+      ]).catch(() => {})
     : Promise.resolve();
 
   // Hard ceiling so a stalled font request never strands the user on the
@@ -196,32 +124,15 @@ requestAnimationFrame(() => {
   // brief font-swap rather than blocking the whole app.
   const fontReady = Promise.race([
     fontPromise,
-    new Promise((resolve) => setTimeout(() => {
-      _bootDebug("2s font ceiling tripped");
-      resolve();
-    }, 2000)),
+    new Promise((resolve) => setTimeout(resolve, 2000)),
   ]);
 
   fontReady.then(() => {
     const elapsed = performance.now() - start;
     const remaining = Math.max(0, MIN_HOLD_MS - elapsed);
-    _bootDebug(`font gate cleared, waiting ${remaining.toFixed(0)}ms for brand-moment`);
     setTimeout(() => {
-      _bootDebug("BEFORE splash display:none");
       const splash = document.getElementById("boot-splash");
       if (splash) splash.style.display = "none";
-      requestAnimationFrame(() => _bootDebug("AFTER splash display:none"));
     }, remaining);
   });
 });
-
-// Auto-fade the debug overlay 12s in so it doesn't permanently disfigure
-// the app. Longer than v1 (8s) because we now log more events.
-setTimeout(() => {
-  if (_bootDebugDismissed || !_bootDebugEl) return;
-  _bootDebugEl.style.opacity = "0";
-  setTimeout(() => {
-    _bootDebugEl.style.display = "none";
-    _bootDebugDismissed = true;
-  }, 400);
-}, 12000);
