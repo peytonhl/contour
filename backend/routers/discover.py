@@ -1162,13 +1162,16 @@ async def get_discover_feed(
     # Linear scaling on count is intentional — user wants 3× ratings in
     # a genre → 3× sampling probability for that genre.
     #
-    # Per-genre target popularity: each sampled genre's search uses its
-    # OWN average popularity from the user's 4-5★ ratings in that genre
-    # family. Without this, a rap+classical user's classical search was
-    # targeting popularity 70 (rap pulls the global avg up) and returning
-    # weird mid-pop crossover instead of real classical (which is mostly
-    # popularity 30-50 on Spotify). Falls back to global target when the
-    # bucket is empty.
+    # Popularity targeting uses GLOBAL target_popularity, NOT per-genre.
+    # The per-genre version (shipped briefly) concentrated sampling RIGHT
+    # at the user's already-rated popularity range in their dominant genre.
+    # For a heavy rap rater with avg pop 85, the hip-hop pool's Laplace
+    # curve peaked at 85, drew predominantly top-pop tracks, all of which
+    # were in exclude_ids → tier 1 returned zero → nuclear → mainstream
+    # chart repeats. Reverted to global average across all 4-5★ ratings,
+    # which is naturally moderated by lower-pop genres in the user's mix.
+    # The popularity-affinity data is still computed (and logged for
+    # diagnostics) but not used as a sharpening signal.
     if eligible_genres and len(tracks) < limit:
         n_pick = min(6, len(eligible_genres))
         weights = []
@@ -1179,13 +1182,10 @@ async def get_discover_feed(
         sampled_genres = _weighted_sample(eligible_genres, weights, k=n_pick)
 
         async def _fetch_for_genre(g: str) -> list:
-            per_genre_target = genre_signal.get(g, (0, None))[1]
-            if per_genre_target is None:
-                per_genre_target = target_popularity
             return await spotify.search_tracks_by_genre(
                 g,
                 limit=20,
-                target_popularity=per_genre_target,
+                target_popularity=target_popularity,
                 market=spotify_market,
                 year_range=year_range,
             )
@@ -1267,31 +1267,69 @@ async def get_discover_feed(
     # exists for the negative-only state (excluded_genres but no
     # eligible_genres) and as a "Spotify totally broken" recovery.
     #
-    # Two-pass exclude_ids handling: first honor exclude_ids (no rated
-    # repeats), then if still empty, ignore exclude_ids — repeating a
-    # rated track is preferable to an empty feed.
+    # Sourcing:
+    # - Pass 1 pool: Deezer /chart PLUS Deezer search for each of the
+    #   user's top 3 eligible genres. Shuffled so the iteration order
+    #   doesn't lock onto the same chart prefix every request. Honors
+    #   exclude_ids (no rated repeats). For a hip-hop user, the genre-
+    #   search half brings in Mos Def / Dead Prez / Lil Wayne / etc.
+    #   alongside chart hits — real genre content mixed with mainstream.
+    # - Pass 2 (still empty): re-iterates the SAME shuffled pool but
+    #   ignores exclude_ids. Used only when the user has rated every
+    #   nuclear candidate. Previously this just re-walked the chart in
+    #   stable order, surfacing the same 6 tracks every batch (reported
+    #   2026-05-18 "I see them over and over again"). Shuffling makes
+    #   the same-tracks-repeat case at least show a different cross-
+    #   section per batch.
     if not tracks:
         logger.warning(
             "discover: NUCLEAR FALLBACK — all tiers empty (user_id=%s, exclude_ids=%d, dislikes=%d, down_weighted=%d, genres=%s)",
             user_id or "anon", len(exclude_ids), len(disliked_set),
             len(down_weighted_set), genre_list[:3],
         )
+
+        nuclear_pool: list[dict] = []
+        # Genre-aware source: query Deezer for the user's top 3 preferred
+        # genres. Skipped when eligible_genres is empty (negative-only or
+        # truly-cold-start state — pure chart is the only option).
+        if eligible_genres:
+            try:
+                genre_searches = await asyncio.gather(*[
+                    deezer_svc.search_tracks(g.replace("-", " "), limit=15)
+                    for g in eligible_genres[:3]
+                ], return_exceptions=True)
+                for res in genre_searches:
+                    if isinstance(res, list):
+                        nuclear_pool.extend(res)
+            except Exception as exc:
+                logger.error("discover: nuclear genre search failed: %s", exc)
+
+        # Mainstream chart source: still included so users with niche
+        # prefs (where Deezer genre search came up thin) get something.
         try:
-            nuclear = await deezer_svc.get_chart_tracks(limit=50)
+            chart = await deezer_svc.get_chart_tracks(limit=50)
+            if isinstance(chart, list):
+                nuclear_pool.extend(chart)
         except Exception as exc:
             logger.error("discover: nuclear chart fetch failed: %s", exc)
-            nuclear = []
 
-        for t in nuclear:
+        # Shuffle the combined pool — critical for the same-tracks-repeat
+        # fix. Without this, both passes iterate in source order and
+        # always pick the same prefix.
+        random.shuffle(nuclear_pool)
+
+        # Pass 1: honor exclude_ids (no rated repeats).
+        for t in nuclear_pool:
             if t.get("id") and t["id"] not in exclude_ids and t["id"] not in seen:
                 seen.add(t["id"])
                 tracks.append(t)
             if len(tracks) >= limit:
                 break
 
-        if not tracks and nuclear:
+        # Pass 2: still empty? Serve pool ignoring exclude_ids.
+        if not tracks and nuclear_pool:
             logger.warning("discover: NUCLEAR FALLBACK pass 2 — ignoring exclude_ids")
-            for t in nuclear:
+            for t in nuclear_pool:
                 if t.get("id") and t["id"] not in seen:
                     seen.add(t["id"])
                     tracks.append(t)
