@@ -176,8 +176,15 @@ export const api = {
   getUserTaste: (id) => request(`/users/${id}/taste`),
   // Server-side personal taste (requires auth)
   getMyTasteProfile: () => request(`/taste/profile`),
-  saveTasteProfile: (genres, likedArtistIds = [], onboardingDone = false) =>
-    post(`/taste/profile`, { genres, liked_artist_ids: likedArtistIds, onboarding_done: onboardingDone }),
+  // `excludedGenres` is an optional 4th arg. Pass `undefined` (not `[]`) to
+  // leave the server-side exclusion list untouched — backend treats `null`
+  // as "ignore this field" and `[]` as "replace with empty". Existing
+  // callers that don't pass the arg keep their previous behavior.
+  saveTasteProfile: (genres, likedArtistIds = [], onboardingDone = false, excludedGenres) => {
+    const body = { genres, liked_artist_ids: likedArtistIds, onboarding_done: onboardingDone };
+    if (excludedGenres !== undefined) body.excluded_genres = excludedGenres;
+    return post(`/taste/profile`, body);
+  },
   // Hard-dislike list ("Not interested" on a For You card). Idempotent.
   // Best-effort fire-and-forget from the UI; backend is the source of truth.
   addArtistDislike: (artistId) => post(`/taste/dislike`, { artist_id: artistId }),

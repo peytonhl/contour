@@ -593,30 +593,31 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
   return (
     <div style={{
       height: "100%",
-      display: "flex", flexDirection: "column",
       position: "relative", overflow: "hidden",
       background: "#0a0a0a",
     }}>
-      {/* Album art — top portion. Bumped to 65% of the viewport so the cover
-          dominates the page and reads as the visual center, rather than
-          sitting in the top half with empty space below. Section is flex-
-          centered so the cover img renders at integer pixel positions
-          (transform-translate centering was causing sub-pixel anti-alias
-          blur on iOS). Backdrop and bottom vignette stay absolute and don't
-          participate in flex. decoding="async" + fetchpriority="high" hint
-          the browser to commit GPU resources to this image early.
+      {/* Album art — top 65% of the card.
+          Previously this whole card was a flex column with the cover
+          region as `flex: 0 0 65%` and the info section as `flex: 1`.
+          After many swipes on iOS WKWebView, the cover region would
+          collapse to ~8% of the card and the info section would absorb
+          the rest, leaving the cover as a thin strip with empty space
+          below (reported 2026-05-17). Couldn't reliably reproduce on
+          desktop; likely class of WebKit flex-recomputation drift with
+          many transform animations stacked into the same compositor.
+          Switched to explicit absolute positioning for the two regions
+          — there's no flex layout to drift, the cover is always
+          height:65% top:0 and the info section always top:65% bottom:0.
 
-          paddingTop reserves a clean band at the top of the art region for
-          the floating chrome (gear button on the page container, "···"
-          overflow on the card). Without it those buttons sat right on top
-          of the cover image. Absolute children inside this region are
-          positioned from the padding-box, so their `top:` values are
-          measured from the actual top of the card — but the cover itself
-          is flex-centered in the area BELOW the padding, so it's pushed
-          down by ~half the padding amount. Net: chrome sits in a clear
-          band, cover doesn't get covered. */}
+          paddingTop reserves a clean band at the top of the art region
+          for the floating chrome (gear button on the page container,
+          "···" overflow on the card). Backdrop and bottom vignette stay
+          absolute inside this region and don't participate in centering.
+          decoding="async" + fetchpriority="high" hint the browser to
+          commit GPU resources to this image early. */}
       <div style={{
-        flex: "0 0 65%", position: "relative", overflow: "hidden",
+        position: "absolute", top: 0, left: 0, right: 0, height: "65%",
+        overflow: "hidden",
         display: "flex", alignItems: "center", justifyContent: "center",
         paddingTop: 48,
       }}>
@@ -768,9 +769,15 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
         </div>
       </div>
 
-      {/* Info + controls — bottom section */}
+      {/* Info + controls — bottom 35% of the card.
+          Absolutely positioned to match the cover region above
+          (top:0..65%); together they fully cover the card with no
+          flex computation. overflowY:auto inside lets long
+          tracklist/review content scroll within the section without
+          affecting the cover region's size. */}
       <div style={{
-        flex: 1, display: "flex", flexDirection: "column",
+        position: "absolute", top: "65%", left: 0, right: 0, bottom: 0,
+        display: "flex", flexDirection: "column",
         padding: "14px 24px 12px",
         background: "linear-gradient(to bottom, #0a0a0a, #111)",
         gap: 10, overflowY: "auto",
@@ -2495,12 +2502,24 @@ export function ForYouPage() {
         display: "flex",
         borderBottom: "1px solid rgba(255,255,255,0.1)",
         flexShrink: 0,
-        // In swipe mode the parent extends to top:0 (covers the safe area
-        // so URL-bar-collapse doesn't expose a black gap). Pad the strip
-        // by safe-area-inset-top so the tab buttons themselves stay
-        // below the notch / status bar — the glass background extends
-        // up into the status-bar area as a continuous header surface.
-        paddingTop: isSwipe ? "env(safe-area-inset-top, 0px)" : undefined,
+        // Pad the strip by safe-area-inset-top in BOTH modes so the tab
+        // buttons stay below the iPhone status bar. The glass background
+        // extends up into the status-bar area as a continuous header.
+        //
+        // Why unconditional (was: isSwipe-only): on mobile non-swipe modes
+        // (Community / Friends) the Layout header is hidden via the
+        // .app-header.hide-on-home-mobile CSS rule, AND the strip's CSS
+        // forces `top: 0 !important`. With no safe-area padding, the
+        // pinned strip rendered UNDER the status bar — iPhone's system
+        // time / battery indicators painted over the "Discover" /
+        // "Community" tab labels (reported in prod 2026-05-18).
+        //
+        // The cost in swipe mode is unchanged (was already applied there).
+        // The cost in scroll modes when Layout's header IS visible (i.e.
+        // tablet+, or before the user scrolls) is one safe-area-inset-top
+        // of vertical whitespace between the header and the strip — minor
+        // cosmetic, much better than the overlap glitch.
+        paddingTop: "env(safe-area-inset-top, 0px)",
         // Belt-and-suspenders: force the strip onto its own GPU layer so
         // nothing in the content panel paints above it regardless of
         // descendant stacking-context shenanigans.

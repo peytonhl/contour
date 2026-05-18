@@ -660,6 +660,277 @@ async def get_new_releases(limit: int = 10) -> list[dict]:
     return albums[:limit]
 
 
+# Genre-slug → list of lowercase substrings that count as "artist tagged with
+# this genre" when scanning Spotify's artist `genres` field. Used by
+# _filter_pool_by_artist_genre to reject tracks whose primary artist isn't
+# tagged with anything resembling the requested genre family.
+#
+# Spotify's artist genres are extremely fine-grained ("atlanta hip hop",
+# "neo soul", "alternative r&b", "modern rock") — exact slug-equality misses
+# most matches. The map maps each picker slug to the broader family of
+# substrings that should count as on-genre.
+#
+# Defaults (when a slug isn't in the map): {slug, slug.replace("-"," ")}.
+# That covers the simple cases ("pop"→"pop", "jazz"→"jazz") without needing
+# an entry per slug. Add an entry only when the default would miss real
+# matches — e.g. "hip-hop" needs to also catch "rap"/"trap"/"drill", which
+# Spotify tags use without the words "hip hop".
+_GENRE_MATCH_ALIASES: dict[str, list[str]] = {
+    "hip-hop":      ["hip hop", "rap", "trap", "drill", "grime", "boom bap"],
+    "r-n-b":        ["r&b", "rnb", "neo soul", "soul", "rhythm and blues"],
+    "alternative":  ["alternative", "alt-", "alt rock", "alt pop", "alt metal"],
+    "indie":        ["indie", "lo-fi", "bedroom pop"],
+    "k-pop":        ["k-pop", "kpop", "korean"],
+    "j-pop":        ["j-pop", "jpop", "japanese", "anime"],
+    "country":      ["country", "americana", "bluegrass", "honky"],
+    "folk":         ["folk", "singer-songwriter", "americana"],
+    "electronic":   ["electronic", "edm", "house", "techno", "trance", "dubstep", "drum and bass", "dnb"],
+    "house":        ["house", "deep house", "tech house"],
+    "techno":       ["techno", "industrial"],
+    "drum-and-bass":["drum and bass", "dnb", "jungle"],
+    "dubstep":      ["dubstep", "brostep"],
+    "trap":         ["trap"],
+    "drill":        ["drill"],
+    "lo-fi":        ["lo-fi", "lofi", "chillhop"],
+    "shoegaze":     ["shoegaze", "dream pop"],
+    "dream-pop":    ["dream pop", "shoegaze"],
+    "post-punk":    ["post-punk", "post punk"],
+    "punk":         ["punk", "hardcore"],
+    "hardcore":     ["hardcore"],
+    "emo":          ["emo", "screamo"],
+    "prog-rock":    ["prog", "progressive rock"],
+    "classical":    ["classical", "orchestral", "chamber", "opera", "baroque", "romantic era", "symphony"],
+    "jazz":         ["jazz", "bebop", "swing", "bossa nova", "fusion"],
+    "jazz-fusion":  ["fusion", "jazz fusion"],
+    "soul":         ["soul", "neo soul", "motown"],
+    "funk":         ["funk", "p funk"],
+    "disco":        ["disco"],
+    "new-wave":     ["new wave", "synthpop"],
+    "synthpop":     ["synthpop", "synth-pop", "new wave"],
+    "metal":        ["metal", "doom", "death metal", "black metal"],
+    "blues":        ["blues"],
+    "bluegrass":    ["bluegrass"],
+    "gospel":       ["gospel", "worship", "christian"],
+    "reggae":       ["reggae", "dancehall", "ska"],
+    "dancehall":    ["dancehall"],
+    "latin":        ["latin", "reggaeton", "salsa", "bachata", "cumbia", "merengue", "latino"],
+    "reggaeton":    ["reggaeton", "latin urban"],
+    "salsa":        ["salsa"],
+    "bossa-nova":   ["bossa nova", "mpb", "brazilian"],
+    "afrobeat":     ["afrobeat", "afropop", "afro"],
+    "ambient":      ["ambient", "drone", "new age"],
+    "experimental": ["experimental", "noise", "avant-garde"],
+    "world":        ["world", "global"],
+    "indie-rock":   ["indie rock", "indie"],
+    "indie-pop":    ["indie pop", "indie"],
+    "indie-folk":   ["indie folk", "indie"],
+    "soundtrack":   ["soundtrack", "score", "film"],
+}
+
+
+def _genre_match_terms(slug: str) -> list[str]:
+    """Lowercase substrings that count as "on-genre" when scanned against an
+    artist's Spotify genres list. Looked up from _GENRE_MATCH_ALIASES; falls
+    back to {slug, slug-as-spaces} for simple slugs not in the map."""
+    s = slug.lower().strip()
+    if s in _GENRE_MATCH_ALIASES:
+        return _GENRE_MATCH_ALIASES[s]
+    return [s, s.replace("-", " ")]
+
+
+async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, list[str]]:
+    """Batched /v1/artists?ids=... — returns {artist_id: [lowercase genres]}.
+
+    Used by search_tracks_by_genre to verify each candidate track's primary
+    artist is tagged with the requested genre family. Spotify caps at 50 IDs
+    per call; chunk if larger. Authoritative — Spotify's artist `genres` field
+    is the source of truth for genre tagging.
+
+    Side effect: write-through to ArtistCache so the catalog grows organically
+    from every cold genre search. Subsequent searches against the same artist
+    skip the network entirely (ArtistCache is treated as effectively permanent
+    per artist_cache.META_TTL = 365d).
+
+    Returns {} on failure — callers treat that as "no data, don't filter."
+    """
+    if not artist_ids:
+        return {}
+    out: dict[str, list[str]] = {}
+    chunks = [artist_ids[i:i + 50] for i in range(0, len(artist_ids), 50)]
+    try:
+        async with httpx.AsyncClient() as client:
+            token = await _get_token(client)
+            for chunk in chunks:
+                try:
+                    resp = await _spotify_get(
+                        client, "https://api.spotify.com/v1/artists", token,
+                        params={"ids": ",".join(chunk)},
+                    )
+                    resp.raise_for_status()
+                    for a in (resp.json().get("artists") or []):
+                        if a and a.get("id"):
+                            genres = [
+                                g.lower() for g in (a.get("genres") or [])
+                                if isinstance(g, str)
+                            ]
+                            out[a["id"]] = genres
+                            # Fire-and-forget ArtistCache write so future
+                            # genre-pool builds hit the DB cache instead of
+                            # re-spending this Spotify call.
+                            asyncio.create_task(_persist_artist_to_cache(
+                                a["id"],
+                                a.get("name") or "",
+                                genres,
+                                (a.get("images") or [{}])[0].get("url"),
+                                a.get("popularity"),
+                            ))
+                except Exception as exc:
+                    _log.warning(
+                        "[spotify._fetch_and_persist_artist_genres] chunk failed: %s", exc,
+                    )
+                    continue
+    except Exception as exc:
+        _log.warning("[spotify._fetch_and_persist_artist_genres] %s", exc)
+    return out
+
+
+async def _persist_artist_to_cache(
+    artist_id: str, name: str, genres: list[str],
+    image_url: Optional[str], popularity: Optional[int],
+) -> None:
+    """Idempotent upsert of artist metadata to ArtistCache. Fire-and-forget
+    from _fetch_and_persist_artist_genres so the catalog grows from genre
+    searches. Mirrors the pattern in services/artist_cache.py but inlined
+    here to avoid a circular import (artist_cache imports spotify)."""
+    try:
+        import json as _json
+        from datetime import datetime
+        from sqlalchemy import select
+        from database import AsyncSessionLocal
+        from models import ArtistCache
+
+        async with AsyncSessionLocal() as session:
+            row = (await session.execute(
+                select(ArtistCache).where(ArtistCache.spotify_id == artist_id)
+            )).scalar_one_or_none()
+            now = datetime.utcnow()
+            genres_json = _json.dumps(genres)
+            if row:
+                row.name = name or row.name
+                row.genres = genres_json
+                if image_url:
+                    row.image_url = image_url
+                if popularity is not None:
+                    row.popularity = popularity
+                row.meta_fetched_at = now
+            else:
+                session.add(ArtistCache(
+                    spotify_id=artist_id,
+                    name=name or artist_id,
+                    genres=genres_json,
+                    image_url=image_url,
+                    popularity=popularity,
+                    meta_fetched_at=now,
+                ))
+            await session.commit()
+    except Exception as exc:
+        _log.debug("[spotify._persist_artist_to_cache] %s failed: %s", artist_id, exc)
+
+
+async def _filter_pool_by_artist_genre(
+    pool: list[dict], requested_genre: str,
+) -> list[dict]:
+    """Drop tracks whose primary artist isn't tagged with the requested genre
+    family. The biggest single source of "this isn't what I wanted" in the
+    For You feed: Spotify's `/v1/search?type=track` ranks title-keyword and
+    relevance matches above genre-tag relevance, so a "hip-hop" search pulls
+    in cinematic-instrumental tracks named "Hip Hop" and rock tracks with
+    rap-influenced production but no rap artist credit. This filter pins
+    candidates to the requested genre by verifying each track's primary
+    artist's Spotify `genres` tags.
+
+    Tracks from unknown artists (not in ArtistCache, and not in the batched
+    /v1/artists fetch's response) pass through — better than penalizing the
+    cold-cache case and shrinking the pool prematurely.
+
+    Safety floor: if filtering would leave fewer than 3 tracks, keep the
+    original pool. A thin-but-genre-relevant pool is preferred over a
+    full-but-misleading one, but reducing to 0–2 tracks per pool would
+    starve downstream sampling.
+    """
+    if not pool:
+        return pool
+
+    # Collect primary artist IDs from the pool
+    artist_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for t in pool:
+        aid = (t.get("artist_ids") or [None])[0]
+        if aid and aid not in seen_ids:
+            seen_ids.add(aid)
+            artist_ids.append(aid)
+    if not artist_ids:
+        return pool
+
+    # First check ArtistCache (DB) — covers artists the catalog has touched
+    # before. Free; no Spotify call.
+    artist_genres: dict[str, list[str]] = {}
+    try:
+        import json as _json
+        from sqlalchemy import select
+        from database import AsyncSessionLocal
+        from models import ArtistCache
+
+        async with AsyncSessionLocal() as session:
+            rows = (await session.execute(
+                select(ArtistCache.spotify_id, ArtistCache.genres)
+                .where(ArtistCache.spotify_id.in_(artist_ids))
+            )).all()
+            for sid, genres_json in rows:
+                if genres_json:
+                    try:
+                        artist_genres[sid] = [
+                            g.lower() for g in _json.loads(genres_json)
+                            if isinstance(g, str)
+                        ]
+                    except Exception:
+                        continue
+    except Exception as exc:
+        _log.debug("[spotify._filter_pool_by_artist_genre] ArtistCache read failed: %s", exc)
+
+    # Anything still unknown? Batched Spotify fetch. One call covers up to 50
+    # artists. Cheap relative to the 3 search calls we already spent building
+    # the pool, and the results persist to ArtistCache so we never spend it
+    # again for these artists.
+    missing = [a for a in artist_ids if a not in artist_genres]
+    if missing:
+        fetched = await _fetch_and_persist_artist_genres(missing)
+        artist_genres.update(fetched)
+
+    if not artist_genres:
+        # No genre data anywhere — don't filter, the pool is what it is.
+        return pool
+
+    targets = _genre_match_terms(requested_genre)
+
+    def _ok(t: dict) -> bool:
+        aid = (t.get("artist_ids") or [None])[0]
+        if not aid or aid not in artist_genres:
+            return True  # unknown artist — don't penalize cold cache
+        genres = artist_genres[aid]
+        if not genres:
+            # Artist exists in our cache but has zero genre tags. Common
+            # for very small artists Spotify hasn't tagged yet. Keep them —
+            # we'd rather under-filter than blackhole legit niche artists.
+            return True
+        return any(any(term in g for term in targets) for g in genres)
+
+    filtered = [t for t in pool if _ok(t)]
+    if len(filtered) >= 3:
+        return filtered
+    return pool
+
+
 async def search_tracks_by_genre(
     genre: str,
     limit: int = 20,
@@ -760,24 +1031,47 @@ async def search_tracks_by_genre(
     # bleed into another decade's pool. The "recent (year:2023-2026)"
     # variant is dropped in year-locked mode because it'd contradict the
     # user's explicit decade pick.
+    # v7: pool depth expanded from ~30 → ~50 candidates per genre. The
+    # previous version fired 3 (or 2 vintage) Spotify search variants each
+    # at offset=0, which capped the pool at 30 candidates. For active
+    # raters whose exclude_ids covered the top 20-30 hip-hop tracks, that
+    # left ~0 fresh tracks → tier 1 yielded empty → eventually nuclear
+    # fallback served country chart hits ("Warming up the feed" / "all
+    # mainstream pop" complaints, 2026-05-18).
+    # v7 uses offset-based variants to slide deeper into Spotify's ranking:
+    # the same {genre} query at offsets 0, 10, 20 gives ranks 1-30 from
+    # the same relevance ordering, all in one cache entry. Cache invalidates
+    # v6 to force a rebuild with the new depth.
     if year_range:
-        cache_key = f"spotify:genre_pool_v5:{genre}:{market}:y{year_range}"
+        cache_key = f"spotify:genre_pool_v7:{genre}:{market}:y{year_range}"
     else:
-        cache_key = f"spotify:genre_pool_v5:{genre}:{market}"
+        cache_key = f"spotify:genre_pool_v7:{genre}:{market}"
     pool = await redis_cache.get(cache_key)
 
     if not pool:
-        # (query, synth_pop_at_rank_0, synth_pop_at_last_rank)
+        # Each variant: (query_string, synth_pop_at_rank_0, synth_pop_at_last_rank, offset)
+        # The synth_pop values cover the popularity gradient we'd EXPECT from
+        # each query type: a default `{genre}` query at offset=0 returns the
+        # most-popular tracks (synth=90), and at offset=20 returns ranks
+        # 21-30 which are still relevant but less popular (synth=50→20).
+        # The tag:hipster variant explicitly biases toward low-popularity
+        # tracks (synth=5→40). The year:2023-2026 variant biases toward
+        # recent popular (synth=70→40).
         if year_range:
             variants = [
-                (f"{genre} year:{year_range}", 90, 30),
-                (f"{genre} tag:hipster year:{year_range}", 5, 40),
+                (f"{genre} year:{year_range}", 90, 30, 0),
+                (f"{genre} year:{year_range}", 60, 20, 10),
+                (f"{genre} year:{year_range}", 30, 10, 20),
+                (f"{genre} tag:hipster year:{year_range}", 5, 40, 0),
+                (f"{genre} tag:hipster year:{year_range}", 5, 35, 10),
             ]
         else:
             variants = [
-                (genre, 90, 30),
-                (f"{genre} tag:hipster", 5, 40),
-                (f"{genre} year:2023-2026", 70, 40),
+                (genre, 90, 30, 0),
+                (genre, 60, 20, 10),
+                (genre, 30, 10, 20),
+                (f"{genre} tag:hipster", 5, 40, 0),
+                (f"{genre} year:2023-2026", 70, 40, 0),
             ]
         async with httpx.AsyncClient() as client:
             token = await _get_token(client)
@@ -789,14 +1083,19 @@ async def search_tracks_by_genre(
                     # configurable so Spanish-mode requests pass "ES" and
                     # get Spanish-region-popular tracks at the top of
                     # Spotify's ranking instead of US-region tracks.
-                    params={"q": q, "type": "track", "limit": 10, "market": market},
+                    # offset slides the window deeper into Spotify's
+                    # relevance ranking — offset=10 returns ranks 11-20
+                    # of the SAME query, offset=20 returns 21-30. This
+                    # is how we get pool depth without changing the
+                    # query string (which would shift relevance).
+                    params={"q": q, "type": "track", "limit": 10, "market": market, "offset": off},
                 )
-                for q, _, _ in variants
+                for q, _, _, off in variants
             ], return_exceptions=True)
 
         seen: set[str] = set()
         pool = []
-        for (q, pop_start, pop_end), resp in zip(variants, responses):
+        for (q, pop_start, pop_end, _), resp in zip(variants, responses):
             if isinstance(resp, Exception):
                 continue
             try:
@@ -875,6 +1174,18 @@ async def search_tracks_by_genre(
             filtered = [t for t in pool if not _has_genre_keyword(t)]
             if len(filtered) >= 3:
                 pool = filtered
+
+        # Artist-genre verification — drop tracks whose primary artist's
+        # Spotify-tagged genres don't overlap with the requested genre
+        # family. Catches the cases keyword-stuffing detection misses:
+        # a rock track that shows up on a "hip-hop" search because the
+        # producer used hip-hop drums and Spotify's relevance ranker
+        # surfaced it; or a movie-score cue named after a genre by an
+        # artist with no rap discography. Filter scope is the primary
+        # artist only (track["artist_ids"][0]) — features can mix
+        # genres legitimately and we don't want to drop a "hip-hop"
+        # track because a guest is tagged "pop".
+        pool = await _filter_pool_by_artist_genre(pool, genre)
 
         if pool:  # don't cache an empty pool — let next call retry
             await redis_cache.set(cache_key, pool, ttl=_TTL_7D)

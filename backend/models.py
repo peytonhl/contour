@@ -205,6 +205,13 @@ class UserTasteProfile(Base):
     user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     liked_artist_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)            # JSON array
     genres: Mapped[Optional[str]] = mapped_column(Text, nullable=True)                       # JSON array
+    # User-driven hard-exclude of genre families. Populated by the profile-page
+    # "Not for me" toggle. Tier 1 of the discover feed drops these from the
+    # candidate genre pool BEFORE weighted sampling, so an excluded genre
+    # never even queries Spotify. Separate column from genres (positive
+    # signal) so the two can drift independently — a user can like "indie"
+    # and exclude "indie folk" without contradiction.
+    excluded_genres: Mapped[Optional[str]] = mapped_column(Text, nullable=True)              # JSON array
     disliked_artist_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)          # JSON array
     down_weighted_artist_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)     # JSON array
     onboarding_done: Mapped[bool] = mapped_column(default=False)

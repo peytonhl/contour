@@ -9,7 +9,7 @@
     "cleartext": false
   },
   "ios": {
-    "contentInset": "always",
+    "contentInset": "never",
     "scrollEnabled": true,
     "limitsNavigationsToAppBoundDomains": false
   },
