@@ -1872,6 +1872,7 @@ async def discover_cache_stats():
         "deezer_chart":         "deezer:chart:*",
         "deezer_search":        "deezer:search:*",
         "deezer_preview":       "deezer:preview:*",
+        "circuit_breaker":      "spotify:circuit_open_until",
     }
 
     summary: dict[str, dict] = {}
