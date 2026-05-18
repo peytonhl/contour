@@ -1833,3 +1833,4 @@ async def catalog_stats(db: AsyncSession = Depends(get_db)):
             "high_rated_4_plus": high_track_ratings,
         },
     }
+
