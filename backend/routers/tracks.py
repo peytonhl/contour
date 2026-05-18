@@ -1,8 +1,9 @@
 """Track search, metadata, and async stream enrichment endpoints."""
 
-from typing import List, Optional
-
+import asyncio
 import json
+import logging
+from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -13,11 +14,13 @@ from datetime import date
 
 from database import get_db
 from models import TrackCache
-from services import kworb, spotify
+from services import deezer as deezer_svc
+from services import kworb, lastfm, spotify
 from services import album_cache as cache
 from services import stream_anchors as anchors_svc
 from services.normalization import build_trajectory, riaa_milestones, parse_release_date, era_context, data_tier
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tracks", tags=["tracks"])
 
 
@@ -34,6 +37,13 @@ class TrackResult(BaseModel):
     explicit: bool
     image_url: Optional[str]
     external_url: Optional[str]
+    # 30-second audio preview clip URL — Spotify when available, otherwise
+    # backfilled from Deezer's public API (no key required). Short-lived:
+    # Deezer URLs carry an Akamai signature that expires in ~15 minutes, so
+    # this is never persisted to the DB — every /tracks/{id} call resolves
+    # it fresh (Deezer responses are Redis-cached with TTL clamped to the
+    # signature expiry — see services/deezer.py:_signed_url_ttl).
+    preview_url: Optional[str] = None
 
 
 class TrackStreamStatus(BaseModel):
@@ -96,10 +106,33 @@ def _row_to_track_result(row: TrackCache) -> TrackResult:
     )
 
 
+async def _attach_preview_url(track: TrackResult) -> TrackResult:
+    """
+    Ensure `track.preview_url` is populated, querying Deezer if needed.
+
+    Spotify dropped preview_url for most tracks in late 2023 (Extended Access
+    only). Deezer's public API still returns 30s previews for the bulk of
+    the catalog without an API key. Mirrors the enrichment pass that the
+    For You feed does in routers/discover.py.
+
+    Safe to call when preview_url is already set — short-circuits.
+    """
+    if track.preview_url:
+        return track
+    primary_artist = track.artists[0] if track.artists else ""
+    if not (track.name and primary_artist):
+        return track
+    try:
+        url = await deezer_svc.get_preview(track.name, primary_artist)
+    except Exception:
+        url = None
+    if url:
+        track.preview_url = url
+    return track
+
+
 @router.get("/search", response_model=List[TrackResult])
 async def search_tracks(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
-    import asyncio
-
     async def spotify_search():
         try:
             return await spotify.search_tracks(q)
@@ -134,16 +167,21 @@ async def get_track(track_id: str, db: AsyncSession = Depends(get_db)):
         select(TrackCache).where(TrackCache.spotify_id == track_id)
     )).scalar_one_or_none()
     if cached and cached.image_url:
-        return _row_to_track_result(cached)
+        result = _row_to_track_result(cached)
+        return await _attach_preview_url(result)
 
     try:
         meta = await spotify.get_track(track_id)
         await cache.upsert_album(db, meta)
         await _upsert_track(db, meta)
-        return meta
+        # Construct TrackResult so we can backfill preview_url before returning;
+        # Pydantic v2 ignores meta's extra keys (isrc, label, etc.) by default.
+        result = TrackResult.model_validate(meta)
+        return await _attach_preview_url(result)
     except Exception:
         if cached:
-            return _row_to_track_result(cached)
+            result = _row_to_track_result(cached)
+            return await _attach_preview_url(result)
         raise HTTPException(status_code=404, detail=f"Track {track_id} not found")
 
 
@@ -161,7 +199,7 @@ async def get_track_streams(
     row = await cache.upsert_album(db, meta)
 
     if cache.needs_enrichment(row):
-        background_tasks.add_task(_enrich_track, track_id, meta, db)
+        spawn_track_enrichment(track_id, meta)
 
     return TrackStreamStatus(
         spotify_id=track_id,
@@ -184,7 +222,7 @@ async def get_track_trajectory(
 
     row = await cache.upsert_album(db, meta)
     if cache.needs_enrichment(row):
-        background_tasks.add_task(_enrich_track, track_id, meta, db)
+        spawn_track_enrichment(track_id, meta)
 
     streams = cache.streams_for_album(row)
 
@@ -228,11 +266,109 @@ async def get_track_trajectory(
     }
 
 
-async def _enrich_track(track_id: str, meta: dict, db: AsyncSession) -> None:
-    """Scrape Kworb for track stream count using Spotify artist ID."""
-    artist_ids = meta.get("artist_ids", [])
-    if not artist_ids:
-        await cache.save_kworb_streams(db, track_id, None)
+# Strong-ref set for in-flight enrichment tasks. Mirrors the pattern in
+# routers/albums.py — without this, asyncio.create_task can be garbage-
+# collected mid-flight (the event loop only keeps weak refs), which was
+# the root cause of track enrichments silently never running. The previous
+# `background_tasks.add_task(_enrich_track, ..., db)` also passed the
+# request-scoped DB session which FastAPI tears down before the task runs,
+# so every write would have crashed once the task did execute.
+_inflight_track_enrichments: set[asyncio.Task] = set()
+
+
+def spawn_track_enrichment(track_id: str, meta: dict) -> asyncio.Task:
+    """Schedule background enrichment for a track. Fire-and-forget — the task
+    is held alive in a module-level set until done."""
+    task = asyncio.create_task(_enrich_track(track_id, meta))
+    _inflight_track_enrichments.add(task)
+    task.add_done_callback(_inflight_track_enrichments.discard)
+    return task
+
+
+async def _enrich_track(track_id: str, meta: dict) -> None:
+    """
+    Resolve a track's total stream count and persist it.
+
+    Strategy mirrors _enrich_album:
+      1. Kworb artist tracks page — exact match against the artist's full
+         tracks listing. Works from Railway for the artist-level pages
+         (entity pages are blocked).
+      2. Last.fm track.getInfo — lifetime scrobbles, reliable REST. This
+         fallback is new: previously tracks ONLY tried Kworb and rows
+         stuck on enrichment_status="failed" forever when Kworb missed,
+         leaving the TrackPage with a blank "Total streams" stat.
+      3. For multi-credit tracks, try each credited artist before giving up.
+
+    Opens its own AsyncSessionLocal — must NOT accept the request-scoped
+    session because FastAPI tears that down before the background task
+    runs. (Previous bug: tracks.py was passing `db` from Depends; every
+    write silently failed once the task fired.)
+    """
+    from database import AsyncSessionLocal
+
+    artist_ids = meta.get("artist_ids", []) or []
+    artists = meta.get("artists", []) or []
+    name = meta.get("name", "")
+    streams: Optional[int] = None
+    source: str = "none"
+
+    logger.info(
+        "track enrichment: START %s name=%r artists=%s artist_ids=%s",
+        track_id, name, artists, artist_ids,
+    )
+
+    # 1. Kworb — try each credited artist's tracks page until one returns a hit.
+    for aid in artist_ids[:3]:
+        try:
+            streams = await kworb.get_track_streams(aid, name)
+        except Exception as exc:
+            logger.warning("track enrichment: kworb threw for %s/%s — %s", aid, name, exc)
+            streams = None
+        if streams:
+            source = "kworb"
+            logger.info(
+                "track enrichment: kworb  %s (via artist %s) — %s",
+                name, aid, f"{streams:,}",
+            )
+            break
+
+    # 2. Last.fm fallback — primary safety net for tracks Kworb can't resolve.
+    if streams is None and artists:
+        for artist in artists[:3]:
+            try:
+                streams = await lastfm.get_track_playcount(artist, name)
+            except Exception as exc:
+                logger.warning(
+                    "track enrichment: lastfm threw for %s/%s — %s",
+                    artist, name, exc,
+                )
+                streams = None
+            if streams:
+                source = "lastfm"
+                logger.info(
+                    "track enrichment: lastfm %s (via artist %s) — %s plays",
+                    name, artist, f"{streams:,}",
+                )
+                break
+
+    if streams is None:
+        logger.warning(
+            "track enrichment: FAILED %s — artists=%s artist_ids=%s (Kworb + Last.fm both missed)",
+            name, artists, artist_ids,
+        )
+
+    try:
+        async with AsyncSessionLocal() as db:
+            await cache.save_kworb_streams(db, track_id, streams)
+    except Exception as exc:
+        logger.warning("track enrichment: DB write failed for %s — %s", track_id, exc)
+        logger.info(
+            "track enrichment: DONE %s status=error source=%s streams=%s",
+            track_id, source, streams,
+        )
         return
-    streams = await kworb.get_track_streams(artist_ids[0], meta["name"])
-    await cache.save_kworb_streams(db, track_id, streams)
+
+    logger.info(
+        "track enrichment: DONE %s status=%s source=%s streams=%s",
+        track_id, "done" if streams is not None else "failed", source, streams,
+    )

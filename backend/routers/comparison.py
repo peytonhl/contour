@@ -18,7 +18,7 @@ from services import spotify
 from services import album_cache as cache
 from services.normalization import build_trajectory, riaa_milestones, parse_release_date
 from routers.albums import _enrich_album, spawn_enrichment
-from routers.tracks import _enrich_track
+from routers.tracks import spawn_track_enrichment
 
 router = APIRouter(prefix="/compare", tags=["comparison"])
 
@@ -263,7 +263,11 @@ async def _resolve_track_streams(
     """Resolve stream count for a single track. Returns (streams, source, is_pending)."""
     row = await cache.upsert_album(db, meta)
     if cache.needs_enrichment(row):
-        background_tasks.add_task(_enrich_track, track_id, meta, db)
+        # spawn_track_enrichment opens its own AsyncSession internally — the
+        # request-scoped `db` here would be closed before any BackgroundTask
+        # could write through it (same root-cause as the silent enrichment
+        # failure tracked in routers/tracks.py).
+        spawn_track_enrichment(track_id, meta)
         pending = True
     else:
         pending = False

@@ -45,7 +45,10 @@ createRoot(document.getElementById("root")).render(
 // SplashScreen.hide() is a no-op on web — safe to call unconditionally.
 SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
 
-// Snap the HTML boot splash off (display:none) after a brand-moment window.
+// Snap the HTML boot splash off (display:none) once two conditions are met:
+//   a) Instrument Serif (the Layout header's font) has finished loading.
+//   b) The wordmark has been on screen for at least 700ms (brand moment).
+//
 // We deliberately do NOT cross-fade — that produced a "logo jumping around"
 // glitch on mobile (reported 2026-05-16). Here's what was happening:
 //
@@ -54,18 +57,51 @@ SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
 //
 // During a 320ms opacity transition on the boot splash, intermediate
 // opacities (~0.3–0.7) made BOTH wordmarks visible at the same time, in
-// different positions, in different fonts. The eye reads two
-// simultaneous wordmarks-at-different-positions as the logo translating
-// or "jumping around." A clean display:none snap after the wordmark has
-// been stable for 700ms feels like an intentional reveal instead of a
-// cross-fade ghost.
+// different positions, in different fonts. A clean display:none snap
+// after the wordmark has been stable for 700ms feels like an intentional
+// reveal instead of a cross-fade ghost.
+//
+// The font-load wait fixes a SECOND snap that survived the cross-fade
+// fix: Instrument Serif is loaded via Google Fonts with display=swap,
+// so when the boot splash hid before the font arrived, the Layout
+// header rendered "Contour" in Iowan Old Style (the iOS serif
+// fallback), then a few hundred ms later swapped to Instrument Serif —
+// a visible glyph shift that reads as the title "snapping around"
+// AFTER the splash already hid. Waiting until document.fonts has the
+// face ready means the Layout wordmark is correct on first paint.
 //
 // requestAnimationFrame gates the timer on React's first paint: we want
 // the brand moment to start counting from when the wordmark is actually
 // on screen, not from the moment main.jsx parsed.
 requestAnimationFrame(() => {
-  setTimeout(() => {
-    const splash = document.getElementById("boot-splash");
-    if (splash) splash.style.display = "none";
-  }, 700);
+  const start = performance.now();
+  const MIN_HOLD_MS = 700;
+
+  // Request Instrument Serif at 26px (Layout header size) and 76px (Era
+  // Score) so both the header and the first signature stat have the font
+  // ready when the splash drops. If document.fonts isn't available
+  // (older WebView), fall back to a fixed delay so the splash still hides.
+  const fontPromise = (document.fonts && document.fonts.load)
+    ? Promise.all([
+        document.fonts.load("400 26px 'Instrument Serif'"),
+        document.fonts.load("400 76px 'Instrument Serif'"),
+      ]).catch(() => {})
+    : Promise.resolve();
+
+  // Hard ceiling so a stalled font request never strands the user on the
+  // splash forever — at 2s we drop the splash regardless and accept the
+  // brief font-swap rather than blocking the whole app.
+  const fontReady = Promise.race([
+    fontPromise,
+    new Promise((resolve) => setTimeout(resolve, 2000)),
+  ]);
+
+  fontReady.then(() => {
+    const elapsed = performance.now() - start;
+    const remaining = Math.max(0, MIN_HOLD_MS - elapsed);
+    setTimeout(() => {
+      const splash = document.getElementById("boot-splash");
+      if (splash) splash.style.display = "none";
+    }, remaining);
+  });
 });

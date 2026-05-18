@@ -59,9 +59,13 @@
          The splash lives OUTSIDE #root so React doesn't replace it on mount —
          after the service worker landed, JS was loading from disk so fast
          that mount happened before the splash even painted. main.jsx flips
-         the splash to display:none after a brand-moment window so the
-         wordmark is guaranteed to appear for at least ~700ms regardless of
-         how fast the JS arrives.
+         the splash to display:none once Instrument Serif has loaded AND a
+         700ms brand-moment has elapsed. Waiting for the font matters: the
+         Layout header underneath uses Instrument Serif via Google Fonts
+         display=swap, so dropping the splash before the font is in causes
+         the wordmark to render in the Iowan Old Style fallback first and
+         then glyph-swap a few hundred ms later — reading as the title
+         "snapping around" right after the splash hides.
 
          IMPORTANT: no opacity transition here. An earlier iteration used a
          320ms cross-fade which produced a perceived "logo jumping around"

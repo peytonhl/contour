@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { TrajectoryChart } from "../components/TrajectoryChart.jsx";
@@ -107,6 +107,155 @@ function NoChartData({ releaseDate }) {
         {isEarlyEra
           ? `Releases from ${year} predate widespread streaming adoption. Historical data is often absent from our sources.`
           : "Streaming data isn't available for this track yet. It may not be indexed by our data sources."}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Inline 30s preview player. Mirrors the audio plumbing from
+ * `ForYouPage.jsx`'s swipe-deck cards: a REAL `<audio>` element in the
+ * DOM (not `new Audio()`), keyed on track.id so React fully replaces it
+ * when navigating between tracks, with `preload="none"` so we don't
+ * download the clip until the user actually taps play.
+ *
+ * Why the DOM-attached element matters: iOS WKWebView only honors
+ * user-gesture playback privileges for `<audio>` elements that are
+ * already in the document tree at gesture time. Detached `new Audio()`
+ * instances silently reject `play()` on first tap.
+ *
+ * When `previewUrl` is absent, falls back to a "no preview available"
+ * line with a Spotify-link affordance — same UX as the For You feed.
+ */
+function TrackPreviewPlayer({ trackId, previewUrl, externalUrl }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  // Reset playback state when the track changes (URL prop swap)
+  useEffect(() => {
+    setPlaying(false);
+    setProgress(0);
+  }, [trackId, previewUrl]);
+
+  function toggle() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
+    } else {
+      audio.play()
+        .then(() => setPlaying(true))
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn("[contour] preview play() rejected:", err?.name, err?.message);
+        });
+    }
+  }
+
+  if (!previewUrl) {
+    return (
+      <div style={{
+        background: "var(--surface)",
+        borderRadius: "var(--radius-lg)",
+        padding: "var(--space-4) var(--space-5)",
+        display: "flex", alignItems: "center", gap: "var(--space-3)",
+        color: "var(--text-muted)", fontSize: "var(--text-sm)",
+      }}>
+        <span style={{
+          width: 44, height: 44, borderRadius: "50%",
+          background: "var(--surface3)",
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          flexShrink: 0,
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="5,3 19,12 5,21" />
+          </svg>
+        </span>
+        <span style={{ flex: 1 }}>Preview unavailable for this track.</span>
+        {externalUrl && (
+          <a href={externalUrl} target="_blank" rel="noreferrer"
+            style={{
+              fontSize: "var(--text-xs)", fontWeight: 700,
+              color: "var(--accent)", textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}>
+            Open in Spotify
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      background: "var(--surface)",
+      borderRadius: "var(--radius-lg)",
+      padding: "var(--space-4) var(--space-5)",
+      display: "flex", alignItems: "center", gap: "var(--space-4)",
+    }}>
+      <audio
+        key={trackId}
+        ref={audioRef}
+        src={previewUrl}
+        preload="none"
+        playsInline
+        onTimeUpdate={(e) => {
+          const cur = e.currentTarget.currentTime;
+          if (cur >= 30) {
+            e.currentTarget.pause();
+            setPlaying(false);
+            setProgress(1);
+            return;
+          }
+          setProgress(cur / 30);
+        }}
+        onEnded={() => { setPlaying(false); setProgress(0); }}
+        onError={(e) => {
+          const err = e.currentTarget.error;
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[contour] preview audio failed to load:",
+            { code: err?.code, message: err?.message, src: e.currentTarget.src },
+          );
+          setPlaying(false);
+        }}
+      />
+      <button
+        onClick={toggle}
+        aria-label={playing ? "Pause preview" : "Play 30-second preview"}
+        style={{
+          width: 48, height: 48, borderRadius: "50%",
+          background: "var(--accent)",
+          border: "none", cursor: "pointer", flexShrink: 0,
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          color: "#000",
+          boxShadow: "0 2px 12px rgba(217,122,59,0.35)",
+        }}
+      >
+        {playing
+          ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+          : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
+        }
+      </button>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+        <div style={{
+          height: 4, borderRadius: 2,
+          background: "rgba(255,255,255,0.08)", overflow: "hidden",
+        }}>
+          <div style={{
+            width: `${Math.round(progress * 100)}%`, height: "100%",
+            background: "var(--accent)",
+            transition: "width 0.1s linear",
+          }} />
+        </div>
+        <span style={{
+          fontSize: "var(--text-xs)", color: "var(--text-dim)",
+          letterSpacing: "0.04em",
+        }}>
+          30-second preview
+        </span>
       </div>
     </div>
   );
@@ -362,6 +511,19 @@ export function TrackPage() {
         display: "flex", flexDirection: "column", gap: "var(--space-5)",
       }}>
         <PreStreamingBanner releaseDate={track.release_date} />
+
+        {/* Inline 30s preview — sits ABOVE the rate section so the user can
+            hear the track before tapping a star. Spotify dropped preview_url
+            for most tracks in late 2023; the backend backfills missing
+            previews via Deezer's public API (see _attach_preview_url in
+            routers/tracks.py). When neither source has a clip, the player
+            renders a "preview unavailable" line instead of disappearing —
+            keeps the layout stable across tracks. */}
+        <TrackPreviewPlayer
+          trackId={id}
+          previewUrl={track.preview_url}
+          externalUrl={track.external_url}
+        />
 
         <div id="rate-section" style={{
           background: "var(--surface)",
