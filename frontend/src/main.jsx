@@ -9,37 +9,6 @@ import { registerServiceWorker } from "./sw-register.js";
 import App from "./App.jsx";
 import "./index.css";
 
-// ── Lock the boot-splash wordmark to its t=0 flex-centered pixel position ──
-//
-// The wordmark previously stayed flex-centered inside #boot-splash
-// (`position:fixed; inset:0`) for its whole life. On-device traces
-// (2026-05-17) showed the wordmark sitting at y=352 from module-parse
-// through SplashScreen.hide(), then jumping to y=392 between t=45ms and
-// t=71ms — a 40px downward shift visible to the user as a twitch.
-//
-// Cause: the WebView's content area grew by ~80px in that window, almost
-// certainly because Capacitor's contentInset:"always" is relaxed once
-// SplashScreen.hide() resolves and the WebView re-measures into the
-// full screen area below a translucent status bar. The flex-centered
-// wordmark followed the new center.
-//
-// Fix: measure the wordmark's current bbox right here at module parse
-// (when WebView is still in its initial-inset state — y=352 matches the
-// native LaunchScreen storyboard's safe-area centerY), and pin it via
-// `position:absolute; top:<px>; left:<px>`. Later WebView resizes don't
-// reflow absolute-positioned descendants of #boot-splash since the
-// splash itself stays inset:0; the wordmark stays put at its pinned
-// pixel coordinates.
-const _splashWord = document.getElementById("boot-splash-wordmark");
-if (_splashWord) {
-  const r = _splashWord.getBoundingClientRect();
-  _splashWord.style.position = "absolute";
-  _splashWord.style.top = `${r.top}px`;
-  _splashWord.style.left = `${r.left}px`;
-  _splashWord.style.width = `${r.width}px`;
-  _splashWord.style.height = `${r.height}px`;
-}
-
 initAnalytics();
 
 // Cache JS/CSS bundles for instant repeat-launch. Skipped in dev to avoid
