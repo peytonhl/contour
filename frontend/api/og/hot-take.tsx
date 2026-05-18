@@ -63,14 +63,34 @@ export default async function handler(request) {
   const userId = url.searchParams.get('user_id');
   if (!userId) return new Response('Missing user_id', { status: 400 });
 
+  // TEMPORARY: `?test=1` for visual layout verification — remove after.
+  const isTest = url.searchParams.get('test') === '1';
+
   let data;
-  try {
-    const res = await fetch(`${API_BASE}/ratings/users/${encodeURIComponent(userId)}/hot-take`);
-    if (res.status === 404) return new Response('No hot take to show', { status: 404 });
-    if (!res.ok) return new Response('Failed to load hot take', { status: 502 });
-    data = await res.json();
-  } catch {
-    return new Response('Failed to load hot take', { status: 502 });
+  if (isTest) {
+    data = {
+      user: { id: userId, display_name: 'Peyton Lindogan', image_url: null },
+      rating: 1.5,
+      community_avg: 4.7,
+      community_count: 247,
+      divergence: -3.2,
+      entity: {
+        type: 'track',
+        id: 'test-entity',
+        name: 'Please Please Please',
+        artist: 'Sabrina Carpenter',
+        cover_url: 'https://i.scdn.co/image/ab67616d0000b273de84adf0e48248ea2d769c3e',
+      },
+    };
+  } else {
+    try {
+      const res = await fetch(`${API_BASE}/ratings/users/${encodeURIComponent(userId)}/hot-take`);
+      if (res.status === 404) return new Response('No hot take to show', { status: 404 });
+      if (!res.ok) return new Response('Failed to load hot take', { status: 502 });
+      data = await res.json();
+    } catch {
+      return new Response('Failed to load hot take', { status: 502 });
+    }
   }
 
   const [fontRegular, fontItalic] = await Promise.all([fontPromise, fontItalicPromise]);
@@ -106,7 +126,7 @@ export default async function handler(request) {
           }}
         >
           <span style={{ fontFamily: 'Instrument Serif', fontSize: 88, color: TEXT, lineHeight: 1, letterSpacing: '-0.02em' }}>Contour</span>
-          <span style={{ fontSize: 26, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 34, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
             Hot take
           </span>
         </div>
@@ -122,15 +142,15 @@ export default async function handler(request) {
           padding: '24px 60px 40px',
           gap: 24,
         }}>
-          {/* Cover — centered, 480×480. Smaller than the review card's
-              600 because the hot-take has 4 content blocks below it
-              (meta, take+community, divergence pill, footer) vs the
-              review's 3. v12 at 520 overflowed by ~10px and the footer
-              ended up touching the divergence pill. */}
+          {/* Cover — centered, 440×440 in v14 (down from 480) to make
+              room for the bumped meta (title 42 / artist 28) without
+              overflowing the canvas. Hot-take has 4 content blocks below
+              the cover so the cover has to flex smaller than the review
+              card's. */}
           <div
             style={{
-              width: 480,
-              height: 480,
+              width: 440,
+              height: 440,
               borderRadius: 8,
               overflow: 'hidden',
               display: 'flex',
@@ -140,19 +160,19 @@ export default async function handler(request) {
             }}
           >
             {entity.cover_url ? (
-              <img src={entity.cover_url} width={480} height={480} style={{ objectFit: 'cover' }} />
+              <img src={entity.cover_url} width={440} height={440} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
           </div>
 
-          {/* Subject — same caps-tracked title/artist as review.tsx v11 */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          {/* Subject — bumped to match review v14 (title 42 / artist 28) */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
             <span
               style={{
-                fontSize: 32,
+                fontSize: 42,
                 color: TEXT,
-                letterSpacing: '0.06em',
+                letterSpacing: '0.05em',
                 textTransform: 'uppercase',
                 fontWeight: 700,
                 textAlign: 'center',
@@ -163,7 +183,7 @@ export default async function handler(request) {
             {entity.artist && (
               <span
                 style={{
-                  fontSize: 24,
+                  fontSize: 28,
                   color: MUTED,
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',

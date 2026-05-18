@@ -141,7 +141,7 @@ export default async function handler(request) {
           >
             Contour
           </span>
-          <span style={{ fontSize: 26, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 34, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
             Review
           </span>
         </div>
@@ -165,13 +165,13 @@ export default async function handler(request) {
           padding: '24px 60px 48px',
           gap: 32,
         }}>
-          {/* Cover — centered horizontally, 600×600. Self-aligned center
-              within the column-flex container so it doesn't stretch to
-              full width while keeping its square aspect. */}
+          {/* Cover — centered horizontally, 560×560. Shrunk from 600 in
+              v14 to give the meta block (now title 42 / artist 28) more
+              breathing room without overflowing the canvas. */}
           <div
             style={{
-              width: 600,
-              height: 600,
+              width: 560,
+              height: 560,
               borderRadius: 8,
               overflow: 'hidden',
               display: 'flex',
@@ -181,7 +181,7 @@ export default async function handler(request) {
             }}
           >
             {coverUrl ? (
-              <img src={coverUrl} width={600} height={600} style={{ objectFit: 'cover' }} />
+              <img src={coverUrl} width={560} height={560} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
@@ -189,12 +189,12 @@ export default async function handler(request) {
 
           {/* Subject — title centered above the quote, artist below.
               Caps-tracked for the editorial feel. */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
             <span
               style={{
-                fontSize: 32,
+                fontSize: 42,
                 color: TEXT,
-                letterSpacing: '0.06em',
+                letterSpacing: '0.05em',
                 textTransform: 'uppercase',
                 fontWeight: 700,
                 textAlign: 'center',
@@ -205,7 +205,7 @@ export default async function handler(request) {
             {entityArtist && (
               <span
                 style={{
-                  fontSize: 24,
+                  fontSize: 28,
                   color: MUTED,
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',

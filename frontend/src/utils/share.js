@@ -79,19 +79,22 @@ async function saveCardNative({ cardUrl, fileName }) {
 
   try {
     const mod = await import("@capacitor-community/media");
-    if (!mod?.Media?.savePhoto) {
-      throw new Error("Media plugin loaded but savePhoto is missing");
-    }
+    // `registerPlugin` returns a proxy so `mod.Media.savePhoto` always
+    // looks truthy — actual failure (missing native impl, denied
+    // permission, etc.) surfaces only at call time.
     await mod.Media.savePhoto({ path: uri });
-    return "saved";
+    return { status: "saved" };
   } catch (mediaErr) {
-    // Surface the underlying error so the caller can decide whether to
-    // display it. The fallback below may also throw (e.g. user cancels
-    // the share sheet) — that's distinct and handled by the caller.
+    // Capture the underlying error so the caller can display it (the
+    // previous "Save plugin not available" copy was misleading — the
+    // plugin IS in the build, savePhoto just rejected for some reason).
+    // Fall back to the share sheet which has "Save Image" as a built-in
+    // action so the user still gets a working path to Photos.
+    const mediaError = String(mediaErr?.message || mediaErr || "unknown");
     console.warn("Media.savePhoto failed, falling back to share sheet:", mediaErr);
     const { Share } = await import("@capacitor/share");
     await Share.share({ files: [uri], dialogTitle: "Save image" });
-    return "shared-fallback";
+    return { status: "shared-fallback", mediaError };
   }
 }
 
@@ -135,7 +138,7 @@ async function downloadCardWeb({ cardUrl, fileName }) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return "saved";
+  return { status: "saved" };
 }
 
 function blobToBase64(blob) {

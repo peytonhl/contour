@@ -41,7 +41,12 @@ const ACCENT = "#d97a3b";
 //                    community 28→26, freeing ~50px so the footer doesn't
 //                    touch the divergence pill. Pill bumped 28→32 since
 //                    it's the brand punchline.
-const CARD_VERSION = "13";
+//  v14 (2026-05-17): bumped meta and tag again — title 32→42, artist
+//                    24→28, REVIEW/HOT TAKE 26→34. Cover shrunk to make
+//                    room (review 600→560, hot-take 480→440). Also fixed
+//                    the misleading "save plugin not available" message
+//                    to surface the actual savePhoto error.
+const CARD_VERSION = "14";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
@@ -152,11 +157,19 @@ export function CardPreviewModal({
     setBusy("save");
     try {
       const result = await saveCard({ cardUrl: versionedCardUrl, fileName });
-      // Plugin not available on this build → we fell back to the share
-      // sheet, which IS a usable save path (Save Image is on it) but not
-      // what the button label promises. Let the user know.
-      if (result === "shared-fallback") {
-        setActionError("Save plugin not available in this build — opened share sheet instead. Tap \"Save Image\" there.");
+      // saveCard returns { status, mediaError? }. "saved" → direct save
+      // succeeded (Photos library on native, browser download on web),
+      // no message needed. "shared-fallback" → Media.savePhoto rejected
+      // for some reason and we routed through the share sheet instead;
+      // surface the actual error (not the misleading "plugin not
+      // available" copy we shipped previously — the plugin IS in the
+      // build, savePhoto just rejected at runtime).
+      if (result?.status === "shared-fallback") {
+        setActionError(
+          result.mediaError
+            ? `Direct save threw: ${result.mediaError}. Used share menu — Save Image worked from there.`
+            : `Direct save unavailable — used share menu instead.`
+        );
       }
     } catch (e) {
       if (!isUserCancel(e)) setActionError(`Save failed: ${e?.message || e}`);
