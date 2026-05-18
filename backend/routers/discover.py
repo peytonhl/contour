@@ -434,6 +434,110 @@ async def _compute_target_popularity(db: AsyncSession, user_id: str) -> float | 
     return float(avg) if avg is not None else None
 
 
+async def _compute_user_genre_signal(
+    db: AsyncSession, user_id: str, eligible_genres: list[str],
+) -> dict[str, tuple[int, Optional[float]]]:
+    """
+    Per-genre rating affinity and target popularity, in one DB pass.
+
+    For each genre slug in `eligible_genres`, returns (rating_count,
+    avg_popularity):
+      - rating_count: how many of the user's 4-5★ track ratings have a
+        primary artist tagged with that genre family. A user with 30 rap
+        ratings and 10 classical ratings returns {"hip-hop": (30, ...),
+        "classical": (10, ...), ...}.
+      - avg_popularity: mean Spotify popularity of those same tracks. A
+        user whose rap ratings average to popularity 82 but classical
+        ratings average to 45 returns {"hip-hop": (..., 82.0),
+        "classical": (..., 45.0)}. None when the bucket has zero
+        popularity-bearing tracks.
+
+    Used by tier 1 to:
+      1. Weight the genre sampler by REVEALED preference (rating count)
+         on top of the position decay. User explicitly wants 3× ratings
+         in rap → 3× rap sampling probability.
+      2. Pass a per-genre target_popularity to search_tracks_by_genre
+         instead of one global average. Stops the "rap pulls classical
+         search toward popularity 80" effect that left users seeing only
+         mainstream when they had cross-genre tastes.
+
+    Implementation: one Rating × TrackCache join for the popularity +
+    primary-artist-id, then one ArtistCache lookup for the artist-genre
+    map. Total: 2 queries regardless of rating count. Uses the same
+    `_genre_match_terms` from spotify.py so genre matching is consistent
+    with the existing artist-genre verification filter.
+    """
+    if not eligible_genres:
+        return {}
+
+    # One row per 4-5★ rated track: (popularity, primary_artist_id)
+    rows = (await db.execute(
+        select(TrackCache.popularity, TrackCache.artist_ids_json)
+        .select_from(Rating)
+        .join(TrackCache, Rating.entity_id == TrackCache.spotify_id)
+        .where(
+            Rating.user_id == user_id,
+            Rating.entity_type == "track",
+            Rating.value >= 4.0,
+        )
+    )).all()
+    if not rows:
+        return {}
+
+    # Bucket popularity values by primary artist ID. Same artist rated
+    # multiple times contributes its rating count to its genre buckets
+    # multiple times.
+    artist_pops: dict[str, list[Optional[int]]] = {}
+    for pop, aids_json in rows:
+        try:
+            ids = json.loads(aids_json or "[]")
+            if ids:
+                artist_pops.setdefault(ids[0], []).append(pop)
+        except Exception:
+            continue
+    if not artist_pops:
+        return {}
+
+    artist_rows = (await db.execute(
+        select(ArtistCache.spotify_id, ArtistCache.genres)
+        .where(ArtistCache.spotify_id.in_(artist_pops.keys()))
+    )).all()
+    artist_genre_map: dict[str, list[str]] = {}
+    for sid, gj in artist_rows:
+        if gj:
+            try:
+                artist_genre_map[sid] = [
+                    g.lower() for g in json.loads(gj) if isinstance(g, str)
+                ]
+            except Exception:
+                continue
+
+    # Reuse the same genre-family matcher used by the artist-genre
+    # verification filter in services/spotify.py — keeps the two systems
+    # consistent (a rap artist counted toward "hip-hop" affinity is the
+    # same rap artist that passes the "hip-hop" pool filter).
+    from services.spotify import _genre_match_terms
+    match_terms = {g: _genre_match_terms(g) for g in eligible_genres}
+
+    counts: dict[str, int] = {g: 0 for g in eligible_genres}
+    pop_buckets: dict[str, list[int]] = {g: [] for g in eligible_genres}
+    for aid, pops in artist_pops.items():
+        artist_genres = artist_genre_map.get(aid)
+        if not artist_genres:
+            continue
+        for slug, terms in match_terms.items():
+            if any(any(term in ag for term in terms) for ag in artist_genres):
+                counts[slug] += len(pops)
+                pop_buckets[slug].extend(p for p in pops if p is not None)
+
+    out: dict[str, tuple[int, Optional[float]]] = {}
+    for g in eligible_genres:
+        bucket = pop_buckets[g]
+        avg = sum(bucket) / len(bucket) if bucket else None
+        out[g] = (counts[g], avg)
+    return out
+
+
 async def _compute_decade_preference(
     db: AsyncSession, user_id: str
 ) -> Optional[dict[str, float]]:
@@ -943,35 +1047,69 @@ async def get_discover_feed(
         if len(filtered) >= 2:
             eligible_genres = filtered
 
+    # Per-genre rating-affinity + popularity signal — drives weighted
+    # sampling AND per-genre target popularity in tier 1 below.
+    # Only computed for logged-in users with eligible_genres; cold-start
+    # users get position-only sampling and the global target_popularity.
+    genre_signal: dict[str, tuple[int, Optional[float]]] = {}
+    if user_id and eligible_genres:
+        try:
+            genre_signal = await _compute_user_genre_signal(db, user_id, eligible_genres)
+        except Exception as exc:
+            logger.warning("discover: _compute_user_genre_signal failed: %s", exc)
+
     # Tier 1 — weighted-genre pivot, Spotify deep pool.
-    # k=6 genres per batch (capped at len(eligible_genres)), limit=20 per
-    # genre, pulled from the v7 pool (offset-expanded, ~50 candidates per
-    # genre). With 6 genres × 20 limit, tier 1 can yield up to 120 tracks
-    # for a user with rich genre prefs — more than enough to fill any
-    # 10-track batch even for users with hundreds of rated tracks in
-    # exclude_ids.
+    # Sampling weight per genre:
+    #     position_weight × max(rating_count, 1)
+    # Position weight (0.90^i) covers recency/freshness; rating_count
+    # covers REVEALED preference. The two multiply so a frequently-rated
+    # genre near the front of the list dominates batches, while never-
+    # rated genres (count=0 → floor 1) still surface periodically.
+    # Linear scaling on count is intentional — user wants 3× ratings in
+    # a genre → 3× sampling probability for that genre.
     #
-    # For cold-start users (no eligible_genres) tier 1 is a no-op; the
-    # cold-start ladder below fires instead.
+    # Per-genre target popularity: each sampled genre's search uses its
+    # OWN average popularity from the user's 4-5★ ratings in that genre
+    # family. Without this, a rap+classical user's classical search was
+    # targeting popularity 70 (rap pulls the global avg up) and returning
+    # weird mid-pop crossover instead of real classical (which is mostly
+    # popularity 30-50 on Spotify). Falls back to global target when the
+    # bucket is empty.
     if eligible_genres and len(tracks) < limit:
         n_pick = min(6, len(eligible_genres))
-        position_weights = [0.90 ** i for i in range(len(eligible_genres))]
-        sampled_genres = _weighted_sample(eligible_genres, position_weights, k=n_pick)
-        genre_results = await asyncio.gather(*[
-            spotify.search_tracks_by_genre(
+        weights = []
+        for i, g in enumerate(eligible_genres):
+            pos = 0.90 ** i
+            count = genre_signal.get(g, (0, None))[0]
+            weights.append(pos * max(count, 1))
+        sampled_genres = _weighted_sample(eligible_genres, weights, k=n_pick)
+
+        async def _fetch_for_genre(g: str) -> list:
+            per_genre_target = genre_signal.get(g, (0, None))[1]
+            if per_genre_target is None:
+                per_genre_target = target_popularity
+            return await spotify.search_tracks_by_genre(
                 g,
                 limit=20,
-                target_popularity=target_popularity,
+                target_popularity=per_genre_target,
                 market=spotify_market,
                 year_range=year_range,
             )
-            for g in sampled_genres
+
+        genre_results = await asyncio.gather(*[
+            _fetch_for_genre(g) for g in sampled_genres
         ], return_exceptions=True)
         _flatten_shuffle_add(genre_results, add_personalized)
+
+        # Compact per-genre summary for log: "hip-hop:30r@82,classical:10r@45"
+        sampled_summary = ",".join(
+            f"{g}:{genre_signal.get(g, (0, None))[0]}r"
+            + (f"@{int(genre_signal[g][1])}" if genre_signal.get(g, (0, None))[1] is not None else "")
+            for g in sampled_genres
+        )
         logger.info(
-            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, target_pop=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d)",
-            len(tracks) - tier1_added_before, sampled_genres,
-            f"{target_popularity:.1f}" if target_popularity is not None else "default",
+            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d)",
+            len(tracks) - tier1_added_before, sampled_summary,
             len(genre_list),
             year_range or "none",
             len(genre_list) - len(eligible_genres),
