@@ -37,7 +37,11 @@ const ACCENT = "#d97a3b";
 //                    both card types share a visual language. Hot-take
 //                    cover sized 520 (vs review's 600) to leave room for
 //                    the take + community + divergence + attribution.
-const CARD_VERSION = "12";
+//  v13 (2026-05-17): hot-take overflow fix — cover 520→480, take 56→50,
+//                    community 28→26, freeing ~50px so the footer doesn't
+//                    touch the divergence pill. Pill bumped 28→32 since
+//                    it's the brand punchline.
+const CARD_VERSION = "13";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

@@ -142,14 +142,18 @@ export default async function handler(request) {
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          padding: '24px 60px 48px',
-          gap: 28,
+          padding: '24px 60px 40px',
+          gap: 24,
         }}>
-          {/* Cover — centered, 520×520 */}
+          {/* Cover — centered, 480×480. Smaller than the review card's
+              600 because the hot-take has 4 content blocks below it
+              (meta, take+community, divergence pill, footer) vs the
+              review's 3. v12 at 520 overflowed by ~10px and the footer
+              ended up touching the divergence pill. */}
           <div
             style={{
-              width: 520,
-              height: 520,
+              width: 480,
+              height: 480,
               borderRadius: 8,
               overflow: 'hidden',
               display: 'flex',
@@ -159,7 +163,7 @@ export default async function handler(request) {
             }}
           >
             {entity.cover_url ? (
-              <img src={entity.cover_url} width={520} height={520} style={{ objectFit: 'cover' }} />
+              <img src={entity.cover_url} width={480} height={480} style={{ objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
@@ -194,40 +198,38 @@ export default async function handler(request) {
             )}
           </div>
 
-          {/* The take + community comparison — centered editorial block.
-              "I gave it X.X ★" is the hero line; the community line sits
-              just below it as italic commentary. */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {/* The take + community comparison */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span
                 style={{
                   fontFamily: 'Instrument Serif',
-                  fontSize: 56,
+                  fontSize: 50,
                   lineHeight: 1.1,
                   color: TEXT,
                 }}
               >
                 I gave it {data.rating.toFixed(1)}
               </span>
-              <StarIcon size={46} color={GOLD} />
+              <StarIcon size={40} color={GOLD} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span
                 style={{
                   fontFamily: 'Instrument Serif',
                   fontStyle: 'italic',
-                  fontSize: 28,
+                  fontSize: 26,
                   color: MUTED,
                 }}
               >
                 Everyone else: {data.community_avg.toFixed(1)}
               </span>
-              <StarIcon size={22} color={MUTED} />
+              <StarIcon size={20} color={MUTED} />
               <span
                 style={{
                   fontFamily: 'Instrument Serif',
                   fontStyle: 'italic',
-                  fontSize: 28,
+                  fontSize: 26,
                   color: MUTED,
                 }}
               >
@@ -236,15 +238,15 @@ export default async function handler(request) {
             </div>
           </div>
 
-          {/* Divergence badge — the punchline of the card. Centered pill,
-              "+1.5 ★ Hotter" or "−2.0 ★ Cooler". Gold when hotter,
-              danger color when cooler. */}
+          {/* Divergence badge — the punchline. Bumped up vs v12 (28→32)
+              since shrinking the cover/take gave room to push the brand
+              moment forward. */}
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 10,
-              padding: '10px 22px',
+              gap: 12,
+              padding: '12px 26px',
               borderRadius: 999,
               backgroundColor: `${swingColor}26`,
               alignSelf: 'center',
@@ -252,7 +254,7 @@ export default async function handler(request) {
           >
             <span
               style={{
-                fontSize: 28,
+                fontSize: 32,
                 fontWeight: 700,
                 color: swingColor,
                 fontVariantNumeric: 'tabular-nums',
@@ -260,8 +262,8 @@ export default async function handler(request) {
             >
               {isHotter ? '+' : '−'}{Math.abs(data.divergence).toFixed(1)}
             </span>
-            <StarIcon size={24} color={swingColor} />
-            <span style={{ fontSize: 28, fontWeight: 700, color: swingColor }}>
+            <StarIcon size={28} color={swingColor} />
+            <span style={{ fontSize: 32, fontWeight: 700, color: swingColor }}>
               {swingWord}
             </span>
           </div>
