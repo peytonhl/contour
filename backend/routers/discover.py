@@ -1764,6 +1764,44 @@ async def discover_me_state(
 
 
 @router.get("/debug")
+@router.get("/probe-artists")
+async def discover_probe_artists(ids: str = Query(..., description="Comma-separated Spotify artist IDs")):
+    """One-shot diagnostic: make a /v1/artists?ids= call and return the raw
+    response so we can see what Spotify is actually saying. Used to debug
+    why _fetch_and_persist_artist_genres returns 0 in prod despite the
+    circuit being closed and IDs looking valid. Delete after diagnosis."""
+    import httpx as _httpx
+    from services import spotify as _spotify
+    try:
+        async with _httpx.AsyncClient() as client:
+            token = await _spotify._get_token(client)
+            # Make the call directly, bypassing _spotify_get's wrapper so
+            # we see EXACTLY what Spotify returns (status, headers, body).
+            resp = await client.get(
+                f"https://api.spotify.com/v1/artists?ids={ids}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            body_preview = resp.text[:500]
+            try:
+                parsed = resp.json()
+                parsed_keys = list(parsed.keys()) if isinstance(parsed, dict) else None
+                artists = parsed.get("artists") if isinstance(parsed, dict) else None
+                artist_count = len(artists) if isinstance(artists, list) else None
+            except Exception:
+                parsed_keys = None
+                artist_count = None
+        return {
+            "status_code": resp.status_code,
+            "headers": dict(resp.headers),
+            "body_preview": body_preview,
+            "parsed_top_keys": parsed_keys,
+            "artist_count_in_response": artist_count,
+            "token_len": len(token) if token else 0,
+        }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 @router.post("/backfill-artists")
 async def discover_backfill_artists(
     db: AsyncSession = Depends(get_db),
