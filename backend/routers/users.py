@@ -300,13 +300,34 @@ async def get_suggested_users(
 
 @router.get("/search")
 async def search_users(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
-    """Search users by display name."""
+    """Search users by display name.
+
+    Response shape matches /users/suggested so the same row component can
+    render both (bio + reviews_count are used by SuggestedUser for the
+    secondary line). reviews_count is a per-row scalar query — fine for
+    a list capped at 10. `reason` is None (search has no ranking signal
+    to surface).
+    """
     results = (await db.execute(
         select(User)
         .where(User.display_name.ilike(f"%{q}%"))
-        .limit(5)
+        .limit(10)
     )).scalars().all()
-    return [{"id": u.id, "display_name": u.display_name, "image_url": u.image_url} for u in results]
+
+    out = []
+    for u in results:
+        review_count = (await db.execute(
+            select(func.count(Review.id)).where(Review.user_id == u.id)
+        )).scalar() or 0
+        out.append({
+            "id": u.id,
+            "display_name": u.display_name,
+            "image_url": u.image_url,
+            "bio": u.bio,
+            "reviews_count": int(review_count),
+            "reason": None,
+        })
+    return out
 
 
 @router.get("/{user_id}")

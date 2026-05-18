@@ -165,7 +165,7 @@ function FollowingItem({ item }) {
   );
 }
 
-function SuggestedUser({ u, onFollow }) {
+export function SuggestedUser({ u, onFollow }) {
   const [followed, setFollowed] = useState(false);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
