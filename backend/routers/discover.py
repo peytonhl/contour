@@ -45,6 +45,17 @@ Tier 1 honors down-weighted artists. Tiers 2–4 only honor hard dislikes.
 This means a single low rating won't blackhole an artist from charts, but
 explicit "Not interested" will.
 
+Cover-spam filter (all tiers)
+─────────────────────────────
+_is_low_quality_cover runs per-track in the response path (inside the
+_make_adder closure, before exclusion checks). Catches the workout /
+karaoke / tribute / "Originally Performed by" / "BPM" spam that Spotify
+and Deezer both surface in volume. Independent of genre/artist filters
+because the cover-factory artists are often legitimately tagged with
+on-genre microgenres ("hip hop running workout") and pass the artist-
+genre verification. Patterns live at module level, conservative by
+design — see _COVER_TITLE_PATTERNS / _COVER_ARTIST_PATTERNS.
+
 Cross-tier decade rerank
 ────────────────────────
 Inside each tier's add-batch loop, candidates are re-sorted by how well
@@ -98,6 +109,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -114,6 +126,99 @@ from services import deezer as deezer_svc
 from services.limiter import limiter
 
 router = APIRouter(prefix="/discover", tags=["discover"])
+
+
+# ── Low-quality-cover detection ────────────────────────────────────────────────
+# Spotify (and to a lesser extent Deezer) are flooded with workout / karaoke /
+# tribute / "in the style of" covers — labels generate BPM-matched and karaoke
+# versions of popular songs at scale to capture stream royalties. These
+# survived the artist-genre verification filter because the cover artists are
+# genuinely tagged with on-genre microgenres ("hip hop running workout" matches
+# "hip-hop" via substring, so a track called "Get Low - Running Mix 140 BPM"
+# by "Workout Music" passes that check). The fix is a track-level pattern
+# denylist applied at the discover-tier level, so it catches matches from
+# every source (Spotify genre search, Deezer chart, Deezer search).
+#
+# Patterns are CONSERVATIVE. False positives — accidentally filtering a legit
+# "Acoustic Version" / "Live at X" / "Remastered" / "Sped Up" track — are the
+# expensive failure mode (real song missing from feed). False negatives — some
+# covers slip through — are cheap (one bad card in a deck of ten). Anything
+# that's a real-catalog variation of an original release explicitly is NOT
+# matched. Add a pattern only when you've seen the same kind of cover spam
+# show up at least three different ways in production.
+_COVER_TITLE_PATTERNS = re.compile(
+    r"(?:"
+    r"\d{2,3}\s*bpm"                       # "140 BPM", "120bpm"
+    r"|workout\s+mix"
+    r"|running\s+mix"
+    r"|cardio\s+mix"
+    r"|aerobics?\s+mix"
+    r"|spinning?\s+mix"
+    r"|cycling\s+mix"
+    r"|treadmill\s+mix"
+    r"|karaoke\s+version"
+    r"|\(karaoke\)|\[karaoke\]"
+    r"|-\s*karaoke(?:\s|$)"
+    r"|originally\s+performed\s+by"
+    r"|in\s+the\s+style\s+of"
+    r"|made\s+famous\s+by"
+    r"|tribute\s+to"
+    r"|-\s*tribute(?:\s|$)"
+    r"|lullaby\s+version"
+    r"|music\s+box\s+version"
+    r"|8[-\s]bit\s+version"
+    r"|cover\s+version"
+    r")",
+    re.IGNORECASE,
+)
+
+# Artist-name denylist. Matched against EACH artist name on the track — if
+# ANY credited artist's name fits the pattern, drop the track. Anchored with
+# word boundaries so "Tributary Music Co." (hypothetical legit artist) isn't
+# clobbered by the broader "tribute" rule.
+_COVER_ARTIST_PATTERNS = re.compile(
+    r"\b(?:"
+    r"karaoke"
+    r"|tribute\s+band"
+    r"|workout\s+music"
+    r"|running\s+music"
+    r"|cycling\s+music"
+    r"|spinning\s+music"
+    r"|yoga\s+music"
+    r"|spa\s+music"
+    r"|lullaby"
+    r"|sleep\s+music"
+    r"|cover\s+band"
+    r"|cover\s+hits"
+    r"|hit\s+crew"
+    r"|hit\s+co\.?"
+    r"|studio\s+sound\s+group"
+    r"|8[-\s]bit\s+(?:universe|arcade)"
+    r"|music\s+box"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _is_low_quality_cover(track: dict) -> bool:
+    """True if the track looks like a workout / karaoke / tribute cover, not
+    the original recording. See module-level _COVER_*_PATTERNS for the
+    pattern catalog and the rationale on conservativeness.
+
+    Triggers on either: a high-confidence keyword in the track title (BPM,
+    "Workout Mix", "Karaoke", "Originally Performed by", "In the Style of",
+    etc.) OR a credited artist whose name is one of the well-known cover-
+    factory labels ("Workout Music", "The Karaoke Channel", "Lullaby Players",
+    etc.). The two are independent — only one needs to match.
+    """
+    name = track.get("name") or ""
+    if name and _COVER_TITLE_PATTERNS.search(name):
+        return True
+    artists = track.get("artists") or []
+    for a in artists:
+        if a and _COVER_ARTIST_PATTERNS.search(a):
+            return True
+    return False
 
 # Deezer queries for the new-music and fallback tiers (no Spotify needed).
 # Tier 2 uses the chart API directly (no text search → no "Top Hits band" problem).
@@ -594,6 +699,10 @@ async def get_discover_feed(
 
     tracks: list[dict] = []
     seen: set[str] = set()
+    # Counter for the cover-spam filter — tracks dropped because they matched
+    # _is_low_quality_cover. Logged at request end so we can see if patterns
+    # are doing too much or too little and tune over time.
+    covers_filtered = 0
 
     # Resolve language filter mode. `language` query param takes precedence
     # when set (current clients); fall back to mapping the legacy boolean
@@ -614,6 +723,7 @@ async def get_discover_feed(
 
     def _make_adder(excluded: set[str]):
         def _add(batch: list[dict]) -> None:
+            nonlocal covers_filtered
             # Decade re-rank, applied WITHIN each tier's batch before the
             # filter loop. Tracks that match the user's preferred decade
             # surface first within this tier's slice of the batch; tracks
@@ -640,6 +750,17 @@ async def get_discover_feed(
                     artist_ok = _passes_language_filter((t.get("artists") or [""])[0], active_language)
                     if not (title_ok and artist_ok):
                         continue
+                # Workout / karaoke / tribute filter. Applied here (per-track
+                # in the response path) rather than upstream so it catches
+                # spam from EVERY tier — Spotify genre search AND Deezer
+                # chart AND Deezer keyword fallbacks. The artist-genre
+                # verification filter in services/spotify.py runs only on
+                # Spotify genre pools and let "Get Low - Running Mix 140
+                # BPM" by "Workout Music" through because the artist is
+                # genuinely tagged with "hip hop running workout".
+                if _is_low_quality_cover(t):
+                    covers_filtered += 1
+                    continue
                 if (
                     t.get("id")
                     and t["id"] not in exclude_ids
@@ -814,9 +935,10 @@ async def get_discover_feed(
         )
 
     logger.info(
-        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, excluded_genres=%d, target_pop=%s, decade_pref=%s, neg_decade=%s, neg_genres=%s, year_range=%s, genres=%s)",
+        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, excluded_genres=%d, covers_filtered=%d, target_pop=%s, decade_pref=%s, neg_decade=%s, neg_genres=%s, year_range=%s, genres=%s)",
         len(tracks), len(exclude_ids), len(seed_artist_ids),
         len(disliked_set), len(down_weighted_set), len(excluded_genre_set),
+        covers_filtered,
         f"{target_popularity:.1f}" if target_popularity is not None else "default",
         _pref_summary(decade_pref),
         _pref_summary(negative_decade_pref),
