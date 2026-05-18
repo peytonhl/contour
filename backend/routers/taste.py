@@ -34,6 +34,11 @@ class TasteProfileIn(BaseModel):
     genres: list[str] = []
     liked_artist_ids: list[str] = []
     onboarding_done: bool = False
+    # Optional negative-signal lists. None (not sent) means "leave the column
+    # alone" — distinct from [] which means "replace with empty". The frontend
+    # sends a value only when the user has edited the excluded-genres list,
+    # so accidental empty bodies don't wipe it.
+    excluded_genres: Optional[list[str]] = None
 
 
 @router.get("/profile")
@@ -46,18 +51,23 @@ async def get_taste_profile(
         profile = await db.get(UserTasteProfile, user_id)
     except Exception:
         return {
-            "genres": [], "liked_artist_ids": [],
+            "genres": [], "excluded_genres": [], "liked_artist_ids": [],
             "disliked_artist_ids": [], "down_weighted_artist_ids": [],
             "onboarding_done": False,
         }
     if not profile:
         return {
-            "genres": [], "liked_artist_ids": [],
+            "genres": [], "excluded_genres": [], "liked_artist_ids": [],
             "disliked_artist_ids": [], "down_weighted_artist_ids": [],
             "onboarding_done": False,
         }
+    # excluded_genres may be missing on rows created before migration
+    # x4y5z6a7b8c9 ran — getattr keeps the endpoint from 500-ing during the
+    # brief deploy window between code reaching the API and the migration
+    # finishing on Railway startup.
     return {
         "genres": json.loads(profile.genres or "[]"),
+        "excluded_genres": json.loads(getattr(profile, "excluded_genres", None) or "[]"),
         "liked_artist_ids": json.loads(profile.liked_artist_ids or "[]"),
         "disliked_artist_ids": json.loads(profile.disliked_artist_ids or "[]"),
         "down_weighted_artist_ids": json.loads(profile.down_weighted_artist_ids or "[]"),
@@ -197,6 +207,12 @@ async def upsert_taste_profile(
     if profile:
         if body.genres:
             profile.genres = json.dumps(body.genres[:20])
+        # excluded_genres uses `is not None` rather than truthiness so an
+        # empty list (`[]`) can clear the previous selection — clicking the
+        # last "exclude" toggle off should remove it from the column, not
+        # leave the stale value.
+        if body.excluded_genres is not None:
+            profile.excluded_genres = json.dumps(body.excluded_genres[:30])
         if body.liked_artist_ids:
             existing = json.loads(profile.liked_artist_ids or "[]")
             merged = list(dict.fromkeys(body.liked_artist_ids + existing))[:20]
@@ -208,6 +224,7 @@ async def upsert_taste_profile(
         profile = UserTasteProfile(
             user_id=user_id,
             genres=json.dumps(body.genres[:20]),
+            excluded_genres=json.dumps((body.excluded_genres or [])[:30]),
             liked_artist_ids=json.dumps(body.liked_artist_ids[:20]),
             onboarding_done=body.onboarding_done,
         )

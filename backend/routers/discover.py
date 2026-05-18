@@ -6,6 +6,10 @@ Personalization signals (logged-in)
 Read server-side from UserTasteProfile so they follow the user across devices:
   • liked_artist_ids       — set by onboarding + every 4–5★ track rating
   • genres                 — set by onboarding (client also caches own copy)
+  • excluded_genres        — user-driven hard-exclude via profile-page
+                              toggle. Removed from the tier 1 candidate pool
+                              BEFORE weighted sampling, so an excluded genre
+                              never spends a Spotify search slot.
   • disliked_artist_ids    — explicit "Not interested" clicks (hard exclude)
   • down_weighted_artist_ids — inferred from 1–2★ ratings (soft exclude:
                               dropped from tier 1 personalized pivots,
@@ -480,6 +484,7 @@ async def get_discover_feed(
 
     # ── Resolve preferences from server profile or client fallback ───────────
     genre_list: list[str] = []
+    excluded_genre_set: set[str] = set()
     liked_artist_ids: list[str] = []
     disliked_set: set[str] = set()
     down_weighted_set: set[str] = set()
@@ -489,12 +494,26 @@ async def get_discover_feed(
             profile = await db.get(UserTasteProfile, user_id)
             if profile:
                 genre_list = json.loads(profile.genres or "[]")
+                # getattr — excluded_genres column was added in migration
+                # x4y5z6a7b8c9; on prod rows pre-deploy it's missing.
+                excluded_genre_set = set(
+                    json.loads(getattr(profile, "excluded_genres", None) or "[]")
+                )
                 liked_artist_ids = json.loads(profile.liked_artist_ids or "[]")
                 disliked_set = set(json.loads(profile.disliked_artist_ids or "[]"))
                 down_weighted_set = set(json.loads(profile.down_weighted_artist_ids or "[]"))
         except Exception:
             # Table or new columns may not exist yet on first deploy
             pass
+
+    # Hard-filter the candidate genre list with the user's exclusions BEFORE
+    # tier 1 sees them. Tier 1's weighted sample never picks an excluded
+    # genre, which means we never spend a Spotify search slot on tracks the
+    # user has explicitly said "not for me". This is the cheapest possible
+    # negative-signal mechanism — no API calls, no post-filter, the genre
+    # is just gone from the eligible pool.
+    if excluded_genre_set:
+        genre_list = [g for g in genre_list if g not in excluded_genre_set]
 
     # Logged-out (or empty server profile) → use client-provided values
     if not genre_list:
@@ -795,9 +814,9 @@ async def get_discover_feed(
         )
 
     logger.info(
-        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, target_pop=%s, decade_pref=%s, neg_decade=%s, neg_genres=%s, year_range=%s, genres=%s)",
+        "discover: returning %d tracks (rated_excluded=%d, seeds=%d, dislikes=%d, down_weighted=%d, excluded_genres=%d, target_pop=%s, decade_pref=%s, neg_decade=%s, neg_genres=%s, year_range=%s, genres=%s)",
         len(tracks), len(exclude_ids), len(seed_artist_ids),
-        len(disliked_set), len(down_weighted_set),
+        len(disliked_set), len(down_weighted_set), len(excluded_genre_set),
         f"{target_popularity:.1f}" if target_popularity is not None else "default",
         _pref_summary(decade_pref),
         _pref_summary(negative_decade_pref),

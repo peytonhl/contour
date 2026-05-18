@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
-import { GENRE_OPTIONS, GenreChip } from "./OnboardingModal.jsx";
+import { GENRE_OPTIONS_BASE, GENRE_OPTIONS_EXTENDED, GenreChip } from "./OnboardingModal.jsx";
 
 const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -406,22 +406,48 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
 }
 
 // ── Genre editor sheet ────────────────────────────────────────────────────────
-function GenreEditorSheet({ currentGenres, onSave, onClose }) {
+//
+// Two interactive controls:
+//   - Tri-state chips: tap cycles neutral → liked (orange border) → excluded
+//     (red strike-through). Excluded genres are sent to /taste/profile as
+//     `excluded_genres` and hard-removed from the discover feed's tier 1
+//     candidate pool, so they never spend a Spotify search slot.
+//   - "View more" button reveals the extended genre list (~40 sub-genres)
+//     below the base 18. Auto-expands when the user already has any extended
+//     genre selected/excluded so they can see what's set.
+//
+// Cross-list invariant: a slug is never in both `selected` and `excluded`
+// at the same time. The tri-state cycle in GenreChip already enforces this
+// at the click level; the handlers below mirror it server-side by stripping
+// the slug from the other list on every flip.
+function GenreEditorSheet({ currentGenres, currentExcluded, onSave, onClose }) {
   const [selected, setSelected] = useState(currentGenres ?? []);
+  const [excluded, setExcluded] = useState(currentExcluded ?? []);
   const [saving, setSaving] = useState(false);
+  // Auto-expand if the user has any extended-list activity to display.
+  const extendedSlugs = GENRE_OPTIONS_EXTENDED.map((g) => g.slug);
+  const hasExtendedActivity =
+    selected.some((s) => extendedSlugs.includes(s)) ||
+    excluded.some((s) => extendedSlugs.includes(s));
+  const [showExtended, setShowExtended] = useState(hasExtendedActivity);
 
-  function toggle(slug) {
-    setSelected((prev) =>
-      prev.includes(slug) ? prev.filter((g) => g !== slug) : [...prev, slug]
-    );
+  function toggleLike(slug) {
+    setSelected((prev) => prev.includes(slug) ? prev.filter((g) => g !== slug) : [...prev, slug]);
+    setExcluded((prev) => prev.filter((g) => g !== slug));
+  }
+
+  function toggleExclude(slug) {
+    setExcluded((prev) => prev.includes(slug) ? prev.filter((g) => g !== slug) : [...prev, slug]);
+    setSelected((prev) => prev.filter((g) => g !== slug));
   }
 
   async function handleSave() {
     setSaving(true);
     try {
       localStorage.setItem("contour_genres_v1", JSON.stringify(selected));
-      await api.saveTasteProfile(selected, [], true);
-      onSave(selected);
+      localStorage.setItem("contour_excluded_genres_v1", JSON.stringify(excluded));
+      await api.saveTasteProfile(selected, [], true, excluded);
+      onSave(selected, excluded);
       onClose();
     } catch {
       onClose();
@@ -429,6 +455,11 @@ function GenreEditorSheet({ currentGenres, onSave, onClose }) {
       setSaving(false);
     }
   }
+
+  const summary =
+    selected.length === 0 && excluded.length === 0
+      ? "Tap once to like · tap again to exclude"
+      : `${selected.length} liked${excluded.length ? ` · ${excluded.length} excluded` : ""}`;
 
   return (
     <>
@@ -444,11 +475,11 @@ function GenreEditorSheet({ currentGenres, onSave, onClose }) {
         }}>
           <div style={{ width: 36, height: 4, borderRadius: "var(--radius-sm)", background: "var(--border)", margin: "0 auto 20px" }} />
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Edit your genres</h3>
               <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--text-muted)" }}>
-                {selected.length > 0 ? `${selected.length} selected` : "None selected · your feed will use defaults"}
+                {summary}
               </p>
             </div>
             <button
@@ -466,12 +497,49 @@ function GenreEditorSheet({ currentGenres, onSave, onClose }) {
 
           <div style={{
             display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center",
-            maxHeight: 260, overflowY: "auto", padding: "4px 0",
+            maxHeight: 360, overflowY: "auto", padding: "4px 0",
           }}>
-            {GENRE_OPTIONS.map((g) => (
-              <GenreChip key={g.slug} genre={g} selected={selected} onToggle={toggle} />
+            {GENRE_OPTIONS_BASE.map((g) => (
+              <GenreChip
+                key={g.slug} genre={g}
+                selected={selected} onToggle={toggleLike}
+                excluded={excluded} onExclude={toggleExclude}
+              />
             ))}
+
+            {showExtended && (
+              <>
+                {/* Soft divider between base and extended. Full row via 100% width
+                    + flex-basis trick so flex-wrap puts it on its own line. */}
+                <div style={{
+                  flexBasis: "100%", height: 1, background: "var(--border)",
+                  margin: "10px 6px 4px",
+                }} />
+                {GENRE_OPTIONS_EXTENDED.map((g) => (
+                  <GenreChip
+                    key={g.slug} genre={g}
+                    selected={selected} onToggle={toggleLike}
+                    excluded={excluded} onExclude={toggleExclude}
+                  />
+                ))}
+              </>
+            )}
           </div>
+
+          {!showExtended && (
+            <button
+              onClick={() => setShowExtended(true)}
+              style={{
+                marginTop: 12, width: "100%", padding: "10px 0",
+                background: "transparent", border: "1px solid var(--border)",
+                borderRadius: "var(--radius-xl)", color: "var(--text-muted)",
+                fontSize: 12, fontWeight: 700, cursor: "pointer",
+                letterSpacing: "0.02em",
+              }}
+            >
+              View more genres ({GENRE_OPTIONS_EXTENDED.length})
+            </button>
+          )}
         </div>
       </div>
     </>
@@ -528,6 +596,12 @@ export function TasteSection({ userId, isOwner }) {
   const [savedGenres, setSavedGenres] = useState(() => {
     try { return JSON.parse(localStorage.getItem("contour_genres_v1") || "[]"); } catch { return []; }
   });
+  // Mirror localStorage on mount for instant render, then reconcile with the
+  // server-side value below — same pattern as savedGenres. Profile owners
+  // only; the server is the source of truth for the discover feed.
+  const [excludedGenres, setExcludedGenres] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("contour_excluded_genres_v1") || "[]"); } catch { return []; }
+  });
 
   useEffect(() => {
     setLoading(true);
@@ -536,6 +610,26 @@ export function TasteSection({ userId, isOwner }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [userId]);
+
+  // Pull the authoritative excluded_genres from the server on mount when the
+  // owner is viewing their own profile. /users/{id}/taste is public and may
+  // not include this private field, so we read it from /taste/profile (auth-
+  // required) separately. Failure is silent — localStorage value is good
+  // enough to render the picker until the user saves.
+  useEffect(() => {
+    if (!isOwner) return;
+    api.getMyTasteProfile()
+      .then((p) => {
+        if (Array.isArray(p?.excluded_genres)) {
+          setExcludedGenres(p.excluded_genres);
+          try { localStorage.setItem("contour_excluded_genres_v1", JSON.stringify(p.excluded_genres)); } catch {}
+        }
+        if (Array.isArray(p?.genres) && p.genres.length > 0) {
+          setSavedGenres(p.genres);
+        }
+      })
+      .catch(() => {});
+  }, [isOwner]);
 
   async function handleSavePins(newAlbums) {
     setTaste((prev) => prev ? { ...prev, pinned_albums: newAlbums } : prev);
@@ -594,7 +688,9 @@ export function TasteSection({ userId, isOwner }) {
                 onMouseEnter={(e) => e.currentTarget.style.color = "var(--text)"}
                 onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
               >
-                {savedGenres.length > 0 ? `Edit genres · ${savedGenres.length}` : "Add genres"}
+                {savedGenres.length > 0 || excludedGenres.length > 0
+                  ? `Edit genres · ${savedGenres.length}${excludedGenres.length ? ` · −${excludedGenres.length}` : ""}`
+                  : "Add genres"}
               </button>
               <button
                 onClick={() => setPickerOpen(true)}
@@ -694,7 +790,11 @@ export function TasteSection({ userId, isOwner }) {
       {genreEditorOpen && (
         <GenreEditorSheet
           currentGenres={savedGenres}
-          onSave={(genres) => setSavedGenres(genres)}
+          currentExcluded={excludedGenres}
+          onSave={(genres, exc) => {
+            setSavedGenres(genres);
+            setExcludedGenres(exc);
+          }}
           onClose={() => setGenreEditorOpen(false)}
         />
       )}

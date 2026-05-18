@@ -8,9 +8,25 @@ const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 
 // ── Genre picker data (also exported for reuse in TasteSection) ───────────────
-export const GENRE_OPTIONS = [
-  { label: "Hip-Hop",     slug: "hip-hop",     from: "#fb923c", to: "#f97316" },
-  { label: "R&B",         slug: "r-n-b",       from: "#c084fc", to: "#a855f7" },
+//
+// Two-tier vocabulary, base + extended:
+//   - GENRE_OPTIONS_BASE: the 18 broad genres shown by default. Covers most
+//     of mainstream listening; keeps the picker scannable at-a-glance.
+//   - GENRE_OPTIONS_EXTENDED: ~40 sub-genres revealed by the "View more"
+//     button in TasteSection. These resolve to artist-genre matches via
+//     backend/services/spotify.py:_GENRE_MATCH_ALIASES — slugs not in that
+//     map fall through to substring matching against the slug itself, so
+//     adding a new slug here is safe even if the alias map is missing it.
+//
+// `slug` is what the backend stores, what we send to /discover/feed, and
+// what _GENRE_MATCH_ALIASES keys off — keep them in sync. Color gradients
+// are picker-cosmetic only.
+//
+// GENRE_OPTIONS is exported as the combined list for callers that don't
+// care about the split (legacy code, profile-page badges, etc).
+export const GENRE_OPTIONS_BASE = [
+  { label: "Hip-Hop",     slug: "hip-hop",      from: "#fb923c", to: "#f97316" },
+  { label: "R&B",         slug: "r-n-b",        from: "#c084fc", to: "#a855f7" },
   { label: "Pop",         slug: "pop",          from: "#f472b6", to: "#ec4899" },
   { label: "Indie",       slug: "indie",        from: ACCENT_A,  to: "#7c3aed" },
   { label: "Alternative", slug: "alternative",  from: "#d97a3b", to: "#6d28d9" },
@@ -29,24 +45,114 @@ export const GENRE_OPTIONS = [
   { label: "Ambient",     slug: "ambient",      from: "#67e8f9", to: "#818cf8" },
 ];
 
-export function GenreChip({ genre, selected, onToggle }) {
-  const active = selected.includes(genre.slug);
+export const GENRE_OPTIONS_EXTENDED = [
+  // Hip-hop family
+  { label: "Trap",          slug: "trap",          from: "#fb923c", to: "#ef4444" },
+  { label: "Drill",         slug: "drill",         from: "#f97316", to: "#9a3412" },
+  { label: "Boom Bap",      slug: "boom-bap",      from: "#fbbf24", to: "#92400e" },
+  { label: "Grime",         slug: "grime",         from: "#a3a3a3", to: "#525252" },
+  // Electronic family
+  { label: "House",         slug: "house",         from: "#22d3ee", to: "#0ea5e9" },
+  { label: "Techno",        slug: "techno",        from: "#94a3b8", to: "#475569" },
+  { label: "Drum & Bass",   slug: "drum-and-bass", from: "#34d399", to: "#0d9488" },
+  { label: "Dubstep",       slug: "dubstep",       from: "#a78bfa", to: "#6d28d9" },
+  { label: "Lo-Fi",         slug: "lo-fi",         from: "#fde68a", to: "#a16207" },
+  { label: "Synthpop",      slug: "synthpop",      from: "#f472b6", to: "#7c3aed" },
+  { label: "New Wave",      slug: "new-wave",      from: "#c084fc", to: "#4338ca" },
+  { label: "Disco",         slug: "disco",         from: "#f9a8d4", to: "#db2777" },
+  // Rock family
+  { label: "Indie Rock",    slug: "indie-rock",    from: "#fb7185", to: "#9f1239" },
+  { label: "Indie Pop",     slug: "indie-pop",     from: "#f9a8d4", to: "#be185d" },
+  { label: "Indie Folk",    slug: "indie-folk",    from: "#86efac", to: "#15803d" },
+  { label: "Shoegaze",      slug: "shoegaze",      from: "#a5b4fc", to: "#4338ca" },
+  { label: "Dream Pop",     slug: "dream-pop",     from: "#f0abfc", to: "#86198f" },
+  { label: "Post-Punk",     slug: "post-punk",     from: "#71717a", to: "#27272a" },
+  { label: "Punk",          slug: "punk",          from: "#fb7185", to: "#7f1d1d" },
+  { label: "Hardcore",      slug: "hardcore",      from: "#dc2626", to: "#450a0a" },
+  { label: "Emo",           slug: "emo",           from: "#a78bfa", to: "#3730a3" },
+  { label: "Prog Rock",     slug: "prog-rock",     from: "#818cf8", to: "#312e81" },
+  // Jazz / soul family
+  { label: "Jazz Fusion",   slug: "jazz-fusion",   from: "#fcd34d", to: "#b45309" },
+  { label: "Bossa Nova",    slug: "bossa-nova",    from: "#fde68a", to: "#ca8a04" },
+  { label: "Blues",         slug: "blues",         from: "#60a5fa", to: "#1e40af" },
+  { label: "Gospel",        slug: "gospel",        from: "#fde047", to: "#854d0e" },
+  // Country / folk family
+  { label: "Bluegrass",     slug: "bluegrass",     from: "#84cc16", to: "#365314" },
+  // Latin family
+  { label: "Reggaeton",     slug: "reggaeton",     from: "#fb923c", to: "#c2410c" },
+  { label: "Salsa",         slug: "salsa",         from: "#fbbf24", to: "#b45309" },
+  // World family
+  { label: "Afrobeat",      slug: "afrobeat",      from: "#facc15", to: "#a16207" },
+  { label: "Dancehall",     slug: "dancehall",     from: "#4ade80", to: "#166534" },
+  { label: "J-Pop",         slug: "j-pop",         from: "#fda4af", to: "#be123c" },
+  // Other
+  { label: "Experimental",  slug: "experimental",  from: "#a78bfa", to: "#5b21b6" },
+  { label: "Soundtrack",    slug: "soundtrack",    from: "#94a3b8", to: "#1e293b" },
+  { label: "World",         slug: "world",         from: "#fb923c", to: "#15803d" },
+];
+
+export const GENRE_OPTIONS = [...GENRE_OPTIONS_BASE, ...GENRE_OPTIONS_EXTENDED];
+
+// Tri-state chip: neutral / liked / excluded.
+//   - `selected` array drives the "liked" state (legacy two-state usage).
+//   - `excluded` array (optional) drives the "excluded" state — a red ring
+//     and strikethrough label. Click cycles neutral → liked → excluded →
+//     neutral when both onToggle and onExclude are provided. Callers that
+//     pass only onToggle keep the legacy two-state behavior (liked/neutral).
+export function GenreChip({ genre, selected, onToggle, excluded, onExclude }) {
+  const isLiked = selected.includes(genre.slug);
+  const isExcluded = (excluded ?? []).includes(genre.slug);
+  const supportsExclude = typeof onExclude === "function";
+
+  function handleClick() {
+    if (!supportsExclude) {
+      onToggle(genre.slug);
+      return;
+    }
+    // Three-state cycle: neutral → liked → excluded → neutral.
+    if (!isLiked && !isExcluded) onToggle(genre.slug);          // → liked
+    else if (isLiked) { onToggle(genre.slug); onExclude(genre.slug); }  // → excluded
+    else onExclude(genre.slug);                                 // → neutral
+  }
+
+  const borderColor = isExcluded
+    ? "var(--danger)"
+    : isLiked
+    ? genre.from
+    : "var(--border)";
+  const bg = isExcluded
+    ? "transparent"
+    : isLiked
+    ? `linear-gradient(135deg, ${genre.from}30, ${genre.to}30)`
+    : "transparent";
+  const fg = isExcluded
+    ? "var(--danger)"
+    : isLiked
+    ? genre.from
+    : "var(--text-muted)";
+
   return (
     <button
-      onClick={() => onToggle(genre.slug)}
+      onClick={handleClick}
+      title={
+        !supportsExclude ? undefined
+        : isExcluded ? "Excluded — click to reset"
+        : isLiked ? "Liked — click to exclude"
+        : "Click to like"
+      }
       style={{
         padding: "8px 16px",
         borderRadius: "var(--radius-xl)",
         fontSize: 13,
         fontWeight: 700,
-        border: `2px solid ${active ? genre.from : "var(--border)"}`,
-        background: active
-          ? `linear-gradient(135deg, ${genre.from}30, ${genre.to}30)`
-          : "transparent",
-        color: active ? genre.from : "var(--text-muted)",
+        border: `2px solid ${borderColor}`,
+        background: bg,
+        color: fg,
         cursor: "pointer",
         transition: "all 0.15s",
-        transform: active ? "scale(1.04)" : "scale(1)",
+        transform: isLiked ? "scale(1.04)" : "scale(1)",
+        textDecoration: isExcluded ? "line-through" : "none",
+        textDecorationThickness: isExcluded ? 2 : undefined,
       }}
     >
       {genre.label}
