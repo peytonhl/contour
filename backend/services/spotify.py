@@ -831,76 +831,63 @@ def _genre_match_terms(slug: str) -> list[str]:
 
 
 async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, list[str]]:
-    """Batched /v1/artists?ids=... — returns {artist_id: [lowercase genres]}.
+    """Per-artist /v1/artists/{id} — returns {artist_id: [lowercase genres]}.
 
     Used by search_tracks_by_genre to verify each candidate track's primary
-    artist is tagged with the requested genre family. Spotify caps at 50 IDs
-    per call; chunk if larger. Authoritative — Spotify's artist `genres` field
-    is the source of truth for genre tagging.
+    artist is tagged with the requested genre family.
 
-    Side effect: write-through to ArtistCache so the catalog grows organically
-    from every cold genre search. Subsequent searches against the same artist
-    skip the network entirely (ArtistCache is treated as effectively permanent
-    per artist_cache.META_TTL = 365d).
+    Why per-artist not batched: Spotify gated the batch /v1/artists?ids=...
+    endpoint behind Extended Access in late 2024 (returns 403 Forbidden
+    for basic-tier apps like ours). Contour can't get Extended Access
+    (requires ~250K MAU per Spotify policy — see project memory). The
+    single-artist /v1/artists/{id} endpoint is still open to all tiers,
+    so we loop and call it per-ID. Slower wall-clock but each call is
+    Redis-cached 30d in get_artist() — steady-state, almost all calls
+    are cache hits and we only spend Spotify quota on cold artists.
 
-    Persistence: BULK upsert in one transaction per chunk (was previously
-    fire-and-forget per artist via asyncio.create_task — that pattern lost
-    ~92% of the writes to Python's GC of orphaned tasks, leaving ArtistCache
-    with only 30 entries despite hundreds of artists fetched. The bulk
-    upsert blocks until commit so the next caller can reliably read what
-    the previous caller wrote.
+    Persistence: bulk upsert via _bulk_upsert_artists_to_cache. One
+    transaction for the entire batch, awaited synchronously — replaces
+    the fire-and-forget asyncio.create_task pattern that was losing 92%
+    of writes to GC of orphaned tasks.
 
     Returns {} on failure — callers treat that as "no data, don't filter."
+
+    Concurrency: relies on _spotify_get's internal semaphore (_get_semaphore)
+    to cap in-flight Spotify calls. We fire all N requests via asyncio.gather
+    and let the semaphore serialize them safely.
     """
     if not artist_ids:
         return {}
     out: dict[str, list[str]] = {}
-    chunks = [artist_ids[i:i + 50] for i in range(0, len(artist_ids), 50)]
-    try:
-        async with httpx.AsyncClient() as client:
-            token = await _get_token(client)
-            for chunk in chunks:
-                try:
-                    # Embed `ids` in the URL rather than passing via params=.
-                    # httpx's params encoder URL-encodes commas (",") as
-                    # "%2C", and Spotify's /v1/artists endpoint rejects the
-                    # encoded form (returns empty or 400 — varies). Same
-                    # trap that bit get_artist_albums via include_groups
-                    # (see CLAUDE.md). Building the URL ourselves keeps
-                    # the comma literal. _spotify_get accepts a full URL
-                    # with query string already attached.
-                    ids_param = ",".join(chunk)
-                    resp = await _spotify_get(
-                        client, f"https://api.spotify.com/v1/artists?ids={ids_param}", token,
-                    )
-                    resp.raise_for_status()
-                    chunk_records: list[dict] = []
-                    for a in (resp.json().get("artists") or []):
-                        if a and a.get("id"):
-                            genres = [
-                                g.lower() for g in (a.get("genres") or [])
-                                if isinstance(g, str)
-                            ]
-                            out[a["id"]] = genres
-                            chunk_records.append({
-                                "artist_id": a["id"],
-                                "name": a.get("name") or a["id"],
-                                "genres": genres,
-                                "image_url": (a.get("images") or [{}])[0].get("url"),
-                                "popularity": a.get("popularity"),
-                            })
-                    # Bulk upsert for this chunk — one transaction, all
-                    # artists committed atomically before we move to the
-                    # next Spotify call.
-                    if chunk_records:
-                        await _bulk_upsert_artists_to_cache(chunk_records)
-                except Exception as exc:
-                    _log.warning(
-                        "[spotify._fetch_and_persist_artist_genres] chunk failed: %s", exc,
-                    )
-                    continue
-    except Exception as exc:
-        _log.warning("[spotify._fetch_and_persist_artist_genres] %s", exc)
+
+    async def _fetch_one(aid: str) -> Optional[dict]:
+        try:
+            meta = await get_artist(aid)
+            return meta
+        except Exception as exc:
+            _log.debug("[spotify._fetch_and_persist_artist_genres] %s failed: %s", aid, exc)
+            return None
+
+    # Fire per-artist fetches in parallel — semaphore inside _spotify_get
+    # caps actual Spotify concurrency. Most calls hit Redis 30d cache.
+    results = await asyncio.gather(*[_fetch_one(aid) for aid in artist_ids])
+
+    records: list[dict] = []
+    for aid, meta in zip(artist_ids, results):
+        if not meta or not meta.get("id"):
+            continue
+        genres = [g.lower() for g in (meta.get("genres") or []) if isinstance(g, str)]
+        out[meta["id"]] = genres
+        records.append({
+            "artist_id": meta["id"],
+            "name": meta.get("name") or meta["id"],
+            "genres": genres,
+            "image_url": meta.get("image_url"),
+            "popularity": meta.get("popularity"),
+        })
+
+    if records:
+        await _bulk_upsert_artists_to_cache(records)
     return out
 
 
