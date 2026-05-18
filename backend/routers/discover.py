@@ -24,22 +24,33 @@ variety while the taste profile builds.
 
 Tier ladder (in order, until `limit` tracks are gathered)
 ─────────────────────────────────────────────────────────
-  1. Weighted-genre pivot     — Sample 3 genres from profile.genres weighted
-                                by position (decay 0.85^i). Front of the list
-                                = most-recent + most-frequent prepend, so a
-                                user's top genre lands in ~43% of batches
-                                while position-15 still lands in ~4%. For
-                                each sampled genre, Spotify search returns
-                                a pool that's then popularity-curve-sampled
-                                to match the user's average liked-track
-                                popularity (target_popularity).
-                                  Replaces the older two-tier setup (seed-
-                                  artist pivot → profile genres top-3),
-                                  which sampled by recency-of-artist only
-                                  and treated all liked genres as equal.
-  2. Deezer chart baseline    — /chart/0/tracks, no auth, no quota
-  3. Deezer new music         — search for fresh tracks
-  4. Deezer keyword fallbacks — last-resort, always returns something
+Three modes; mutually exclusive, chosen at request time:
+
+  • Vintage (year_range set; user has ≥60% decade pref in one decade)
+      1. Weighted-genre pivot, Spotify, year-locked
+      2. Spotify genre-agnostic baselines, year-locked
+
+  • Genre-locked (user has any preferred genre OR any excluded genre)
+      1. Weighted-genre pivot, Spotify — bumped to k=6, limit=20/genre
+      2. Spotify search on user's UNSAMPLED preferred genres
+      3. Spotify search on user's top-3 genres with year:2020-2024
+      4. Deezer keyword fallback restricted to user genres (rare)
+    Deezer chart is deliberately SKIPPED here: it's genre-agnostic and was
+    the source of the "country in my hip-hop feed" leakage when the chart
+    happened to be country-heavy.
+
+  • Cold-start (no genre prefs, no exclusions)
+      1. Weighted-genre pivot (no-op if no prefs)
+      2. Deezer chart baseline /chart/0/tracks
+      3. Deezer new music search
+      4. Deezer keyword fallbacks
+
+Weighted-genre pivot details: sample k genres from profile.genres weighted
+by position (decay 0.90^i). Front of the list = most-recent + most-
+frequent prepend, so a user's top genre lands in ~50% of batches while
+position-15 still lands in ~6%. For each sampled genre, Spotify search
+returns a pool that's then popularity-curve-sampled to match the user's
+average liked-track popularity (target_popularity).
 
 Tier 1 honors down-weighted artists. Tiers 2–4 only honor hard dislikes.
 This means a single low rating won't blackhole an artist from charts, but
@@ -875,14 +886,38 @@ async def get_discover_feed(
         filtered = [g for g in genre_list if negative_genre_pref.get(g, 0.0) < 0.30]
         if len(filtered) >= 2:
             eligible_genres = filtered
+
+    # Genre-locked mode: user has explicit preferences (positive OR negative).
+    # When set, the ladder skips the genre-agnostic Deezer chart baseline and
+    # routes tier 2-3 through Spotify too, so a hip-hop user never gets
+    # country chart hits in their feed just because Deezer's chart happens
+    # to be country-heavy this week. Cold-start users (no prefs, no
+    # exclusions) keep the original Deezer-based fallback ladder.
+    # year_range (vintage decade preference) wins over genre_locked because
+    # its existing Spotify year-locked branch already handles the same
+    # "don't fall back to Deezer" intent.
+    genre_locked = bool(eligible_genres or excluded_genre_set) and not year_range
+
+    sampled_genres: list[str] = []
     if eligible_genres and len(tracks) < limit:
-        n_pick = min(4, len(eligible_genres))
+        # Tier 1 widens when genre_locked: k 4→6 (sample more user genres
+        # per batch) and per-genre limit 15→20 (draw a larger fraction of
+        # each genre's pool). Pool fetch cost is unchanged — search_tracks_
+        # by_genre caches the pool per (genre, market, year) and just
+        # samples differently per call. Higher k spends one extra cache
+        # hit per genre slot; higher limit is free.
+        if genre_locked:
+            n_pick = min(6, len(eligible_genres))
+            per_genre_limit = 20
+        else:
+            n_pick = min(4, len(eligible_genres))
+            per_genre_limit = 15
         position_weights = [0.90 ** i for i in range(len(eligible_genres))]
         sampled_genres = _weighted_sample(eligible_genres, position_weights, k=n_pick)
         genre_results = await asyncio.gather(*[
             spotify.search_tracks_by_genre(
                 g,
-                limit=15,
+                limit=per_genre_limit,
                 target_popularity=target_popularity,
                 market=spotify_market,
                 year_range=year_range,
@@ -891,12 +926,13 @@ async def get_discover_feed(
         ], return_exceptions=True)
         _flatten_shuffle_add(genre_results, add_personalized)
         logger.info(
-            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, target_pop=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d)",
+            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, target_pop=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d, genre_locked=%s)",
             len(tracks) - tier1_added_before, sampled_genres,
             f"{target_popularity:.1f}" if target_popularity is not None else "default",
             len(genre_list),
             year_range or "none",
             len(genre_list) - len(eligible_genres),
+            genre_locked,
         )
 
     if year_range:
@@ -931,7 +967,88 @@ async def get_discover_feed(
                 "discover: tier2 (vintage spotify baseline) → %d tracks (year_range=%s, baseline_genres=%s)",
                 len(tracks), year_range, baseline_genres,
             )
+    elif genre_locked:
+        # ── Genre-locked ladder (Spotify-only, no Deezer chart) ──────────
+        # User has explicit genre preferences (positive picks or exclusions).
+        # The original Deezer chart baseline was the source of "country in
+        # my hip-hop feed" leakage: Deezer's /chart/0/tracks is genre-
+        # agnostic and returns whatever's mainstream right now (currently
+        # country-heavy in the US market). That conflicted with the user
+        # explicitly saying they want a specific genre.
+        #
+        # Replacement: when tier 1 underfills, fall back to MORE Spotify
+        # searches in the user's own genre family — not to a different
+        # source. Same pool-cache pays for itself within minutes when the
+        # site has any concurrent users on the same genres.
+
+        # Tier 2: Spotify search on user genres tier 1 didn't sample.
+        # No-op when tier 1 already covered every eligible genre (e.g. user
+        # picked just 1-2 genres). When useful, this gives the user breadth
+        # across THEIR genre list rather than randomness across charts.
+        if len(tracks) < limit:
+            unsampled = [g for g in eligible_genres if g not in sampled_genres]
+            if unsampled:
+                tier2_genres = unsampled[:4]
+                tier2_before = len(tracks)
+                tier2_results = await asyncio.gather(*[
+                    spotify.search_tracks_by_genre(
+                        g,
+                        limit=20,
+                        target_popularity=target_popularity,
+                        market=spotify_market,
+                    )
+                    for g in tier2_genres
+                ], return_exceptions=True)
+                _flatten_shuffle_add(tier2_results, add_baseline)
+                logger.info(
+                    "discover: tier2 (genre-locked, unsampled prefs) → %d tracks (genres=%s)",
+                    len(tracks) - tier2_before, tier2_genres,
+                )
+
+        # Tier 3: Spotify search on top user genres with year:2020-2024 —
+        # different time window than tier 1's pool (which mixes a default
+        # query + tag:hipster + year:2023-2026). Cache key forks on
+        # year_range so this doesn't collide with tier 1's pool.
+        if len(tracks) < limit and eligible_genres:
+            tier3_genres = eligible_genres[:3]
+            tier3_before = len(tracks)
+            tier3_results = await asyncio.gather(*[
+                spotify.search_tracks_by_genre(
+                    g,
+                    limit=20,
+                    target_popularity=target_popularity,
+                    market=spotify_market,
+                    year_range="2020-2024",
+                )
+                for g in tier3_genres
+            ], return_exceptions=True)
+            _flatten_shuffle_add(tier3_results, add_baseline)
+            logger.info(
+                "discover: tier3 (genre-locked, 2020-2024 window) → %d tracks (genres=%s)",
+                len(tracks) - tier3_before, tier3_genres,
+            )
+
+        # Tier 4: Deezer keyword fallback restricted to the user's genre
+        # words. Rare — only fires when all Spotify tiers above came up
+        # short (niche genres with thin Spotify catalogs). Without this
+        # the genre-locked feed could go empty for very-niche prefs.
+        if len(tracks) < limit and eligible_genres:
+            tier4_before = len(tracks)
+            fallback_queries = [g.replace("-", " ") for g in eligible_genres[:3]]
+            fallback_results = await asyncio.gather(*[
+                deezer_svc.search_tracks(q, limit=10)
+                for q in fallback_queries
+            ], return_exceptions=True)
+            _flatten_shuffle_add(fallback_results, add_baseline)
+            logger.info(
+                "discover: tier4 (genre-locked, deezer keyword fallback) → %d tracks (queries=%s)",
+                len(tracks) - tier4_before, fallback_queries,
+            )
     else:
+        # ── Cold-start ladder (no genre prefs set) ──────────────────────
+        # User hasn't told us what they like; serve mainstream variety from
+        # Deezer while their taste profile builds via ratings.
+
         # ── Tier 2: Deezer chart baseline ────────────────────────────────────────
         # Uses Deezer's /chart/0/tracks endpoint (actual chart data) instead of
         # searching text like "top hits" which was matching a karaoke artist of
