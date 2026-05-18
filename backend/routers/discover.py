@@ -1161,18 +1161,50 @@ async def get_discover_feed(
             ], return_exceptions=True)
             _flatten_shuffle_add(fallback_results, add_baseline)
 
-    # ── Tier 4.5: Nuclear fallback — ignore even hard dislikes ───────────────
-    # Only triggers when every tier above produced zero. Keeps the feed alive
-    # if upstreams are down rather than showing an empty page.
-    if not tracks and disliked_set:
-        logger.info("discover: nuclear fallback — ignoring disliked filter (%d artists)", len(disliked_set))
-        nuclear = await deezer_svc.get_chart_tracks(limit=50)
+    # ── Tier 4.5: Nuclear fallback — guarantee the user sees something ──────
+    # Triggers whenever every tier above produced zero, regardless of WHY.
+    # Previous condition was `not tracks and disliked_set`, which only fired
+    # when hard-dislikes were what blackholed the feed. But active raters who
+    # don't use "Not interested" can still hit empty-feed: their rated tracks
+    # accumulate in exclude_ids and can wipe out tier 1 pools entirely, and
+    # without disliked_set the safety net never kicked in. Reported in prod
+    # 2026-05-18 — feed showed "Warming up the feed" indefinitely.
+    #
+    # Two-pass: first try the chart with exclude_ids honored (preferred — no
+    # repeats of rated tracks). If that's still empty (user has rated every
+    # current chart hit, or chart unavailable), serve raw chart ignoring
+    # exclude_ids — repeating a rated track is preferable to an empty feed.
+    if not tracks:
+        logger.warning(
+            "discover: NUCLEAR FALLBACK — all tiers empty (user_id=%s, exclude_ids=%d, dislikes=%d, down_weighted=%d, genres=%s)",
+            user_id or "anon", len(exclude_ids), len(disliked_set),
+            len(down_weighted_set), genre_list[:3],
+        )
+        try:
+            nuclear = await deezer_svc.get_chart_tracks(limit=50)
+        except Exception as exc:
+            logger.error("discover: nuclear chart fetch failed: %s", exc)
+            nuclear = []
+
+        # Pass 1: honor exclude_ids (no rated repeats).
         for t in nuclear:
             if t.get("id") and t["id"] not in exclude_ids and t["id"] not in seen:
                 seen.add(t["id"])
                 tracks.append(t)
             if len(tracks) >= limit:
                 break
+
+        # Pass 2: still empty? Serve chart ignoring exclude_ids. Active raters
+        # who've rated every chart hit see repeats, which is acceptable in a
+        # "feed totally broken" recovery path.
+        if not tracks and nuclear:
+            logger.warning("discover: NUCLEAR FALLBACK pass 2 — ignoring exclude_ids")
+            for t in nuclear:
+                if t.get("id") and t["id"] not in seen:
+                    seen.add(t["id"])
+                    tracks.append(t)
+                if len(tracks) >= limit:
+                    break
 
     # Compact preference summary for the log: "1980s:65%,1990s:20%" etc.
     # Only the top three contribute; "none" when no preference signal.
