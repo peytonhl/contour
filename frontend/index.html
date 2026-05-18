@@ -106,6 +106,25 @@
     <div id="boot-splash" aria-hidden="true"
          style="position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#08080a; z-index:9999; pointer-events:none;">
       <div style="font-family:Georgia,'Times New Roman',Times,serif; font-size:52px; font-weight:400; letter-spacing:-0.01em; color:#fafafa;">Contour</div>
+      <!-- BUILD STAMP — visible at the bottom of the splash. Confirms which
+           commit your iPhone is actually running (vs serving a cached
+           older bundle from WKWebView's HTTP cache or service worker).
+           If you launch the app and don't see "build splash-v2" here, the
+           iPhone is on stale code. Remove with the rest of the boot-debug
+           helpers once the snap is diagnosed. -->
+      <div style="position:fixed; left:0; right:0; bottom:calc(12px + env(safe-area-inset-bottom, 0px)); text-align:center; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; color:rgba(255,255,255,0.5); letter-spacing:0.04em;">build splash-v2</div>
+    </div>
+    <!-- TEMPORARY: splash-twitch diagnostic overlay v2. The first pass
+         (e662cca) caught the unstyled→styled snap from class-based CSS
+         not yet being applied; inlining the splash styles eliminated
+         that snap, but the user reports a twitch is still present. This
+         second pass keeps the same instrumentation pattern so we can
+         see what's snapping NOW that the first cause is removed.
+         Remove with main.jsx's _bootDebug helpers. -->
+    <div id="boot-debug"
+         style="position:fixed; left:0; right:0; bottom:0; z-index:10000; background:rgba(0,0,0,0.82); color:#b8ffce; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; line-height:1.45; padding:8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); max-height:55vh; overflow-y:auto; white-space:pre; opacity:1; transition:opacity 400ms ease; pointer-events:auto;"
+         aria-hidden="true">
+      <div style="color:#6effa3; font-weight:700; padding-bottom:4px; border-bottom:1px solid rgba(110,255,163,0.3); margin-bottom:4px;">splash debug v2 · tap to dismiss</div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
