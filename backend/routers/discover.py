@@ -621,6 +621,116 @@ async def _compute_user_genre_signal(
     return out
 
 
+async def _fetch_genre_tracks_from_catalog(
+    db: AsyncSession,
+    genre: str,
+    exclude_track_ids: set[str],
+    excluded_artist_ids: set[str],
+    limit: int = 30,
+) -> list[dict]:
+    """Catalog-pivot tier 0: pull tracks from local Postgres (TrackCache ×
+    ArtistCache) instead of hitting Spotify search.
+
+    The Postgres catalog grows organically: every Spotify search persists
+    tracks to TrackCache and primary artists to ArtistCache. After enough
+    user traffic, the DB has more tracks per genre than Spotify search
+    ever returns in a single query. Querying it locally is essentially
+    free compared to a Spotify call — and the artist-genre filter is
+    AUTHORITATIVE (not a substring match against a candidate pool the
+    way `_filter_pool_by_artist_genre` is).
+
+    Algorithm:
+      1. Find all artists in ArtistCache whose genres match the requested
+         genre family (`_genre_match_terms`).
+      2. Find all tracks in TrackCache whose primary artist is in that
+         set, excluding already-rated tracks and excluded artists.
+      3. Return up to `limit` tracks, in random order.
+
+    Returns parsed track dicts in the same shape as spotify.search_tracks_
+    by_genre, ready to flow through _make_adder.
+
+    Returns [] when:
+      - ArtistCache has no matching artists for this genre (cold catalog
+        for this genre family). Caller falls through to Spotify tier.
+      - All matching tracks are in exclude_track_ids. Same fallback.
+    """
+    from services.spotify import _genre_match_terms
+
+    match_terms = _genre_match_terms(genre)
+
+    # Step 1: artists tagged with the genre family. Pull all rows with
+    # non-null genres and filter in Python — Postgres JSON containment
+    # could be faster but isn't portable to SQLite (local dev), and at
+    # current catalog scale (~hundreds of artists) Python filtering is
+    # well under a millisecond.
+    artist_rows = (await db.execute(
+        select(ArtistCache.spotify_id, ArtistCache.genres)
+        .where(ArtistCache.genres.is_not(None))
+    )).all()
+
+    matching_artist_ids: set[str] = set()
+    for sid, gj in artist_rows:
+        try:
+            artist_genres = [
+                g.lower() for g in json.loads(gj or "[]") if isinstance(g, str)
+            ]
+        except Exception:
+            continue
+        if any(any(term in ag for term in match_terms) for ag in artist_genres):
+            matching_artist_ids.add(sid)
+
+    # Remove excluded artists upfront
+    matching_artist_ids -= excluded_artist_ids
+    if not matching_artist_ids:
+        return []
+
+    # Step 2: tracks whose primary artist is in the matching set. Same
+    # portability constraint — can't filter `artist_ids_json[0] IN ...`
+    # in DB-agnostic SQL, so pull and filter in Python. Cap the pull
+    # generously: with 909 tracks total, scanning all is cheap.
+    track_rows = (await db.execute(
+        select(TrackCache).where(
+            TrackCache.artist_ids_json.is_not(None),
+            TrackCache.image_url.is_not(None),  # need album art for the deck
+        )
+    )).scalars().all()
+
+    candidates: list[dict] = []
+    for t in track_rows:
+        if t.spotify_id in exclude_track_ids:
+            continue
+        try:
+            ids = json.loads(t.artist_ids_json or "[]")
+            if not ids:
+                continue
+            primary = ids[0]
+            if primary not in matching_artist_ids:
+                continue
+        except Exception:
+            continue
+        # Parse into the same dict shape that spotify.search_tracks_by_genre
+        # returns, so the downstream pipeline doesn't care about the source.
+        candidates.append({
+            "id": t.spotify_id,
+            "name": t.name,
+            "artists": [t.artist] if t.artist else [],
+            "artist_ids": ids,
+            "album_id": t.album_id,
+            "album_name": t.album_name,
+            "release_date": t.release_date,
+            "duration_ms": t.duration_ms,
+            "popularity": t.popularity,
+            "explicit": bool(t.explicit),
+            "image_url": t.image_url,
+            "external_url": t.external_url,
+            "preview_url": None,  # populated by Deezer preview enrichment
+            "_source": "catalog",
+        })
+
+    random.shuffle(candidates)
+    return candidates[:limit]
+
+
 async def _compute_decade_preference(
     db: AsyncSession, user_id: str
 ) -> Optional[dict[str, float]]:
@@ -1181,33 +1291,69 @@ async def get_discover_feed(
             weights.append(pos * max(count, 1))
         sampled_genres = _weighted_sample(eligible_genres, weights, k=n_pick)
 
-        async def _fetch_for_genre(g: str) -> list:
-            return await spotify.search_tracks_by_genre(
-                g,
-                limit=20,
-                target_popularity=target_popularity,
-                market=spotify_market,
-                year_range=year_range,
+        # ── Tier 0: catalog pivot (DB-backed) ────────────────────────────
+        # Drain the local Postgres catalog (TrackCache × ArtistCache) FIRST
+        # for the sampled genres. Cost: one DB read per genre, no Spotify
+        # calls. As the catalog grows, this satisfies more of the request
+        # without any external API spend. Cold-catalog case (e.g. niche
+        # genres with few cached artists) returns [] and tier 1 below
+        # picks up the slack.
+        # No year_range filter here — TrackCache.release_date isn't
+        # always populated and we don't want to over-filter the local
+        # pool. Decade-preference re-rank inside _make_adder still
+        # surfaces era-appropriate tracks at the top of the batch.
+        catalog_added_before = len(tracks)
+        catalog_results = await asyncio.gather(*[
+            _fetch_genre_tracks_from_catalog(
+                db, g,
+                exclude_track_ids=exclude_ids,
+                excluded_artist_ids=soft_excluded,
+                limit=15,
             )
-
-        genre_results = await asyncio.gather(*[
-            _fetch_for_genre(g) for g in sampled_genres
-        ], return_exceptions=True)
-        _flatten_shuffle_add(genre_results, add_personalized)
-
-        # Compact per-genre summary for log: "hip-hop:30r@82,classical:10r@45"
-        sampled_summary = ",".join(
-            f"{g}:{genre_signal.get(g, (0, None))[0]}r"
-            + (f"@{int(genre_signal[g][1])}" if genre_signal.get(g, (0, None))[1] is not None else "")
             for g in sampled_genres
-        )
+        ], return_exceptions=True)
+        _flatten_shuffle_add(catalog_results, add_personalized)
+        catalog_yield = len(tracks) - catalog_added_before
         logger.info(
-            "discover: tier1 (weighted-genre) → %d tracks (sampled=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d)",
-            len(tracks) - tier1_added_before, sampled_summary,
-            len(genre_list),
-            year_range or "none",
-            len(genre_list) - len(eligible_genres),
+            "discover: tier0 (catalog) → %d tracks (sampled=%s)",
+            catalog_yield, sampled_genres,
         )
+
+        # ── Tier 1: Spotify search (fall-through) ────────────────────────
+        # Fires when the catalog couldn't fill the batch on its own. The
+        # catalog pivot above is preferred (zero Spotify cost), but a
+        # cold or thin catalog falls through to Spotify search.
+        if len(tracks) < limit:
+            tier1_start = len(tracks)
+
+            async def _fetch_for_genre(g: str) -> list:
+                return await spotify.search_tracks_by_genre(
+                    g,
+                    limit=20,
+                    target_popularity=target_popularity,
+                    market=spotify_market,
+                    year_range=year_range,
+                )
+
+            genre_results = await asyncio.gather(*[
+                _fetch_for_genre(g) for g in sampled_genres
+            ], return_exceptions=True)
+            _flatten_shuffle_add(genre_results, add_personalized)
+
+            # Compact per-genre summary for log: "hip-hop:30r@82,classical:10r@45"
+            sampled_summary = ",".join(
+                f"{g}:{genre_signal.get(g, (0, None))[0]}r"
+                + (f"@{int(genre_signal[g][1])}" if genre_signal.get(g, (0, None))[1] is not None else "")
+                for g in sampled_genres
+            )
+            logger.info(
+                "discover: tier1 (spotify weighted-genre) → %d tracks (sampled=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d, catalog_yield=%d)",
+                len(tracks) - tier1_start, sampled_summary,
+                len(genre_list),
+                year_range or "none",
+                len(genre_list) - len(eligible_genres),
+                catalog_yield,
+            )
 
     if year_range and len(tracks) < limit:
         # Vintage tier 2 — Spotify year-locked baselines across pop/rock/
@@ -1609,6 +1755,77 @@ async def discover_me_state(
 
 
 @router.get("/debug")
+@router.post("/backfill-artists")
+async def discover_backfill_artists(
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(500, le=2000, description="Max artists to backfill in this call"),
+):
+    """
+    One-shot backfill: walk TrackCache, find every unique primary artist
+    that's NOT yet in ArtistCache, batch-fetch their genres from Spotify,
+    persist via the new bulk-upsert path.
+
+    Returns counts of artists discovered, fetched, and persisted. Call
+    repeatedly (`limit=500` each time) until `to_fetch` is 0 to fully
+    catch up the catalog.
+
+    Used to recover from the asyncio-task-GC bug that lost ~92% of
+    ArtistCache writes through fire-and-forget. After backfill, the
+    catalog-pivot tier can reliably JOIN TrackCache × ArtistCache by
+    genre — the prerequisite for serving the feed from local DB with
+    minimal Spotify calls at scale.
+    """
+    # Collect every unique primary artist ID from TrackCache
+    rows = (await db.execute(
+        select(TrackCache.artist_ids_json).where(TrackCache.artist_ids_json.is_not(None))
+    )).scalars().all()
+    primary_artist_ids: set[str] = set()
+    for aids_json in rows:
+        try:
+            ids = json.loads(aids_json or "[]")
+            if ids:
+                primary_artist_ids.add(ids[0])
+        except Exception:
+            continue
+
+    # Filter out ones already cached
+    if primary_artist_ids:
+        already_cached = (await db.execute(
+            select(ArtistCache.spotify_id).where(ArtistCache.spotify_id.in_(primary_artist_ids))
+        )).scalars().all()
+        to_fetch = primary_artist_ids - set(already_cached)
+    else:
+        to_fetch = set()
+
+    to_fetch_list = sorted(to_fetch)
+    batch = to_fetch_list[:limit]
+
+    fetched: dict[str, list[str]] = {}
+    if batch:
+        try:
+            fetched = await spotify._fetch_and_persist_artist_genres(batch)
+        except Exception as exc:
+            return {
+                "error": f"fetch_and_persist failed: {exc}",
+                "primary_artists_in_track_cache": len(primary_artist_ids),
+                "already_in_artist_cache": len(primary_artist_ids) - len(to_fetch),
+                "remaining_to_fetch": len(to_fetch),
+            }
+
+    # Confirm new cache state
+    new_count = await db.scalar(select(func.count()).select_from(ArtistCache)) or 0
+
+    return {
+        "primary_artists_in_track_cache": len(primary_artist_ids),
+        "already_in_artist_cache_before": len(primary_artist_ids) - len(to_fetch),
+        "remaining_to_fetch_before": len(to_fetch),
+        "batched_this_call": len(batch),
+        "fetched_genres_count": len(fetched),
+        "remaining_to_fetch_after": max(0, len(to_fetch) - len(fetched)),
+        "artist_cache_total_after": new_count,
+    }
+
+
 @router.get("/cache-stats")
 async def discover_cache_stats():
     """

@@ -751,6 +751,13 @@ async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, l
     skip the network entirely (ArtistCache is treated as effectively permanent
     per artist_cache.META_TTL = 365d).
 
+    Persistence: BULK upsert in one transaction per chunk (was previously
+    fire-and-forget per artist via asyncio.create_task — that pattern lost
+    ~92% of the writes to Python's GC of orphaned tasks, leaving ArtistCache
+    with only 30 entries despite hundreds of artists fetched. The bulk
+    upsert blocks until commit so the next caller can reliably read what
+    the previous caller wrote.
+
     Returns {} on failure — callers treat that as "no data, don't filter."
     """
     if not artist_ids:
@@ -767,6 +774,7 @@ async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, l
                         params={"ids": ",".join(chunk)},
                     )
                     resp.raise_for_status()
+                    chunk_records: list[dict] = []
                     for a in (resp.json().get("artists") or []):
                         if a and a.get("id"):
                             genres = [
@@ -774,16 +782,18 @@ async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, l
                                 if isinstance(g, str)
                             ]
                             out[a["id"]] = genres
-                            # Fire-and-forget ArtistCache write so future
-                            # genre-pool builds hit the DB cache instead of
-                            # re-spending this Spotify call.
-                            asyncio.create_task(_persist_artist_to_cache(
-                                a["id"],
-                                a.get("name") or "",
-                                genres,
-                                (a.get("images") or [{}])[0].get("url"),
-                                a.get("popularity"),
-                            ))
+                            chunk_records.append({
+                                "artist_id": a["id"],
+                                "name": a.get("name") or a["id"],
+                                "genres": genres,
+                                "image_url": (a.get("images") or [{}])[0].get("url"),
+                                "popularity": a.get("popularity"),
+                            })
+                    # Bulk upsert for this chunk — one transaction, all
+                    # artists committed atomically before we move to the
+                    # next Spotify call.
+                    if chunk_records:
+                        await _bulk_upsert_artists_to_cache(chunk_records)
                 except Exception as exc:
                     _log.warning(
                         "[spotify._fetch_and_persist_artist_genres] chunk failed: %s", exc,
@@ -792,6 +802,70 @@ async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, l
     except Exception as exc:
         _log.warning("[spotify._fetch_and_persist_artist_genres] %s", exc)
     return out
+
+
+async def _bulk_upsert_artists_to_cache(records: list[dict]) -> None:
+    """Bulk upsert multiple artists to ArtistCache in one transaction.
+
+    Replaces the fire-and-forget per-artist pattern that was losing writes
+    to asyncio task GC. `records` is a list of dicts with keys
+    {artist_id, name, genres, image_url, popularity}.
+
+    Logic: SELECT all existing rows for these IDs in one query, build a
+    diff (insert vs update), apply both, commit once. Idempotent — safe
+    to call repeatedly with the same data.
+    """
+    if not records:
+        return
+    try:
+        import json as _json
+        from datetime import datetime
+        from sqlalchemy import select
+        from database import AsyncSessionLocal
+        from models import ArtistCache
+
+        ids = [r["artist_id"] for r in records]
+        records_by_id = {r["artist_id"]: r for r in records}
+        now = datetime.utcnow()
+
+        async with AsyncSessionLocal() as session:
+            existing = (await session.execute(
+                select(ArtistCache).where(ArtistCache.spotify_id.in_(ids))
+            )).scalars().all()
+            existing_ids = {row.spotify_id for row in existing}
+
+            # Update existing
+            for row in existing:
+                r = records_by_id[row.spotify_id]
+                row.name = r["name"] or row.name
+                row.genres = _json.dumps(r["genres"])
+                if r.get("image_url"):
+                    row.image_url = r["image_url"]
+                if r.get("popularity") is not None:
+                    row.popularity = r["popularity"]
+                row.meta_fetched_at = now
+
+            # Insert new
+            for aid in ids:
+                if aid in existing_ids:
+                    continue
+                r = records_by_id[aid]
+                session.add(ArtistCache(
+                    spotify_id=aid,
+                    name=r["name"],
+                    genres=_json.dumps(r["genres"]),
+                    image_url=r.get("image_url"),
+                    popularity=r.get("popularity"),
+                    meta_fetched_at=now,
+                ))
+
+            await session.commit()
+            _log.info(
+                "[spotify._bulk_upsert_artists_to_cache] committed %d artists (%d new, %d updated)",
+                len(records), len(records) - len(existing_ids), len(existing_ids),
+            )
+    except Exception as exc:
+        _log.warning("[spotify._bulk_upsert_artists_to_cache] failed: %s", exc)
 
 
 async def _persist_artist_to_cache(
