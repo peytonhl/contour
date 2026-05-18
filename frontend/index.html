@@ -23,6 +23,25 @@
     <!-- Description for sharing -->
     <meta name="description" content="Rate, review, and discover music with friends. Half-star ratings, written reviews, side-by-side streaming comparison, and a personalized For You feed." />
 
+    <!-- ── Boot reset ──
+         Lives BEFORE the Google Fonts <link> on purpose. An earlier
+         iteration kept this <style> block AFTER the external stylesheet,
+         and on iOS WKWebView a frame painted with these rules NOT YET
+         APPLIED while the external sheet was still loading — body
+         showed its default 8px margin instead of margin:0. The wordmark
+         then snapped from x=8,y=8 to its final centered position once
+         the stylesheet finished. Putting the reset first eliminates that
+         race. (Diagnosed 2026-05-17 via on-screen instrumentation; the
+         debug overlay was removed in the same commit.) -->
+    <style>
+      html, body {
+        margin: 0;
+        background: #08080a;
+        color: #fafafa;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+    </style>
+
     <!-- Instrument Serif — headings + wordmark. One face, regular + italic.
          Body type stays on the system stack. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -49,129 +68,44 @@
     <link rel="dns-prefetch" href="https://is1-ssl.mzstatic.com" />
     <!-- Spotify embed iframe — only for tracks without preview_url, but warm in case -->
     <link rel="dns-prefetch" href="https://open.spotify.com" />
-
-    <!-- Boot styling. Inline (not via .css link) so the HTML parser paints the
-         page-bg colour and the wordmark splash on the very first paint, before
-         the JS bundle has even started downloading. Without this the user
-         stares at a system-default white/black void for 1-2s on cold start
-         (Capacitor WebView → fetch HTML → fetch JS bundle → parse → mount).
-
-         The splash lives OUTSIDE #root so React doesn't replace it on mount —
-         after the service worker landed, JS was loading from disk so fast
-         that mount happened before the splash even painted. main.jsx flips
-         the splash to display:none once Instrument Serif has loaded AND a
-         700ms brand-moment has elapsed. Waiting for the font matters: the
-         Layout header underneath uses Instrument Serif via Google Fonts
-         display=swap, so dropping the splash before the font is in causes
-         the wordmark to render in the Iowan Old Style fallback first and
-         then glyph-swap a few hundred ms later — reading as the title
-         "snapping around" right after the splash hides.
-
-         IMPORTANT: no opacity transition here. An earlier iteration used a
-         320ms cross-fade which produced a perceived "logo jumping around"
-         glitch on mobile: at intermediate opacities both the centered
-         boot-splash wordmark and the top-left Layout-header wordmark are
-         visible at the same time, in different positions, in different
-         fonts (Georgia vs Instrument Serif). The eye reads two
-         simultaneous wordmarks-at-different-positions as the logo moving.
-         A snap-off after a stable brand moment looks like a clean reveal
-         instead of a cross-fade ghost.
-
-         Font is Georgia (NOT Instrument Serif) on purpose. Georgia is built
-         into iOS/macOS/Windows/Android, so it paints on the very first frame
-         with no FOUT. The native iOS LaunchScreen.storyboard ALSO renders
-         "Contour" in Georgia 52pt — keeping the two in sync means the
-         Capacitor splash → WebView handoff doesn't visibly shift the
-         wordmark's face, size, or baseline. The "real" brand serif
-         (Instrument Serif) takes over once the React app mounts and shows
-         actual page H1s. If you change the font here, change it in the
-         storyboard at frontend/assets/ios/LaunchScreen.storyboard too. -->
-    <style>
-      html, body {
-        margin: 0;
-        background: #08080a;
-        color: #fafafa;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      }
-      .boot-splash {
-        /* Simple inset:0 layout. The flex-centered wordmark lands at the
-           center of the WebView's safe-area content (since
-           contentInset:"always" makes inset:0 align with the safe area).
-           The iOS LaunchScreen.storyboard ALSO centers against the
-           safe-area layout guide (not the full view), so the storyboard
-           wordmark and the HTML wordmark sit at the exact same screen
-           coordinates — invisible handoff.
-           Earlier iteration tried negative env() offsets to compensate
-           for a storyboard that centered against the full view; switching
-           the storyboard to safeArea instead is cleaner because it
-           doesn't depend on env() resolution timing during boot. */
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #08080a;
-        z-index: 9999;
-        pointer-events: none;
-      }
-      .boot-splash__wordmark {
-        font-family: Georgia, "Times New Roman", Times, serif;
-        font-size: 52px;
-        font-weight: 400;
-        letter-spacing: -0.01em;
-        color: #fafafa;
-      }
-
-      /* ── TEMPORARY splash debug overlay ──
-         Painted from first frame to capture the iOS launch sequence on a
-         real device (we can't read iPhone devtools console). main.jsx
-         appends timestamped event lines as boot events fire — rAF, font
-         load, splash hide — together with the wordmark's screen bbox at
-         each moment. User screen-records the launch, we read the actual
-         sequence off the recording and pick the right fix instead of
-         hypothesis-fishing. Auto-dismisses 5s after splash hides; tap
-         to dismiss immediately. Remove once we've diagnosed the snap. */
-      .boot-debug {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 10000;   /* above .boot-splash so it stays visible during + after */
-        background: rgba(0, 0, 0, 0.78);
-        color: #b8ffce;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 11px;
-        line-height: 1.45;
-        padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
-        max-height: 45vh;
-        overflow-y: auto;
-        white-space: pre;
-        opacity: 1;
-        transition: opacity 400ms ease;
-        pointer-events: auto;
-      }
-      .boot-debug.fading { opacity: 0; }
-      .boot-debug__hint {
-        color: #6effa3;
-        font-weight: 700;
-        padding-bottom: 4px;
-        border-bottom: 1px solid rgba(110, 255, 163, 0.3);
-        margin-bottom: 4px;
-      }
-    </style>
   </head>
   <body>
-    <!-- Wordmark splash. Lives outside #root so React's mount doesn't replace
-         it; main.jsx adds the --done class after the app renders, fading it
-         out and leaving the app visible underneath. -->
-    <div id="boot-splash" class="boot-splash" aria-hidden="true">
-      <div class="boot-splash__wordmark">Contour</div>
-    </div>
-    <!-- TEMPORARY: splash-twitch diagnostic overlay. Remove with main.jsx's
-         _bootDebug helper once we've identified the cause of the wordmark
-         snap on iOS launch. -->
-    <div id="boot-debug" class="boot-debug" aria-hidden="true">
-      <div class="boot-debug__hint">splash debug · tap to dismiss</div>
+    <!-- ── Boot splash ──
+         Styles are INLINE on the element (not in a <style> block) because
+         iOS WKWebView demonstrably painted at least one frame with
+         class-based .boot-splash rules NOT YET APPLIED while the Google
+         Fonts stylesheet was loading — the wordmark briefly rendered as
+         a small top-left text line at x=8 y=8 before snapping to the
+         flex-centered Georgia-52pt form. Inline element styles bypass
+         CSSOM entirely; the element renders correctly on the very first
+         frame regardless of any external stylesheet's load state.
+
+         Layout notes:
+           - position:fixed + inset:0 fills the WebView viewport, which
+             with capacitor.config.json's contentInset:"always" is the
+             safe-area rect on iOS — same rect the iOS LaunchScreen
+             storyboard centers against, so the native → WebView handoff
+             is pixel-aligned.
+           - z-index:9999 keeps it above the React #root content while
+             visible.
+           - pointer-events:none lets taps fall through to React if it
+             happened to mount before the splash hides.
+
+         Font: Georgia, NOT Instrument Serif. Georgia is built into iOS/
+         macOS/Windows/Android so it paints with no FOUT. The native iOS
+         LaunchScreen.storyboard also renders "Contour" in Georgia 52pt
+         (frontend/assets/ios/LaunchScreen.storyboard) — keep them in
+         sync or the Capacitor splash → WebView handoff visibly shifts.
+
+         The splash lives OUTSIDE #root so React's mount doesn't replace
+         it. main.jsx sets display:none once Instrument Serif has loaded
+         AND a 700ms brand-moment has elapsed (snap, not cross-fade —
+         a fade exposed both this wordmark and the Layout-header
+         wordmark at the same time in different positions, reading as
+         the logo "moving"). -->
+    <div id="boot-splash" aria-hidden="true"
+         style="position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#08080a; z-index:9999; pointer-events:none;">
+      <div style="font-family:Georgia,'Times New Roman',Times,serif; font-size:52px; font-weight:400; letter-spacing:-0.01em; color:#fafafa;">Contour</div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
