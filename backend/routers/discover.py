@@ -1017,6 +1017,15 @@ async def get_discover_feed(
         # words. Rare — only fires when all Spotify tiers above came up
         # short (niche genres with thin Spotify catalogs). Without this
         # the genre-locked feed could go empty for very-niche prefs.
+        #
+        # Deezer search is a literal text match, so a query like "hip hop"
+        # returns tracks LITERALLY titled "Hip-Hop" / "Hip Hop" / etc.
+        # That floods the feed with monotonous-looking results (10 of 18
+        # tracks titled the genre word, observed in prod after the first
+        # genre-locked deploy). Drop tracks whose title or artist name
+        # contains any of the user's genre slugs — mirrors the keyword-
+        # stuffing filter that search_tracks_by_genre already applies to
+        # Spotify pools internally.
         if len(tracks) < limit and eligible_genres:
             tier4_before = len(tracks)
             fallback_queries = [g.replace("-", " ") for g in eligible_genres[:3]]
@@ -1024,7 +1033,35 @@ async def get_discover_feed(
                 deezer_svc.search_tracks(q, limit=10)
                 for q in fallback_queries
             ], return_exceptions=True)
-            _flatten_shuffle_add(fallback_results, add_baseline)
+
+            # Build the keyword-variant set across ALL of the user's
+            # eligible genres (not just the queried ones). A "hip-hop"
+            # user with R&B in their list also doesn't want a track
+            # titled "R&B" surfaced from Deezer.
+            genre_keywords: set[str] = set()
+            for g in eligible_genres:
+                gl = g.lower().strip()
+                genre_keywords.update({gl, gl.replace("-", " "), gl.replace("-", "")})
+
+            def _is_keyword_stuffed(t: dict) -> bool:
+                fields = [
+                    (t.get("name") or "").lower(),
+                    " ".join(t.get("artists") or []).lower(),
+                ]
+                return any(
+                    kw and any(kw in f for f in fields)
+                    for kw in genre_keywords
+                )
+
+            # Filter EACH per-query result list individually so
+                # _flatten_shuffle_add still pools them; an empty list
+                # is harmless to the flatten step.
+            filtered_fallback = [
+                [t for t in res if not _is_keyword_stuffed(t)]
+                if isinstance(res, list) else res
+                for res in fallback_results
+            ]
+            _flatten_shuffle_add(filtered_fallback, add_baseline)
             logger.info(
                 "discover: tier4 (genre-locked, deezer keyword fallback) → %d tracks (queries=%s)",
                 len(tracks) - tier4_before, fallback_queries,
