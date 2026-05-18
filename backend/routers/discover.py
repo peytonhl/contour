@@ -194,11 +194,21 @@ _COVER_ALBUM_PATTERNS = re.compile(
     r"instrumental\s+beats"
     r"|type\s+beats?"
     r"|beat\s+pack"
-    r"|beats?,?\s*(?:vol|pt|part)\.?\s*\d"
+    # "Beats Vol. X" / "Instrumentals Vol. 51" / "Instrumental Pt. 3" — all
+    # variants of the factory pack-numbering format. The original pattern
+    # was beats-only; extending to instrumentals catches "Hip-Hop
+    # Instrumentals, Vol. 51" which slipped through on first deploy.
+    r"|(?:beats?|instrumentals?),?\s*(?:vol|pt|part)\.?\s*\d"
     r"|royalty[-\s]?free"
     r"|background\s+music\s+for"
     r"|(?:lofi|lo[-\s]?fi|trap|boom[\s-]?bap|hip[-\s]?hop|hiphop|rap)\s+beats?\b"
     r"|music\s+for\s+(?:studying|sleep(?:ing)?|yoga|workout|meditation|reading|focus|concentration|relaxation|spa|massage)"
+    # Children's-cover-pack vertical. "Kidz Bop 30", "Kidz Bop Kids"
+    # albums, "The Best of Kidz Bop". Distinct from karaoke vibes —
+    # same category of mass-produced covers, different audience.
+    r"|kidz\s+bop"
+    r"|toddler\s+(?:tunes|songs|hits)"
+    r"|nursery\s+rhymes?\s+(?:vol|pt|collection|favorites|hits)"
     r")",
     re.IGNORECASE,
 )
@@ -226,6 +236,9 @@ _COVER_ARTIST_PATTERNS = re.compile(
     r"|studio\s+sound\s+group"
     r"|8[-\s]bit\s+(?:universe|arcade)"
     r"|music\s+box"
+    r"|kidz\s+bop"          # "Kidz Bop Kids" — children's pop covers
+    r"|toddler\s+tunes"
+    r"|nursery\s+rhymes"
     r")\b",
     re.IGNORECASE,
 )
