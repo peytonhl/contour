@@ -33,8 +33,7 @@ Three modes; mutually exclusive, chosen at request time:
   • Genre-locked (user has any preferred genre OR any excluded genre)
       1. Weighted-genre pivot, Spotify — bumped to k=6, limit=20/genre
       2. Spotify search on user's UNSAMPLED preferred genres
-      3. Spotify search on user's top-3 genres with year:2020-2024
-      4. Deezer keyword fallback restricted to user genres (rare)
+      3. Deezer keyword fallback restricted to user genres (rare)
     Deezer chart is deliberately SKIPPED here: it's genre-agnostic and was
     the source of the "country in my hip-hop feed" leakage when the chart
     happened to be country-heavy.
@@ -1005,28 +1004,14 @@ async def get_discover_feed(
                     len(tracks) - tier2_before, tier2_genres,
                 )
 
-        # Tier 3: Spotify search on top user genres with year:2020-2024 —
-        # different time window than tier 1's pool (which mixes a default
-        # query + tag:hipster + year:2023-2026). Cache key forks on
-        # year_range so this doesn't collide with tier 1's pool.
-        if len(tracks) < limit and eligible_genres:
-            tier3_genres = eligible_genres[:3]
-            tier3_before = len(tracks)
-            tier3_results = await asyncio.gather(*[
-                spotify.search_tracks_by_genre(
-                    g,
-                    limit=20,
-                    target_popularity=target_popularity,
-                    market=spotify_market,
-                    year_range="2020-2024",
-                )
-                for g in tier3_genres
-            ], return_exceptions=True)
-            _flatten_shuffle_add(tier3_results, add_baseline)
-            logger.info(
-                "discover: tier3 (genre-locked, 2020-2024 window) → %d tracks (genres=%s)",
-                len(tracks) - tier3_before, tier3_genres,
-            )
+        # (Tier 3 — Spotify year:2020-2024 — was removed after first deploy.
+        # It forked the genre pool cache key onto a small year-restricted
+        # candidate set, where the existing keyword-stuffing filter's
+        # ≥3-non-stuffed safety floor often didn't activate. Result: feeds
+        # flooded with tracks literally titled "Hip-Hop" because the
+        # filtered pool was <3. Tier 1's widened k=6/limit=20 supplies
+        # enough variety alone; for the rare niche-genre case where it
+        # doesn't, tier 4 below is the safety net.)
 
         # Tier 4: Deezer keyword fallback restricted to the user's genre
         # words. Rare — only fires when all Spotify tiers above came up
