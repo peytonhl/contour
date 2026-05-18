@@ -134,6 +134,13 @@ _STARTUP_STATE: dict = {
 # scheduled but did zero work in the last hour of production.
 _sweeper_task = None
 
+# Same strong-reference pattern for the artist-reconciler worker that
+# keeps ArtistCache in sync with TrackCache primary artist IDs. Without
+# this background pass, the artist-genre verification filter, per-genre
+# affinity, and catalog-pivot tier silently degrade as new tracks land
+# in TrackCache without their primary artist getting cached.
+_artist_reconciler_task = None
+
 
 @app.on_event("startup")
 async def startup():
@@ -185,6 +192,23 @@ async def startup():
         _STARTUP_STATE["sweeper_scheduled"] = True
     except Exception as exc:
         logger.warning("Enrichment sweeper failed to schedule (non-fatal): %s", exc)
+
+    _enter("schedule_artist_reconciler")
+    # Periodic ArtistCache reconciler. Walks TrackCache for primary artist
+    # IDs that haven't been mapped to genres yet, batches them, fetches
+    # via the Spotify /v1/artists endpoint, bulk-upserts. Replaces the
+    # one-shot backfill we did 2026-05-18 — running continuously means we
+    # never accumulate a backlog again, even as new tracks land in
+    # TrackCache from any path (search, feed, ratings, etc.).
+    # Same try/except + global pattern as the sweeper — non-fatal on
+    # failure, strong module-level ref to prevent task GC.
+    try:
+        from services import artist_reconciler
+        global _artist_reconciler_task
+        _artist_reconciler_task = asyncio.create_task(artist_reconciler.run_forever())
+        _STARTUP_STATE["artist_reconciler_scheduled"] = True
+    except Exception as exc:
+        logger.warning("Artist reconciler failed to schedule (non-fatal): %s", exc)
 
     _enter("cleanup_numeric_entity_ids")
     # One-time cleanup: delete ratings/reviews whose entity_id is a pure
