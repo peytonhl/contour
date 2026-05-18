@@ -45,6 +45,30 @@ function RatingBadge({ value }) {
   );
 }
 
+// Show-all button rendered at the bottom of a capped tab list.
+// Same outlined-secondary language as ProfilePage's version (kept here as
+// a local helper to avoid a cross-page import for a 12-line component).
+function ShowAllButton({ total, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        alignSelf: "flex-start",
+        marginTop: 14,
+        padding: "7px 16px",
+        background: "none",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-sm)",
+        color: "var(--text-muted)",
+        fontSize: 13, fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      Show all {total}
+    </button>
+  );
+}
+
 function timeAgo(iso) {
   // Backend serializes naive UTC; normalize tz-less strings to UTC.
   const normalized = /[Z+-]\d{2}:?\d{2}$|Z$/.test(iso) ? iso : `${iso}Z`;
@@ -75,6 +99,14 @@ export function UserPage() {
   const shareReview = shareReviewId
     ? reviews.find((r) => r.id === shareReviewId)
     : null;
+
+  // Cap each tab's list at TAB_VISIBLE_LIMIT items by default so this
+  // page's bottom-of-scroll content (taste-tab CTA / suggestions, etc.)
+  // is reachable without scrolling past hundreds of rows. "Show all N"
+  // expands the current tab in place; resets on tab change.
+  const TAB_VISIBLE_LIMIT = 10;
+  const [tabExpanded, setTabExpanded] = useState(false);
+  useEffect(() => { setTabExpanded(false); }, [tab]);
 
   useEffect(() => {
     api.getBadges().then(setBadges).catch(() => {});
@@ -248,7 +280,7 @@ export function UserPage() {
         {tab === "ratings" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {ratings.length === 0 && <EmptyHint>No ratings yet.</EmptyHint>}
-            {ratings.map((r, i) => (
+            {(tabExpanded ? ratings : ratings.slice(0, TAB_VISIBLE_LIMIT)).map((r, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderBottom: "1px solid var(--border)" }}>
                 {r.entity_image_url
                   ? <img src={r.entity_image_url} alt={r.entity_name} loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
@@ -270,6 +302,9 @@ export function UserPage() {
                 <RatingBadge value={r.value} />
               </div>
             ))}
+            {!tabExpanded && ratings.length > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={ratings.length} onClick={() => setTabExpanded(true)} />
+            )}
           </div>
         )}
 
@@ -277,7 +312,7 @@ export function UserPage() {
         {tab === "reviews" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {reviews.length === 0 && <EmptyHint>No reviews yet.</EmptyHint>}
-            {reviews.map((r) => {
+            {(tabExpanded ? reviews : reviews.slice(0, TAB_VISIBLE_LIMIT)).map((r) => {
               // Anchor link drops the viewer onto the entity page scrolled
               // to the actual review thread, so vote ↦ jump-to-thread is
               // one tap and lands them where the reply chain lives.
@@ -393,6 +428,9 @@ export function UserPage() {
                 </Link>
               );
             })}
+            {!tabExpanded && reviews.length > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={reviews.length} onClick={() => setTabExpanded(true)} />
+            )}
           </div>
         )}
 
@@ -400,7 +438,7 @@ export function UserPage() {
         {tab === "lists" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {lists.length === 0 && <EmptyHint>No lists yet.</EmptyHint>}
-            {lists.map((lst) => (
+            {(tabExpanded ? lists : lists.slice(0, TAB_VISIBLE_LIMIT)).map((lst) => (
               <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
                 <div
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", transition: "border-color 0.15s" }}
@@ -423,12 +461,31 @@ export function UserPage() {
                 </div>
               </Link>
             ))}
+            {!tabExpanded && lists.length > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={lists.length} onClick={() => setTabExpanded(true)} />
+            )}
           </div>
         )}
 
         {/* ── Following / Followers ── */}
-        {tab === "following" && <UserList users={following} emptyText="Not following anyone yet." />}
-        {tab === "followers" && <UserList users={followers} emptyText="No followers yet." />}
+        {tab === "following" && (
+          <UserList
+            users={tabExpanded ? following : following.slice(0, TAB_VISIBLE_LIMIT)}
+            emptyText="Not following anyone yet."
+            footer={!tabExpanded && following.length > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={following.length} onClick={() => setTabExpanded(true)} />
+            )}
+          />
+        )}
+        {tab === "followers" && (
+          <UserList
+            users={tabExpanded ? followers : followers.slice(0, TAB_VISIBLE_LIMIT)}
+            emptyText="No followers yet."
+            footer={!tabExpanded && followers.length > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={followers.length} onClick={() => setTabExpanded(true)} />
+            )}
+          />
+        )}
 
         {/* ── Backlog (public) ── */}
         {tab === "backlog" && (
@@ -452,12 +509,12 @@ export function UserPage() {
 }
 
 // ── Compact user list — used by Following / Followers tabs ───────────────────
-function UserList({ users, emptyText }) {
+function UserList({ users, emptyText, footer }) {
   if (!users?.length) {
     return <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>{emptyText}</p>;
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{/* footer rendered after the list inside this same container */}
       {users.map((u) => (
         <Link
           key={u.id}
@@ -488,6 +545,7 @@ function UserList({ users, emptyText }) {
           </div>
         </Link>
       ))}
+      {footer}
     </div>
   );
 }

@@ -93,6 +93,32 @@ function RatingBadge({ value }) {
   );
 }
 
+// "Show all N" button rendered at the bottom of a capped tab list. Used
+// by Ratings / Reviews / Lists / Following / Followers tabs so the
+// TasteSection at the bottom of the page is reachable without scrolling
+// past every item. Outlined-secondary style — same language as the
+// page's Sign out / gear buttons.
+function ShowAllButton({ total, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        alignSelf: "flex-start",
+        marginTop: 14,
+        padding: "7px 16px",
+        background: "none",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-sm)",
+        color: "var(--text-muted)",
+        fontSize: 13, fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      Show all {total}
+    </button>
+  );
+}
+
 function timeAgo(iso) {
   // Backend serializes naive UTC; normalize tz-less strings to UTC.
   const normalized = /[Z+-]\d{2}:?\d{2}$|Z$/.test(iso) ? iso : `${iso}Z`;
@@ -164,6 +190,14 @@ export function ProfilePage() {
       setSearchParams(next, { replace: true });
     }
   }, [tab]);
+
+  // Cap each tab's list at TAB_VISIBLE_LIMIT items by default so the
+  // TasteSection at the bottom of the page is reachable without scrolling
+  // past a 200-item ratings history. "Show all N" expands the current tab
+  // in place. Resets on tab change so each tab starts collapsed again.
+  const TAB_VISIBLE_LIMIT = 10;
+  const [tabExpanded, setTabExpanded] = useState(false);
+  useEffect(() => { setTabExpanded(false); }, [tab]);
 
   const [editingBio, setEditingBio] = useState(false);
   const [bioInput, setBioInput] = useState("");
@@ -679,9 +713,12 @@ export function ProfilePage() {
                 to="/"
               />
             )}
-            {profile?.ratings?.map((r, i) => (
+            {(tabExpanded ? profile?.ratings : profile?.ratings?.slice(0, TAB_VISIBLE_LIMIT))?.map((r, i) => (
               <EntityRow key={i} item={r} right={<RatingBadge value={r.value} />} />
             ))}
+            {!tabExpanded && (profile?.ratings?.length ?? 0) > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={profile.ratings.length} onClick={() => setTabExpanded(true)} />
+            )}
           </div>
         )}
 
@@ -701,7 +738,7 @@ export function ProfilePage() {
                 Previously the row used EntityRow inside a wrapper that also
                 drew its own borderBottom → doubled separator lines. Now the
                 single borderBottom on the outer row is the only separator. */}
-            {profile?.reviews?.map((r) => {
+            {(tabExpanded ? profile?.reviews : profile?.reviews?.slice(0, TAB_VISIBLE_LIMIT))?.map((r) => {
               const threadPath = `/${r.entity_type}/${r.entity_id}#review-${r.id}`;
               return (
                 <Link
@@ -762,6 +799,9 @@ export function ProfilePage() {
                 </Link>
               );
             })}
+            {!tabExpanded && (profile?.reviews?.length ?? 0) > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={profile.reviews.length} onClick={() => setTabExpanded(true)} />
+            )}
           </div>
         )}
 
@@ -819,7 +859,7 @@ export function ProfilePage() {
 
             {lists.length === 0 && <EmptyHint dense>No lists yet.</EmptyHint>}
 
-            {lists.map((lst) => (
+            {(tabExpanded ? lists : lists.slice(0, TAB_VISIBLE_LIMIT)).map((lst) => (
               <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
                 <div
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", transition: "border-color 0.15s" }}
@@ -842,6 +882,9 @@ export function ProfilePage() {
                 </div>
               </Link>
             ))}
+            {!tabExpanded && lists.length > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={lists.length} onClick={() => setTabExpanded(true)} />
+            )}
           </div>
         )}
 
@@ -855,7 +898,7 @@ export function ProfilePage() {
                 to="/friends"
               />
             )}
-            {following.map((u) => (
+            {(tabExpanded ? following : following.slice(0, TAB_VISIBLE_LIMIT)).map((u) => (
               <Link
                 key={u.id}
                 to={`/user/${u.id}`}
@@ -868,6 +911,9 @@ export function ProfilePage() {
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{u.display_name}</span>
               </Link>
             ))}
+            {!tabExpanded && following.length > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={following.length} onClick={() => setTabExpanded(true)} />
+            )}
           </div>
         )}
 
@@ -875,7 +921,7 @@ export function ProfilePage() {
         {tab === "followers" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {!followers.length && <EmptyHint>No followers yet.</EmptyHint>}
-            {followers.map((u) => (
+            {(tabExpanded ? followers : followers.slice(0, TAB_VISIBLE_LIMIT)).map((u) => (
               <Link
                 key={u.id}
                 to={`/user/${u.id}`}
@@ -888,6 +934,9 @@ export function ProfilePage() {
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{u.display_name}</span>
               </Link>
             ))}
+            {!tabExpanded && followers.length > TAB_VISIBLE_LIMIT && (
+              <ShowAllButton total={followers.length} onClick={() => setTabExpanded(true)} />
+            )}
           </div>
         )}
 

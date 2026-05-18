@@ -478,8 +478,16 @@ async def get_user_taste(user_id: str, db: AsyncSession = Depends(get_db)):
         except Exception:
             pass
 
+    # Average rating — computed from the raw r.value (preserves half-stars)
+    # so it doesn't get coarsened by the int-binned distribution above.
+    # Excludes 0-value rows defensively though the model defines value
+    # as required positive. None when the user has no ratings yet.
+    rated_values = [r.value for r in ratings if r.value]
+    average_rating = (sum(rated_values) / len(rated_values)) if rated_values else None
+
     return {
         "rating_distribution": distribution,
+        "average_rating": average_rating,
         "top_genres": top_genres,
         "pinned_albums": pinned_albums,
     }

@@ -547,11 +547,19 @@ function GenreEditorSheet({ currentGenres, currentExcluded, onSave, onClose }) {
 }
 
 // ── Rating distribution bar chart ─────────────────────────────────────────────
-function RatingDistribution({ distribution }) {
+function RatingDistribution({ distribution, average }) {
   const maxCount = Math.max(...Object.values(distribution), 1);
   const total = Object.values(distribution).reduce((a, b) => a + b, 0);
 
   if (total === 0) return null;
+
+  // Format the backend-computed average. Backend uses raw r.value so this
+  // preserves half-stars (e.g. 3.7) rather than re-binning to integers
+  // from the distribution dict. Falls back to a distribution-derived
+  // estimate if the server-side field isn't available (older payloads).
+  const avgValue = typeof average === "number"
+    ? average
+    : Object.entries(distribution).reduce((sum, [star, count]) => sum + Number(star) * count, 0) / total;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -580,9 +588,17 @@ function RatingDistribution({ distribution }) {
           </div>
         );
       })}
-      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0", textAlign: "right" }}>
-        {total} total rating{total !== 1 ? "s" : ""}
-      </p>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        fontSize: 11, color: "var(--text-muted)", marginTop: 4,
+      }}>
+        <span>
+          Avg <span style={{ color: GOLD, fontWeight: 700 }}>{avgValue.toFixed(1)}★</span>
+        </span>
+        <span>
+          {total} total rating{total !== 1 ? "s" : ""}
+        </span>
+      </div>
     </div>
   );
 }
@@ -767,7 +783,7 @@ export function TasteSection({ userId, isOwner }) {
             <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
               Rating Distribution
             </p>
-            <RatingDistribution distribution={taste.rating_distribution} />
+            <RatingDistribution distribution={taste.rating_distribution} average={taste.average_rating} />
           </div>
         )}
 
