@@ -170,6 +170,15 @@ export function SettingsPage() {
         <RowLink to="/blocks" title="Blocked users" description="Users whose content is hidden from you" isLast />
       </Section>
 
+      <Section label="Algorithm">
+        <RowLink
+          to="/settings/taste-profile"
+          title="How the algorithm sees you"
+          description="See the signals driving your feed + reset or try a fresh feed"
+          isLast
+        />
+      </Section>
+
       <Section label="About">
         <RowLink to="/methodology" title="How it works" description="Era-adjusted streaming, charts methodology, and more" />
         <RowLink to="/privacy" title="Privacy policy" />

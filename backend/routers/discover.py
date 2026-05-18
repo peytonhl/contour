@@ -965,6 +965,7 @@ async def get_discover_feed(
     exclude: Optional[str] = Query(None, description="Comma-separated track IDs already shown to this user in the current scroll session — excluded from the batch so prefetches don't repeat tracks from earlier batches"),
     english_only: bool = Query(True, description="DEPRECATED — use `language` instead. Kept for older mobile clients that still send this param; mapped to language=english when true, language=all when false."),
     language: Optional[str] = Query(None, description="Language filter: 'english' (Latin script only, default), 'spanish' (Spanish indicators required), 'all' (no filter). Overrides english_only when set."),
+    fresh: bool = Query(False, description="When true, ignore the logged-in user's personalization (profile.genres, exclude_ids, target_popularity, decade_pref, etc.) and serve the cold-start ladder instead. Backs the 'Fresh feed' button on the transparency view — lets a user see what a clean-slate user would get without nuking their profile."),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
@@ -973,14 +974,22 @@ async def get_discover_feed(
     Return a batch of tracks for the For You scroll feed.
     For logged-in users every personalization signal is read server-side from
     UserTasteProfile; client params act as a fallback for logged-out users.
+    When `fresh=true`, even logged-in users get the cold-start ladder
+    (useful for "what would I see without my history?" exploration).
     """
+    # `fresh=true` short-circuits everything personalized — treat the
+    # request as logged-out for purposes of feed composition. Auth-level
+    # things (rate limiting, future per-user analytics) still see the
+    # real user_id; we just don't consult their profile or rating history.
+    effective_user_id = None if fresh else user_id
+
     # Exclude tracks this user has already rated — track-level signal,
     # independent of artist-level dislikes.
     exclude_ids: set[str] = set()
-    if user_id:
+    if effective_user_id:
         rated_ids = (await db.execute(
             select(Rating.entity_id).where(
-                Rating.user_id == user_id,
+                Rating.user_id == effective_user_id,
                 Rating.entity_type == "track",
             )
         )).scalars().all()
@@ -1000,9 +1009,9 @@ async def get_discover_feed(
     disliked_set: set[str] = set()
     down_weighted_set: set[str] = set()
 
-    if user_id:
+    if effective_user_id:
         try:
-            profile = await db.get(UserTasteProfile, user_id)
+            profile = await db.get(UserTasteProfile, effective_user_id)
             if profile:
                 genre_list = json.loads(profile.genres or "[]")
                 # getattr — excluded_genres column was added in migration
@@ -1054,9 +1063,9 @@ async def get_discover_feed(
     # default (target=70, mild mainstream lean). Only relevant for tier 1
     # — tiers 2–4 are mainstream chart baselines by definition.
     target_popularity: float | None = None
-    if user_id:
+    if effective_user_id:
         try:
-            target_popularity = await _compute_target_popularity(db, user_id)
+            target_popularity = await _compute_target_popularity(db, effective_user_id)
         except Exception:
             # If TrackCache hasn't been populated for any of this user's
             # rated tracks yet (e.g. fresh DB on a new deploy), fall back
@@ -1074,13 +1083,13 @@ async def get_discover_feed(
     # tier 1's seed pool.
     negative_decade_pref: Optional[dict[str, float]] = None
     negative_genre_pref: Optional[dict[str, float]] = None
-    if user_id:
+    if effective_user_id:
         try:
-            decade_pref = await _compute_decade_preference(db, user_id)
+            decade_pref = await _compute_decade_preference(db, effective_user_id)
         except Exception:
             decade_pref = None
         try:
-            negative_decade_pref, negative_genre_pref = await _compute_negative_preferences(db, user_id)
+            negative_decade_pref, negative_genre_pref = await _compute_negative_preferences(db, effective_user_id)
         except Exception:
             negative_decade_pref, negative_genre_pref = None, None
 
@@ -1256,9 +1265,9 @@ async def get_discover_feed(
     # Only computed for logged-in users with eligible_genres; cold-start
     # users get position-only sampling and the global target_popularity.
     genre_signal: dict[str, tuple[int, Optional[float]]] = {}
-    if user_id and eligible_genres:
+    if effective_user_id and eligible_genres:
         try:
-            genre_signal = await _compute_user_genre_signal(db, user_id, eligible_genres)
+            genre_signal = await _compute_user_genre_signal(db, effective_user_id, eligible_genres)
         except Exception as exc:
             logger.warning("discover: _compute_user_genre_signal failed: %s", exc)
 

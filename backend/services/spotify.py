@@ -217,17 +217,77 @@ async def _persist_album_to_db(meta: dict) -> None:
         _log.warning("[spotify] persist album %s failed: %s", meta.get("id"), exc)
 
 
+# Redis key for the persisted circuit deadline. Survives backend restarts /
+# Railway redeploys so the breaker doesn't reset to closed every deploy and
+# cause a fresh Spotify burst → re-trip → deploy → repeat loop. The 2026-05-18
+# incident saw the deadline reset 4-5 times across a single hour of iterating,
+# each time adding ~30 min of fresh credential block. With Redis persistence
+# the deadline survives across processes and only one tip is paid per
+# Spotify cool-down period.
+_CIRCUIT_REDIS_KEY = "spotify:circuit_open_until"
+
+
+async def _read_circuit_from_redis() -> float:
+    """Return the persisted circuit deadline (UNIX epoch) from Redis, or 0
+    if not set / Redis unavailable. Non-blocking failure — Redis being down
+    just degrades us to in-process state."""
+    try:
+        raw = await redis_cache.get(_CIRCUIT_REDIS_KEY)
+        if raw is None:
+            return 0.0
+        return float(raw)
+    except Exception:
+        return 0.0
+
+
+async def _write_circuit_to_redis(deadline_ts: float, ttl_seconds: int) -> None:
+    """Persist the circuit deadline to Redis. TTL matches the remaining
+    block duration so the key naturally expires when Spotify's cool-down
+    ends. ttl_seconds must be >= 1 (Redis rejects 0/negative TTLs)."""
+    try:
+        await redis_cache.set(
+            _CIRCUIT_REDIS_KEY,
+            deadline_ts,
+            ttl=max(1, int(ttl_seconds) + 5),  # +5s buffer for clock skew
+        )
+    except Exception:
+        pass
+
+
 def _circuit_remaining() -> float:
-    """Seconds until the circuit breaker re-closes. 0 when not tripped."""
+    """Seconds until the circuit breaker re-closes. 0 when not tripped.
+    Reads in-process state only — async callers that need cross-process
+    consistency should await _circuit_remaining_async()."""
     if _circuit_open_until == 0.0:
         return 0.0
     remaining = _circuit_open_until - time.time()
     return max(0.0, remaining)
 
 
+async def _circuit_remaining_async() -> float:
+    """Cross-process version: checks Redis first, falls back to in-process.
+    Used by _spotify_get on every call so a circuit tripped by ANY process
+    (including a previous backend instance pre-deploy) is honored here too.
+
+    If Redis has a deadline farther in the future than the in-process value,
+    we adopt it (and update the in-process global so subsequent sync calls
+    see it). If the in-process value is farther, we leave Redis alone —
+    that case is rare but happens between trip and the write-to-Redis call.
+    """
+    global _circuit_open_until
+    redis_deadline = await _read_circuit_from_redis()
+    if redis_deadline > _circuit_open_until:
+        _circuit_open_until = redis_deadline
+    return _circuit_remaining()
+
+
 def _trip_circuit(retry_after_seconds: int) -> None:
     """Open the circuit for the supplied duration, capped at
     _MAX_CIRCUIT_OPEN_SECONDS. No-op if the circuit is already open longer.
+
+    Also persists to Redis via a fire-and-forget task — the awaitable
+    variant _trip_circuit_async should be preferred when running inside
+    async code that wants persistence to land before returning.
     """
     global _circuit_open_until
     capped = min(retry_after_seconds, _MAX_CIRCUIT_OPEN_SECONDS)
@@ -247,12 +307,32 @@ def _trip_circuit(retry_after_seconds: int) -> None:
                 "[spotify] CIRCUIT OPEN for %ds (until %s). All Spotify calls will short-circuit.",
                 capped, time.strftime("%H:%M:%S", time.localtime(_circuit_open_until)),
             )
+        # Persist to Redis so the deadline survives deploys / restarts.
+        # We can't await from this sync function; use create_task and
+        # hold a reference to avoid GC (the asyncio task-GC issue that
+        # bit ArtistCache writes).
+        try:
+            import asyncio as _asyncio
+            loop = _asyncio.get_event_loop()
+            if loop.is_running():
+                _circuit_persist_tasks.add(
+                    _asyncio.create_task(_write_circuit_to_redis(new_deadline, capped))
+                )
+        except Exception:
+            pass
 
 
-def reset_circuit() -> None:
+# Keep strong refs to in-flight Redis persistence tasks so they don't get
+# GC'd before commit. Cleared opportunistically; size stays small (a few
+# entries at most — one per circuit trip event).
+_circuit_persist_tasks: set = set()
+
+
+async def reset_circuit() -> None:
     """Force-close the circuit. Intended for one-off recovery after a known
     incident resolves (e.g. via an admin endpoint or a Railway redeploy
-    hook). Safe to call when the circuit isn't open."""
+    hook). Safe to call when the circuit isn't open. Async because it
+    clears Redis state too — synchronous callers can fire-and-forget."""
     global _circuit_open_until
     if _circuit_open_until > time.time():
         _log.info(
@@ -260,6 +340,14 @@ def reset_circuit() -> None:
             _circuit_open_until - time.time(),
         )
     _circuit_open_until = 0.0
+    try:
+        # Delete the Redis key so subsequent _circuit_remaining_async()
+        # calls don't re-adopt the stale deadline.
+        r = await redis_cache._client()
+        if r is not None:
+            await r.delete(_CIRCUIT_REDIS_KEY)
+    except Exception:
+        pass
 
 
 def _make_synthetic_429(url: str) -> httpx.Response:
@@ -282,8 +370,14 @@ async def _spotify_get(client: httpx.AsyncClient, url: str, token: str, params: 
     (caps in-flight outbound calls so a traffic spike can't fire hundreds
     of parallel requests at once).
     """
-    if _circuit_remaining() > 0:
-        _log.debug("[spotify] circuit open (%ds left), short-circuiting %s", int(_circuit_remaining()), url)
+    # Check the cross-process circuit deadline (Redis-backed). This catches
+    # the case where a previous backend process tripped the circuit and a
+    # restart (Railway redeploy) wiped the in-process global. Without this,
+    # every deploy was getting a free shot at Spotify → another credential
+    # block → fresh long Retry-After → trip again. See _CIRCUIT_REDIS_KEY.
+    remaining = await _circuit_remaining_async()
+    if remaining > 0:
+        _log.debug("[spotify] circuit open (%ds left), short-circuiting %s", int(remaining), url)
         return _make_synthetic_429(url)
 
     headers = {"Authorization": f"Bearer {token}"}

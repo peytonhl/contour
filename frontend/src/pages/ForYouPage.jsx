@@ -1370,6 +1370,20 @@ function ForYouFeed() {
       const sessionExclude = Array.from(new Set([
         ...seenIds, ...ratedSourceIds, ...inSession,
       ]));
+
+      // One-shot fresh-feed bypass: set by TasteProfilePage's "Open fresh
+      // feed" button via localStorage. Forces the server to ignore the
+      // user's personalization for this batch. Consumed on read so it
+      // doesn't persist across batches — fresh-feed is intentionally
+      // a one-session affordance, not a permanent setting.
+      let freshOnce = false;
+      try {
+        if (localStorage.getItem("contour_fresh_feed_once") === "1") {
+          freshOnce = true;
+          localStorage.removeItem("contour_fresh_feed_once");
+        }
+      } catch {}
+
       const batch = await api.getDiscoverFeed({
         genres: genresRef.current.slice(0, 3),
         liked_artists: likedArtists,
@@ -1377,6 +1391,7 @@ function ForYouFeed() {
         exclude: sessionExclude,
         language: languageRef.current,
         limit: 10,
+        fresh: freshOnce,
       });
 
       // If Spotify returned empty, retry once ignoring disliked filter

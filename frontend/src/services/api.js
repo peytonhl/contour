@@ -193,19 +193,37 @@ export const api = {
   // Enriched listing (id + name + image_url) for the management page
   listArtistDislikes: () => request(`/taste/dislikes`),
 
+  // Transparency view — server-side diagnostic state. Renders on
+  // SettingsPage/TasteTransparencyPage as a "how the algorithm sees me"
+  // surface. Includes profile genres, eligible/excluded genres after
+  // filters, rating counts, decade pref, vintage-mode trigger,
+  // target_popularity, per-genre rating-affinity signal, and predicted
+  // tier-1 sampling weights.
+  getMyDiscoverState: () => request(`/discover/me-state`),
+
+  // Selective reset of taste-profile fields. Body is an opt-in flag set
+  // — at minimum one field must be true. Underlying ratings are NEVER
+  // touched; only the per-user state that drives feed personalization.
+  resetTasteProfile: (fields) => post(`/taste/reset`, fields),
+
   // Badge leaderboard (top-5 critics, influencers, connectors)
   getBadges: () => request(`/users/badges`),
 
   // Suggested users
   getSuggestedUsers: () => request(`/users/suggested`),
 
-  // Discover / For You feed
-  getDiscoverFeed: ({ genres = [], liked_artists = [], disliked_artists = [], exclude = [], language = "english", limit = 10 } = {}) => {
+  // Discover / For You feed. `fresh=true` asks the server to ignore the
+  // logged-in user's personalization (profile, ratings, exclude list)
+  // and serve the cold-start ladder instead. Used by the transparency
+  // view's "Fresh feed" toggle so users can see what a clean-slate user
+  // would see without nuking their profile.
+  getDiscoverFeed: ({ genres = [], liked_artists = [], disliked_artists = [], exclude = [], language = "english", limit = 10, fresh = false } = {}) => {
     const params = new URLSearchParams({ limit, language });
     if (genres.length) params.set("genres", genres.join(","));
     if (liked_artists.length) params.set("liked_artists", liked_artists.join(","));
     if (disliked_artists.length) params.set("disliked_artists", disliked_artists.join(","));
     if (exclude.length) params.set("exclude", exclude.join(","));
+    if (fresh) params.set("fresh", "true");
     return request(`/discover/feed?${params}`);
   },
 

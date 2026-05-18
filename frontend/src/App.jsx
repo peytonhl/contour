@@ -37,6 +37,7 @@ const ImportPage         = lazyNamed(() => import("./pages/ImportPage.jsx"),    
 const TrendingPage       = lazyNamed(() => import("./pages/TrendingPage.jsx"),       "TrendingPage");
 const FriendsPage        = lazyNamed(() => import("./pages/FriendsPage.jsx"),        "FriendsPage");
 const SettingsPage       = lazyNamed(() => import("./pages/SettingsPage.jsx"),       "SettingsPage");
+const TasteProfilePage   = lazyNamed(() => import("./pages/TasteProfilePage.jsx"),   "TasteProfilePage");
 
 /**
  * Listens for Capacitor `appUrlOpen` events — fired when iOS / Android
@@ -126,6 +127,7 @@ export default function App() {
           <Route path="trending" element={<TrendingPage />} />
           <Route path="friends" element={<FriendsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/taste-profile" element={<TasteProfilePage />} />
         </Route>
       </Routes>
     </Suspense>

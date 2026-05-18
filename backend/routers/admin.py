@@ -875,7 +875,7 @@ async def reset_spotify_circuit(
     """
     await _require_admin(db, user_id)
     before = spotify._circuit_remaining()
-    spotify.reset_circuit()
+    await spotify.reset_circuit()
     after = spotify._circuit_remaining()
     return {
         "ok": True,

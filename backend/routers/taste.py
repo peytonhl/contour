@@ -149,6 +149,68 @@ async def clear_dislikes(
     return {"ok": True}
 
 
+class TasteResetIn(BaseModel):
+    """Body for /taste/reset. Defaults are conservative — caller must
+    explicitly opt-in to each destructive action so a buggy client can't
+    accidentally wipe everything."""
+    genres: bool = False
+    excluded_genres: bool = False
+    liked_artist_ids: bool = False
+    disliked_artist_ids: bool = False
+    down_weighted_artist_ids: bool = False
+
+
+@router.post("/reset")
+async def reset_taste_profile(
+    body: TasteResetIn,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_user_id),
+):
+    """Selectively reset parts of the user's taste profile.
+
+    Powers the "Reset taste profile" affordance on the transparency view.
+    Does NOT delete the underlying ratings — those stay so the user can
+    re-derive their taste profile if they change their mind. The reset
+    only wipes the per-user state that DIRECTLY drives feed personalization
+    (the genre list, excluded genres, liked-artist seed list, dislikes,
+    down-weighted artists).
+
+    Each field is opt-in via the request body. A reasonable "soft reset"
+    sends `{"liked_artist_ids": true, "down_weighted_artist_ids": true}` —
+    re-derives those from ratings without losing the user's curated genre
+    picks. A "full reset" sends all five flags.
+
+    The system will repopulate liked_artist_ids and the auto-extended
+    portion of `genres` over time via _update_taste_from_rating on the
+    user's next high ratings.
+    """
+    profile = await db.get(UserTasteProfile, user_id)
+    if not profile:
+        return {"ok": True, "reset": []}
+
+    reset_fields: list[str] = []
+    if body.genres:
+        profile.genres = json.dumps([])
+        reset_fields.append("genres")
+    if body.excluded_genres:
+        profile.excluded_genres = json.dumps([])
+        reset_fields.append("excluded_genres")
+    if body.liked_artist_ids:
+        profile.liked_artist_ids = json.dumps([])
+        reset_fields.append("liked_artist_ids")
+    if body.disliked_artist_ids:
+        profile.disliked_artist_ids = json.dumps([])
+        reset_fields.append("disliked_artist_ids")
+    if body.down_weighted_artist_ids:
+        profile.down_weighted_artist_ids = json.dumps([])
+        reset_fields.append("down_weighted_artist_ids")
+
+    if reset_fields:
+        profile.updated_at = datetime.utcnow()
+        await db.commit()
+    return {"ok": True, "reset": reset_fields}
+
+
 async def _enrich_artist(artist_id: str, db: AsyncSession) -> dict:
     """
     Resolve an artist ID to {id, name, image_url}. Tries ArtistCache first
