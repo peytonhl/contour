@@ -1799,6 +1799,52 @@ async def discover_probe_artist_cache_sample(
     }
 
 
+@router.get("/probe-lastfm-toptags")
+async def discover_probe_lastfm_toptags(
+    name: str = Query(..., description="Artist name (e.g. 'Kendrick Lamar')"),
+):
+    """Probe Last.fm's artist.getTopTags endpoint — returns tags WITH
+    their `count` (number of users who applied that tag). Used to assess
+    whether count-based filtering can separate real genre tags from
+    community-tag noise (e.g. the Justin Bieber 'black metal' prank).
+    """
+    import os as _os
+    import httpx as _httpx
+    api_key = _os.environ.get("LASTFM_API_KEY")
+    if not api_key:
+        return {"error": "LASTFM_API_KEY not set"}
+    try:
+        async with _httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://ws.audioscrobbler.com/2.0/",
+                params={
+                    "method": "artist.getTopTags",
+                    "artist": name,
+                    "api_key": api_key,
+                    "autocorrect": "1",
+                    "format": "json",
+                },
+                timeout=10.0,
+            )
+            data = resp.json()
+        top = data.get("toptags") if isinstance(data, dict) else None
+        tags = top.get("tag", []) if isinstance(top, dict) else []
+        # Each tag has name + count (Last.fm's count = number of users who
+        # applied the tag, sometimes normalized to 0-100 for top tags)
+        parsed = [
+            {"name": t.get("name"), "count": t.get("count")}
+            for t in tags if isinstance(t, dict)
+        ][:20]
+        return {
+            "status_code": resp.status_code,
+            "artist": (top.get("@attr") or {}).get("artist") if isinstance(top, dict) else None,
+            "tag_count": len(parsed),
+            "tags_with_count": parsed,
+        }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 @router.get("/probe-lastfm-artist")
 async def discover_probe_lastfm_artist(
     name: str = Query(..., description="Artist name (e.g. 'Kendrick Lamar')"),
