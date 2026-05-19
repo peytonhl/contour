@@ -2036,7 +2036,15 @@ async def discover_backfill_artists(
     else:
         to_fetch = set()
 
-    to_fetch_list = sorted(to_fetch)
+    # In force mode, randomize so successive calls hit different subsets —
+    # otherwise every call processes the same sorted-prefix-200 and the
+    # rest of the catalog never gets upgraded. In normal mode, sorted
+    # gives deterministic progress through the uncached set.
+    if force:
+        to_fetch_list = list(to_fetch)
+        random.shuffle(to_fetch_list)
+    else:
+        to_fetch_list = sorted(to_fetch)
     batch = to_fetch_list[:limit]
 
     fetched: dict[str, list[str]] = {}
