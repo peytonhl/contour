@@ -1764,6 +1764,82 @@ async def discover_me_state(
 
 
 @router.get("/debug")
+@router.get("/probe-artist-cache-sample")
+async def discover_probe_artist_cache_sample(
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, le=200),
+):
+    """Sample N rows from ArtistCache and report their genres. Tells us
+    whether the genre stripping is universal (every artist genres=[]) or
+    partial (some have data). No Spotify calls."""
+    rows = (await db.execute(
+        select(ArtistCache.spotify_id, ArtistCache.name, ArtistCache.genres, ArtistCache.popularity)
+        .limit(limit)
+    )).all()
+    total = await db.scalar(select(func.count()).select_from(ArtistCache)) or 0
+    with_nonempty = await db.scalar(
+        select(func.count()).select_from(ArtistCache)
+        .where(ArtistCache.genres.is_not(None))
+        .where(ArtistCache.genres != "[]")
+        .where(ArtistCache.genres != "")
+    ) or 0
+    return {
+        "artist_cache_total": total,
+        "with_nonempty_genres": with_nonempty,
+        "with_empty_genres": total - with_nonempty,
+        "sample": [
+            {
+                "id": r.spotify_id,
+                "name": r.name,
+                "genres": r.genres,
+                "popularity": r.popularity,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/probe-lastfm-artist")
+async def discover_probe_lastfm_artist(
+    name: str = Query(..., description="Artist name (e.g. 'Kendrick Lamar')"),
+):
+    """Test Last.fm artist.getInfo for tag data. If Spotify won't give us
+    artist genres anymore (gated behind Extended Access), Last.fm tags
+    are the obvious fallback — we already have LASTFM_API_KEY in env.
+    No Spotify quota consumed."""
+    import os as _os
+    import httpx as _httpx
+    api_key = _os.environ.get("LASTFM_API_KEY")
+    if not api_key:
+        return {"error": "LASTFM_API_KEY not set"}
+    try:
+        async with _httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://ws.audioscrobbler.com/2.0/",
+                params={
+                    "method": "artist.getInfo",
+                    "artist": name,
+                    "api_key": api_key,
+                    "format": "json",
+                },
+                timeout=10.0,
+            )
+            data = resp.json()
+        artist = data.get("artist") if isinstance(data, dict) else None
+        tags_obj = artist.get("tags") if artist else None
+        tags = tags_obj.get("tag", []) if isinstance(tags_obj, dict) else []
+        return {
+            "status_code": resp.status_code,
+            "name_returned": artist.get("name") if artist else None,
+            "tags_count": len(tags),
+            "tags": [t.get("name") for t in tags if isinstance(t, dict)],
+            "raw_keys": list(artist.keys()) if artist else None,
+            "error": data.get("message") if isinstance(data, dict) else None,
+        }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 @router.get("/probe-artist-raw")
 async def discover_probe_artist_raw(id: str = Query(..., description="Single Spotify artist ID")):
     """Raw Spotify /v1/artists/{id} response — bypasses get_artist and
