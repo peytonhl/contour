@@ -251,9 +251,11 @@ async def _down_weight_from_rating(user_id: str, artist_id: str) -> None:
     """
     Append artist_id to down_weighted_artist_ids on a 1–2 star rating.
 
-    Soft signal: tier 1/2 personalization will skip these artists, but they
-    can still surface from baseline chart tiers — a single low rating
-    shouldn't permanently blackhole an artist (use "Not interested" for that).
+    Treated as a hard exclude across ALL discover tiers since 2026-05-19
+    (was soft-only / tier-1-only before — but users reported that an
+    artist they rated 1★ still appearing in chart fallbacks felt broken).
+    The misclick escape hatch is /settings/taste-profile → "Re-derive
+    from ratings", which wipes the down-weight + liked artist lists.
 
     If the artist is in liked_artist_ids, we leave that alone; the discover
     router resolves the conflict by treating any liked artist as an active

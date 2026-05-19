@@ -11,9 +11,12 @@ Read server-side from UserTasteProfile so they follow the user across devices:
                               BEFORE weighted sampling, so an excluded genre
                               never spends a Spotify search slot.
   • disliked_artist_ids    — explicit "Not interested" clicks (hard exclude)
-  • down_weighted_artist_ids — inferred from 1–2★ ratings (soft exclude:
-                              dropped from tier 1 personalized pivots,
-                              still allowed in baseline chart tiers)
+  • down_weighted_artist_ids — inferred from 1–2★ ratings. Since 2026-05-19
+                              this is treated as a hard exclude across ALL
+                              tiers (was soft-only / tier-1-only before, but
+                              users reported that a 1★ rating not blocking
+                              chart appearances felt broken). Misclick
+                              recovery: /settings/taste-profile reset.
 
 Cold-start vs. personalized
 ───────────────────────────
@@ -51,9 +54,11 @@ tiers redundant for users with prefs.
       Deezer /chart safety net. Fires when every tier above produced
       zero, which with the v7 pool depth should be vanishingly rare.
 
-Tier 1 honors down-weighted artists. Other tiers only honor hard dislikes.
-This means a single low rating won't blackhole an artist from charts, but
-explicit "Not interested" will.
+All tiers honor BOTH down-weighted artists (inferred from 1-2★ ratings)
+and explicit dislikes — they're combined into a single soft_excluded
+set used by both add_personalized and add_baseline. Pre-2026-05-19 the
+baselines only honored hard dislikes; the split was removed after user
+testing surfaced "I rated 1★ and still see them" as a recurring complaint.
 
 Cover-spam filter (all tiers)
 ─────────────────────────────
@@ -1370,7 +1375,19 @@ async def get_discover_feed(
         return _add
 
     add_personalized = _make_adder(soft_excluded)
-    add_baseline = _make_adder(disliked_set)
+    # Baselines apply the SAME exclude set as personalized tiers now —
+    # a 1-2★ rating excludes that artist from chart fallbacks too, not
+    # just tier 0/1. Reported case (Colin Hogan, 2026-05-19): rated
+    # Shaboozey "A Bar Song (Tipsy)" 1★, kept seeing Shaboozey from
+    # baseline tiers because the down-weight only filtered tier 1 and
+    # the song is a current chart-topper that every Deezer /chart and
+    # Spotify pop baseline surfaces. The prior design ("a single low
+    # rating shouldn't blackhole an artist from charts") didn't match
+    # user mental model — "I rated 1★, I don't want to see it again"
+    # is the more reasonable expectation. Misclick escape hatch lives
+    # at /settings/taste-profile → "Re-derive from ratings", which
+    # wipes liked + down-weighted artist lists.
+    add_baseline = _make_adder(soft_excluded)
 
     # ── Tier 1: Weighted-genre pivot ─────────────────────────────────────────
     # Sample 3 genres from profile.genres weighted by position. Position 0
