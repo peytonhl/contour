@@ -1982,6 +1982,7 @@ async def discover_backfill_artists(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(500, le=2000, description="Max artists to backfill in this call"),
     refresh_empty: bool = Query(False, description="Also re-fetch artists whose ArtistCache row has genres=[]. Use after switching genre source (e.g. Spotify→Last.fm) to repopulate the universe of empty rows."),
+    force: bool = Query(False, description="Re-fetch EVERY primary artist regardless of cache state. Use after a data-shape migration (e.g. switching from string-list genres to [{name, count}] dicts) to upgrade all rows."),
 ):
     """
     Walk TrackCache, find every unique primary artist that needs an
@@ -2011,11 +2012,14 @@ async def discover_backfill_artists(
         except Exception:
             continue
 
-    # Filter out ones already cached. With refresh_empty=true, only
-    # exclude artists whose cache row HAS non-empty genres — anything
-    # with genres=[] gets re-fetched.
+    # Filter to determine which artists to re-fetch:
+    #   - force=true: ALL primary artists, regardless of cache state.
+    #   - refresh_empty=true: those with empty genres + uncached.
+    #   - default: only uncached.
     if primary_artist_ids:
-        if refresh_empty:
+        if force:
+            to_fetch = primary_artist_ids
+        elif refresh_empty:
             cached_with_genres = (await db.execute(
                 select(ArtistCache.spotify_id)
                 .where(ArtistCache.spotify_id.in_(primary_artist_ids))
