@@ -1928,21 +1928,22 @@ async def discover_probe_artists(ids: str = Query(..., description="Comma-separa
 async def discover_backfill_artists(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(500, le=2000, description="Max artists to backfill in this call"),
+    refresh_empty: bool = Query(False, description="Also re-fetch artists whose ArtistCache row has genres=[]. Use after switching genre source (e.g. Spotify→Last.fm) to repopulate the universe of empty rows."),
 ):
     """
-    One-shot backfill: walk TrackCache, find every unique primary artist
-    that's NOT yet in ArtistCache, batch-fetch their genres from Spotify,
-    persist via the new bulk-upsert path.
+    Walk TrackCache, find every unique primary artist that needs an
+    ArtistCache update, fetch their genres (via Last.fm tags now that
+    Spotify gates artist.genres behind Extended Access), persist via
+    bulk-upsert.
+
+    With `refresh_empty=true` (use this when changing genre data source):
+    INCLUDE artists whose ArtistCache row exists but has genres=[] —
+    those got persisted with empty genres back when we were querying
+    the (now-stripped) Spotify endpoint. After Last.fm pivot, we want
+    to re-fetch them so their genres column actually has data.
 
     Returns counts of artists discovered, fetched, and persisted. Call
-    repeatedly (`limit=500` each time) until `to_fetch` is 0 to fully
-    catch up the catalog.
-
-    Used to recover from the asyncio-task-GC bug that lost ~92% of
-    ArtistCache writes through fire-and-forget. After backfill, the
-    catalog-pivot tier can reliably JOIN TrackCache × ArtistCache by
-    genre — the prerequisite for serving the feed from local DB with
-    minimal Spotify calls at scale.
+    repeatedly until `remaining_to_fetch_after` is 0.
     """
     # Collect every unique primary artist ID from TrackCache
     rows = (await db.execute(
@@ -1957,12 +1958,24 @@ async def discover_backfill_artists(
         except Exception:
             continue
 
-    # Filter out ones already cached
+    # Filter out ones already cached. With refresh_empty=true, only
+    # exclude artists whose cache row HAS non-empty genres — anything
+    # with genres=[] gets re-fetched.
     if primary_artist_ids:
-        already_cached = (await db.execute(
-            select(ArtistCache.spotify_id).where(ArtistCache.spotify_id.in_(primary_artist_ids))
-        )).scalars().all()
-        to_fetch = primary_artist_ids - set(already_cached)
+        if refresh_empty:
+            cached_with_genres = (await db.execute(
+                select(ArtistCache.spotify_id)
+                .where(ArtistCache.spotify_id.in_(primary_artist_ids))
+                .where(ArtistCache.genres.is_not(None))
+                .where(ArtistCache.genres != "[]")
+                .where(ArtistCache.genres != "")
+            )).scalars().all()
+            to_fetch = primary_artist_ids - set(cached_with_genres)
+        else:
+            already_cached = (await db.execute(
+                select(ArtistCache.spotify_id).where(ArtistCache.spotify_id.in_(primary_artist_ids))
+            )).scalars().all()
+            to_fetch = primary_artist_ids - set(already_cached)
     else:
         to_fetch = set()
 

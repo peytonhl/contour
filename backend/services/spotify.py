@@ -831,60 +831,80 @@ def _genre_match_terms(slug: str) -> list[str]:
 
 
 async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, list[str]]:
-    """Per-artist /v1/artists/{id} — returns {artist_id: [lowercase genres]}.
+    """Hybrid Spotify + Last.fm — returns {artist_id: [lowercase tags]}.
 
-    Used by search_tracks_by_genre to verify each candidate track's primary
-    artist is tagged with the requested genre family.
+    Two-step per artist:
+      1. get_artist(spotify_id) — fetches name (and image, etc.) from
+         Spotify's per-artist endpoint. Cached 30d in Redis. Spotify
+         still returns name + image_url for non-Extended-Access apps;
+         it's just `genres` and `popularity` that are stripped.
+      2. lastfm.get_artist_tags(name) — Last.fm artist.getInfo, returns
+         community tags ranked by popularity. We take the top 8 as our
+         genre-equivalent. Cached 30d in Redis.
 
-    Why per-artist not batched: Spotify gated the batch /v1/artists?ids=...
-    endpoint behind Extended Access in late 2024 (returns 403 Forbidden
-    for basic-tier apps like ours). Contour can't get Extended Access
-    (requires ~250K MAU per Spotify policy — see project memory). The
-    single-artist /v1/artists/{id} endpoint is still open to all tiers,
-    so we loop and call it per-ID. Slower wall-clock but each call is
-    Redis-cached 30d in get_artist() — steady-state, almost all calls
-    are cache hits and we only spend Spotify quota on cold artists.
+    Why this design — Spotify gated artist.genres behind Extended Access
+    in late 2024 (confirmed empirically 2026-05-18: every artist in
+    ArtistCache had genres=[], including Kanye / Beyoncé / Kendrick).
+    Contour can't get Extended Access (250K MAU bar, see memory). Last.fm
+    tags are the obvious replacement: same shape, no auth-tier gating,
+    vocabulary close enough to Spotify's that the genre-match terms in
+    _GENRE_MATCH_ALIASES still work (e.g. "hip-hop" / "rap" / "hip hop"
+    appear in both vocabularies).
 
     Persistence: bulk upsert via _bulk_upsert_artists_to_cache. One
-    transaction for the entire batch, awaited synchronously — replaces
-    the fire-and-forget asyncio.create_task pattern that was losing 92%
-    of writes to GC of orphaned tasks.
+    transaction for the entire batch, awaited synchronously.
 
     Returns {} on failure — callers treat that as "no data, don't filter."
-
-    Concurrency: relies on _spotify_get's internal semaphore (_get_semaphore)
-    to cap in-flight Spotify calls. We fire all N requests via asyncio.gather
-    and let the semaphore serialize them safely.
     """
     if not artist_ids:
         return {}
+
     out: dict[str, list[str]] = {}
 
     async def _fetch_one(aid: str) -> Optional[dict]:
+        """Get the artist's name from Spotify + tags from Last.fm. Both
+        calls cached, so steady-state cost is near-zero. Returns a
+        record-ready dict, or None on failure (skip this artist)."""
         try:
             meta = await get_artist(aid)
-            return meta
+            name = meta.get("name") if meta else None
+            if not name:
+                return None
         except Exception as exc:
-            _log.debug("[spotify._fetch_and_persist_artist_genres] %s failed: %s", aid, exc)
+            _log.debug("[spotify._fetch_and_persist_artist_genres] spotify lookup failed for %s: %s", aid, exc)
             return None
 
-    # Fire per-artist fetches in parallel — semaphore inside _spotify_get
-    # caps actual Spotify concurrency. Most calls hit Redis 30d cache.
+        # Last.fm doesn't need Spotify quota and isn't gated like our
+        # Spotify tier. Failure here just means we get no genres for
+        # this artist — degrades gracefully into "unknown genre" which
+        # passes through the artist-genre verification filter.
+        try:
+            from services import lastfm
+            tags = await lastfm.get_artist_tags(name)
+        except Exception as exc:
+            _log.debug("[spotify._fetch_and_persist_artist_genres] lastfm lookup failed for %s (%s): %s", aid, name, exc)
+            tags = []
+
+        return {
+            "artist_id": aid,
+            "name": name,
+            "genres": tags,
+            "image_url": (meta or {}).get("image_url"),
+            "popularity": (meta or {}).get("popularity"),
+        }
+
+    # Fire all lookups in parallel. The internal Spotify semaphore caps
+    # in-flight Spotify calls; Last.fm has its own rate limits (~5 req/s)
+    # but the steady-state cache hit rate makes that a non-issue after
+    # initial warmup. Cold backfill of ~500 artists takes ~30-60s.
     results = await asyncio.gather(*[_fetch_one(aid) for aid in artist_ids])
 
     records: list[dict] = []
-    for aid, meta in zip(artist_ids, results):
-        if not meta or not meta.get("id"):
+    for record in results:
+        if not record:
             continue
-        genres = [g.lower() for g in (meta.get("genres") or []) if isinstance(g, str)]
-        out[meta["id"]] = genres
-        records.append({
-            "artist_id": meta["id"],
-            "name": meta.get("name") or meta["id"],
-            "genres": genres,
-            "image_url": meta.get("image_url"),
-            "popularity": meta.get("popularity"),
-        })
+        out[record["artist_id"]] = record["genres"]
+        records.append(record)
 
     if records:
         await _bulk_upsert_artists_to_cache(records)

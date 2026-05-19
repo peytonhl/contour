@@ -31,6 +31,76 @@ _TTL_HIT = 86_400      # 24h
 _TTL_MISS = 21_600     # 6h
 
 
+async def get_artist_tags(artist_name: str, limit: int = 8) -> list[str]:
+    """Return Last.fm's top tags for an artist as a list of lowercase strings.
+
+    Last.fm tags are community-applied and skew genre-like for the top
+    handful — e.g. Kendrick Lamar returns ['Hip-Hop', 'rap', 'west coast',
+    'hip hop', 'compton']. We take the top `limit` and lowercase them so
+    they slot into the same genre-matching paths that Spotify's `genres`
+    field used to feed.
+
+    Used as a REPLACEMENT for Spotify's artist.genres field, which was
+    stripped from /v1/artists/{id} for non-Extended-Access apps in late
+    2024 (confirmed empirically 2026-05-18 — every artist in our cache
+    returned genres=[] including Kanye, Beyoncé, Kendrick). Contour can't
+    get Extended Access (250K MAU bar, see memory). Last.fm tags are the
+    obvious fallback — no Spotify quota, no auth-tier gating, and the
+    tag vocabulary aligns closely with Spotify's genre vocabulary.
+
+    Cached 30d on hit (artist tags are essentially immutable), 6h on miss
+    (so we re-check artists Last.fm hadn't indexed yet).
+
+    Returns [] when:
+      - LASTFM_API_KEY not configured
+      - Artist not found in Last.fm
+      - Any network/parse error
+    """
+    if not _API_KEY:
+        return []
+    if not artist_name or not artist_name.strip():
+        return []
+
+    cache_key = f"lastfm:artist_tags:{artist_name.lower().strip()}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        # Sentinel: empty list cached as [] still indicates known-miss
+        return list(cached) if isinstance(cached, list) else []
+
+    params = {
+        "method": "artist.getInfo",
+        "api_key": _API_KEY,
+        "artist": artist_name,
+        "format": "json",
+        "autocorrect": "1",
+    }
+    tags_out: list[str] = []
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(LASTFM_BASE, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "error" not in data:
+                    artist = data.get("artist") or {}
+                    tags_block = artist.get("tags") or {}
+                    raw_tags = tags_block.get("tag") if isinstance(tags_block, dict) else None
+                    if isinstance(raw_tags, list):
+                        for t in raw_tags[:limit]:
+                            if isinstance(t, dict):
+                                name = t.get("name")
+                                if isinstance(name, str) and name.strip():
+                                    tags_out.append(name.lower().strip())
+    except Exception as exc:
+        logger.warning("lastfm: get_artist_tags(%s) failed — %s", artist_name, exc)
+
+    # Cache positives 30d (tags ~immutable), misses 6h (recheck small artists)
+    await redis_cache.set(
+        cache_key, tags_out,
+        ttl=_TTL_HIT * 30 if tags_out else _TTL_MISS,
+    )
+    return tags_out
+
+
 async def get_album_playcount(artist: str, album: str) -> Optional[int]:
     """
     Return the total Last.fm scrobble count for an album.
