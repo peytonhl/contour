@@ -1796,6 +1796,8 @@ async def discover_probe_genre_match(
     out: list[dict] = []
     for row in rows:
         genres_data = _normalize_genres_data(row.genres)
+        # Debug: include raw value to spot data-shape surprises
+        raw_genres = row.genres
         # Test against every picker slug we have aliases for
         family_results: dict[str, dict] = {}
         for slug in list(_GENRE_MATCH_ALIASES.keys())[:30]:
@@ -1810,6 +1812,7 @@ async def discover_probe_genre_match(
         out.append({
             "artist": row.name,
             "id": row.spotify_id,
+            "raw_genres_preview": (raw_genres or "")[:200],
             "tag_weights": [(t, round(w, 3)) for t, w in genres_data],
             "threshold": _GENRE_MATCH_CONFIDENCE_THRESHOLD,
             "families_with_signal": nonzero,
