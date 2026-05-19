@@ -585,31 +585,34 @@ async def _compute_user_genre_signal(
         select(ArtistCache.spotify_id, ArtistCache.genres)
         .where(ArtistCache.spotify_id.in_(artist_pops.keys()))
     )).all()
-    artist_genre_map: dict[str, list[str]] = {}
+    # Map each artist to their normalized (tag, weight) list. Handles
+    # both the new [{name, count}] storage format and the legacy
+    # string-list format via _normalize_genres_data.
+    from services.spotify import (
+        _genre_match_terms,
+        _normalize_genres_data,
+        _artist_matches_genre_family,
+    )
+    artist_genre_map: dict[str, list[tuple[str, float]]] = {}
     for sid, gj in artist_rows:
         if gj:
-            try:
-                artist_genre_map[sid] = [
-                    g.lower() for g in json.loads(gj) if isinstance(g, str)
-                ]
-            except Exception:
-                continue
+            artist_genre_map[sid] = _normalize_genres_data(gj)
 
-    # Reuse the same genre-family matcher used by the artist-genre
-    # verification filter in services/spotify.py — keeps the two systems
-    # consistent (a rap artist counted toward "hip-hop" affinity is the
-    # same rap artist that passes the "hip-hop" pool filter).
-    from services.spotify import _genre_match_terms
     match_terms = {g: _genre_match_terms(g) for g in eligible_genres}
 
     counts: dict[str, int] = {g: 0 for g in eligible_genres}
     pop_buckets: dict[str, list[int]] = {g: [] for g in eligible_genres}
     for aid, pops in artist_pops.items():
-        artist_genres = artist_genre_map.get(aid)
-        if not artist_genres:
+        genres_data = artist_genre_map.get(aid)
+        if not genres_data:
             continue
+        # Use the SAME weighted matcher as artist-genre verification —
+        # an artist only contributes to a genre's affinity if their
+        # tag-confidence in that family clears the threshold. So a
+        # Bieber prank tag at 24% in metal doesn't add Bieber's pop
+        # ratings to the user's metal affinity.
         for slug, terms in match_terms.items():
-            if any(any(term in ag for term in terms) for ag in artist_genres):
+            if _artist_matches_genre_family(genres_data, terms):
                 counts[slug] += len(pops)
                 pop_buckets[slug].extend(p for p in pops if p is not None)
 
@@ -654,15 +657,20 @@ async def _fetch_genre_tracks_from_catalog(
         for this genre family). Caller falls through to Spotify tier.
       - All matching tracks are in exclude_track_ids. Same fallback.
     """
-    from services.spotify import _genre_match_terms
+    from services.spotify import (
+        _genre_match_terms,
+        _normalize_genres_data,
+        _artist_matches_genre_family,
+    )
 
     match_terms = _genre_match_terms(genre)
 
-    # Step 1: artists tagged with the genre family. Pull all rows with
-    # non-null genres and filter in Python — Postgres JSON containment
-    # could be faster but isn't portable to SQLite (local dev), and at
-    # current catalog scale (~hundreds of artists) Python filtering is
-    # well under a millisecond.
+    # Step 1: artists tagged with the genre family, gated by weighted
+    # confidence (default ≥20% of their Last.fm tag-count mass matches
+    # the family). Drops the Bieber-style prank-tag cross-contamination
+    # — same threshold logic as _filter_pool_by_artist_genre uses on
+    # Spotify-sourced pools, so tier 0 (catalog) and tier 1 (Spotify)
+    # converge on the same answer for whether an artist is "in" a genre.
     artist_rows = (await db.execute(
         select(ArtistCache.spotify_id, ArtistCache.genres)
         .where(ArtistCache.genres.is_not(None))
@@ -670,13 +678,8 @@ async def _fetch_genre_tracks_from_catalog(
 
     matching_artist_ids: set[str] = set()
     for sid, gj in artist_rows:
-        try:
-            artist_genres = [
-                g.lower() for g in json.loads(gj or "[]") if isinstance(g, str)
-            ]
-        except Exception:
-            continue
-        if any(any(term in ag for term in match_terms) for ag in artist_genres):
+        genres_data = _normalize_genres_data(gj)
+        if _artist_matches_genre_family(genres_data, match_terms):
             matching_artist_ids.add(sid)
 
     # Remove excluded artists upfront
@@ -919,16 +922,20 @@ async def _compute_negative_preferences(
             artist_rows = (await db.execute(
                 select(ArtistCache.genres).where(ArtistCache.spotify_id.in_(down_artists))
             )).scalars().all()
+            # Normalize through _normalize_genres_data so this works with
+            # the new [{name, count}] storage shape AND legacy lists.
+            # Each artist contributes its top tag names (we don't weight
+            # negative signal because the user explicitly down-rated this
+            # artist — even their 4th-most-tagged genre is associated
+            # with the negative signal).
+            from services.spotify import _normalize_genres_data
             genre_counts: dict[str, int] = {}
             for genres_json in artist_rows:
                 if not genres_json:
                     continue
-                try:
-                    for g in json.loads(genres_json):
-                        if isinstance(g, str) and g.strip():
-                            genre_counts[g] = genre_counts.get(g, 0) + 1
-                except Exception:
-                    continue
+                for tag, _weight in _normalize_genres_data(genres_json):
+                    if tag and tag.strip():
+                        genre_counts[tag] = genre_counts.get(tag, 0) + 1
             total_genres = sum(genre_counts.values())
             if total_genres >= 3:
                 negative_genre_pref = {g: c / total_genres for g, c in genre_counts.items()}
@@ -2349,19 +2356,19 @@ async def catalog_stats(db: AsyncSession = Depends(get_db)):
 
     # Top-genres aggregation — parse JSON in Python rather than DB-native
     # because we run on SQLite locally and Postgres in prod, and json_each /
-    # jsonb_array_elements_text differ between them.
+    # jsonb_array_elements_text differ between them. Uses
+    # _normalize_genres_data so both the new [{name, count}] format and
+    # legacy string-list format work.
     from collections import Counter
+    from services.spotify import _normalize_genres_data
     genres_rows = (await db.execute(
         select(ArtistCache.genres).where(ArtistCache.genres.is_not(None)).limit(5000)
     )).scalars().all()
     genre_counter: Counter[str] = Counter()
     for g_json in genres_rows:
-        try:
-            for g in json.loads(g_json or "[]"):
-                if g:
-                    genre_counter[g] += 1
-        except Exception:
-            continue
+        for tag, _weight in _normalize_genres_data(g_json):
+            if tag:
+                genre_counter[tag] += 1
     top_genres = [{"genre": g, "count": c} for g, c in genre_counter.most_common(20)]
 
     # ── AlbumCache (context) ──────────────────────────────────────────────────

@@ -33,6 +33,32 @@ logger = logging.getLogger(__name__)
 META_TTL = timedelta(days=365)
 
 
+def _coerce_genres_to_string_list(genres_json: Optional[str]) -> list[str]:
+    """ArtistCache.genres now stores either:
+      - NEW: [{"name": "hip hop", "count": 100}, ...]  (Last.fm TopTags era)
+      - LEGACY: ["hip hop", "rap", ...]                 (Spotify era)
+
+    Public-facing consumers (profile-taste endpoint, etc.) want a flat
+    list of strings, so flatten either format here. Names are preserved
+    in original case as stored.
+    """
+    if not genres_json:
+        return []
+    try:
+        parsed = json.loads(genres_json)
+    except Exception:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    if not parsed:
+        return []
+    # New format detection: first element is a dict with "name" key
+    if isinstance(parsed[0], dict):
+        return [g["name"] for g in parsed if isinstance(g, dict) and g.get("name")]
+    # Legacy format: list of strings
+    return [g for g in parsed if isinstance(g, str)]
+
+
 async def _is_meta_fresh(row: ArtistCache) -> bool:
     """True if the cached metadata is recent enough to use without re-fetching."""
     if row.meta_fetched_at is None:
@@ -57,7 +83,7 @@ async def get_or_fetch_artist(db: AsyncSession, artist_id: str) -> Optional[dict
         return {
             "id": row.spotify_id,
             "name": row.name,
-            "genres": json.loads(row.genres or "[]"),
+            "genres": _coerce_genres_to_string_list(row.genres),
             "image_url": row.image_url,
             "popularity": row.popularity,
         }
@@ -75,7 +101,7 @@ async def get_or_fetch_artist(db: AsyncSession, artist_id: str) -> Optional[dict
             return {
                 "id": row.spotify_id,
                 "name": row.name,
-                "genres": json.loads(row.genres or "[]"),
+                "genres": _coerce_genres_to_string_list(row.genres),
                 "image_url": row.image_url,
                 "popularity": row.popularity,
             }

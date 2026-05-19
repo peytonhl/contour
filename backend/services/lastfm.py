@@ -31,69 +31,83 @@ _TTL_HIT = 86_400      # 24h
 _TTL_MISS = 21_600     # 6h
 
 
-async def get_artist_tags(artist_name: str, limit: int = 8) -> list[str]:
-    """Return Last.fm's top tags for an artist as a list of lowercase strings.
+async def get_artist_tags(artist_name: str, limit: int = 15) -> list[dict]:
+    """Return Last.fm's top tags for an artist as [{name, count}, ...] dicts.
 
-    Last.fm tags are community-applied and skew genre-like for the top
-    handful — e.g. Kendrick Lamar returns ['Hip-Hop', 'rap', 'west coast',
-    'hip hop', 'compton']. We take the top `limit` and lowercase them so
-    they slot into the same genre-matching paths that Spotify's `genres`
-    field used to feed.
+    Switched from artist.getInfo to artist.getTopTags so we get the
+    community-vote `count` per tag. Counts let downstream code compute a
+    confidence score for each tag relative to that artist's tag mass —
+    necessary to distinguish a real genre signal (e.g. Bieber pop=100,
+    rnb=34) from a high-count meme/prank (Bieber black-metal=58). The
+    artist.getInfo endpoint only returned top 5 tag names without counts.
 
-    Used as a REPLACEMENT for Spotify's artist.genres field, which was
-    stripped from /v1/artists/{id} for non-Extended-Access apps in late
-    2024 (confirmed empirically 2026-05-18 — every artist in our cache
-    returned genres=[] including Kanye, Beyoncé, Kendrick). Contour can't
-    get Extended Access (250K MAU bar, see memory). Last.fm tags are the
-    obvious fallback — no Spotify quota, no auth-tier gating, and the
-    tag vocabulary aligns closely with Spotify's genre vocabulary.
+    Returns a list of {name, count} dicts, lowercased name, in
+    descending count order (Last.fm's natural ordering). Empty list on
+    failure or if Last.fm doesn't index the artist.
 
-    Cached 30d on hit (artist tags are essentially immutable), 6h on miss
-    (so we re-check artists Last.fm hadn't indexed yet).
+    Cached 30d on hit (tags ~immutable), 6h on miss (so a small artist
+    that Last.fm hadn't tagged yet gets re-checked once it might be).
 
-    Returns [] when:
-      - LASTFM_API_KEY not configured
-      - Artist not found in Last.fm
-      - Any network/parse error
+    Example return for Kendrick Lamar:
+        [{"name": "hip-hop", "count": 100},
+         {"name": "rap", "count": 70},
+         {"name": "west coast", "count": 19},
+         {"name": "hip hop", "count": 16},
+         {"name": "compton", "count": 6}, ...]
     """
     if not _API_KEY:
         return []
     if not artist_name or not artist_name.strip():
         return []
 
-    cache_key = f"lastfm:artist_tags:{artist_name.lower().strip()}"
+    # Cache key bumped to v2 to invalidate the old format (list of
+    # strings, no counts) from the artist.getInfo era. Old keys naturally
+    # expire via TTL but bumping forces the upgrade for active artists.
+    cache_key = f"lastfm:artist_tags_v2:{artist_name.lower().strip()}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
-        # Sentinel: empty list cached as [] still indicates known-miss
-        return list(cached) if isinstance(cached, list) else []
+        if isinstance(cached, list):
+            # Defensive: each item should be a dict with name + count
+            return [t for t in cached if isinstance(t, dict) and t.get("name")]
+        return []
 
     params = {
-        "method": "artist.getInfo",
+        "method": "artist.getTopTags",
         "api_key": _API_KEY,
         "artist": artist_name,
         "format": "json",
         "autocorrect": "1",
     }
-    tags_out: list[str] = []
+    tags_out: list[dict] = []
     try:
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
             resp = await client.get(LASTFM_BASE, params=params)
             if resp.status_code == 200:
                 data = resp.json()
                 if "error" not in data:
-                    artist = data.get("artist") or {}
-                    tags_block = artist.get("tags") or {}
-                    raw_tags = tags_block.get("tag") if isinstance(tags_block, dict) else None
+                    toptags = data.get("toptags") or {}
+                    raw_tags = toptags.get("tag") if isinstance(toptags, dict) else None
                     if isinstance(raw_tags, list):
                         for t in raw_tags[:limit]:
-                            if isinstance(t, dict):
-                                name = t.get("name")
-                                if isinstance(name, str) and name.strip():
-                                    tags_out.append(name.lower().strip())
+                            if not isinstance(t, dict):
+                                continue
+                            name = t.get("name")
+                            if not isinstance(name, str) or not name.strip():
+                                continue
+                            # Last.fm `count` is a string in some responses,
+                            # int in others. Coerce; missing/garbage → 0.
+                            raw_count = t.get("count")
+                            try:
+                                count = int(raw_count)
+                            except (TypeError, ValueError):
+                                count = 0
+                            tags_out.append({
+                                "name": name.lower().strip(),
+                                "count": count,
+                            })
     except Exception as exc:
         logger.warning("lastfm: get_artist_tags(%s) failed — %s", artist_name, exc)
 
-    # Cache positives 30d (tags ~immutable), misses 6h (recheck small artists)
     await redis_cache.set(
         cache_key, tags_out,
         ttl=_TTL_HIT * 30 if tags_out else _TTL_MISS,

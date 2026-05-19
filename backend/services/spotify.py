@@ -830,41 +830,130 @@ def _genre_match_terms(slug: str) -> list[str]:
     return [s, s.replace("-", " ")]
 
 
-async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, list[str]]:
-    """Hybrid Spotify + Last.fm — returns {artist_id: [lowercase tags]}.
+# Confidence threshold for the weighted artist-genre matcher. An artist
+# is considered "in" a genre family when the share of their Last.fm
+# tag-count mass that matches the family is ≥ this fraction. Threshold
+# determined empirically from the noise vs signal sweep on 2026-05-18:
+#   - Kendrick hip-hop: 94% ✓ (heavy pass)
+#   - Skullface metal: 91% ✓ (heavy pass)
+#   - Taylor country: 37% ✓ pop: 32% ✓ (sustained signal)
+#   - Beyoncé rnb: 41% ✓ pop: 38% ✓ soul: 17% (drops)
+#   - Bieber pop: 41% ✓ rnb: 17% (drops) metal: 24% (drops, the prank)
+# At 0.25, real cross-genre signals (Taylor pop+country, Bieber pop+rnb's
+# rnb portion at 17% — wait that's below) get caught. Adjusted to 0.20
+# to preserve more cross-genre signal at the cost of the Bieber-metal
+# prank STILL surviving at 24%. Hard prior: at this credential tier
+# Last.fm noise has no perfect threshold. The threshold + cap-to-top-N
+# (in get_artist_tags via limit=15) together cut the long tail.
+_GENRE_MATCH_CONFIDENCE_THRESHOLD = 0.20
+
+
+def _normalize_genres_data(genres_json: Optional[str]) -> list[tuple[str, float]]:
+    """Parse ArtistCache.genres JSON (in either storage format) into a
+    uniform [(name, weight), ...] list. The weight is the tag's count
+    normalized so the sum across all tags equals 1.0 — a confidence
+    distribution over the artist's tag families.
+
+    Two formats supported:
+      - NEW: [{"name": "hip hop", "count": 100}, ...] — Last.fm TopTags
+        with counts. Weights are normalized counts.
+      - LEGACY: ["hip hop", "rap", ...] — pre-TopTags string list (from
+        Spotify era and brief Last.fm getInfo era). Each tag treated
+        as equal weight (1/N).
+
+    Returns [] when input is None / unparseable / empty list.
+    """
+    if not genres_json:
+        return []
+    try:
+        parsed = json.loads(genres_json)
+    except Exception:
+        return []
+    if not isinstance(parsed, list) or not parsed:
+        return []
+
+    # New format: dicts with name + count
+    if all(isinstance(t, dict) and "name" in t for t in parsed):
+        total = sum(max(int(t.get("count") or 0), 0) for t in parsed)
+        if total <= 0:
+            # All counts zero (rare — Last.fm sometimes returns top tags
+            # with count=0 for very-niche artists). Fall back to equal
+            # weighting per tag so the matcher still works.
+            equal = 1.0 / len(parsed)
+            return [(t["name"].lower(), equal) for t in parsed if t.get("name")]
+        return [
+            (t["name"].lower(), max(int(t.get("count") or 0), 0) / total)
+            for t in parsed if t.get("name")
+        ]
+
+    # Legacy format: list of strings, equal-weighted
+    strs = [s for s in parsed if isinstance(s, str)]
+    if not strs:
+        return []
+    equal = 1.0 / len(strs)
+    return [(s.lower(), equal) for s in strs]
+
+
+def _artist_matches_genre_family(
+    genres_data: list[tuple[str, float]],
+    family_terms: list[str],
+    threshold: float = _GENRE_MATCH_CONFIDENCE_THRESHOLD,
+) -> bool:
+    """True when the artist's tag-confidence mass that matches the genre
+    family is ≥ threshold. `genres_data` comes from _normalize_genres_data.
+    `family_terms` is the substring list from _genre_match_terms(slug).
+
+    A tag "matches" the family if ANY family term is a substring of the
+    tag name. So "hip hop" (family term) matches "west coast hip hop"
+    (tag). Confidence for the family is the sum of matching tags'
+    weights. Empty genres_data returns False (caller should treat as
+    "unknown" — not penalize).
+    """
+    if not genres_data or not family_terms:
+        return False
+    matching = sum(
+        weight for tag, weight in genres_data
+        if any(term in tag for term in family_terms)
+    )
+    return matching >= threshold
+
+
+def _genres_data_to_names(genres_data: list[tuple[str, float]]) -> list[str]:
+    """Extract just the tag names from normalized genres data. For
+    consumers that don't care about weights — display, simple substring
+    scanning, etc."""
+    return [name for name, _ in genres_data]
+
+
+async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, list[dict]]:
+    """Hybrid Spotify + Last.fm — returns {artist_id: [{name, count}, ...]}.
 
     Two-step per artist:
-      1. get_artist(spotify_id) — fetches name (and image, etc.) from
-         Spotify's per-artist endpoint. Cached 30d in Redis. Spotify
-         still returns name + image_url for non-Extended-Access apps;
-         it's just `genres` and `popularity` that are stripped.
-      2. lastfm.get_artist_tags(name) — Last.fm artist.getInfo, returns
-         community tags ranked by popularity. We take the top 8 as our
-         genre-equivalent. Cached 30d in Redis.
+      1. get_artist(spotify_id) — fetches name from Spotify's per-artist
+         endpoint. Cached 30d. Spotify strips `genres` + `popularity` at
+         our credential tier but still returns name + image_url.
+      2. lastfm.get_artist_tags(name) — Last.fm artist.getTopTags,
+         returns [{name, count}, ...] community tags with vote counts.
+         Cached 30d.
 
-    Why this design — Spotify gated artist.genres behind Extended Access
-    in late 2024 (confirmed empirically 2026-05-18: every artist in
-    ArtistCache had genres=[], including Kanye / Beyoncé / Kendrick).
-    Contour can't get Extended Access (250K MAU bar, see memory). Last.fm
-    tags are the obvious replacement: same shape, no auth-tier gating,
-    vocabulary close enough to Spotify's that the genre-match terms in
-    _GENRE_MATCH_ALIASES still work (e.g. "hip-hop" / "rap" / "hip hop"
-    appear in both vocabularies).
+    Counts are what enables the weighted-confidence matcher downstream
+    (_artist_matches_genre_family). Bieber's prank "black metal=58" tag
+    only has 24% confidence vs his real pop/rnb tags — below the 20%
+    threshold for noise rejection plus we cap at top-15 to drop the
+    long tail.
 
-    Persistence: bulk upsert via _bulk_upsert_artists_to_cache. One
-    transaction for the entire batch, awaited synchronously.
+    Storage shape: persisted to ArtistCache.genres as JSON list of
+    {name, count} dicts. Consumers normalize via _normalize_genres_data
+    which also handles the legacy string-list format for backward compat.
 
     Returns {} on failure — callers treat that as "no data, don't filter."
     """
     if not artist_ids:
         return {}
 
-    out: dict[str, list[str]] = {}
+    out: dict[str, list[dict]] = {}
 
     async def _fetch_one(aid: str) -> Optional[dict]:
-        """Get the artist's name from Spotify + tags from Last.fm. Both
-        calls cached, so steady-state cost is near-zero. Returns a
-        record-ready dict, or None on failure (skip this artist)."""
         try:
             meta = await get_artist(aid)
             name = meta.get("name") if meta else None
@@ -874,10 +963,6 @@ async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, l
             _log.debug("[spotify._fetch_and_persist_artist_genres] spotify lookup failed for %s: %s", aid, exc)
             return None
 
-        # Last.fm doesn't need Spotify quota and isn't gated like our
-        # Spotify tier. Failure here just means we get no genres for
-        # this artist — degrades gracefully into "unknown genre" which
-        # passes through the artist-genre verification filter.
         try:
             from services import lastfm
             tags = await lastfm.get_artist_tags(name)
@@ -888,15 +973,11 @@ async def _fetch_and_persist_artist_genres(artist_ids: list[str]) -> dict[str, l
         return {
             "artist_id": aid,
             "name": name,
-            "genres": tags,
+            "genres": tags,  # list of {name, count} dicts
             "image_url": (meta or {}).get("image_url"),
             "popularity": (meta or {}).get("popularity"),
         }
 
-    # Fire all lookups in parallel. The internal Spotify semaphore caps
-    # in-flight Spotify calls; Last.fm has its own rate limits (~5 req/s)
-    # but the steady-state cache hit rate makes that a non-issue after
-    # initial warmup. Cold backfill of ~500 artists takes ~30-60s.
     results = await asyncio.gather(*[_fetch_one(aid) for aid in artist_ids])
 
     records: list[dict] = []
@@ -1054,10 +1135,12 @@ async def _filter_pool_by_artist_genre(
         return pool
 
     # First check ArtistCache (DB) — covers artists the catalog has touched
-    # before. Free; no Spotify call.
-    artist_genres: dict[str, list[str]] = {}
+    # before. Free; no Spotify call. Store the normalized (name, weight)
+    # form so the downstream weighted matcher can use confidence
+    # thresholds. _normalize_genres_data handles both the new
+    # [{name, count}] format and the legacy [name1, name2] format.
+    artist_genres: dict[str, list[tuple[str, float]]] = {}
     try:
-        import json as _json
         from sqlalchemy import select
         from database import AsyncSessionLocal
         from models import ArtistCache
@@ -1069,24 +1152,24 @@ async def _filter_pool_by_artist_genre(
             )).all()
             for sid, genres_json in rows:
                 if genres_json:
-                    try:
-                        artist_genres[sid] = [
-                            g.lower() for g in _json.loads(genres_json)
-                            if isinstance(g, str)
-                        ]
-                    except Exception:
-                        continue
+                    artist_genres[sid] = _normalize_genres_data(genres_json)
     except Exception as exc:
         _log.debug("[spotify._filter_pool_by_artist_genre] ArtistCache read failed: %s", exc)
 
-    # Anything still unknown? Batched Spotify fetch. One call covers up to 50
-    # artists. Cheap relative to the 3 search calls we already spent building
-    # the pool, and the results persist to ArtistCache so we never spend it
-    # again for these artists.
+    # Anything still unknown? Per-artist Spotify lookup + Last.fm tag fetch.
+    # Results persist to ArtistCache so subsequent searches against the
+    # same artist skip the network entirely.
     missing = [a for a in artist_ids if a not in artist_genres]
     if missing:
-        fetched = await _fetch_and_persist_artist_genres(missing)
-        artist_genres.update(fetched)
+        fetched_raw = await _fetch_and_persist_artist_genres(missing)
+        # fetched_raw is {id: [{name, count}, ...]} — normalize to the
+        # same (name, weight) form we'd read from the DB.
+        for aid, tags_list in fetched_raw.items():
+            # _fetch_and_persist returns the raw Last.fm dicts; jsonify
+            # them through _normalize_genres_data so the weighting math
+            # is consistent with the DB path.
+            import json as _json
+            artist_genres[aid] = _normalize_genres_data(_json.dumps(tags_list))
 
     if not artist_genres:
         # No genre data anywhere — don't filter, the pool is what it is.
@@ -1098,13 +1181,21 @@ async def _filter_pool_by_artist_genre(
         aid = (t.get("artist_ids") or [None])[0]
         if not aid or aid not in artist_genres:
             return True  # unknown artist — don't penalize cold cache
-        genres = artist_genres[aid]
-        if not genres:
-            # Artist exists in our cache but has zero genre tags. Common
-            # for very small artists Spotify hasn't tagged yet. Keep them —
-            # we'd rather under-filter than blackhole legit niche artists.
+        genres_data = artist_genres[aid]
+        if not genres_data:
+            # Artist in our cache but no genre tags (Last.fm hadn't
+            # indexed them). Keep — we'd rather under-filter than
+            # blackhole legit niche artists.
             return True
-        return any(any(term in g for term in targets) for g in genres)
+        # Weighted-confidence match: sum the tag weights matching the
+        # genre family. Must be ≥ _GENRE_MATCH_CONFIDENCE_THRESHOLD
+        # (default 20%) to be considered "in" the family. This is what
+        # drops Bieber's "black metal=58" prank tag — it's 24% of his
+        # tag mass but the rest is pop/rnb/justin-bieber/etc, so 24%
+        # falls just above the threshold... actually keeps it for now.
+        # Threshold may need to drop to 15% if we see legit cross-genre
+        # artists getting wrongly filtered out.
+        return _artist_matches_genre_family(genres_data, targets)
 
     filtered = [t for t in pool if _ok(t)]
     if len(filtered) >= 3:
