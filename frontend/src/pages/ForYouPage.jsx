@@ -1161,7 +1161,15 @@ function ForYouFeed() {
   // implementation, which always showed a seam between adjacent cards
   // mid-transition (the "Write a review / Not interested" peek-through
   // the user reported).
-  const [dragOffset, setDragOffset] = useState(0);
+  // dragOffset is a REF, not state — the drag delta drives a transform
+  // applied directly to the wrapper's DOM node. The previous useState version
+  // triggered a full ForYouFeed re-render on every touchmove (60–120 Hz on
+  // iOS ProMotion), which cascaded into all mounted DiscoverCard children
+  // and dropped frames mid-swipe. The handlers below write to
+  // `wrapperRef.current.style.transform` directly, and a useLayoutEffect
+  // keeps the DOM transform in sync whenever activeIdx / dragging change.
+  // Stored as a PERCENT of cardHeight (same units the wrapper uses).
+  const dragOffsetRef = useRef(0);
   // `dragging` true → CSS transition disabled (finger follow + atomic commit
   // reset). False → 280ms ease for the snap animation.
   const [dragging, setDragging] = useState(false);
@@ -1242,7 +1250,14 @@ function ForYouFeed() {
     // integer clientHeight. The 0.5px gap was the "snaps too low / auto-
     // adjusts higher" overshoot at the commit moment.
     const h = cardHeightRef.current || containerRef.current?.clientHeight || 800;
-    setDragOffset((dy / h) * 100);
+    dragOffsetRef.current = (dy / h) * 100;
+    // Direct DOM write — bypasses React reconciliation entirely so we keep
+    // 60–120 fps on iOS even with heavy DiscoverCard children mounted.
+    const w = wrapperRef.current;
+    if (w) {
+      w.style.transform =
+        `translate3d(0, ${-activeIdx * 100 + dragOffsetRef.current}%, 0)`;
+    }
   }
   function handleTouchEnd(e) {
     const start = touchStartRef.current;
@@ -1269,9 +1284,13 @@ function ForYouFeed() {
     } else if (dy > SWIPE_PX || (dy > 0 && velocity >= FLICK_VEL)) {
       advance(-1);
     } else {
-      // Sub-threshold — animate back to 0.
+      // Sub-threshold — animate back to 0. dragOffsetRef goes to 0 BEFORE
+      // toggling dragging so the useLayoutEffect (which runs after the
+      // re-render) writes the resting transform. With dragging=false the
+      // CSS transition is enabled, so the browser animates from the current
+      // drag-offset position to 0.
+      dragOffsetRef.current = 0;
       setDragging(false);
-      setDragOffset(0);
     }
   }
 
@@ -1284,20 +1303,39 @@ function ForYouFeed() {
   // perceived as "card undershoots then settles back."
   const wrapperRef = useRef(null);
 
+  // Keep the wrapper's DOM transform in sync with React state. The transform
+  // is NOT in the JSX inline style anymore — putting it there caused every
+  // touchmove to round-trip through a React render, which dropped frames on
+  // iOS WKWebView. Instead, touchmove writes `style.transform` directly, and
+  // this effect re-applies the composed transform whenever activeIdx flips
+  // (commit) or dragging toggles (touchstart / sub-threshold release /
+  // advance). useLayoutEffect runs synchronously after the React commit and
+  // before paint, so the user never sees a frame computed against stale
+  // state. Since React does fine-grained style reconciliation (only diffs
+  // properties present in the style prop), removing `transform` from the
+  // JSX means React leaves our direct-write transform alone.
+  useLayoutEffect(() => {
+    const w = wrapperRef.current;
+    if (!w) return;
+    w.style.transform =
+      `translate3d(0, ${-activeIdx * 100 + dragOffsetRef.current}%, 0)`;
+  }, [activeIdx, dragging, transitioning]);
+
   function advance(direction) {
     if (transitioning) return;
     const target = activeIdx + direction;
     if (target < 0 || target >= tracks.length) {
+      dragOffsetRef.current = 0;
       setDragging(false);
-      setDragOffset(0);
       return;
     }
+    // Set the snap target on the ref BEFORE flipping dragging false — the
+    // useLayoutEffect that writes the transform reads `dragOffsetRef.current`
+    // and runs after React's render. One full card height = 100% (same units
+    // as the wrapper's resting position).
+    dragOffsetRef.current = direction === 1 ? -100 : 100;
     setTransitioning(true);
     setDragging(false);                                 // enable CSS transition
-    // dragOffset is now a PERCENT of cardHeight (not pixels). One full card
-    // height = 100%. Combined with the wrapper transform using pure %,
-    // there's no unit mismatch at the commit boundary.
-    setDragOffset(direction === 1 ? -100 : 100);
 
     // Commit atomically when the transition actually finishes — not on a
     // pre-set timer. transitionend fires the frame the wrapper's transform
@@ -1308,8 +1346,13 @@ function ForYouFeed() {
       if (committed) return;
       committed = true;
       setDragging(true);
+      // Reset the drag ref before committing the new activeIdx — the
+      // useLayoutEffect runs after the re-render and writes
+      // `translate3d(0, -target*100 + 0 %, 0)`, which is mathematically
+      // identical to where the snap animation just landed
+      // (-activeIdx*100 + ±100 = -(activeIdx±1)*100). Visually seamless.
+      dragOffsetRef.current = 0;
       setActiveIdx(target);
-      setDragOffset(0);
       setTransitioning(false);
       if (direction === 1 && target >= tracks.length - 4) {
         fetchBatch(true);
@@ -1794,16 +1837,14 @@ function ForYouFeed() {
           ref={wrapperRef}
           style={{
             position: "absolute", inset: 0,
-            // Pure-percent transform. dragOffset is stored as %-of-cardHeight
-            // (touchmove handler converts the finger's px delta on the way in),
-            // so the whole expression resolves consistently against the
-            // wrapper's own height. The previous hybrid form `calc(-N*100% +
-            // dragOffset_px)` mixed two units; `100%` resolves to the
-            // wrapper's rendered (potentially subpixel) height, while
-            // dragOffset_px was JS clientHeight (integer), and the half-
-            // pixel discrepancy at the commit moment was the "snaps too low
-            // first, then auto-adjusts higher" jump the user reported.
-            transform: `translate3d(0, ${-activeIdx * 100 + dragOffset}%, 0)`,
+            // NOTE: `transform` is deliberately NOT set here. The drag
+            // handler writes it directly to wrapperRef.current.style.transform
+            // on every touchmove so the gesture doesn't round-trip through
+            // a React render. A useLayoutEffect above re-applies the resting
+            // transform whenever activeIdx / dragging / transitioning change.
+            // Stored unit is %-of-cardHeight — same units the wrapper uses
+            // (no px↔% mix, so the commit boundary stays subpixel-stable).
+            //
             // Snappier ease-out curve (cubic-bezier-iOS-style) + shorter
             // duration so the snap feels closer to Tinder / TikTok's native
             // animation. The previous (0.2, 0, 0, 1) was a linear-snappy
