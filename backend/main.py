@@ -34,14 +34,6 @@ app.add_middleware(
         "http://localhost:3000",
         "https://contour-rosy.vercel.app",
     ],
-    # Vercel preview deploys land on URLs like
-    #   https://contour-git-<branch>-peytonhls-projects.vercel.app
-    #   https://contour-<commit-hash>-peytonhls-projects.vercel.app
-    # The Vercel project name is "contour" (not "contour-rosy" — that's a
-    # custom alias for the prod deploy only) and the team slug is
-    # "peytonhls-projects". The regex admits both URL formats so PR previews
-    # can talk to the production backend for review.
-    allow_origin_regex=r"^https://contour-[a-z0-9-]+-peytonhls-projects\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
