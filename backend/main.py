@@ -34,6 +34,16 @@ app.add_middleware(
         "http://localhost:3000",
         "https://contour-rosy.vercel.app",
     ],
+    # Vercel branch + deployment-hash previews land on hostnames like
+    # contour-rosy-git-<branch>-peytonhls-projects.vercel.app and
+    # contour-rosy-<hash>-peytonhls-projects.vercel.app. The regex admits
+    # both alongside prod so we can test feature branches on the real
+    # Railway backend without per-branch CORS edits. The `-peytonhls-projects`
+    # suffix scopes this to deploys under our Vercel team (Vercel hostnames
+    # are not squattable across teams).
+    allow_origin_regex=(
+        r"^https://contour-rosy-[a-z0-9-]+-peytonhls-projects\.vercel\.app$"
+    ),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
