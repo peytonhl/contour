@@ -156,7 +156,13 @@ checklist at the bottom — start there.
 ### Data source rules
 - Kworb artist pages (`get_artist_albums_by_id`) → OK, works from Railway
 - Kworb entity pages (`get_entity_daily_data`) → BLOCKED on Railway, do not use
-- Last.fm → primary fallback for album stream counts when Kworb is blocked
+- Last.fm → two responsibilities:
+  - primary fallback for album stream counts when Kworb is blocked
+  - **primary source for artist genres** (community-applied "top tags").
+    Spotify's `/v1/artists/{id}` strips genres + popularity to `[]` / `null`
+    for non-Extended-Access apps as of late 2024. Last.fm fills the gap
+    via `artist.getTopTags` (with vote counts → weighted confidence; see
+    "Artist-genre data flow" section)
 - Wayback Machine → trajectory anchor points (one-time fetch per entity)
 - Deezer → For You feed baseline tiers (no API key, always has preview URLs);
   use `get_chart_tracks()` for popular tracks, NOT `search_tracks("top hits")`
@@ -187,6 +193,22 @@ Spotify rate limits are the #1 source of production incidents. Follow these:
 - **All hot Spotify functions are Redis-cached 24h**: `get_artist`, `get_album`,
   `get_track`, `get_artist_top_tracks`, `get_artist_albums`, `get_artist_albums_limited`.
   If Redis is not configured, these degrade gracefully to live calls.
+- **Artist `genres` + `popularity` are stripped at our tier** (confirmed
+  2026-05-18). `GET /v1/artists/{id}` returns `genres: []` and
+  `popularity: null` for non-Extended-Access apps. The batch
+  `GET /v1/artists?ids=…` is gated even harder — returns `403 Forbidden`.
+  Use the Spotify response ONLY for `name` / `image_url` / `external_url`.
+  For genres, fall back to **`lastfm.get_artist_tags(name)`** (Last.fm
+  TopTags). See "Artist-genre data flow" below.
+- **Circuit breaker is Redis-persistent** (since 2026-05-18). When
+  Spotify returns a long `Retry-After`, `_trip_circuit` writes the
+  deadline to `spotify:circuit_open_until` in Redis with TTL matching
+  the block duration. All workers + future deploys read the deadline
+  via `_circuit_remaining_async()` before any Spotify call — no more
+  deploy → reset → first-call-trips-fresh-deadline → repeat loop.
+  Operationally: if you see Spotify failing, check
+  `/discover/cache-stats` for the `circuit_breaker` key. Don't redeploy
+  to try to "reset" it (the persistent deadline survives the restart).
 
 ### Artist discography fallback cascade
 `GET /artists/{id}/albums` tries these in order:
@@ -202,19 +224,41 @@ Spotify rate limits are the #1 source of production incidents. Follow these:
 3. Spotify API — last resort
 
 ### For You feed tiers (discover.py)
-1. Seed-artist genre pivot — Spotify, most personalized. Fetches the genres
-   of the user's 3 most-recently 4–5★'d artists and searches those. (Replaced
-   Spotify's `/related-artists` endpoint, which was deprecated for non-Extended-
-   Access apps in late 2024 and now always returns 0.)
-2. Profile-genre search — Spotify search across `UserTasteProfile.genres`.
-   The genres list is seeded by onboarding AND auto-extended on every 4–5★
-   rating (taking the rated artist's Spotify genres, prepending, deduping,
-   cap 20). A user who skipped onboarding still gets tier 2 working after
-   a few high ratings.
-3. Deezer chart tracks — `get_chart_tracks()`, NOT text search
-4. Deezer new music search
-5. Deezer keyword fallbacks
-6. Nuclear fallback — chart tracks ignoring disliked filter
+Three mutually-exclusive modes, picked per request based on user state.
+Source of truth is the docstring at the top of `routers/discover.py`.
+
+**Cold-start (no eligible_genres):**
+1. Deezer `/chart/0/tracks` baseline
+2. Deezer new-music search
+3. Deezer keyword fallback queries
+
+**Vintage (year_range set; user has ≥60% decade pref in one decade):**
+1. Tier 0 (catalog pivot) — TrackCache × ArtistCache, genre-family-matched
+2. Tier 1 (Spotify) — weighted-genre pivot with `year_range` applied
+3. Spotify genre-agnostic baselines (pop / rock / hip-hop, year-locked)
+
+**Genre-locked (user has eligible_genres but no decade dominance):**
+1. **Tier 0 — catalog pivot** (`_fetch_genre_tracks_from_catalog`).
+   Pulls from TrackCache joined by primary-artist genre family.
+   Zero Spotify calls; gated by the weighted-confidence matcher
+   (`_GENRE_MATCH_CONFIDENCE_THRESHOLD = 0.25`). Free at runtime.
+2. **Tier 1 — Spotify weighted-genre pivot** (`search_tracks_by_genre`).
+   Samples `k=6` genres from `eligible_genres` weighted by
+   `position_weight × max(rating_count, 1)`. Pool depth from offset
+   variants (cache key `spotify:genre_pool_v7:…`).
+3. Nuclear fallback — Deezer `/chart` + Deezer genre search, shuffled.
+
+**Artist-genre verification** runs on every tier 1 candidate via
+`_filter_pool_by_artist_genre`. Reads ArtistCache, looks up missing
+artists via Spotify (name only) + Last.fm (tags + counts), persists.
+Drops tracks whose primary artist's tag-confidence in the requested
+family falls below the 0.25 threshold.
+
+**Catalog-pivot quality is a function of ArtistCache coverage.** The
+`artist_reconciler` background worker (`services/artist_reconciler.py`)
+keeps the cache filled by walking TrackCache every 5 minutes and
+batch-fetching unmapped primary artists. Steady-state cost is one
+Last.fm + one Spotify call per new artist, cached 30d each.
 
 **Tier-ordering rule:** tier order is stable — tier 1 results land at the
 top of every batch, tier 5 at the bottom. **Do not add a post-slice
@@ -228,6 +272,69 @@ parameter (comma-separated track IDs). The frontend passes the last ~80
 shown track IDs on prefetch (append-only — not on deliberate resets like
 toggling `english_only`). Any new caller of `/feed` should pass this too,
 or accept that successive batches may repeat tracks from the chart cache.
+
+### Artist-genre data flow
+
+**TL;DR:** Last.fm `artist.getTopTags` is our genre source. Stored in
+`ArtistCache.genres` as a JSON list of `{name, count}` dicts. Matched
+against picker slugs via the weighted-confidence threshold (0.25).
+
+**Why Last.fm not Spotify:** see "Spotify API rules" above. Spotify
+strips artist genres at our tier. Last.fm tags ALSO closely mirror
+Spotify's genre vocabulary (substring matches in `_GENRE_MATCH_ALIASES`
+still work), and the per-tag `count` field lets us distinguish real
+signal from community-tag noise.
+
+**Storage shape** (`ArtistCache.genres`):
+```json
+[
+  {"name": "hip-hop", "count": 100},
+  {"name": "rap", "count": 70},
+  {"name": "west coast", "count": 19}
+]
+```
+Legacy rows in `["hip hop", "rap"]` shape are still supported via the
+`_normalize_genres_data` shim. Equal-weight assumed for legacy entries.
+Backfill via `POST /discover/backfill-artists?force=true` to upgrade.
+
+**Match formula** (`_artist_matches_genre_family`):
+```
+confidence = sum(weight for tag, weight in artist_tags if any(
+    family_term in tag for family_term in _genre_match_terms(slug)
+))
+artist matches slug ⟺ confidence ≥ 0.25
+```
+
+**Threshold tuning reference** (2026-05-18 sweep):
+- Kendrick hip-hop = 44% ✓ (strong)
+- Skullface metal = 91% ✓ (very strong)
+- Taylor country = 37% ✓ pop = 32% ✓ (sustained cross-genre)
+- Bieber pop = 41% ✓ metal = 24% ✗ (the prank — dropped at 0.25)
+
+**Threshold lives in one place** — `_GENRE_MATCH_CONFIDENCE_THRESHOLD`
+in `services/spotify.py`. All consumers (tier 0 catalog filter, tier 1
+Spotify filter, per-genre affinity, negative-genre filter) use the
+same threshold via `_artist_matches_genre_family`.
+
+**Background worker:** `services/artist_reconciler.py` runs forever
+on startup (5 min interval, batch=50). Walks TrackCache for primary
+artist IDs not yet mapped to genres in ArtistCache. Bulk-fetches via
+Spotify (name) + Last.fm (tags), persists. Env knobs:
+`ARTIST_RECONCILE_INTERVAL` / `ARTIST_RECONCILE_BATCH_SIZE` /
+`ARTIST_RECONCILE_STARTUP_DELAY`. Same strong-ref task-GC pattern as
+`enrichment_sweeper`.
+
+### Genre pool cache key (don't bump!)
+
+`services/spotify.py:search_tracks_by_genre` caches each genre's pool
+under `spotify:genre_pool_v{N}:{genre}:{market}[:y{year}]`. Current N
+is **7**. The key includes the version so we can invalidate when the
+pool's structural shape changes — but **never bump it more than once
+in a short window**. Each bump invalidates every cached pool, and the
+first user to request each genre after that burns 5 fresh Spotify
+calls. The 2026-05-18 incident saw v5→v6→v7 in one evening, tripping
+the credential-wide circuit breaker repeatedly. If you must bump,
+plan to absorb a ~30-min Spotify rate-limit window.
 
 ### Frontend conventions
 - React functional components only, no class components
@@ -382,12 +489,81 @@ LASTFM_API_KEY=
 
 ## Observability
 
-Three debug endpoints — hit these to diagnose issues:
+**Always-on health endpoints:**
 - `GET /health` — all dependency checks (DB, Spotify, Last.fm, Kworb, Redis, leaderboard)
 - `GET /leaderboard/debug` — DB counts by enrichment status + Last.fm live test
 - `GET /discover/debug` — For You feed tier health
+- `GET /discover/catalog-stats` — TrackCache / ArtistCache / AlbumCache counts,
+  popularity buckets, unique-genres-seen
+- `GET /discover/cache-stats` — Redis state: counts + sizes per key prefix
+  (genre pools v5/v6/v7, artist/track/album meta, deezer cache, circuit breaker)
+
+**Auth-required user-state introspection:**
+- `GET /discover/me-state` — dump the authenticated user's complete
+  feed-decision state: eligible_genres, excluded_genres, decade_pref,
+  year_range, target_popularity, per-genre rating affinity + tag mass,
+  predicted tier-1 sampling weights, inferred mode. Backs the
+  `/settings/taste-profile` transparency page (see below).
+
+**Recovery / maintenance:**
+- `POST /discover/backfill-artists` — one-shot catch-up that walks
+  TrackCache, finds primary artists not yet in ArtistCache, batch-fetches
+  via Spotify (name) + Last.fm (tags). Query params: `limit` (default 500,
+  max 2000), `refresh_empty=true` (also re-fetch rows with `genres=[]`),
+  `force=true` (re-fetch EVERY primary artist regardless — use after a
+  data-shape migration). Steady-state coverage is maintained by the
+  `artist_reconciler` background worker; this endpoint is for emergencies.
+- `POST /taste/reset` — selective wipe of taste-profile fields
+  (`genres` / `excluded_genres` / `liked_artist_ids` / `disliked_artist_ids`
+  / `down_weighted_artist_ids`). Ratings are never touched. Each field
+  opt-in via the request body. Backs the four reset affordances on the
+  transparency page.
+
+**Diagnostic / probe endpoints** (auth-less, but only return innocuous
+metadata — useful when debugging Spotify-credential / Last.fm behaviour):
+- `GET /discover/probe-artist-raw?id=…` — raw `/v1/artists/{id}` Spotify
+  response (status + headers + body). Use to confirm whether Spotify is
+  stripping data or our code is.
+- `GET /discover/probe-artists?ids=…` — same for the batch endpoint
+  (currently always 403 at our tier).
+- `GET /discover/probe-artist-single?id=…` — our parsed `get_artist()`
+  output.
+- `GET /discover/probe-artist-cache-sample?limit=…` — sample N rows of
+  ArtistCache with their stored genres + a count of how many have
+  non-empty genres.
+- `GET /discover/probe-lastfm-artist?name=…` — Last.fm `artist.getInfo`
+  for an artist (no quota cost on our side).
+- `GET /discover/probe-lastfm-toptags?name=…` — Last.fm `artist.getTopTags`
+  with vote counts — confirms the count signal.
+- `GET /discover/probe-genre-match?name=…` — runs the live weighted
+  matcher against a stored artist. Shows the tag-weight distribution
+  and which picker slugs pass/fail the threshold. Lets you tune
+  `_GENRE_MATCH_CONFIDENCE_THRESHOLD` empirically.
+
+These probes are kept in tree (rather than deleted after diagnosis)
+because they cost nothing and shorten the next investigation cycle by
+hours. None reveals PII; the worst they leak is artist tag popularity.
 
 Full documentation: `OBSERVABILITY.md`
+
+## Transparency view (user-facing)
+
+`/settings/taste-profile` (`frontend/src/pages/TasteProfilePage.jsx`)
+renders the same `/discover/me-state` data in a friendly UI: current
+mode (cold-start / vintage / genre-locked), eligible vs excluded genres,
+target popularity, decade preference, predicted tier-1 sampling weights,
+rating totals, exclude-list size. Plus:
+
+- **Reset affordances** — 4 buttons with a confirmation dialog:
+  - "Re-derive from ratings" (wipes artist seed lists; keeps genre picks)
+  - "Clear genre picks" (clears liked + excluded genres)
+  - "Clear Not-Interested list"
+  - "Full reset" (everything, ratings still preserved)
+- **"Open fresh feed (no personalization)"** button — sets a
+  `contour_fresh_feed_once` localStorage flag that the next
+  `fetchBatch()` in `ForYouPage.jsx` consumes once and forwards to the
+  server as `?fresh=true` on `/discover/feed`. Lets a user see what a
+  cold-start user would get without nuking their profile.
 
 ---
 
@@ -443,9 +619,26 @@ Key patterns observed in production:
 | Symptom | Cause | Fix |
 |---|---|---|
 | `400 "Invalid limit"` on `/artists/{id}/albums` | Disguised 429 — selective endpoint block | Fall back to `/search`, then DB |
-| `429 Retry-After: 2921` | Credential-wide block from burst traffic | Wait it out; do not retry in a loop |
+| `429 Retry-After: 2921` | Credential-wide block from burst traffic | Wait it out; circuit breaker handles |
 | All artists returning 400 after one 429 | Credential still blocked | Same — wait |
 | Empty discography on artist page | Endpoint blocked AND artist not in DB yet | "Try again" button; resolves within hours |
+| `genres: []` / `popularity: null` on artist endpoint | Spotify gated this data behind Extended Access in late 2024 | Use Last.fm `artist.getTopTags` — see "Artist-genre data flow" |
+| `403 Forbidden` on `/v1/artists?ids=…` (batch) | Spotify gated the batch endpoint behind Extended Access | Use per-artist `/v1/artists/{id}` instead (still open) |
 
 The startup artist seeder was the primary cause of credential-wide blocks. It is
 permanently disabled. Do not re-enable it without a dedicated rate-limit budget.
+
+**Circuit breaker (Redis-persistent, since 2026-05-18):** when Spotify
+hands us a `Retry-After ≥ 10s`, `_trip_circuit` writes the deadline to
+`spotify:circuit_open_until` in Redis with TTL matching the block.
+Subsequent Spotify calls from ANY worker (and across deploys) short-
+circuit via `_circuit_remaining_async` until the TTL expires. This
+replaces the previous in-process-only breaker that was getting reset
+on every deploy → causing a fresh credential trip → repeat. Operational
+implication: **don't redeploy to "reset" a rate-limit incident** — the
+persistent deadline survives. Just wait. The deadline is visible via
+`/discover/cache-stats` under the `circuit_breaker` prefix.
+
+**Extended Access is not an option for us** — requires ~250K MAU per
+Spotify policy. See `project_spotify_extended_access_blocked.md` in
+the project memory.
