@@ -251,11 +251,19 @@ async def _down_weight_from_rating(user_id: str, artist_id: str) -> None:
     """
     Append artist_id to down_weighted_artist_ids on a 1–2 star rating.
 
-    Treated as a hard exclude across ALL discover tiers since 2026-05-19
-    (was soft-only / tier-1-only before — but users reported that an
-    artist they rated 1★ still appearing in chart fallbacks felt broken).
-    The misclick escape hatch is /settings/taste-profile → "Re-derive
-    from ratings", which wipes the down-weight + liked artist lists.
+    Discover router applies a three-state model based on whether this
+    artist is also in liked_artist_ids (since 2026-05-19):
+      • If artist is in down_weighted ONLY → blocked from every tier
+        (user has only negative signal for them; Colin Hogan's Shaboozey).
+      • If artist is in BOTH liked AND down_weighted → ambivalent.
+        Removed from active tier 1 seeds but NOT blocked from baselines —
+        they show at chart frequency. Prevents one 1★ rating from
+        derailing the whole feed for an artist the user otherwise loves.
+      • Liked ONLY → unaffected by this fn (it doesn't touch
+        liked_artist_ids).
+
+    Misclick recovery: /settings/taste-profile → "Re-derive from ratings"
+    wipes the down-weight + liked artist lists entirely.
 
     If the artist is in liked_artist_ids, we leave that alone; the discover
     router resolves the conflict by treating any liked artist as an active

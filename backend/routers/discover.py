@@ -11,12 +11,21 @@ Read server-side from UserTasteProfile so they follow the user across devices:
                               BEFORE weighted sampling, so an excluded genre
                               never spends a Spotify search slot.
   • disliked_artist_ids    — explicit "Not interested" clicks (hard exclude)
-  • down_weighted_artist_ids — inferred from 1–2★ ratings. Since 2026-05-19
-                              this is treated as a hard exclude across ALL
-                              tiers (was soft-only / tier-1-only before, but
-                              users reported that a 1★ rating not blocking
-                              chart appearances felt broken). Misclick
-                              recovery: /settings/taste-profile reset.
+  • down_weighted_artist_ids — inferred from 1–2★ ratings. Three-state
+                              treatment per artist (introduced 2026-05-19):
+                                · In down_weighted ONLY (no 4-5★ to offset)
+                                  → blocked across every tier (matches user
+                                  expectation that "I rated 1★, don't show
+                                  me this").
+                                · In BOTH liked and down_weighted (the user
+                                  has high ratings for this artist too) →
+                                  ambivalent. Removed from active seeds so
+                                  tier 1 doesn't pivot off them, but NOT
+                                  blocked from baselines — they appear at
+                                  chart frequency, not boosted, not banned.
+                                · In liked ONLY → actively boosted as a
+                                  tier 1 seed.
+                              Misclick recovery: /settings/taste-profile reset.
 
 Cold-start vs. personalized
 ───────────────────────────
@@ -54,11 +63,11 @@ tiers redundant for users with prefs.
       Deezer /chart safety net. Fires when every tier above produced
       zero, which with the v7 pool depth should be vanishingly rare.
 
-All tiers honor BOTH down-weighted artists (inferred from 1-2★ ratings)
-and explicit dislikes — they're combined into a single soft_excluded
-set used by both add_personalized and add_baseline. Pre-2026-05-19 the
-baselines only honored hard dislikes; the split was removed after user
-testing surfaced "I rated 1★ and still see them" as a recurring complaint.
+Artists with PURELY negative ratings (down-weighted, no offsetting high
+rating) are blocked from every tier. Ambivalent artists (in both liked
+and down_weighted lists) are demoted from tier 1 seeds but still appear
+at baseline frequency — so a single 1★ rating on a track by an artist
+you otherwise love doesn't derail the whole feed.
 
 Cover-spam filter (all tiers)
 ─────────────────────────────
@@ -1191,19 +1200,49 @@ async def get_discover_feed(
     if not disliked_set and disliked_artists:
         disliked_set = {a.strip() for a in disliked_artists.split(",") if a.strip()}
 
-    # Seed list for personalized tiers — exclude both hard dislikes and
-    # down-weighted artists. We use a low rating as a "don't pivot off this
-    # artist" signal even if it was previously liked.
+    # Three-state model for the user's rating signal per artist:
+    #   • LIKED only         — appears in liked_artist_ids, not in
+    #                          down_weighted. Actively boosted: seeds tier 1
+    #                          and appears freely in baselines.
+    #   • DOWN-WEIGHTED only — appears in down_weighted, not in liked.
+    #                          PURELY negative signal: blocked from every
+    #                          tier (Colin's Shaboozey case — 1★ on a single
+    #                          track with no offsetting high ratings).
+    #   • AMBIVALENT         — appears in BOTH lists. User has rated some
+    #                          tracks high AND some low for this artist.
+    #                          NOT blocked from baselines — they still see
+    #                          the artist at chart frequency — but removed
+    #                          from the active seed list so tier 1 doesn't
+    #                          actively pivot off them. This is the "I love
+    #                          Drake but rated one track 1★, don't derail
+    #                          my whole feed" case (per Peyton, 2026-05-19).
+    #
+    # Hard dislikes (disliked_set, from explicit "Not interested") block
+    # everywhere regardless of liked status.
+    liked_set = set(liked_artist_ids)
+    ambivalent_set = down_weighted_set & liked_set
+    pure_down_weighted = down_weighted_set - liked_set
+
+    # Seed list for tier 1 personalized pivots — only artists with an
+    # unambiguous positive signal. Both hard-disliked and ambivalent
+    # artists are removed (we don't want to actively boost an artist the
+    # user has any negative rating for, even if they also have positives).
     seed_artist_ids = [
         a for a in liked_artist_ids
-        if a not in disliked_set and a not in down_weighted_set
+        if a not in disliked_set and a not in ambivalent_set
     ]
 
-    # Soft-exclude is the union of dislikes + down-weights for tier 1
-    # (personalized genre pivots). Tiers 2–4 (chart baselines) only honor
-    # hard dislikes — a single low rating shouldn't blackhole an artist
-    # from popular charts.
-    soft_excluded = disliked_set | down_weighted_set
+    # soft_excluded blocks the artist from every tier (personalized AND
+    # baseline AND nuclear). Contains:
+    #   • disliked_set       (hard "Not interested" clicks)
+    #   • pure_down_weighted (1-2★ ratings WITHOUT any offsetting 4-5★)
+    # Excludes ambivalent_set — those artists still appear at baseline
+    # frequency. Pre-2026-05-19 this was disliked_set only and baselines
+    # ignored down-weights entirely; that caused Shaboozey "A Bar Song"
+    # to keep appearing for a user who'd rated it 1★. Pre-this-commit it
+    # was disliked | down_weighted (full union), which over-corrected by
+    # banning artists the user partly loved.
+    soft_excluded = disliked_set | pure_down_weighted
 
     # Per-user popularity target. A user whose 4–5★ track ratings average
     # to popularity=25 has signaled niche-leaning taste; the Laplace curve
