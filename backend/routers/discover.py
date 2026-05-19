@@ -424,6 +424,142 @@ def _is_spanish_content(track: dict) -> bool:
     return len(_SPANISH_MILD.findall(text)) >= 3
 
 
+# Romanized French detection. Reported case (2026-05-18): a Maurice Ravel
+# recording surfaced in english mode — "Rapsodie espagnole: I. Prélude à
+# la Nuit (Live)" by "Symphonieorchester des Bayerischen Rundfunks". The
+# track text has one accent (é) so _is_likely_english passes, and the
+# Spanish markers don't fire.
+#
+# Tension: French and Italian terms are pervasive in English classical
+# catalogs ("Boléro", "Pavane", "Allegro", "Andante", "Adagio", a single
+# "Prélude" in front of a Bach work). A naive French filter would drop
+# legitimate English-catalog classical recordings.
+#
+# Resolution: STRONG markers are limited to (a) standalone " à " as a
+# preposition — unique to French/Catalan, never appears in English titles —
+# and (b) French verb conjugations / function words / spelling variants
+# that don't appear as English loan-words. The single-word loan-words
+# ("Prélude", "Boléro", "Études") deliberately do NOT trigger.
+_FRENCH_STRONG = re.compile(
+    r"(?:"
+    # Standalone "à" preposition with whitespace boundaries — exclusive to
+    # French/Catalan. Catches "Prélude à la Nuit", "à Paris", "Voyage à".
+    r"(?:^|\s)à(?=\s)"
+    # French-only function words and elisions
+    r"|\b(?:où|ça|déjà|c'est|n'est|qu'est|qu'il|qu'elle|s'il|j'ai|j'aime|n'a|n'y)\b"
+    # French verb conjugations (no English overlap)
+    r"|\b(?:étais|était|étaient|êtes|soyez|avons|avez|avait|auraient|seraient|sommes|étant)\b"
+    # French-distinct nouns / adjectives
+    r"|\b(?:monsieur|madame|mademoiselle|liberté|française|français|françaises|merveilleuse|merveilleux)\b"
+    # French-specific orthography that differs from English / Italian /
+    # Spanish equivalents (rapsodie vs rhapsody/rapsodia, espagnole vs
+    # spanish/española/spagnola, etc.)
+    r"|\b(?:rapsodie|espagnole|allemande|italienne|russe|chansons?)\b"
+    r")",
+    re.IGNORECASE,
+)
+_FRENCH_MILD = re.compile(
+    r"\b(?:"
+    # Short French function words. Overlap with English place names ("Le
+    # Mans", "La Jolla") and Spanish ("la", "los", "el") — so MILD threshold
+    # is 3+ to require a real Spanish/French phrase.
+    r"le|la|les|des|du|une|et|ou|mais|dans|sur|pour|sans|avec|sous|chez|vers|entre"
+    r"|jour|nuit|matin|soir|monde|coeur|adieu|merci|bonjour|musique|histoire"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _is_french_content(track: dict) -> bool:
+    """Detect French-language tracks via romanized text markers.
+
+    Single STRONG match flags. Single-word French loan-words common in
+    English classical labeling ("Prélude", "Boléro", "Pavane", "Étude")
+    do NOT trigger — those terms are absent from _FRENCH_STRONG. The
+    standalone " à " preposition is the cleanest French-only signal and
+    catches compound French titles like "Prélude à la Nuit".
+
+    Trade-off: drops legitimate French classical recordings whose titles
+    are in full original French. Users who want them can switch the
+    language toggle to "all" — that's the documented escape hatch when
+    classical is one of the user's chosen genres but original-language
+    titles are wanted.
+    """
+    parts = [
+        track.get("name") or "",
+        track.get("album_name") or "",
+        " ".join(track.get("artists") or []),
+    ]
+    text = " ".join(p for p in parts if p)
+    if not text.strip():
+        return False
+    if _FRENCH_STRONG.search(text):
+        return True
+    # Count DISTINCT mild markers, not total matches. "La La Land
+    # (Original Soundtrack)" hits "la" three times but it's one
+    # distinct marker — not a real French phrase. A real French
+    # phrase has multiple distinct stop-words (le + la + des + du
+    # etc.), so requiring ≥3 distinct markers filters out the
+    # repeated-filler-word case.
+    distinct = {m.lower() for m in _FRENCH_MILD.findall(text)}
+    return len(distinct) >= 3
+
+
+# German detection. Targets ß orthography, distinctive declension endings,
+# and German classical-ensemble compound morphemes. The compound-morpheme
+# list catches German orchestras even when the work being recorded is in
+# Latin / Italian / French (e.g. a Bayerisches Staatsorchester recording
+# of a Mahler symphony — track text would otherwise pass). Skips short
+# German function words (ist, war, und) that have English-substring
+# collisions in spite of word boundaries (e.g. "ist" inside "artist"
+# does not match \b\bist\b\b, but "war" matches "war" the noun in
+# English titles).
+_GERMAN_STRONG = re.compile(
+    r"(?:"
+    # ß character — German/Swiss-German exclusive
+    r"ß"
+    # German adjectival / abstract-noun endings — almost no English /
+    # Romance words end this way. Requires ≥4 char stem to avoid matching
+    # accidental short words.
+    r"|\b\w{4,}(?:ischen|isches|ische|lichen|liches|liche|chkeit|chkeiten|schaft|schaften)\b"
+    # German compound words ending in classical-ensemble morphemes —
+    # routinely seen in German orchestra / ensemble / venue names.
+    r"|\b\w*(?:orchester|philharmoniker|symphoniker|sinfonieorchester|kapelle|knabenchor|musikverein|kammermusik|rundfunks?|gesellschaft|staatsoper|hochschule|universit[äa]t)\b"
+    # Distinct German national / regional adjectives in classical labels
+    r"|\b(?:bayerisch\w*|preußisch\w*|deutsche|deutschen|deutsches|österreichisch\w*|schweizerisch\w*|sächsisch\w*|brandenburgisch\w*)\b"
+    # German function words / pronouns with no English-substring collisions
+    r"|\b(?:nicht|sehr|noch|schon|jemand|niemand|etwas|nichts|warum|woher|wohin)\b"
+    # German verb conjugations
+    r"|\b(?:sind|haben|hatten|hätte|hätten|werden|wurden|wurde|möchte|möchten|können|könnten|müssen|mussten|sollen|sollten)\b"
+    # German nouns with strong language signal
+    r"|\b(?:liebe|herz|seele|sehnsucht|himmel|wahrheit|freiheit|leben)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _is_german_content(track: dict) -> bool:
+    """Detect German-language tracks via romanized / Latin-1 text markers.
+
+    Same single-STRONG threshold as French. The compound-morpheme branch
+    is the main workhorse — German orchestra / ensemble names are
+    instantly identifiable from their suffixes (-orchester, -philharmoniker,
+    -symphoniker, -kapelle, -knabenchor, etc.) and those compounds don't
+    appear in English-language ensemble names. Catches the artist
+    "Symphonieorchester des Bayerischen Rundfunks" via three independent
+    markers (Symphonieorchester, Bayerischen via -ischen, Rundfunks).
+    """
+    parts = [
+        track.get("name") or "",
+        track.get("album_name") or "",
+        " ".join(track.get("artists") or []),
+    ]
+    text = " ".join(p for p in parts if p)
+    if not text.strip():
+        return False
+    return bool(_GERMAN_STRONG.search(text))
+
+
 def _is_likely_english(text: str) -> bool:
     """
     Return True if the text looks like it's primarily Latin/English.
@@ -1194,6 +1330,23 @@ async def get_discover_feed(
                     # album + artist text for unambiguous Spanish vocab
                     # or ≥3 short common Spanish words.
                     if active_language == "english" and _is_spanish_content(t):
+                        continue
+                    # French and German romanized-text detection. Same idea
+                    # as Spanish but for the other major Western languages
+                    # that pass the Latin-script gate. Reported case
+                    # (2026-05-18): Maurice Ravel / Symphonieorchester des
+                    # Bayerischen Rundfunks recording surfaced in english
+                    # mode — French in the track title (" à ", "espagnole"),
+                    # German in the ensemble name (Symphonieorchester,
+                    # Bayerischen). Both filters trip on ≥1 STRONG marker
+                    # and are deliberately conservative so single-word
+                    # French / Italian classical loan-words ("Prélude",
+                    # "Boléro", "Allegro", "Andante") still pass through.
+                    # Users who want full original-language classical
+                    # results can flip the language toggle to "all".
+                    if active_language == "english" and _is_french_content(t):
+                        continue
+                    if active_language == "english" and _is_german_content(t):
                         continue
                 # Workout / karaoke / tribute filter. Applied here (per-track
                 # in the response path) rather than upstream so it catches
