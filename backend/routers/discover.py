@@ -1798,6 +1798,18 @@ async def discover_probe_genre_match(
         genres_data = _normalize_genres_data(row.genres)
         # Debug: include raw value to spot data-shape surprises
         raw_genres = row.genres
+        # Extra debug: parse + dump intermediate state
+        try:
+            parsed = json.loads(row.genres or "[]")
+            parsed_type = type(parsed).__name__
+            parsed_len = len(parsed) if hasattr(parsed, "__len__") else None
+            first_type = type(parsed[0]).__name__ if (parsed_len and parsed_len > 0) else None
+            all_dicts = all(isinstance(t, dict) and "name" in t for t in parsed) if isinstance(parsed, list) else False
+        except Exception as exc:
+            parsed_type = f"PARSE_ERROR: {exc}"
+            parsed_len = None
+            first_type = None
+            all_dicts = False
         # Test against every picker slug we have aliases for
         family_results: dict[str, dict] = {}
         for slug in list(_GENRE_MATCH_ALIASES.keys())[:30]:
@@ -1813,6 +1825,10 @@ async def discover_probe_genre_match(
             "artist": row.name,
             "id": row.spotify_id,
             "raw_genres_preview": (raw_genres or "")[:200],
+            "debug_parsed_type": parsed_type,
+            "debug_parsed_len": parsed_len,
+            "debug_first_elem_type": first_type,
+            "debug_all_dicts_with_name": all_dicts,
             "tag_weights": [(t, round(w, 3)) for t, w in genres_data],
             "threshold": _GENRE_MATCH_CONFIDENCE_THRESHOLD,
             "families_with_signal": nonzero,
