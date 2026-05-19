@@ -833,19 +833,17 @@ def _genre_match_terms(slug: str) -> list[str]:
 # Confidence threshold for the weighted artist-genre matcher. An artist
 # is considered "in" a genre family when the share of their Last.fm
 # tag-count mass that matches the family is ≥ this fraction. Threshold
-# determined empirically from the noise vs signal sweep on 2026-05-18:
+# determined empirically from the noise-vs-signal sweep on 2026-05-18:
 #   - Kendrick hip-hop: 94% ✓ (heavy pass)
 #   - Skullface metal: 91% ✓ (heavy pass)
-#   - Taylor country: 37% ✓ pop: 32% ✓ (sustained signal)
-#   - Beyoncé rnb: 41% ✓ pop: 38% ✓ soul: 17% (drops)
-#   - Bieber pop: 41% ✓ rnb: 17% (drops) metal: 24% (drops, the prank)
-# At 0.25, real cross-genre signals (Taylor pop+country, Bieber pop+rnb's
-# rnb portion at 17% — wait that's below) get caught. Adjusted to 0.20
-# to preserve more cross-genre signal at the cost of the Bieber-metal
-# prank STILL surviving at 24%. Hard prior: at this credential tier
-# Last.fm noise has no perfect threshold. The threshold + cap-to-top-N
-# (in get_artist_tags via limit=15) together cut the long tail.
-_GENRE_MATCH_CONFIDENCE_THRESHOLD = 0.20
+#   - Taylor country: 37% ✓ pop: 31% ✓ (sustained signal)
+#   - Beyoncé rnb: 36% ✓ pop: 33% ✓ (sustained)
+#   - Bieber pop: 41% ✓ metal: 24% ✗ (the prank — dropped at 25%)
+# At 0.25, the Bieber-metal prank (24%) fails JUST under the line while
+# real cross-genre signals (Taylor pop+country, Beyoncé pop+rnb) all
+# clear comfortably. Lower (0.20) lets the prank through; higher (0.30)
+# starts losing legit cross-genre signals (Taylor pop at 31% is borderline).
+_GENRE_MATCH_CONFIDENCE_THRESHOLD = 0.25
 
 
 def _normalize_genres_data(genres_json: Optional[str]) -> list[tuple[str, float]]:

@@ -1771,6 +1771,52 @@ async def discover_me_state(
 
 
 @router.get("/debug")
+@router.get("/probe-genre-match")
+async def discover_probe_genre_match(
+    db: AsyncSession = Depends(get_db),
+    name: str = Query(..., description="Artist name to look up by name"),
+):
+    """Probe the weighted artist-genre matcher against a stored artist.
+    Returns the artist's normalized tag weights + which picker slugs
+    pass the confidence threshold. Used to confirm e.g. Bieber's metal
+    tag actually fails the threshold."""
+    from services.spotify import (
+        _normalize_genres_data,
+        _artist_matches_genre_family,
+        _genre_match_terms,
+        _GENRE_MATCH_CONFIDENCE_THRESHOLD,
+        _GENRE_MATCH_ALIASES,
+    )
+    # Find the artist by name (LIKE for tolerance)
+    rows = (await db.execute(
+        select(ArtistCache).where(ArtistCache.name.ilike(name))
+    )).scalars().all()
+    if not rows:
+        return {"error": f"No artist matching {name!r} in ArtistCache"}
+    out: list[dict] = []
+    for row in rows:
+        genres_data = _normalize_genres_data(row.genres)
+        # Test against every picker slug we have aliases for
+        family_results: dict[str, dict] = {}
+        for slug in list(_GENRE_MATCH_ALIASES.keys())[:30]:
+            terms = _genre_match_terms(slug)
+            matching = sum(w for tag, w in genres_data if any(t in tag for t in terms))
+            family_results[slug] = {
+                "confidence": round(matching, 3),
+                "matches_at_threshold": matching >= _GENRE_MATCH_CONFIDENCE_THRESHOLD,
+            }
+        # Only show families with non-zero confidence
+        nonzero = {k: v for k, v in family_results.items() if v["confidence"] > 0}
+        out.append({
+            "artist": row.name,
+            "id": row.spotify_id,
+            "tag_weights": [(t, round(w, 3)) for t, w in genres_data],
+            "threshold": _GENRE_MATCH_CONFIDENCE_THRESHOLD,
+            "families_with_signal": nonzero,
+        })
+    return out
+
+
 @router.get("/probe-artist-cache-sample")
 async def discover_probe_artist_cache_sample(
     db: AsyncSession = Depends(get_db),
