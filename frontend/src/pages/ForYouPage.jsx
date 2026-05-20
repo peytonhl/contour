@@ -648,12 +648,29 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
 
   const year = track.release_date?.slice(0, 4);
 
-  // Prefer Apple Music's 1200×1200 render when we have it (sharper on
-  // high-DPR phones than Spotify's 640×640 ceiling). Falls back to the
-  // Spotify image immediately so the card paints something while Apple's
-  // match request is in flight; the swap-on-arrival is a no-op visually
-  // since both URLs point at the same cover.
-  const coverImage = appleArtworkUrl || effectiveImage;
+  // Lock the cover URL to whichever source resolves FIRST and don't swap
+  // it for the rest of the card's mount. Previously this was
+  // `appleArtworkUrl || effectiveImage`, which let the Spotify URL paint
+  // first and then swap to the Apple Music URL once /apple-music/match
+  // resolved — causing the browser to abandon its in-flight fetch and
+  // restart against a different origin. On first launch (cold cellular,
+  // no cached image, no warm TLS to mzstatic) that swap produced a
+  // visible glitch — the "images don't load right the first time, every
+  // time" report. Locking removes the swap entirely; second launches
+  // were fine before because both URLs were OS-cached.
+  //
+  // Trade-off: usually locks to the Spotify image (640×640) since
+  // /apple-music/match is a backend roundtrip while the Spotify URL is
+  // already on the track object. The deep-link button still uses the
+  // Apple Music URL regardless — only the cover is locked here.
+  const [lockedCover, setLockedCover] = useState(null);
+  useEffect(() => { setLockedCover(null); }, [track.id]);
+  useEffect(() => {
+    if (lockedCover) return;
+    const candidate = appleArtworkUrl || effectiveImage;
+    if (candidate) setLockedCover(candidate);
+  }, [appleArtworkUrl, effectiveImage, lockedCover]);
+  const coverImage = lockedCover;
 
   return (
     <div style={{
