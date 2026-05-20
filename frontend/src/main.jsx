@@ -33,21 +33,28 @@ createRoot(document.getElementById("root")).render(
 // visually identical (Georgia 52pt "Contour" on #08080a), so the user sees
 // one continuous wordmark from process launch through to here.
 //
-// fadeOutDuration: 150 — small cross-fade so iOS WebKit has time to
-// composite the HTML splash BEFORE the native splash is fully gone.
-// Previously this was 0 (snap off) to avoid exposing both splashes at
-// once with mismatched wordmark positions, but with index.html's vh>700
-// pre-positioning JS the HTML wordmark now lands on the LaunchScreen
-// storyboard's safeArea center — so a cross-fade shows the same
-// wordmark at the same pixel and the fade is invisible. The fade
-// papers over the paint-cycle gap that produced the "logo blinks once
-// before staying" report: at fadeOutDuration:0 the native vanishes
-// instantly, iOS WebKit needs a frame or two to composite the WebView
-// (it lazily skipped while the opaque native splash was on top), and
-// the user saw a blank frame in between.
+// Two nested rAFs before calling .hide() — guarantees iOS WebKit has
+// actually committed at least two paint frames of the HTML splash
+// before the native LaunchScreen starts fading. Without this, WebKit's
+// lazy compositing skipped painting the WebView entirely while the
+// opaque native splash covered it; the native then faded over 150ms
+// with NOTHING painted underneath, the WebView didn't catch up until
+// after the fade finished, and the user saw the logo "blink"
+// (fade out + brief blank + reappear in the same place — exactly
+// what the user reported 2026-05-19 after the position fixes landed).
+//
+// fadeOutDuration: 150 — the position-matching JS in index.html lands
+// the HTML wordmark on the LaunchScreen storyboard's safeArea center,
+// so the cross-fade shows the SAME wordmark at the SAME pixel and is
+// visually invisible. With WebKit definitely painted by the time the
+// fade starts, the fade has a stable image behind it.
 //
 // SplashScreen.hide() is a no-op on web — safe to call unconditionally.
-SplashScreen.hide({ fadeOutDuration: 150 }).catch(() => {});
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    SplashScreen.hide({ fadeOutDuration: 150 }).catch(() => {});
+  });
+});
 
 // Snap the HTML boot splash off (display:none) once two conditions are met:
 //   a) Instrument Serif (the Layout header's font) has finished loading.
