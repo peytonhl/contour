@@ -33,17 +33,21 @@ createRoot(document.getElementById("root")).render(
 // visually identical (Georgia 52pt "Contour" on #08080a), so the user sees
 // one continuous wordmark from process launch through to here.
 //
-// fadeOutDuration: 0 — SNAP off, don't cross-fade. The plugin's default
-// 200ms fade exposed both the native splash (fading) and the HTML splash
-// (already at full opacity behind it) simultaneously; sub-pixel positioning
-// differences between the storyboard's centerY and the HTML's flex-center
-// inside the safe-area-inset showed up during the fade as the wordmark
-// "ghosting" or "jumping." Pair this with the boot splash's negative
-// safe-area offsets in index.html which align the two centers, and the
-// snap is invisible.
+// fadeOutDuration: 150 — small cross-fade so iOS WebKit has time to
+// composite the HTML splash BEFORE the native splash is fully gone.
+// Previously this was 0 (snap off) to avoid exposing both splashes at
+// once with mismatched wordmark positions, but with index.html's vh>700
+// pre-positioning JS the HTML wordmark now lands on the LaunchScreen
+// storyboard's safeArea center — so a cross-fade shows the same
+// wordmark at the same pixel and the fade is invisible. The fade
+// papers over the paint-cycle gap that produced the "logo blinks once
+// before staying" report: at fadeOutDuration:0 the native vanishes
+// instantly, iOS WebKit needs a frame or two to composite the WebView
+// (it lazily skipped while the opaque native splash was on top), and
+// the user saw a blank frame in between.
 //
 // SplashScreen.hide() is a no-op on web — safe to call unconditionally.
-SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
+SplashScreen.hide({ fadeOutDuration: 150 }).catch(() => {});
 
 // Snap the HTML boot splash off (display:none) once two conditions are met:
 //   a) Instrument Serif (the Layout header's font) has finished loading.
