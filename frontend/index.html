@@ -147,39 +147,70 @@
            ?debug=splash is in the URL. -->
       <div id="splash-debug" style="position:absolute; bottom:80px; left:0; right:0; text-align:center; font-family:'SF Mono',Menlo,monospace; font-size:11px; line-height:1.4; color:#888; white-space:pre; display:none;">starting…</div>
     </div>
-    <!-- TEMPORARILY UNGATED v2 — residual shift after geometric-center fix.
-         Loud red box outside #boot-splash so it persists past splash hide;
-         tap to dismiss. Now also tracks wordmark width/height (translate
-         is %-of-self so size changes shift the rendered position) and
-         env(top) / env(bottom) via DOM probes. Will be re-gated as soon
-         as one fresh diagnostic screenshot is captured. -->
-    <div id="splash-debug2" style="position:fixed; top:env(safe-area-inset-top, 12px); right:8px; left:8px; z-index:99999; background:rgba(255,0,0,0.92); color:#fff; padding:8px 10px; border-radius:6px; font-family:'SF Mono',Menlo,monospace; font-size:11px; line-height:1.35; white-space:pre; pointer-events:auto;">splash diag v2 — initializing…</div>
-    <!-- env() probe elements — read their computed top/bottom via JS to
-         capture the actual env(safe-area-inset-*) values at each tick. -->
+    <!-- env() probe elements — used by the gated diagnostic to read the
+         actual env(safe-area-inset-*) values at each tick. Kept in tree
+         (tiny zero-size divs) so the diagnostic doesn't need to inject
+         them on demand. -->
     <div id="env-probe-top" style="position:fixed; top:env(safe-area-inset-top, 0px); width:0; height:0; pointer-events:none;"></div>
     <div id="env-probe-bottom" style="position:fixed; bottom:env(safe-area-inset-bottom, 0px); width:0; height:0; pointer-events:none;"></div>
     <script>
+      // ── Pre-position the wordmark to match the native LaunchScreen ──
+      // The previous geometric-center fix (top:50%) eliminated the within-
+      // HTML drift caused by env() updates, but left a residual ~6.5px
+      // upward shift at the moment the native iOS LaunchScreen storyboard
+      // hands off to the HTML splash. The storyboard centers against the
+      // safeArea layout guide (≈ envT + (h - envT - envB) / 2), while
+      // top:50% centers geometrically — those differ by env()-half on
+      // notched iPhones.
+      //
+      // We can't use CSS env() to compensate because Capacitor's
+      // contentInset="always" makes env() return 0 until SplashScreen.hide()
+      // relaxes it ~80ms later — too late, the handoff already happened.
+      // Instead, JS reads vh at parse time and applies a heuristic: vh > 700
+      // means a notched iPhone (12+), so override top to the LaunchScreen-
+      // matching safeArea center using typical insets (47/34). Older
+      // non-notched devices (iPhone SE, vh ≤ 700) keep top:50% which
+      // matches THEIR storyboard (env values are 0 for them too).
+      //
+      // Runs synchronously at parse time, BEFORE the splash gets a chance
+      // to paint, so frame 1 is correct.
       (function () {
-        var dbg = document.getElementById('splash-debug2');
+        var wm = document.querySelector('#boot-splash > div');
+        if (!wm) return;
+        var vh = window.innerHeight;
+        if (vh > 700) {
+          // Typical modern iPhone safe-area insets: top 47, bottom 34.
+          // Matches the LaunchScreen.storyboard safeArea center for these
+          // devices; sub-pixel on older notched models with slightly
+          // different insets, imperceptible.
+          wm.style.top = (47 + (vh - 47 - 34) / 2) + 'px';
+        }
+      })();
+
+      // ── Gated splash diagnostic ──
+      // Renders only when ?debug=splash is in the URL. Captures wordmark
+      // position, dimensions, and env() values across the splash phase
+      // so future positioning bugs can be triaged in one screenshot.
+      (function () {
+        if (!/[?&]debug=splash(\b|$)/.test(location.search)) return;
+        var dbg = document.getElementById('splash-debug');
         var splash = document.getElementById('boot-splash');
         var wm = splash && splash.querySelector('div');
         var probeT = document.getElementById('env-probe-top');
         var probeB = document.getElementById('env-probe-bottom');
         if (!dbg || !wm) return;
-        dbg.addEventListener('click', function () { dbg.style.display = 'none'; });
+        dbg.style.display = 'block';
         var start = performance.now();
         var last = null;
         var changes = [];
         function readEnv() {
           var t = probeT ? parseFloat(getComputedStyle(probeT).top) || 0 : 0;
           var bRect = probeB ? probeB.getBoundingClientRect() : null;
-          // env(bottom) = distance from viewport bottom = innerH - bRect.top
           var b = bRect ? window.innerHeight - bRect.top : 0;
           return { t: t, b: b };
         }
         function tick() {
           var r = wm.getBoundingClientRect();
-          var splashStyle = splash.style.display;
           var now = (performance.now() - start).toFixed(0);
           var env = readEnv();
           var snap = {
@@ -190,7 +221,7 @@
             envT: env.t.toFixed(1),
             envB: env.b.toFixed(1),
           };
-          if (splashStyle !== 'none' && last !== null) {
+          if (last !== null) {
             var diffs = [];
             if (Math.abs(snap.t - last.t) > 0.5) diffs.push('top:' + last.t + '→' + snap.t);
             if (Math.abs(snap.w - last.w) > 0.5) diffs.push('w:' + last.w + '→' + snap.w);
@@ -200,15 +231,14 @@
             if (snap.envB !== last.envB) diffs.push('envB:' + last.envB + '→' + snap.envB);
             if (diffs.length) changes.push('t=' + now + 'ms ' + diffs.join(' | '));
           }
-          if (splashStyle !== 'none') last = snap;
+          last = snap;
           dbg.textContent =
-            'SPLASH DIAG v2 (tap to close)\n' +
-            't=' + now + 'ms  splash=' + (splashStyle || 'visible') + '\n' +
-            'wm: top=' + snap.t + ' w=' + snap.w + ' h=' + snap.h + '\n' +
-            'vh=' + snap.vh + '  envT=' + snap.envT + ' envB=' + snap.envB + '\n' +
+            't=' + now + 'ms\n' +
+            'wm top=' + snap.t + ' w=' + snap.w + ' h=' + snap.h + '\n' +
+            'vh=' + snap.vh + ' envT=' + snap.envT + ' envB=' + snap.envB + '\n' +
             'shifts: ' + changes.length + '\n' +
-            (changes.length ? changes.slice(-6).join('\n') : '(no shifts)');
-          if (performance.now() - start < 15000) requestAnimationFrame(tick);
+            changes.slice(-4).join('\n');
+          if (performance.now() - start < 5000) requestAnimationFrame(tick);
         }
         requestAnimationFrame(tick);
       })();
