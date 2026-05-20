@@ -234,9 +234,9 @@ export function UserPage() {
 
         {/* Stats are no longer rendered here — they're the tab nav below. */}
 
-        {/* Follow + Block / sign-in prompt */}
+        {/* Follow + Compare taste + Block / sign-in prompt */}
         {me && !profile.is_self && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
             <button
               onClick={handleFollow}
               disabled={followLoading}
@@ -251,6 +251,22 @@ export function UserPage() {
             >
               {profile.is_following ? "Following" : "Follow"}
             </button>
+            <Link
+              to={`/taste-match/${id}`}
+              style={{
+                padding: "8px 18px",
+                borderRadius: "var(--radius-sm)",
+                fontWeight: 700,
+                fontSize: 13,
+                textDecoration: "none",
+                color: "var(--text)",
+                background: "transparent",
+                border: "1px solid var(--border)",
+                letterSpacing: "0.01em",
+              }}
+            >
+              Compare taste
+            </Link>
             <BlockButton
               targetUserId={id}
               initiallyBlocked={profile.is_blocked ?? false}

@@ -38,6 +38,7 @@ const TrendingPage       = lazyNamed(() => import("./pages/TrendingPage.jsx"),  
 const FriendsPage        = lazyNamed(() => import("./pages/FriendsPage.jsx"),        "FriendsPage");
 const SettingsPage       = lazyNamed(() => import("./pages/SettingsPage.jsx"),       "SettingsPage");
 const TasteProfilePage   = lazyNamed(() => import("./pages/TasteProfilePage.jsx"),   "TasteProfilePage");
+const TasteMatchPage     = lazyNamed(() => import("./pages/TasteMatchPage.jsx"),     "TasteMatchPage");
 
 /**
  * Listens for Capacitor `appUrlOpen` events — fired when iOS / Android
@@ -128,6 +129,7 @@ export default function App() {
           <Route path="friends" element={<FriendsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/taste-profile" element={<TasteProfilePage />} />
+          <Route path="taste-match/:id" element={<TasteMatchPage />} />
         </Route>
       </Routes>
     </Suspense>

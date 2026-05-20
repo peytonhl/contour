@@ -10,6 +10,7 @@ import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
+import { CompareTastePicker } from "../components/CompareTastePicker.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#d97a3b";
@@ -209,6 +210,7 @@ export function ProfilePage() {
   // straight to the modal without a per-tap roundtrip.
   const [hasHotTake, setHasHotTake] = useState(null);
   const [hotTakeModalOpen, setHotTakeModalOpen] = useState(false);
+  const [comparePickerOpen, setComparePickerOpen] = useState(false);
   // Which of the user's own reviews is open in the card-share modal.
   // null = closed. Looked up against profile.reviews to build the modal props.
   const [shareReviewId, setShareReviewId] = useState(null);
@@ -480,25 +482,43 @@ export function ProfilePage() {
                 "no hot takes yet" feedback was too subtle).
                 Style matches the SavedComparison "Share card" CTA:
                 solid accent, --radius-sm, black text. */}
-            {!editingBio && hasHotTake === true && (
-              <button
-                onClick={() => setHotTakeModalOpen(true)}
-                title="Share the rating where you diverge most from the community"
-                style={{
-                  alignSelf: "flex-start",
-                  marginBottom: 18,
-                  padding: "8px 16px",
-                  background: ACCENT,
-                  border: "none",
-                  borderRadius: "var(--radius-sm)",
-                  color: "#000",
-                  fontSize: 13, fontWeight: 700,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Share my hot take
-              </button>
+            {!editingBio && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+                {hasHotTake === true && (
+                  <button
+                    onClick={() => setHotTakeModalOpen(true)}
+                    title="Share the rating where you diverge most from the community"
+                    style={{
+                      padding: "8px 16px",
+                      background: ACCENT,
+                      border: "none",
+                      borderRadius: "var(--radius-sm)",
+                      color: "#000",
+                      fontSize: 13, fontWeight: 700,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Share my hot take
+                  </button>
+                )}
+                <button
+                  onClick={() => setComparePickerOpen(true)}
+                  title="Compare your taste with another user"
+                  style={{
+                    padding: "8px 16px",
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    color: "var(--text)",
+                    fontSize: 13, fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Compare with a friend
+                </button>
+              </div>
             )}
             {user && (
               <CardPreviewModal
@@ -510,6 +530,10 @@ export function ProfilePage() {
                 fileName={`contour-hot-take-${user.id}.png`}
               />
             )}
+            <CompareTastePicker
+              open={comparePickerOpen}
+              onClose={() => setComparePickerOpen(false)}
+            />
             {/* Card-share modal for the user's own reviews. Same component
                 used by ReviewSection / UserPage / SavedComparison — single
                 source of truth for the preview-then-share UX. */}

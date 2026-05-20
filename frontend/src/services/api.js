@@ -239,6 +239,10 @@ export const api = {
   getUserReviews: (id) => request(`/users/${id}/reviews`),
   getUserRatings: (id) => request(`/users/${id}/ratings`),
   getUserLists: (id) => request(`/users/${id}/lists`),
+  // Head-to-head taste comparison vs another user (auth required — viewer
+  // is the JWT subject). Returns shared/agreement counts plus the obscure
+  // biggest-agreement + biggest-fight picks. Drives /compare/taste/:id.
+  getTasteMatch: (otherUserId) => request(`/users/${otherUserId}/taste-match`),
 
   // Lists
   createList: (title, description, isRanked) => post(`/lists/`, { title, description, is_ranked: isRanked }),
