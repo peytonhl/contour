@@ -493,6 +493,167 @@ async def get_user_taste(user_id: str, db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/{user_id}/taste-match")
+async def get_taste_match(
+    user_id: str,
+    viewer_id: Optional[str] = Query(
+        None,
+        description=(
+            "Optional override for the 'viewer' side of the comparison. "
+            "When absent, derived from the bearer JWT. The OG-card edge "
+            "function uses this so it can render head-to-head PNGs without "
+            "an auth header — same way /users/{id}/taste is public."
+        ),
+    ),
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Head-to-head taste comparison between `viewer_id` (the JWT subject by
+    default, or the query-param override) and `user_id`. Powers the
+    shareable "you vs them" card.
+
+    Computes:
+      - shared_count: how many entities both users have rated
+      - agreement_count: how many of those got an EXACT rating match
+      - agreement_pct: agreement_count / shared_count
+      - biggest_agreement: among exact matches, the entity with the LOWEST
+        global rating count on Contour (obscure shared taste — signature,
+        not mainstream)
+      - biggest_fight: among disagreements, the entity with the LARGEST
+        |rating diff|; ties broken by lowest global rating count (obscure
+        spicy disagreement)
+      - viewer / other: profile blobs (id, display_name, image_url) for
+        the head-to-head card layout
+    """
+    if not viewer_id:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        viewer_id = decode_jwt(authorization[7:])
+
+    if viewer_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot compare with yourself")
+
+    other = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not other:
+        raise HTTPException(status_code=404, detail="User not found")
+    viewer = (await db.execute(select(User).where(User.id == viewer_id))).scalar_one_or_none()
+    if not viewer:
+        raise HTTPException(status_code=404, detail="Viewer not found")
+
+    # ── 1. Both users' ratings as (entity_type, entity_id) → value maps ──────
+    viewer_rows = (await db.execute(
+        select(Rating.entity_type, Rating.entity_id, Rating.value)
+        .where(Rating.user_id == viewer_id)
+    )).all()
+    other_rows = (await db.execute(
+        select(Rating.entity_type, Rating.entity_id, Rating.value)
+        .where(Rating.user_id == user_id)
+    )).all()
+
+    viewer_map = {(r.entity_type, r.entity_id): r.value for r in viewer_rows}
+    other_map = {(r.entity_type, r.entity_id): r.value for r in other_rows}
+    shared_keys = list(set(viewer_map.keys()) & set(other_map.keys()))
+
+    base = {
+        "viewer": {
+            "id": viewer.id,
+            "display_name": viewer.display_name,
+            "image_url": viewer.image_url,
+        },
+        "other": {
+            "id": other.id,
+            "display_name": other.display_name,
+            "image_url": other.image_url,
+        },
+        "shared_count": len(shared_keys),
+        "agreement_count": 0,
+        "agreement_pct": 0.0,
+        "biggest_agreement": None,
+        "biggest_fight": None,
+    }
+
+    if not shared_keys:
+        return base
+
+    exact_matches = [k for k in shared_keys if viewer_map[k] == other_map[k]]
+    disagreements = [k for k in shared_keys if viewer_map[k] != other_map[k]]
+
+    base["agreement_count"] = len(exact_matches)
+    base["agreement_pct"] = round(len(exact_matches) / len(shared_keys), 4)
+
+    # ── 2. Global rating count per shared entity (the "obscurity" tiebreaker) ─
+    # Filter by entity_id only — fine because Spotify IDs are 22-char base62
+    # strings that don't collide between tracks and albums in practice, and
+    # we re-key by (type, id) below for correctness.
+    shared_entity_ids = list({eid for (_et, eid) in shared_keys})
+    count_rows = (await db.execute(
+        select(
+            Rating.entity_type,
+            Rating.entity_id,
+            func.count(Rating.id).label("n"),
+        )
+        .where(Rating.entity_id.in_(shared_entity_ids))
+        .group_by(Rating.entity_type, Rating.entity_id)
+    )).all()
+    count_map: dict[tuple, int] = {(r.entity_type, r.entity_id): r.n for r in count_rows}
+
+    # ── 3. Pick the highlights ──────────────────────────────────────────────
+    # Biggest agreement = exact match with the FEWEST total ratings (obscure
+    # signature taste). Within ties, fall back to alphabetical for stability.
+    pick_agreement = None
+    if exact_matches:
+        pick_agreement = min(
+            exact_matches,
+            key=lambda k: (count_map.get(k, 0), k[1]),
+        )
+
+    # Biggest fight = largest |diff|, ties broken by fewest total ratings.
+    pick_fight = None
+    if disagreements:
+        pick_fight = max(
+            disagreements,
+            key=lambda k: (
+                abs(viewer_map[k] - other_map[k]),
+                -count_map.get(k, 0),  # negate so min count wins ties
+            ),
+        )
+
+    # ── 4. Hydrate entity metadata for the two picks ────────────────────────
+    picks = [p for p in (pick_agreement, pick_fight) if p is not None]
+    meta_results = await asyncio.gather(
+        *[_fetch_entity_meta(et, eid, db) for (et, eid) in picks],
+        return_exceptions=True,
+    )
+    meta_map: dict[tuple, dict] = {}
+    for res in meta_results:
+        if isinstance(res, tuple) and len(res) == 2 and isinstance(res[1], dict):
+            meta_map[res[0]] = res[1]
+
+    def _serialize(key):
+        meta = meta_map.get(key, {}) or {}
+        et, eid = key
+        return {
+            "entity_type": et,
+            "entity_id": eid,
+            "name": meta.get("name"),
+            "image_url": meta.get("image_url"),
+            "artists": meta.get("artists", []),
+            "viewer_rating": viewer_map[key],
+            "other_rating": other_map[key],
+            "total_ratings": count_map.get(key, 0),
+        }
+
+    if pick_agreement is not None:
+        base["biggest_agreement"] = _serialize(pick_agreement)
+    if pick_fight is not None:
+        fight = _serialize(pick_fight)
+        fight["diff"] = round(abs(viewer_map[pick_fight] - other_map[pick_fight]), 2)
+        base["biggest_fight"] = fight
+
+    return base
+
+
 @router.get("/{user_id}/ratings")
 async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
     """Return all ratings for a user, enriched with entity metadata, newest first."""
