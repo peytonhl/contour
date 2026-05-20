@@ -128,46 +128,53 @@
     <div id="boot-splash" aria-hidden="true"
          style="position:fixed; inset:0; background:#08080a; z-index:9999; pointer-events:none;">
       <div style="position:absolute; top:calc(env(safe-area-inset-top, 0px) + (100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 2); left:50%; transform:translate(-50%, -50%); font-family:Georgia,'Times New Roman',Times,serif; font-size:52px; font-weight:400; letter-spacing:-0.01em; color:#fafafa; white-space:nowrap;">Contour</div>
-      <!-- ── Splash diagnostic ──
-           Renders only when ?debug=splash is in the URL. Polls the wordmark's
-           bounding rect every rAF and logs any position changes >1px so we
-           can SEE whether the wordmark is actually shifting mid-splash on
-           iOS (the suspected cause of the perceived logo jump). Stops after
-           5s — by then the splash should have hidden anyway. Diagnostic
-           div is inside #boot-splash so it disappears along with the
-           splash on display:none. -->
-      <div id="splash-debug" style="position:absolute; bottom:80px; left:0; right:0; text-align:center; font-family:'SF Mono',Menlo,monospace; font-size:11px; line-height:1.4; color:#888; white-space:pre; display:none;">starting…</div>
     </div>
+    <!-- ── Splash diagnostic (TEMPORARILY UNGATED) ──
+         Sibling of #boot-splash (NOT a child) so it persists after the
+         splash hides — captures wordmark-position changes during the
+         splash phase AND keeps the log visible afterward so the user
+         can screenshot it without racing the splash hide. Loud red box
+         in the top-right; tap to dismiss. Will be re-gated on
+         ?debug=splash in a follow-up commit once we've captured one
+         diagnostic screenshot. -->
+    <div id="splash-debug" style="position:fixed; top:env(safe-area-inset-top, 12px); right:8px; left:8px; z-index:99999; background:rgba(255,0,0,0.92); color:#fff; padding:8px 10px; border-radius:6px; font-family:'SF Mono',Menlo,monospace; font-size:11px; line-height:1.35; white-space:pre; pointer-events:auto;">splash diag — initializing…</div>
     <script>
-      // Gate on ?debug=splash anywhere in the query string. The Capacitor
-      // shell can be force-launched to a debug URL by appending the param
-      // in the address bar or capacitor.config server.url temporarily.
       (function () {
-        if (!/[?&]debug=splash(\b|$)/.test(location.search)) return;
         var dbg = document.getElementById('splash-debug');
         var splash = document.getElementById('boot-splash');
         var wm = splash && splash.querySelector('div');
         if (!dbg || !wm) return;
-        dbg.style.display = 'block';
+        // Tap to dismiss so the readout doesn't get in the way of using
+        // the app once the screenshot is taken.
+        dbg.addEventListener('click', function () { dbg.style.display = 'none'; });
         var start = performance.now();
         var lastTop = null;
         var changes = [];
+        var splashHiddenAt = null;
         function tick() {
           var r = wm.getBoundingClientRect();
+          var splashStyle = splash.style.display;
+          if (splashStyle === 'none' && splashHiddenAt === null) {
+            splashHiddenAt = performance.now() - start;
+          }
           var now = (performance.now() - start).toFixed(0);
           var top = r.top.toFixed(1);
           var topNum = parseFloat(top);
-          if (lastTop !== null && Math.abs(topNum - lastTop) > 1) {
+          // Only track real position changes — getBoundingClientRect on a
+          // display:none element returns 0/0, which would log a false
+          // "change" the moment the splash hides. Filter that out.
+          if (splashStyle !== 'none' && lastTop !== null && Math.abs(topNum - lastTop) > 1) {
             changes.push('t=' + now + 'ms ' + lastTop.toFixed(1) + '→' + top + ' vh=' + window.innerHeight);
           }
-          lastTop = topNum;
+          if (splashStyle !== 'none') lastTop = topNum;
           dbg.textContent =
-            't=' + now + 'ms\n' +
-            'top=' + top + ' vh=' + window.innerHeight + '\n' +
-            'innerH=' + window.innerHeight + ' screenH=' + window.screen.height + '\n' +
-            'changes: ' + changes.length + '\n' +
-            changes.slice(-4).join('\n');
-          if (performance.now() - start < 5000) requestAnimationFrame(tick);
+            'SPLASH DIAG (tap to close)\n' +
+            't=' + now + 'ms  vh=' + window.innerHeight + '  sh=' + window.screen.height + '\n' +
+            'wm.top=' + top + '  splash=' + (splashStyle || 'visible') + '\n' +
+            'splash hid @ ' + (splashHiddenAt !== null ? splashHiddenAt.toFixed(0) + 'ms' : '—') + '\n' +
+            'wordmark shifts: ' + changes.length + '\n' +
+            (changes.length ? changes.slice(-5).join('\n') : '(no shifts detected)');
+          if (performance.now() - start < 15000) requestAnimationFrame(tick);
         }
         requestAnimationFrame(tick);
       })();
