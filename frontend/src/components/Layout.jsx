@@ -280,8 +280,15 @@ export function Layout() {
       }}>
         {/* Wordmark — Instrument Serif sets the editorial tone; no gradient.
             The desktop subtitle ("Rate. Review. Discover.") moved exclusively
-            to the sign-in gate so the tagline lives in one place. */}
-        <NavLink to="/" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "14px 16px 14px 0", textDecoration: "none", flexShrink: 0 }}>
+            to the sign-in gate so the tagline lives in one place.
+            HIDDEN ON MOBILE (hide-mobile class) — on iOS the splash and the
+            header both rendered "Contour" but in different fonts/sizes/
+            positions, so the splash→app transition read as the logo
+            jumping even though each element was correctly placed. Mobile
+            users know they're in Contour (they tapped the app icon); the
+            bottom nav handles home navigation, so the persistent header
+            wordmark is web-convention residue with no mobile job to do. */}
+        <NavLink className="hide-mobile" to="/" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "14px 16px 14px 0", textDecoration: "none", flexShrink: 0 }}>
           <span style={{
             fontFamily: "var(--font-display)",
             fontSize: 26, fontWeight: 400, letterSpacing: "-0.01em",
