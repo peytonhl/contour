@@ -484,9 +484,34 @@ async def update_profile(
 
     if body.image_url is not None:
         url = body.image_url.strip()
-        if url and not url.startswith(("http://", "https://")):
-            raise HTTPException(status_code=400, detail="image_url must start with http:// or https://")
-        user.image_url = url[:500] or None  # empty string → clear back to Google photo
+        if url:
+            is_http = url.startswith(("http://", "https://"))
+            # data:image/ is what the in-app file-upload flow produces: the
+            # frontend reads the selected file, resizes to 256×256, and
+            # encodes as data:image/jpeg;base64,... typically 15–40KB.
+            # Accepting it as-is avoids the multipart-upload + blob-storage
+            # detour for what's currently a low-volume feature.
+            is_data_image = url.startswith("data:image/")
+            if not (is_http or is_data_image):
+                raise HTTPException(
+                    status_code=400,
+                    detail="image_url must start with http://, https://, or data:image/",
+                )
+            # Per-type length cap. http URLs stay tight at 500 chars (unchanged).
+            # data URLs get 200_000 — comfortably above a resized 256×256 JPEG
+            # but bounded to prevent someone POSTing a multi-megabyte payload
+            # and bloating the DB row. Refuse loudly over the cap rather than
+            # silently truncating (the old url[:500] would corrupt any data
+            # URL the moment it exceeded the cap).
+            cap = 200_000 if is_data_image else 500
+            if len(url) > cap:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"image_url too large ({len(url)} chars, cap {cap})",
+                )
+            user.image_url = url
+        else:
+            user.image_url = None  # empty string → clear back to Google photo
 
     await db.commit()
     return {"ok": True, "bio": user.bio, "image_url": user.image_url}
