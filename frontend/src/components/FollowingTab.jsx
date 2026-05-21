@@ -5,6 +5,7 @@ import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
+import { MentionBody } from "./Mentions.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT_A = "#d97a3b";
@@ -144,8 +145,8 @@ function FollowingItem({ item }) {
           </span>
         )}
         {isReview && item.body && (
-          <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, margin: 0, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-            {item.body}
+          <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, margin: 0, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>
+            <MentionBody body={item.body} mentions={item.mentions} />
           </p>
         )}
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -11,6 +11,7 @@ import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
+import { MentionBody } from "../components/Mentions.jsx";
 
 const ACCENT = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -83,6 +84,7 @@ function timeAgo(iso) {
 
 export function UserPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user: me } = useAuth();
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
@@ -335,17 +337,31 @@ export function UserPage() {
               const threadPath = `/${r.entity_type}/${r.entity_id}#review-${r.id}`;
               const canVote = me && id !== me.id;
               return (
-                <Link
+                // Was a <Link>; now a <div onClick> because the review body
+                // embeds mention <Link>s via <MentionBody>, and nesting <a>
+                // inside <a> is an HTML5 violation. Row stays fully clickable
+                // (cursor + keyboard); mention links inside navigate
+                // independently with stopPropagation guarding the row's
+                // onClick (see Mentions.jsx).
+                <div
                   key={r.id}
-                  to={threadPath}
+                  onClick={() => navigate(threadPath)}
+                  role="link"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(threadPath);
+                    }
+                  }}
                   style={{
                     padding: "16px 0",
                     borderBottom: "1px solid var(--border)",
                     display: "flex",
                     flexDirection: "column",
                     gap: 10,
-                    textDecoration: "none",
                     color: "inherit",
+                    cursor: "pointer",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -365,8 +381,8 @@ export function UserPage() {
                     </div>
                     {r.rating && <RatingBadge value={r.rating} />}
                   </div>
-                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                    {r.body}
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>
+                    <MentionBody body={r.body} mentions={r.mentions} />
                   </p>
 
                   {/* Vote row. Buttons stop propagation so tapping ▲/▼
@@ -441,7 +457,7 @@ export function UserPage() {
                       ↗
                     </button>
                   </div>
-                </Link>
+                </div>
               );
             })}
             {!tabExpanded && reviews.length > TAB_VISIBLE_LIMIT && (

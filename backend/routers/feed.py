@@ -129,6 +129,38 @@ async def get_feed(
         )).all()
         reply_counts = {row[0]: row[1] for row in reply_rows}
 
+    # Resolve @-mentions per review so the friends feed renders @-tokens
+    # as clickable links — same batch pattern as the other endpoints
+    # (ratings._enrich_reviews, auth.get_profile, users.get_user_reviews).
+    # We can fold the mentioned-user fetch into a single combined SELECT
+    # with the authors, but the author user_map is already built above,
+    # so we just add a second IN-query for any IDs not already covered.
+    from services import mentions as _mentions
+    mention_ids_per_review: dict[int, list[str]] = {
+        r.id: _mentions.load_ids(r.mention_user_ids) for r in reviews
+    }
+    all_mentioned: set[str] = set()
+    for ids in mention_ids_per_review.values():
+        all_mentioned.update(ids)
+    missing_mentioned = [mid for mid in all_mentioned if mid not in user_map]
+    if missing_mentioned:
+        extra_rows = (await db.execute(
+            select(User).where(User.id.in_(missing_mentioned))
+        )).scalars().all()
+        for u in extra_rows:
+            user_map[u.id] = {
+                "id": u.id, "display_name": u.display_name, "image_url": u.image_url
+            }
+
+    def _mentions_for(rev_id: int) -> list[dict]:
+        out = []
+        for mid in mention_ids_per_review.get(rev_id, []):
+            mu = user_map.get(mid)
+            if mu is None:
+                continue
+            out.append({"id": mu["id"], "display_name": mu["display_name"]})
+        return out
+
     # Consolidate rating + review pairs.
     #
     # A Review and a Rating from the same user on the same entity are one
@@ -179,6 +211,7 @@ async def get_feed(
             # a body-only review (rare but possible via direct API).
             "value": rating.value if rating is not None else None,
             "body": r.body,
+            "mentions": _mentions_for(r.id),
             "upvotes": votes["up"],
             "downvotes": votes["down"],
             "user_vote": user_vote_map.get(r.id),

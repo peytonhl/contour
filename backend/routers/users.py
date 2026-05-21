@@ -804,6 +804,33 @@ async def get_user_reviews(
         if viewer_id and v.user_id == viewer_id:
             user_vote_map[v.review_id] = v.value
 
+    # Resolve @-mentions per review so UserPage can render @-tokens as
+    # clickable links. Same batch pattern as ratings._enrich_reviews and
+    # auth.get_profile — one IN-query against User for every distinct
+    # mentioned ID across this user's review set.
+    from services import mentions as _mentions
+    mention_ids_per_review: dict[int, list[str]] = {
+        r.id: _mentions.load_ids(r.mention_user_ids) for r in reviews
+    }
+    all_mentioned: set[str] = set()
+    for ids in mention_ids_per_review.values():
+        all_mentioned.update(ids)
+    mention_user_map: dict[str, User] = {}
+    if all_mentioned:
+        mu_rows = (await db.execute(
+            select(User).where(User.id.in_(list(all_mentioned)))
+        )).scalars().all()
+        mention_user_map = {u.id: u for u in mu_rows}
+
+    def _mentions_for(rev_id: int) -> list[dict]:
+        out = []
+        for mid in mention_ids_per_review.get(rev_id, []):
+            mu = mention_user_map.get(mid)
+            if mu is None:
+                continue
+            out.append({"id": mu.id, "display_name": mu.display_name})
+        return out
+
     return [
         {
             "id": r.id,
@@ -813,6 +840,7 @@ async def get_user_reviews(
             "entity_image_url": enriched.get((r.entity_type, r.entity_id), {}).get("image_url"),
             "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
             "body": r.body,
+            "mentions": _mentions_for(r.id),
             "rating": rating_map.get((r.entity_type, r.entity_id)),
             "created_at": r.created_at.isoformat() + "Z",
             "upvotes": vote_map.get(r.id, {"up": 0, "down": 0})["up"],

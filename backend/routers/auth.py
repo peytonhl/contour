@@ -417,6 +417,34 @@ async def get_profile(
         (r.entity_type, r.entity_id): r.value for r in ratings
     }
 
+    # Resolve @-mentions on each review so the frontend can render
+    # @-tokens as clickable links to the mentioned user's profile. One
+    # batch lookup against the User table for every distinct mentioned
+    # ID across the review set — same shape `_enrich_reviews` builds in
+    # ratings.py.
+    from services import mentions as _mentions
+    mention_ids_per_review: dict[int, list[str]] = {
+        r.id: _mentions.load_ids(r.mention_user_ids) for r in reviews
+    }
+    all_mentioned: set[str] = set()
+    for ids in mention_ids_per_review.values():
+        all_mentioned.update(ids)
+    mention_user_map: dict[str, User] = {}
+    if all_mentioned:
+        mu_rows = (await db.execute(
+            select(User).where(User.id.in_(list(all_mentioned)))
+        )).scalars().all()
+        mention_user_map = {u.id: u for u in mu_rows}
+
+    def _mentions_for(rev_id: int) -> list[dict]:
+        out = []
+        for mid in mention_ids_per_review.get(rev_id, []):
+            mu = mention_user_map.get(mid)
+            if mu is None:
+                continue
+            out.append({"id": mu.id, "display_name": mu.display_name})
+        return out
+
     return {
         "user": {
             "id": user.id,
@@ -450,6 +478,7 @@ async def get_profile(
                 "entity_artists": enriched.get((r.entity_type, r.entity_id), {}).get("artists", []),
                 "value": rating_value_by_entity.get((r.entity_type, r.entity_id)),
                 "body": r.body,
+                "mentions": _mentions_for(r.id),
                 "created_at": r.created_at.isoformat() + "Z",
             }
             for r in reviews

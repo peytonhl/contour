@@ -8,6 +8,7 @@ import { StatTabs } from "../components/StatTabs.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
+import { MentionBody } from "../components/Mentions.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { CompareTastePicker } from "../components/CompareTastePicker.jsx";
@@ -774,14 +775,29 @@ export function ProfilePage() {
             {(tabExpanded ? profile?.reviews : profile?.reviews?.slice(0, TAB_VISIBLE_LIMIT))?.map((r) => {
               const threadPath = `/${r.entity_type}/${r.entity_id}#review-${r.id}`;
               return (
-                <Link
+                // Outer wrapper was a <Link> but the body now embeds
+                // mention <Link>s via <MentionBody>, and nesting <a>
+                // inside <a> is an HTML5 violation that browsers handle
+                // unpredictably. Converted to a <div onClick> — the row
+                // is still fully clickable, the mention links inside
+                // navigate independently (with stopPropagation inside
+                // MentionBody to suppress the row's onClick on tap).
+                <div
                   key={r.id}
-                  to={threadPath}
+                  onClick={() => navigate(threadPath)}
+                  role="link"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(threadPath);
+                    }
+                  }}
                   style={{
                     padding: "16px 0",
                     borderBottom: "1px solid var(--border)",
                     display: "flex", flexDirection: "column", gap: 10,
-                    textDecoration: "none", color: "inherit",
+                    color: "inherit", cursor: "pointer",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -801,8 +817,8 @@ export function ProfilePage() {
                     </div>
                     {r.value && <RatingBadge value={r.value} />}
                   </div>
-                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                    {r.body}
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>
+                    <MentionBody body={r.body} mentions={r.mentions} />
                   </p>
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <button
@@ -829,7 +845,7 @@ export function ProfilePage() {
                       ↗
                     </button>
                   </div>
-                </Link>
+                </div>
               );
             })}
             {!tabExpanded && (profile?.reviews?.length ?? 0) > TAB_VISIBLE_LIMIT && (

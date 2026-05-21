@@ -72,6 +72,12 @@ export function MentionBody({ body, mentions }) {
           <Link
             key={`m${keyCounter++}`}
             to={`/user/${linked.id}`}
+            // Stop the click from bubbling to ancestor click handlers — many
+            // review-row renderers (ProfilePage, UserPage) wrap the whole row
+            // in an onClick that navigates to the review thread. Without this
+            // guard, tapping the mention would briefly route to the user
+            // profile AND then to the review thread, with the latter winning.
+            onClick={(e) => e.stopPropagation()}
             style={{ color: ACCENT, fontWeight: 600, textDecoration: "none" }}
           >
             @{token}
