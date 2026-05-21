@@ -2419,9 +2419,20 @@ function ForYouFeed() {
           }}
         >
           {tracks.map((track, i) => {
-            // Only mount neighbours — render budget stays bounded as the
-            // user works through hundreds of swipes.
-            if (Math.abs(i - activeIdx) > 1) return null;
+            // Mount activeIdx ± 2 cards. The ±2 window (vs the previous ±1)
+            // means the "next-next" card mounts during idle time before the
+            // user lands on it — its DiscoverCard effects (Apple Music
+            // fetch, audio element wire-up, action menu listeners) run
+            // off-screen instead of at commit, where they used to compete
+            // with the snap animation's transitionend dispatch and cause
+            // perceptible end-of-swipe lag. Cards at ±2 sit two card-heights
+            // off-screen via the static translateY below (their absolute
+            // index × 100% combined with the wrapper's -activeIdx × 100%
+            // resolves to ±200%, well outside the overflow:hidden viewport),
+            // so they're invisible until the user swipes toward them.
+            // Render budget stays bounded at 5 mounted cards — small memory
+            // hit for a significant commit-time perf win on iOS WKWebView.
+            if (Math.abs(i - activeIdx) > 2) return null;
             return (
               <div
                 key={`${track.id}-${i}`}
