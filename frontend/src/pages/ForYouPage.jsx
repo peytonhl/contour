@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, Component } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, memo, Component } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -9,6 +9,20 @@ import { analytics } from "../services/analytics.js";
 // Coarser than the full tier1..tier5 enum but reflects what the data we have.
 function tierSourceOf(track) {
   return track?._source === "deezer" ? "deezer" : "spotify";
+}
+
+// Stable-identity callback that always delegates to the latest version of
+// `handler`. The returned function's reference is constant across renders, so
+// it's safe to pass into a React.memo'd child without invalidating
+// memoization — yet calls always run against the latest closure (current
+// state, current refs). This is the pattern React's RFC'd `useEffectEvent`
+// hook codifies; we shim it locally to avoid a dependency. Use for parent-
+// side handlers passed to memoized children — NOT for handlers that need
+// their identity to update (e.g. inside a useEffect dep array).
+function useEvent(handler) {
+  const ref = useRef(handler);
+  useLayoutEffect(() => { ref.current = handler; });
+  return useCallback((...args) => ref.current(...args), []);
 }
 
 import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
@@ -470,7 +484,7 @@ class CardErrorBoundary extends Component {
 }
 
 // ── Individual discover card ──────────────────────────────────────────────────
-function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityClick, userRating, cardIndex, totalCards, onNext, onPrev }) {
+function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEntityClick, userRating, cardIndex, totalCards }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   // Some Spotify/Deezer responses ship a track without album.images populated
@@ -1238,6 +1252,25 @@ function DiscoverCard({ track, isActive, onRate, onReview, onDislike, onEntityCl
     </div>
   );
 }
+
+// Memo wrapper around DiscoverCard. Custom comparator skips function-prop
+// identity changes — the parent recreates handleRate / handleReview /
+// handleDislike / handleEntityClick on every render, but ForYouFeed passes
+// them via ref-latest-closure stable refs (see `useStableRef` in ForYouFeed),
+// so identity is actually stable AND the latest closure is always called.
+// Comparing only the data props means a swipe (which flips dragging /
+// transitioning state on the parent) no longer cascades into a re-render of
+// every mounted card — only the cards whose isActive / userRating / track /
+// cardIndex / totalCards actually changed do work. This is the single
+// biggest commit-time perf win.
+const DiscoverCard = memo(DiscoverCardBase, (prev, next) => (
+  prev.track === next.track &&
+  prev.isActive === next.isActive &&
+  prev.userRating === next.userRating &&
+  prev.cardIndex === next.cardIndex &&
+  prev.totalCards === next.totalCards
+  // Function props intentionally omitted — see comment above.
+));
 
 // ── Personalization-ramp progress banner ──────────────────────────────────────
 // The feed adapts from rating #1; this banner just lets users see that more
@@ -2055,6 +2088,18 @@ function ForYouFeed() {
     }
   }
 
+  // Stable-identity callbacks for the memoized DiscoverCard. Each call hits
+  // the latest closure of the underlying handler (see `useEvent` at the top
+  // of the file) so behavior is unchanged — but identity is constant across
+  // renders, which lets React.memo on DiscoverCard actually skip work when
+  // unrelated parent state (dragging, transitioning) flips during a swipe.
+  // The bare `handleRate` etc. are recreated every render and would defeat
+  // memo if passed directly.
+  const stableOnRate = useEvent(handleRate);
+  const stableOnReview = useEvent(handleReview);
+  const stableOnDislike = useEvent(handleDislike);
+  const stableOnEntityClick = useEvent(handleEntityClick);
+
   if (loading) {
     // First thing the user sees after the boot splash snaps off. Used to be
     // a bare "Loading…" text label, which felt like a placeholder against
@@ -2394,15 +2439,13 @@ function ForYouFeed() {
                   <DiscoverCard
                     track={track}
                     isActive={i === activeIdx && !transitioning}
-                    onRate={handleRate}
-                    onReview={handleReview}
-                    onDislike={handleDislike}
-                    onEntityClick={handleEntityClick}
+                    onRate={stableOnRate}
+                    onReview={stableOnReview}
+                    onDislike={stableOnDislike}
+                    onEntityClick={stableOnEntityClick}
                     userRating={userRatings[track.id] ?? null}
                     cardIndex={i}
                     totalCards={tracks.length}
-                    onNext={() => goToCard(i + 1)}
-                    onPrev={() => goToCard(i - 1)}
                   />
                 </CardErrorBoundary>
               </div>
