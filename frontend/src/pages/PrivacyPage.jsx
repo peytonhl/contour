@@ -25,7 +25,7 @@ export function PrivacyPage() {
           Privacy policy
         </h1>
         <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Last updated: May 2026
+          Last updated: May 2026 (push notifications, editable display name, @-mentions)
         </p>
       </div>
 
@@ -56,8 +56,11 @@ export function PrivacyPage() {
           replies, your upvotes and downvotes on reviews, lists, backlog ("Want to
           Listen") items, who you follow, your bio, any profile photo you upload,
           your taste profile (genre preferences from onboarding plus genres added
-          automatically when you rate something 4–5★), and the private "not
-          interested" and blocked-user lists you build to tune your feed.
+          automatically when you rate something 4–5★), the private "not
+          interested" and blocked-user lists you build to tune your feed, and —
+          if you've granted push permission on a mobile device — an opaque
+          push-notification device token issued by Apple Push Notification
+          service so we can deliver notifications to that device. See Section 12.
         </p>
         <p style={{ marginTop: 10 }}>
           If you choose <strong style={{ color: "var(--text)" }}>Browse without
@@ -71,7 +74,8 @@ export function PrivacyPage() {
         <ul style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6 }}>
           <li>To create and maintain your Contour account</li>
           <li>To display your ratings, reviews, replies, and lists publicly on the platform</li>
-          <li>To show your activity to users who follow you and notify users you interact with (follows, replies, upvotes)</li>
+          <li>To show your activity to users who follow you and notify users you interact with (follows, replies, upvotes, @-mentions)</li>
+          <li>If you've granted permission on a mobile device, to deliver those same in-app notifications as push notifications via Apple Push Notification service (see Section 12)</li>
           <li>To personalize your For You feed using your ratings, taste profile, and the artists you've marked "not interested"</li>
           <li>To process imports of your ratings from other platforms (e.g. a Rate Your Music CSV) when you upload them</li>
         </ul>
@@ -150,6 +154,7 @@ export function PrivacyPage() {
           <li>The "English / Latin-only songs" toggle on For You</li>
           <li>A local copy of recent For You ratings, used to retry submissions that failed to reach the server</li>
           <li>The session token issued when you sign in</li>
+          <li>On the iOS / Android app only: the push-notification device token, cached so we can cleanly unregister it on sign-out</li>
         </ul>
         <p style={{ marginTop: 10 }}>
           We do not use third-party advertising cookies. Clearing your browser's
@@ -190,6 +195,7 @@ export function PrivacyPage() {
           <li>Users you've blocked</li>
           <li>Reports you submit against content</li>
           <li>Your individual upvote/downvote attribution (only the aggregate score is shown publicly)</li>
+          <li>Your push-notification device tokens and your per-type notification preferences</li>
         </ul>
         <p style={{ marginTop: 12 }}>
           To remove public content, you can delete individual items in-app or
@@ -232,7 +238,42 @@ export function PrivacyPage() {
         </p>
       </Section>
 
-      <Section title="12. Contact">
+      <Section title="12. Push Notifications">
+        <p>
+          If you use the Contour iOS or Android app and grant notification
+          permission, your device's operating system gives us a randomized
+          token that uniquely identifies that device for push delivery (an
+          "APNs device token" on iOS, a comparable token on Android). We
+          store this token on our server, tied to your account, and use it
+          only to deliver notifications you've opted into.
+        </p>
+        <p style={{ marginTop: 10 }}>
+          <strong style={{ color: "var(--text)" }}>What we send:</strong> only
+          alerts triggered by another user's interaction with your account —
+          a new follower, an upvote on your review, a reply, or an
+          @-mention. We do <strong style={{ color: "var(--text)" }}>not</strong>{" "}
+          use push for marketing, promotions, "come back to the app" nudges,
+          or anything that isn't a direct response to another user's action.
+        </p>
+        <p style={{ marginTop: 10 }}>
+          <strong style={{ color: "var(--text)" }}>Opt-out:</strong> you can
+          turn off any or all push types per-category at any time under
+          Settings → Push notifications. You can also revoke push permission
+          system-wide in your phone's Settings → Notifications → Contour;
+          when you do, your device stops receiving everything regardless of
+          per-category preferences.
+        </p>
+        <p style={{ marginTop: 10 }}>
+          <strong style={{ color: "var(--text)" }}>Token lifecycle:</strong>{" "}
+          when you sign out of the app, your token is removed from the
+          server. When Apple or Google invalidates a token (you uninstall the
+          app, the OS rotates the token, etc.), our push system drops it on
+          the next failed delivery. We do not share device tokens with any
+          third party.
+        </p>
+      </Section>
+
+      <Section title="13. Contact">
         <p>
           Questions about this policy? Reach us at{" "}
           <a href="mailto:contour.app.demo@gmail.com" style={{ color: ACCENT_A }}>contour.app.demo@gmail.com</a>.

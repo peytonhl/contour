@@ -67,6 +67,14 @@ export function TermsPage() {
           blocks, moderation actions, or rating limits is grounds for
           termination of all of your accounts.
         </p>
+        <p style={{ marginTop: 8 }}>
+          Push notifications on the iOS / Android app are optional. We send
+          push only for direct interactions with your account (follows,
+          replies, upvotes, @-mentions) and never for marketing. You can
+          opt out of any or all push types under Settings → Push
+          notifications, or revoke permission entirely from your device's
+          system Settings. See the Privacy Policy for details.
+        </p>
       </Section>
 
       <Section title="3. Your Content">
