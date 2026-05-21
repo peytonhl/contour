@@ -53,7 +53,14 @@ const ACCENT = "#d97a3b";
 //                    Explicit display:flex on every text element (Satori
 //                    layout was undefined without it — v14's 50% / sub-
 //                    line rendered side-by-side instead of stacked).
-const CARD_VERSION = "15";
+//  v16 (2026-05-20): v15 still had the side-by-side bug — React Fragment
+//                    around the conditional content was breaking column
+//                    stacking. Wrap content in an explicit flex column
+//                    div. Also: bumped title truncation 24→28 chars (was
+//                    cutting "So Easy (To Fall In Love)"), 50% font 140
+//                    →160, dropped marginTop:auto on the card row (was
+//                    creating a 300px void between stat and cards).
+const CARD_VERSION = "16";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

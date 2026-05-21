@@ -40,7 +40,7 @@ async function loadFont(family: string, italic = false) {
 const fontPromise = loadFont('Instrument Serif').catch(() => null);
 const fontItalicPromise = loadFont('Instrument Serif', true).catch(() => null);
 
-function truncate(text: string | null | undefined, max = 30): string {
+function truncate(text: string | null | undefined, max = 32): string {
   if (!text) return '';
   return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 }
@@ -134,7 +134,7 @@ function HighlightCard({
           color: TEXT,
         }}
       >
-        {truncate(item.name, 24)}
+        {truncate(item.name, 28)}
       </div>
 
       {/* Artist */}
@@ -312,68 +312,76 @@ export default async function handler(request: Request) {
           </div>
         </div>
 
-        {/* Stat hero — every text element gets explicit display:flex
-            because Satori's layout is undefined without it. v1's
-            missing display:flex on the % span made it render inline
-            beside the subline instead of stacking. */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {sharedCount > 0 ? (
-            <>
-              <div
-                style={{
-                  display: 'flex',
-                  fontFamily: 'Instrument Serif',
-                  fontSize: 140,
-                  color: TEXT,
-                  lineHeight: 1,
-                  fontVariantNumeric: 'tabular-nums',
-                  letterSpacing: '-0.03em',
-                }}
-              >
-                {pct}%
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  marginTop: 8,
-                  fontSize: 20,
-                  color: MUTED,
-                  letterSpacing: '0.16em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Match · {agreementCount} of {sharedCount} shared
-              </div>
-            </>
-          ) : (
+        {/* Stat hero — Satori's React Fragment handling broke the column
+            stacking in v2 (the % and subline rendered side-by-side
+            despite the parent's flexDirection:column). Wrapping the
+            conditional content in a single explicit div with its own
+            flex column ensures the children stack reliably. */}
+        {sharedCount > 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                fontFamily: 'Instrument Serif',
+                fontSize: 160,
+                color: TEXT,
+                lineHeight: 1,
+                fontVariantNumeric: 'tabular-nums',
+                letterSpacing: '-0.03em',
+              }}
+            >
+              {pct}%
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                fontSize: 20,
+                color: MUTED,
+                letterSpacing: '0.16em',
+                textTransform: 'uppercase',
+              }}
+            >
+              Match · {agreementCount} of {sharedCount} shared
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+            }}
+          >
             <div
               style={{
                 display: 'flex',
                 fontFamily: 'Instrument Serif',
                 fontStyle: 'italic',
-                fontSize: 48,
+                fontSize: 56,
                 color: MUTED,
               }}
             >
               No shared ratings yet
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Highlight cards — album covers are 220×220, the visual hero
-            of each card. Cards take the full bottom band. */}
+            of each card. No marginTop:auto — v2 had it which left a 300px
+            void between the stat hero and the cards on the 1080-tall
+            canvas. Letting the cards flow naturally with the parent's
+            gap keeps the composition tight. */}
         <div
           style={{
             display: 'flex',
             gap: 22,
-            marginTop: 'auto',
           }}
         >
           {data.biggest_agreement ? (
