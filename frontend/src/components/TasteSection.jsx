@@ -463,15 +463,45 @@ function GenreEditorSheet({ currentGenres, currentExcluded, onSave, onClose }) {
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 300 }} />
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 300,
+          // touchAction: none on the backdrop so a swipe over the dim area
+          // doesn't bleed into ProfilePage scroll on iOS. (The sheet itself
+          // sets touch-action via overscroll-behavior below.)
+          touchAction: "none",
+        }}
+      />
       <div style={{
         position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 301,
         padding: "0 16px calc(env(safe-area-inset-bottom, 16px) + 16px)",
+        // The wrapper can't itself be the scroll container (padding + safe-
+        // area math), so we cap its height instead and let the SHEET inside
+        // own the scroll. Without this cap the sheet could grow taller than
+        // the viewport and the touchmove that started "inside" the sheet
+        // would land on the page behind it because the sheet had no
+        // overflow handler.
+        maxHeight: "calc(100dvh - env(safe-area-inset-top, 0px) - 24px)",
+        display: "flex", flexDirection: "column", justifyContent: "flex-end",
       }}>
         <div style={{
           background: "var(--surface)", border: "1px solid var(--border)",
           borderRadius: "20px 20px 16px 16px", padding: "22px 22px 20px",
           maxWidth: 480, margin: "0 auto", boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
+          // Make the sheet itself the scroll container. Combined with
+          // overscroll-behavior: contain, iOS recognizes the gesture as
+          // sheet-internal and stops chaining scroll to ProfilePage when
+          // the user reaches the top/bottom of the chips list. Previously
+          // the OUTER chips container had maxHeight + overflowY, which is
+          // flaky on iOS WebKit when nested inside a sheet that itself
+          // overflows the viewport — the gesture would land on the wrong
+          // target and scroll the page behind. Removing the inner cap
+          // collapses to a single scroll region.
+          maxHeight: "100%",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+          WebkitOverflowScrolling: "touch",
         }}>
           <div style={{ width: 36, height: 4, borderRadius: "var(--radius-sm)", background: "var(--border)", margin: "0 auto 20px" }} />
 
@@ -497,7 +527,13 @@ function GenreEditorSheet({ currentGenres, currentExcluded, onSave, onClose }) {
 
           <div style={{
             display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center",
-            maxHeight: 360, overflowY: "auto", padding: "4px 0",
+            padding: "4px 0",
+            // No internal scroll — the parent sheet owns the scroll
+            // container so iOS sees ONE consistent touch target on swipe.
+            // The previous maxHeight: 360 + overflowY: auto created a
+            // nested scrolling region that confused iOS WebKit's gesture
+            // routing, causing the page behind the sheet to scroll
+            // instead of the chips.
           }}>
             {GENRE_OPTIONS_BASE.map((g) => (
               <GenreChip
