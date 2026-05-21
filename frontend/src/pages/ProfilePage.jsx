@@ -251,7 +251,16 @@ export function ProfilePage() {
       api.getUserLists(user.id).catch(() => []),
     ])
       .then(([p, fwing, fwers, userLists]) => {
-        setProfile(p);
+        // /auth/profile returns user fields nested under a `user` key:
+        //   {user: {id, display_name, image_url, bio}, ratings, reviews}
+        // But the rest of this page reads (and the bio/photo edit handlers
+        // patch) those fields at the top level (`profile.image_url`,
+        // `profile.bio`). Spreading `p.user` over `p` lifts them so both
+        // the initial render AND the in-place patches converge on the same
+        // structure. Without this, userAvatar(profile) fell back to the
+        // "?" placeholder until the user re-uploaded their photo
+        // (which top-level-patched image_url back into place).
+        setProfile({ ...p, ...p.user });
         setFollowing(fwing);
         setFollowers(fwers);
         setLists(userLists);

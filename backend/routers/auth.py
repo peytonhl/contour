@@ -422,6 +422,11 @@ async def get_profile(
             "id": user.id,
             "display_name": user.display_name,
             "image_url": user.image_url,
+            # `bio` was previously omitted, so ProfilePage's "No bio yet"
+            # placeholder showed even when a bio was set. Reads from
+            # /auth/me had it, but the page renders from this endpoint's
+            # response. Include it here so a single fetch is sufficient.
+            "bio": user.bio,
         },
         "ratings": [
             {
