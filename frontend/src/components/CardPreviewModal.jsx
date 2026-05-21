@@ -46,7 +46,14 @@ const ACCENT = "#d97a3b";
 //                    room (review 600→560, hot-take 480→440). Also fixed
 //                    the misleading "save plugin not available" message
 //                    to surface the actual savePhoto error.
-const CARD_VERSION = "14";
+//  v15 (2026-05-20): taste-match card redesign. Shrunk avatars 168→120,
+//                    grew album covers 96→220 so MUSIC is the visual
+//                    hero (not faces). Inline SVG star replaces the
+//                    Unicode ★ that rendered as tofu in Instrument Serif.
+//                    Explicit display:flex on every text element (Satori
+//                    layout was undefined without it — v14's 50% / sub-
+//                    line rendered side-by-side instead of stacked).
+const CARD_VERSION = "15";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

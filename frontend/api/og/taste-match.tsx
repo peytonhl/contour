@@ -1,16 +1,15 @@
-// Vercel Edge Function — renders a shareable "head-to-head taste match" PNG.
+// Vercel Edge Function — shareable head-to-head "taste match" PNG.
 //
-// Triggered by /api/og/taste-match?viewer=<user_id>&other=<user_id>. The
-// frontend share button (TasteMatchPage) feeds this URL into the same
-// CardPreviewModal flow used for reviews and hot-takes, so the share /
-// save plumbing is identical — only the rendered art differs.
+// /api/og/taste-match?viewer=<user_id>&other=<user_id>
 //
-// Design: square 1080×1080. Two circular avatars sit at the top of the
-// canvas with a serif "vs" between them, the agreement % is the signature
-// stat in the middle (matching the magazine-stat treatment of Era Score),
-// and the biggest-agreement + biggest-fight picks anchor the bottom as
-// two side-by-side mini-cards. Same dark BG + Instrument Serif vocabulary
-// as the review card so the brand reads consistently across share types.
+// Design v2 (2026-05-20): rebalanced after the user reported v1 felt
+// avatar-heavy and the music content was tiny. Avatars shrunk to 120px;
+// album covers grow to 220×220 as the visual heroes (it's a music app —
+// MUSIC should be the hero, not the faces). Inline SVG star icon
+// replaces the Unicode ★ (Instrument Serif doesn't include U+2605, same
+// missing-glyph tofu as the review card). Each text element gets an
+// explicit `display: flex` because Satori's layout is undefined
+// without it.
 
 import { ImageResponse } from '@vercel/og';
 
@@ -41,18 +40,20 @@ async function loadFont(family: string, italic = false) {
 const fontPromise = loadFont('Instrument Serif').catch(() => null);
 const fontItalicPromise = loadFont('Instrument Serif', true).catch(() => null);
 
-function truncate(text: string | null | undefined, max = 36): string {
+function truncate(text: string | null | undefined, max = 30): string {
   if (!text) return '';
   return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 }
 
-// Generated initials avatar fallback (matches the in-app userAvatar helper).
 function avatarUrl(user: { display_name?: string; image_url?: string | null }, size = 256): string {
   if (user?.image_url) return user.image_url;
   const name = encodeURIComponent(user?.display_name || '?');
   return `https://ui-avatars.com/api/?name=${name}&background=7c3aed&color=fff&bold=true&size=${size}`;
 }
 
+// Inline SVG star — Instrument Serif doesn't include U+2605 ("★") so a
+// Unicode glyph renders as a missing-character box. Same fix as
+// review.tsx; lifted here verbatim.
 function StarIcon({ size = 28, color = GOLD }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ display: 'block' }}>
@@ -61,8 +62,7 @@ function StarIcon({ size = 28, color = GOLD }: { size?: number; color?: string }
   );
 }
 
-// One of the two bottom mini-cards. "kind" toggles palette + heading
-// between agreement (gold) and fight (orange).
+// One of the two big bottom cards. Album cover dominates; minimal text.
 function HighlightCard({
   kind,
   item,
@@ -71,11 +71,13 @@ function HighlightCard({
   item: any;
 }) {
   const tint = kind === 'agreement' ? GOLD : ACCENT;
-  const heading = kind === 'agreement' ? 'Biggest agreement' : 'Biggest fight';
-  const subline =
-    kind === 'agreement'
-      ? `Both ${Number(item.viewer_rating).toFixed(1)}★`
-      : `${Number(item.diff ?? Math.abs(item.viewer_rating - item.other_rating)).toFixed(1)}★ apart`;
+  const heading = kind === 'agreement' ? 'Common ground' : 'Great divide';
+
+  // Build the rating-summary string + star color. For agreement we render
+  // ONE star + the shared rating; for a fight we render two ratings split
+  // by a separator.
+  const aRating = Number(item.viewer_rating).toFixed(1);
+  const bRating = Number(item.other_rating).toFixed(1);
 
   return (
     <div
@@ -85,62 +87,89 @@ function HighlightCard({
         flexDirection: 'column',
         background: SURFACE,
         border: `1px solid ${BORDER}`,
-        borderRadius: 16,
+        borderRadius: 20,
         overflow: 'hidden',
+        padding: 24,
+        gap: 16,
       }}
     >
+      {/* Section label */}
       <div
         style={{
           display: 'flex',
-          padding: '10px 16px',
-          fontSize: 16,
+          fontSize: 18,
           fontWeight: 700,
-          letterSpacing: '0.08em',
+          letterSpacing: '0.14em',
           color: tint,
           textTransform: 'uppercase',
-          borderBottom: `1px solid ${BORDER}`,
         }}
       >
         {heading}
       </div>
-      <div style={{ display: 'flex', padding: 16, gap: 16, alignItems: 'center' }}>
-        <div
-          style={{
-            width: 96,
-            height: 96,
-            borderRadius: 10,
-            overflow: 'hidden',
-            display: 'flex',
-            backgroundColor: '#1a1a1d',
-            flexShrink: 0,
-          }}
-        >
-          {item.image_url && (
-            <img src={item.image_url} width={96} height={96} style={{ objectFit: 'cover' }} />
-          )}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 4 }}>
-          <span
-            style={{
-              fontFamily: 'Instrument Serif',
-              fontSize: 28,
-              color: TEXT,
-              lineHeight: 1.15,
-              overflow: 'hidden',
-            }}
-          >
-            {truncate(item.name, 28)}
-          </span>
-          <span style={{ display: 'flex', fontSize: 18, color: MUTED }}>
-            {truncate((item.artists || []).join(', '), 32)}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-            <StarIcon size={20} color={tint} />
-            <span style={{ fontSize: 18, fontWeight: 700, color: tint, letterSpacing: '0.04em' }}>
-              {subline}
-            </span>
+
+      {/* Album cover — the hero of each card */}
+      <div
+        style={{
+          display: 'flex',
+          width: 220,
+          height: 220,
+          borderRadius: 10,
+          overflow: 'hidden',
+          backgroundColor: '#1a1a1d',
+          alignSelf: 'center',
+        }}
+      >
+        {item.image_url && (
+          <img src={item.image_url} width={220} height={220} style={{ objectFit: 'cover' }} />
+        )}
+      </div>
+
+      {/* Track / album title */}
+      <div
+        style={{
+          display: 'flex',
+          fontFamily: 'Instrument Serif',
+          fontSize: 30,
+          lineHeight: 1.1,
+          color: TEXT,
+        }}
+      >
+        {truncate(item.name, 24)}
+      </div>
+
+      {/* Artist */}
+      <div
+        style={{
+          display: 'flex',
+          fontSize: 20,
+          color: MUTED,
+          marginTop: -8,
+        }}
+      >
+        {truncate((item.artists || []).join(', '), 26)}
+      </div>
+
+      {/* Rating row — anchored to the bottom */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginTop: 'auto',
+          paddingTop: 12,
+          borderTop: `1px solid ${BORDER}`,
+        }}
+      >
+        <StarIcon size={24} color={tint} />
+        {kind === 'agreement' ? (
+          <div style={{ display: 'flex', fontSize: 22, color: TEXT, fontWeight: 700 }}>
+            Both {aRating}
           </div>
-        </div>
+        ) : (
+          <div style={{ display: 'flex', fontSize: 22, color: TEXT, fontWeight: 700 }}>
+            {aRating} <span style={{ display: 'flex', color: MUTED, padding: '0 8px' }}>vs</span> {bRating}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -173,8 +202,8 @@ export default async function handler(request: Request) {
   const sharedCount = data.shared_count || 0;
   const agreementCount = data.agreement_count || 0;
 
-  const viewerName = truncate(data.viewer?.display_name, 20) || 'You';
-  const otherName = truncate(data.other?.display_name, 20) || 'Them';
+  const viewerName = truncate(data.viewer?.display_name, 18) || 'You';
+  const otherName = truncate(data.other?.display_name, 18) || 'Them';
 
   return new ImageResponse(
     (
@@ -186,144 +215,164 @@ export default async function handler(request: Request) {
           flexDirection: 'column',
           backgroundColor: BG,
           color: TEXT,
+          padding: '40px 50px',
+          gap: 22,
         }}
       >
-        {/* Top bar */}
+        {/* Top bar — wordmark + eyebrow */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '36px 50px 0',
           }}
         >
-          <span style={{ fontFamily: 'Instrument Serif', fontSize: 72, letterSpacing: '-0.02em', color: TEXT, lineHeight: 1 }}>
+          <div style={{
+            display: 'flex',
+            fontFamily: 'Instrument Serif',
+            fontSize: 64,
+            letterSpacing: '-0.02em',
+            color: TEXT,
+            lineHeight: 1,
+          }}>
             Contour
-          </span>
-          <span style={{ fontSize: 28, color: MUTED, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+          </div>
+          <div style={{
+            display: 'flex',
+            fontSize: 22,
+            color: MUTED,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            fontWeight: 600,
+          }}>
             Taste Match
-          </span>
+          </div>
         </div>
 
-        {/* Head-to-head row */}
+        {/* Head-to-head — avatars smaller than v1 so they don't compete
+            with the album covers for visual hierarchy. */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 56,
-            padding: '36px 50px 0',
+            gap: 36,
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <div
               style={{
-                width: 168,
-                height: 168,
+                display: 'flex',
+                width: 120,
+                height: 120,
                 borderRadius: '50%',
                 overflow: 'hidden',
-                display: 'flex',
-                border: `4px solid ${ACCENT}`,
+                border: `3px solid ${ACCENT}`,
                 background: SURFACE,
               }}
             >
-              <img src={avatarUrl(data.viewer, 256)} width={168} height={168} style={{ objectFit: 'cover' }} />
+              <img src={avatarUrl(data.viewer, 256)} width={120} height={120} style={{ objectFit: 'cover' }} />
             </div>
-            <span style={{ display: 'flex', fontSize: 24, color: TEXT, fontWeight: 700 }}>
+            <div style={{ display: 'flex', fontSize: 22, color: TEXT, fontWeight: 600 }}>
               {viewerName}
-            </span>
+            </div>
           </div>
-          <span
+
+          <div
             style={{
+              display: 'flex',
               fontFamily: 'Instrument Serif',
               fontStyle: 'italic',
-              fontSize: 56,
+              fontSize: 44,
               color: MUTED,
+              alignSelf: 'flex-start',
+              marginTop: 36,
             }}
           >
             vs
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <div
               style={{
-                width: 168,
-                height: 168,
+                display: 'flex',
+                width: 120,
+                height: 120,
                 borderRadius: '50%',
                 overflow: 'hidden',
-                display: 'flex',
-                border: `4px solid ${ACCENT_B}`,
+                border: `3px solid ${ACCENT_B}`,
                 background: SURFACE,
               }}
             >
-              <img src={avatarUrl(data.other, 256)} width={168} height={168} style={{ objectFit: 'cover' }} />
+              <img src={avatarUrl(data.other, 256)} width={120} height={120} style={{ objectFit: 'cover' }} />
             </div>
-            <span style={{ display: 'flex', fontSize: 24, color: TEXT, fontWeight: 700 }}>
+            <div style={{ display: 'flex', fontSize: 22, color: TEXT, fontWeight: 600 }}>
               {otherName}
-            </span>
+            </div>
           </div>
         </div>
 
-        {/* Agreement headline — the signature stat. Same Instrument Serif
-            magazine-stat treatment as Era Score on the album page. */}
+        {/* Stat hero — every text element gets explicit display:flex
+            because Satori's layout is undefined without it. v1's
+            missing display:flex on the % span made it render inline
+            beside the subline instead of stacking. */}
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px 50px 8px',
           }}
         >
           {sharedCount > 0 ? (
             <>
-              <span
+              <div
                 style={{
+                  display: 'flex',
                   fontFamily: 'Instrument Serif',
-                  fontSize: 180,
+                  fontSize: 140,
                   color: TEXT,
                   lineHeight: 1,
                   fontVariantNumeric: 'tabular-nums',
-                  letterSpacing: '-0.02em',
+                  letterSpacing: '-0.03em',
                 }}
               >
                 {pct}%
-              </span>
-              <span
+              </div>
+              <div
                 style={{
                   display: 'flex',
-                  marginTop: 10,
-                  fontSize: 22,
+                  marginTop: 8,
+                  fontSize: 20,
                   color: MUTED,
                   letterSpacing: '0.16em',
                   textTransform: 'uppercase',
                 }}
               >
-                Agreement · {agreementCount} of {sharedCount} shared
-              </span>
+                Match · {agreementCount} of {sharedCount} shared
+              </div>
             </>
           ) : (
-            <span
+            <div
               style={{
                 display: 'flex',
                 fontFamily: 'Instrument Serif',
                 fontStyle: 'italic',
-                fontSize: 56,
+                fontSize: 48,
                 color: MUTED,
-                textAlign: 'center',
               }}
             >
               No shared ratings yet
-            </span>
+            </div>
           )}
         </div>
 
-        {/* Bottom mini-cards. Padded with marginTop: auto so the row hugs
-            the bottom of the canvas regardless of stat-headline height. */}
+        {/* Highlight cards — album covers are 220×220, the visual hero
+            of each card. Cards take the full bottom band. */}
         <div
           style={{
             display: 'flex',
-            gap: 20,
-            padding: '0 50px 48px',
+            gap: 22,
             marginTop: 'auto',
           }}
         >
@@ -345,9 +394,6 @@ export default async function handler(request: Request) {
       height: HEIGHT,
       fonts,
       headers: {
-        // 1h edge cache. Match a user with someone, ratings shift over
-        // time, but a card someone just shared to iMessage should hit the
-        // edge for the burst of clicks that follow. Same TTL as review.tsx.
         'Cache-Control': 'public, immutable, max-age=3600, s-maxage=3600',
       },
     },
