@@ -65,6 +65,75 @@ def extract_mention_tokens(body: str) -> list[str]:
     return out
 
 
+async def resolve_combined_mentions(
+    db: AsyncSession,
+    body: str,
+    *,
+    client_user_ids: list[str] | None = None,
+    exclude_user_id: str | None = None,
+    max_mentions: int = 25,
+) -> list[str]:
+    """Resolve mentions from BOTH the explicit client-provided ID list
+    AND a regex parse of `body`, returning the deduplicated union in
+    stable order.
+
+    The frontend autocomplete passes `client_user_ids` because the
+    server-side regex can't handle multi-word display names (e.g.
+    "@Adam Zhang" — the parser stops at the space). The autocomplete
+    already knows the picked user's ID, so we just trust it after
+    validating the user exists and isn't the actor.
+
+    Bare typed @-tokens that the user did NOT pick via autocomplete
+    still go through the regex path, so single-word mentions like
+    `@peyton` keep working even without an explicit picked entry.
+    """
+    # 1. Regex-parse the body for single-word tokens (existing behavior).
+    parsed = await resolve_mentions(
+        db, body,
+        exclude_user_id=exclude_user_id,
+        max_mentions=max_mentions,
+    )
+
+    # 2. Validate the client-supplied IDs against the User table so a
+    # malicious client can't poke arbitrary IDs into the list.
+    validated_client: list[str] = []
+    if client_user_ids:
+        # Cap at max_mentions to defend against spam.
+        unique_client = []
+        seen: set[str] = set()
+        for cid in client_user_ids:
+            if not isinstance(cid, str) or not cid:
+                continue
+            if cid in seen:
+                continue
+            seen.add(cid)
+            unique_client.append(cid)
+            if len(unique_client) >= max_mentions:
+                break
+        if unique_client:
+            real = (await db.execute(
+                select(User.id).where(User.id.in_(unique_client))
+            )).scalars().all()
+            real_set = set(real)
+            for cid in unique_client:
+                if cid in real_set and cid != exclude_user_id:
+                    validated_client.append(cid)
+
+    # 3. Union in stable order: explicit picks first (they're the
+    # primary source of truth — the user actually picked them via UI),
+    # then any regex-only finds that the picks didn't already cover.
+    out: list[str] = []
+    seen: set[str] = set()
+    for uid in validated_client + parsed:
+        if uid in seen:
+            continue
+        seen.add(uid)
+        out.append(uid)
+        if len(out) >= max_mentions:
+            break
+    return out
+
+
 async def resolve_mentions(
     db: AsyncSession,
     body: str,

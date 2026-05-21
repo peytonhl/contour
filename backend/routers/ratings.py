@@ -49,6 +49,16 @@ class RatingIn(BaseModel):
 class ReviewIn(BaseModel):
     body: str = Field(..., min_length=1, max_length=5000)
     value: Optional[float] = None
+    # Optional list of user IDs the frontend's mention autocomplete
+    # resolved against the @-tokens in the body. Sent alongside the body
+    # because the server-side regex parser only handles single-word
+    # tokens (display names can contain spaces, but @Adam Zhang is
+    # ambiguous to parse — the autocomplete already knows which user
+    # was picked). Backend unions these with regex-parsed IDs so both
+    # autocomplete picks AND bare typed @-tokens resolve correctly.
+    # Older clients omit this field and continue working on the regex
+    # path alone.
+    mention_user_ids: Optional[list[str]] = None
 
     @field_validator("value")
     @classmethod
@@ -76,6 +86,9 @@ class ReplyIn(BaseModel):
     # validates the parent belongs to the same review so a client can't
     # cross-thread replies.
     parent_reply_id: Optional[int] = None
+    # Same shape as ReviewIn.mention_user_ids — autocomplete-picked
+    # user IDs, optional. See ReviewIn for the full rationale.
+    mention_user_ids: Optional[list[str]] = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -459,8 +472,14 @@ async def upsert_review(
     # ID list alongside the body and fire one notification per mentioned
     # user once the commit lands. Self-mentions are filtered out by the
     # resolver so users can't @ themselves into a notification.
-    mention_ids = await _mentions.resolve_mentions(
-        db, body_text, exclude_user_id=user_id
+    # Uses the COMBINED resolver: client_user_ids comes from the
+    # frontend autocomplete (handles multi-word display names that the
+    # regex can't), unioned with regex-parsed tokens for bare typed
+    # mentions.
+    mention_ids = await _mentions.resolve_combined_mentions(
+        db, body_text,
+        client_user_ids=body.mention_user_ids,
+        exclude_user_id=user_id,
     )
 
     # Diff against the previous mention set so an edit only notifies the
@@ -973,12 +992,13 @@ async def post_reply(
 
     body_text = body.body.strip()
 
-    # Resolve @-mentions in the reply body. Same pattern as upsert_review —
-    # self-mentions are filtered by the resolver. Reply mentions fire the
-    # same "mention" notification type so the recipient sees both forms in
-    # their notifications feed under a consistent label.
-    mention_ids = await _mentions.resolve_mentions(
-        db, body_text, exclude_user_id=user_id
+    # Resolve @-mentions in the reply body. Same combined-resolver
+    # pattern as upsert_review so multi-word display names picked via
+    # the autocomplete also resolve correctly.
+    mention_ids = await _mentions.resolve_combined_mentions(
+        db, body_text,
+        client_user_ids=body.mention_user_ids,
+        exclude_user_id=user_id,
     )
 
     db.add(ReviewReply(

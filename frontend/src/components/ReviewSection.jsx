@@ -110,14 +110,16 @@ function countDescendants(node) {
 
 function ReplyForm({ onSubmit, onCancel, autoFocus = false, placeholder = "Write a reply…" }) {
   const [text, setText] = useState("");
+  const [pickedIds, setPickedIds] = useState([]);
   const [saving, setSaving] = useState(false);
   async function submit(e) {
     e.preventDefault();
     if (!text.trim()) return;
     setSaving(true);
     try {
-      await onSubmit(text.trim());
+      await onSubmit(text.trim(), pickedIds);
       setText("");
+      setPickedIds([]);
     } catch { /* parent handles refresh; keep text so user can retry */ }
     setSaving(false);
   }
@@ -130,6 +132,7 @@ function ReplyForm({ onSubmit, onCancel, autoFocus = false, placeholder = "Write
         autoFocus={autoFocus}
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onPickedUsersChange={setPickedIds}
         placeholder={placeholder}
         style={{
           // minWidth 0 keeps the field from forcing horizontal overflow.
@@ -246,7 +249,7 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
             <ReplyForm
               autoFocus
               placeholder={`Reply to ${node.user.display_name}…`}
-              onSubmit={(text) => onSubmitReply(node.id, text)}
+              onSubmit={(text, mentionUserIds) => onSubmitReply(node.id, text, mentionUserIds)}
               onCancel={() => onSetReplyingTo(null)}
             />
           )}
@@ -299,8 +302,8 @@ export function ReplyThread({ reviewId, user, initialCount }) {
     }
   }
 
-  async function submitReply(parentReplyId, text) {
-    await api.postReply(reviewId, text, parentReplyId);
+  async function submitReply(parentReplyId, text, mentionUserIds) {
+    await api.postReply(reviewId, text, parentReplyId, mentionUserIds);
     const fresh = await api.getReplies(reviewId);
     setFlatReplies(fresh);
     setCount(fresh.length);
@@ -359,7 +362,7 @@ export function ReplyThread({ reviewId, user, initialCount }) {
       {replyingTo === "root" && user && (
         <ReplyForm
           autoFocus
-          onSubmit={(text) => submitReply(null, text)}
+          onSubmit={(text, mentionUserIds) => submitReply(null, text, mentionUserIds)}
           onCancel={() => setReplyingTo(null)}
         />
       )}
@@ -539,6 +542,10 @@ export function ReviewSection({ entityType, entityId, user }) {
   const [hover, setHover] = useState(null);
   const [selectedRating, setSelectedRating] = useState(null);
   const [reviewText, setReviewText] = useState("");
+  // Picked mention IDs collected by the MentionInput autocomplete — sent
+  // alongside reviewText so the backend can resolve multi-word display
+  // names that the server-side regex can't.
+  const [reviewPickedIds, setReviewPickedIds] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -581,7 +588,7 @@ export function ReviewSection({ entityType, entityId, user }) {
     setSaving(true);
     setError(null);
     try {
-      await api.submitReview(entityType, entityId, reviewText, selectedRating);
+      await api.submitReview(entityType, entityId, reviewText, selectedRating, reviewPickedIds);
       analytics.reviewSubmitted(entityType, reviewText.trim().length);
       setShowForm(false);
       await load(sort);
@@ -695,6 +702,7 @@ export function ReviewSection({ entityType, entityId, user }) {
             as="textarea"
             value={reviewText}
             onChange={(e) => setReviewText(e.target.value)}
+            onPickedUsersChange={setReviewPickedIds}
             placeholder="What did you think? Share your thoughts… Use @ to mention another user."
             rows={4}
             style={{

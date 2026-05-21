@@ -535,6 +535,11 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
   const [progress, setProgress] = useState(0);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
+  // Mention IDs picked via the autocomplete in the review composer.
+  // Sent to api.submitReview alongside the body so multi-word display
+  // names resolve on the backend (the regex parser handles single-word
+  // tokens only).
+  const [reviewPickedIds, setReviewPickedIds] = useState([]);
   // After a successful review submit this holds { reviewId, spotifyId };
   // null before. Drives both the "Review posted ✓" badge AND the
   // "Share card" CTA that opens the CardPreviewModal scoped to this
@@ -641,7 +646,7 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
     // If anything throws, surface it in-band via reviewError instead of
     // letting React unmount the card tree silently.
     try {
-      const result = await onReview(track, reviewText.trim(), ratedValue);
+      const result = await onReview(track, reviewText.trim(), ratedValue, reviewPickedIds);
       if (result?.reviewId) {
         setSubmittedReview(result);
         setReviewOpen(false);
@@ -1164,6 +1169,7 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
                 autoFocus
                 value={reviewText}
                 onChange={(e) => { setReviewText(e.target.value.slice(0, 2000)); setReviewError(""); }}
+                onPickedUsersChange={setReviewPickedIds}
                 placeholder="What did you think? Use @ to mention another user."
                 rows={4}
                 style={{
@@ -1994,11 +2000,11 @@ function ForYouFeed() {
     }
   }
 
-  async function handleReview(track, body, ratingValue) {
+  async function handleReview(track, body, ratingValue, mentionUserIds) {
     try {
       const spotifyId = await _resolveSpotifyId(track);
       if (!spotifyId) return null;
-      const res = await api.submitReview("track", spotifyId, body, ratingValue);
+      const res = await api.submitReview("track", spotifyId, body, ratingValue, mentionUserIds);
       analytics.reviewSubmitted("track", body.trim().length);
       // Backend returns { ok, review_id }; the id is what the share-card
       // modal needs to render the just-posted review. Spotify id is what

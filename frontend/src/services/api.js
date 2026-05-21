@@ -103,7 +103,15 @@ export const api = {
   // artistId is optional — pass it when rating a track so the server can update the taste profile
   rateEntity: (entityType, entityId, value, artistId = null) =>
     post(`/ratings/${entityType}/${entityId}/rate`, { value, ...(artistId ? { artist_id: artistId } : {}) }),
-  submitReview: (entityType, entityId, body, value) => post(`/ratings/${entityType}/${entityId}/review`, { body, value }),
+  // `mentionUserIds` is the optional list of users the autocomplete
+  // resolved against @-tokens in the body. Lets the backend handle
+  // multi-word display names ("Adam Zhang") that the server-side regex
+  // would miss. Falls back to regex-only resolution when omitted.
+  submitReview: (entityType, entityId, body, value, mentionUserIds = null) =>
+    post(`/ratings/${entityType}/${entityId}/review`,
+      mentionUserIds && mentionUserIds.length
+        ? { body, value, mention_user_ids: mentionUserIds }
+        : { body, value }),
   deleteReview: (reviewId) => del(`/ratings/reviews/${reviewId}`),
   getReviews: (entityType, entityId, sort = "recent") => request(`/ratings/${entityType}/${entityId}/reviews?sort=${sort}`),
   voteReview: (reviewId, value) => post(`/ratings/reviews/${reviewId}/vote`, { value }),
@@ -111,8 +119,12 @@ export const api = {
   // parent_reply_id is optional — when set, the reply is threaded under
   // another reply (Reddit-style). Null/omitted = top-level reply on the
   // review itself.
-  postReply: (reviewId, body, parent_reply_id = null) =>
-    post(`/ratings/reviews/${reviewId}/reply`, { body, parent_reply_id }),
+  // `mentionUserIds`: see submitReview — same shape, same purpose.
+  postReply: (reviewId, body, parent_reply_id = null, mentionUserIds = null) =>
+    post(`/ratings/reviews/${reviewId}/reply`,
+      mentionUserIds && mentionUserIds.length
+        ? { body, parent_reply_id, mention_user_ids: mentionUserIds }
+        : { body, parent_reply_id }),
 
   // Global reviews feed
   getGlobalReviews: (sort = "recent", entityType = "all") =>
