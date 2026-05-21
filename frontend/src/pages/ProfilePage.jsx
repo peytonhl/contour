@@ -732,7 +732,7 @@ export function ProfilePage() {
 
         {/* Taste */}
         <div className="profile-taste-section">
-          <TasteSection userId={user.id} isOwner={true} />
+          <TasteSection userId={user.id} isOwner={true} ratings={profile?.ratings ?? []} />
         </div>
 
         <div className="profile-tab-content" style={{ display: "flex", flexDirection: "column", gap: 28 }}>

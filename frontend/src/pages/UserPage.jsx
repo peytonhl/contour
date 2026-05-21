@@ -193,9 +193,33 @@ export function UserPage() {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", display: "flex", flexDirection: "column" }}>
 
+      {/* Back affordance — users landing here via an @-mention link, a
+          followers list, or a search result need a way out. Same pattern
+          as TasteMatchPage: navigate(-1) when there's history, fall back
+          to /friends on deep-link entry so users aren't stranded. */}
+      <button
+        onClick={() => {
+          if (window.history.length > 1) navigate(-1);
+          else navigate("/friends");
+        }}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: "transparent", border: "none",
+          color: "var(--text-muted)", fontSize: 14,
+          padding: "16px 16px 0",
+          alignSelf: "flex-start",
+          cursor: "pointer",
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        Back
+      </button>
+
       {/* ── Hero ── */}
       <div style={{
-        paddingTop: 40,
+        paddingTop: 24,
         background: `linear-gradient(180deg, ${ACCENT}14 0%, transparent 100%)`,
       }}>
         {/* Centered content (avatar / name / buttons). Kept in its own
@@ -292,7 +316,7 @@ export function UserPage() {
       <div style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
 
         {/* ── Taste ── */}
-        {tab === "taste" && <TasteSection userId={id} isOwner={false} />}
+        {tab === "taste" && <TasteSection userId={id} isOwner={false} ratings={ratings} />}
 
         {/* ── Ratings ── */}
         {tab === "ratings" && (

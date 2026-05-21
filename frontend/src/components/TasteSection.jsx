@@ -640,7 +640,15 @@ function RatingDistribution({ distribution, average }) {
 }
 
 // ── Main exported component ───────────────────────────────────────────────────
-export function TasteSection({ userId, isOwner }) {
+/**
+ * `ratings` is an optional list of the user's ratings, already enriched
+ * with entity name + image + artists + value. Both ProfilePage and
+ * UserPage fetch this for their RATINGS tab anyway; passing it down
+ * lets us surface a "TOP RATED" preview without a duplicate fetch.
+ * The viewer-friendly visual: actual music a user liked, with
+ * cover art — much richer than abstract genre badges alone.
+ */
+export function TasteSection({ userId, isOwner, ratings = [] }) {
   const [taste, setTaste] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -707,10 +715,28 @@ export function TasteSection({ userId, isOwner }) {
 
   if (loading) return null; // load silently, don't block the page
 
+  // Derive the top 4 highest-rated entities from the user's ratings.
+  // Sort: value DESC, then created_at DESC as a tiebreak (more recent
+  // wins ties — surfaces evolving taste over old favorites). Skip
+  // entities without a name (failed enrichment — empty card looks
+  // broken). The cap at 4 mirrors the pinned-albums grid for visual
+  // consistency. Visible to BOTH the owner and viewers; serves as a
+  // "what they actually like" auto-derived snapshot, distinct from
+  // pinned albums (which are user-curated).
+  const topRated = [...(ratings ?? [])]
+    .filter((r) => r.entity_name)
+    .sort((a, b) => {
+      const dv = (b.value ?? 0) - (a.value ?? 0);
+      if (dv !== 0) return dv;
+      return (b.created_at ?? "").localeCompare(a.created_at ?? "");
+    })
+    .slice(0, 4);
+
   const hasAnyContent =
     (taste?.pinned_albums?.length > 0) ||
     (taste?.top_genres?.length > 0) ||
-    (Object.values(taste?.rating_distribution ?? {}).some((v) => v > 0));
+    (Object.values(taste?.rating_distribution ?? {}).some((v) => v > 0)) ||
+    topRated.length > 0;
 
   if (!hasAnyContent && !isOwner) return null;
 
@@ -799,6 +825,61 @@ export function TasteSection({ userId, isOwner }) {
               <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Choose up to 4 albums that define your taste</div>
             </div>
           </button>
+        )}
+
+        {/* Top rated — auto-derived from the user's highest ratings.
+            Distinct from the curated pinned albums above: this row
+            answers "what do they actually like" with cover art a
+            visitor can recognize. 2×2 grid mirrors the pinned slots
+            so the section feels balanced when both are present. */}
+        {topRated.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+              Top Rated
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {topRated.map((r) => (
+                <Link
+                  key={`${r.entity_type}-${r.entity_id}`}
+                  to={`/${r.entity_type}/${r.entity_id}`}
+                  style={{
+                    display: "flex", gap: 10, padding: 8,
+                    background: "var(--surface2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    textDecoration: "none", color: "inherit",
+                    alignItems: "center",
+                    minWidth: 0,
+                  }}
+                >
+                  {r.entity_image_url
+                    ? <img
+                        src={r.entity_image_url}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        style={{ width: 44, height: 44, borderRadius: 6, objectFit: "cover", flexShrink: 0 }}
+                      />
+                    : <div style={{ width: 44, height: 44, borderRadius: 6, background: "var(--surface)", flexShrink: 0 }} />
+                  }
+                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0, gap: 2, flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {r.entity_name}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: GOLD, fontWeight: 700 }}>
+                      <span>{r.value?.toFixed?.(1) ?? r.value}</span>
+                      <span>★</span>
+                      {r.entity_artists?.[0] && (
+                        <span style={{ color: "var(--text-muted)", fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                          · {r.entity_artists[0]}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Genre badges */}

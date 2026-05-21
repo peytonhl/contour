@@ -171,6 +171,20 @@ function BookmarkIcon() {
   );
 }
 
+// People icon — used by the step-3 friends explainer. Two-figure
+// silhouette so it reads as "social" at a glance, sized to match
+// BookmarkIcon's optical weight.
+function PeopleIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
 // ── Dot indicator ─────────────────────────────────────────────────────────────
 function Dots({ total, active }) {
   return (
@@ -261,9 +275,27 @@ export function OnboardingModal() {
   function finishBacklogStep(deepLink) {
     analytics.onboardingStepCompleted("backlog_explainer", !deepLink);
     if (deepLink) {
+      // Deep-link exits onboarding entirely (user is being navigated
+      // away to see the feature) — mark complete so it doesn't
+      // re-trigger next launch.
       localStorage.setItem(STORAGE_KEY, "1");
       setVisible(false);
       navigate("/profile?tab=backlog");
+    } else {
+      // Advance to the friends step instead of dismissing — the
+      // third pillar (social / connecting with friends) needs the
+      // same explicit explainer the first two got. dismiss() only
+      // fires on the final step now.
+      setStep(2);
+    }
+  }
+
+  function finishFriendsStep(deepLink) {
+    analytics.onboardingStepCompleted("friends_explainer", !deepLink);
+    if (deepLink) {
+      localStorage.setItem(STORAGE_KEY, "1");
+      setVisible(false);
+      navigate("/friends");
     } else {
       dismiss();
     }
@@ -326,7 +358,7 @@ export function OnboardingModal() {
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={2} active={0} />
+                <Dots total={3} active={0} />
               </div>
 
               <button onClick={() => { analytics.onboardingStepCompleted("value_prop", false); setStep(1); }} style={{
@@ -390,10 +422,79 @@ export function OnboardingModal() {
               </button>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={2} active={1} />
+                <Dots total={3} active={1} />
               </div>
 
               <button onClick={() => finishBacklogStep(false)} style={{
+                width: "100%", padding: "14px 0", borderRadius: "var(--radius-lg)",
+                background: ACCENT_A, border: "none",
+                color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
+              }}>
+                Continue
+              </button>
+            </>
+          )}
+
+          {/* ── Step 2: Friends / social explainer ──
+              The third pillar alongside Discover (step 0) and Backlog
+              (step 1). Previously onboarding ended at backlog, leaving
+              the social side of the app entirely unmentioned even
+              though "connect with friends" is core to the product. */}
+          {step === 2 && (
+            <>
+              <div style={{ textAlign: "center", marginBottom: 20 }}>
+                <h2 style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: 30, fontWeight: 400, margin: "0 0 8px",
+                  color: "var(--text)", lineHeight: 1.1,
+                }}>
+                  Listen with friends
+                </h2>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>
+                  Follow other listeners to see their ratings + reviews in
+                  your activity feed. @-mention them in a review to start
+                  a conversation.
+                </p>
+              </div>
+
+              <div style={{
+                background: "var(--surface2)",
+                borderRadius: "var(--radius-lg)",
+                padding: "16px 16px", marginBottom: 16,
+                display: "flex", alignItems: "center", gap: 14,
+              }}>
+                <span style={{
+                  width: 48, height: 48, flexShrink: 0,
+                  borderRadius: "50%",
+                  background: `${ACCENT_A}1f`,
+                  color: ACCENT_A,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <PeopleIcon />
+                </span>
+                <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  Open <strong style={{ color: "var(--text)" }}>Friends</strong> to
+                  find people whose taste matches yours. Their reviews show up
+                  alongside yours on every album and track page.
+                </div>
+              </div>
+
+              <button
+                onClick={() => finishFriendsStep(true)}
+                style={{
+                  background: "none", border: "none", color: ACCENT_A,
+                  fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  padding: "0 0 16px", display: "block", marginInline: "auto",
+                }}
+              >
+                Find friends
+              </button>
+
+              <div style={{ marginBottom: 18 }}>
+                <Dots total={3} active={2} />
+              </div>
+
+              <button onClick={() => finishFriendsStep(false)} style={{
                 width: "100%", padding: "14px 0", borderRadius: "var(--radius-lg)",
                 background: ACCENT_A, border: "none",
                 color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
