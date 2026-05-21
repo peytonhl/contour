@@ -88,6 +88,119 @@ Run through this monthly (or whenever something feels off). Most are 30-second c
 
 ---
 
+## Push notifications
+
+The backend ships an APNs HTTP/2 sender (`backend/services/push_sender.py`)
+that fans every in-app Notification out to every device the recipient has
+registered, gated by per-type user preferences. **Until the four env vars
+below are set on Railway, push is silently disabled** — the in-app feed
+(`/notifications`) keeps working, but no iOS device receives anything.
+
+### One-time setup (Apple Developer Console)
+
+1. Open developer.apple.com → Certificates, Identifiers & Profiles → **Keys**.
+2. **+** → name it "Contour APNs", check **Apple Push Notifications service**
+   → **Continue → Register**.
+3. Download the `.p8` file. **You can only download it ONCE** — save to
+   `C:\Users\peytonhl\Secrets\AuthKey_<KEY_ID>.p8` alongside the existing
+   Sign in with Apple key.
+4. Note the **Key ID** (10 chars, shown after registration) and your
+   **Team ID** (top right of the developer portal).
+5. Open the Contour App ID (com.peytonhl.contour) → Capabilities →
+   confirm **Push Notifications** is checked. (Already enabled per the
+   service inventory; this is just verifying.)
+
+### Railway env vars
+
+Paste into Railway → Contour → Variables. The private key is multi-line
+— use Railway's "Raw Editor" if the regular form mangles newlines.
+
+```
+APNS_TEAM_ID       = <10-char Team ID>
+APNS_KEY_ID        = <10-char Key ID from step 4 above>
+APNS_BUNDLE_ID     = com.peytonhl.contour
+APNS_PRIVATE_KEY   = -----BEGIN PRIVATE KEY-----
+                     <contents of the .p8 file, preserving line breaks>
+                     -----END PRIVATE KEY-----
+APNS_USE_SANDBOX   = true   # while testing via TestFlight
+                            # flip to false on App Store release
+```
+
+After saving, Railway redeploys. The startup log should NO LONGER print
+`Push notifications DISABLED — missing env vars: …` — that warning is
+emitted by `services/push_sender.warn_if_disabled()` on every cold boot,
+so if it's still there one of the vars is wrong.
+
+### iOS rebuild (Codemagic)
+
+`@capacitor/push-notifications` is a new Capacitor plugin — the web JS
+ships instantly via Vercel, but the native iOS shell needs to be rebuilt
+so the plugin is compiled into the IPA. **Until that rebuild lands on
+TestFlight, no iOS device can register a push token** (the JS-side
+`PushNotifications.register()` will throw "plugin not implemented").
+
+To trigger the rebuild:
+
+```bash
+# After the master push that adds the plugin has landed:
+git tag ios-v$(date +%Y%m%d%H%M)
+git push origin --tags
+```
+
+Codemagic picks up the `ios-v*` tag, builds the IPA against the current
+master, and uploads to TestFlight. Watch the build at
+codemagic.io → Apps → Contour. The webhook is occasionally flaky — if
+no build appears within ~30s, kick it off manually from the dashboard.
+
+After TestFlight processing finishes (~5–15 min), the new build will be
+available to your testers; first-launch on it will prompt for push
+permission.
+
+### Sandbox vs production APNs
+
+- **`APNS_USE_SANDBOX=true`** routes to `api.sandbox.push.apple.com` —
+  the right environment for ANY build that came out of Xcode locally
+  OR Codemagic CI builds before App Store release. TestFlight builds
+  use the sandbox until the app is on the App Store.
+- **`APNS_USE_SANDBOX=false`** routes to `api.push.apple.com` — flip
+  this to false **simultaneously** with the App Store release. Wrong
+  environment = APNs returns 400 BadDeviceToken (the token from a
+  TestFlight install isn't a production token, and vice versa).
+
+### Health probe
+
+There's no dedicated `/notifications/health` endpoint yet (TODO). For now:
+
+```bash
+# Confirm the env vars made it onto Railway:
+curl https://contour-production.up.railway.app/health
+# (push status not yet exposed; check Railway logs for the
+#  "Push notifications DISABLED" line at boot — its absence = good.)
+
+# End-to-end smoke test:
+#  1. Open the iOS app, grant push permission. Confirm the device_tokens
+#     table has a row for your user (one-off DB query in Railway → DB tab).
+#  2. From a second account, follow your account.
+#  3. Within ~2s your phone should buzz with "<them> started following you".
+```
+
+### Stale-token cleanup
+
+The push sender drops a `device_tokens` row whenever APNs returns
+**410 Gone** for that token (user uninstalled the app, Apple rotated
+the token, etc.). No manual cleanup needed — it's lazy / on-demand.
+
+If you ever need to wipe all tokens (e.g. you've revoked the APNs key
+and rolled to a new one):
+
+```sql
+DELETE FROM device_tokens;
+```
+
+The next app launch will re-register every active install.
+
+---
+
 ## Deploy & update workflow
 
 How code changes reach users. Most updates don't need a single click of human

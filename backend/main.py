@@ -177,6 +177,17 @@ async def startup():
     # Alembic migrations. Idempotent — only creates missing tables.
     await init_db()
 
+    _enter("push_sender_health_check")
+    # Emit one warning line on boot if APNs env vars are missing — gives
+    # a clear signal in Railway logs that push notifications are NOT
+    # currently flowing (the in-app feed still works fine). See
+    # OPERATIONS.md → "Push notifications" for the env var list.
+    try:
+        from services import push_sender as _push_sender
+        _push_sender.warn_if_disabled()
+    except Exception as exc:
+        logger.warning("push_sender startup check failed: %s", exc)
+
     _enter("schedule_compare_seed")
     asyncio.create_task(_seed_compare_page_albums())
 

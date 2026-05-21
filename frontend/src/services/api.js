@@ -166,11 +166,26 @@ export const api = {
   getNotifications: () => request(`/notifications`),
   getUnreadCount: () => request(`/notifications/unread-count`),
   markNotificationsRead: () => post(`/notifications/read-all`, {}),
+  // Push token registration (native shell only). The frontend should
+  // call registerPushToken once after permission grant; idempotent on
+  // the backend (same token re-posted just bumps last_seen). On sign
+  // out the frontend should fire unregisterPushToken so the prior
+  // user stops receiving pushes on a device they've left.
+  registerPushToken: (token, platform) =>
+    post(`/notifications/register-token`, { token, platform }),
+  unregisterPushToken: (token) =>
+    post(`/notifications/unregister-token`, { token }),
+  getNotificationPrefs: () => request(`/notifications/preferences`),
+  updateNotificationPrefs: (prefs) => put(`/notifications/preferences`, prefs),
 
   // Profile update
   updateProfile: (bio) => patch(`/auth/profile`, { bio }),
   updateProfilePhoto: (image_url) => patch(`/auth/profile`, { image_url }),
   updatePinnedAlbums: (ids) => patch(`/auth/profile`, { pinned_album_ids: ids }),
+  // Backend validates length 2–30 + allowed-char regex + case-insensitive
+  // uniqueness, returning 400 (bad format) or 409 (taken) on conflict.
+  // Callers should surface the response detail to the user.
+  updateDisplayName: (display_name) => patch(`/auth/profile`, { display_name }),
 
   // Taste profile (public, for profile page)
   getUserTaste: (id) => request(`/users/${id}/taste`),

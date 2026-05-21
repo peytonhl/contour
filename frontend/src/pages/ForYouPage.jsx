@@ -27,6 +27,7 @@ function useEvent(handler) {
 
 import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
+import { MentionInput } from "../components/Mentions.jsx";
 // FollowingTab moved to the dedicated /friends route (FriendsPage). The
 // in-page "Friends" sub-tab here was retired alongside that move so users
 // have one canonical entry point to followed-user activity (bottom-nav
@@ -1158,11 +1159,12 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
                   </div>
                 </div>
               </div>
-              <textarea
+              <MentionInput
+                as="textarea"
                 autoFocus
                 value={reviewText}
                 onChange={(e) => { setReviewText(e.target.value.slice(0, 2000)); setReviewError(""); }}
-                placeholder="What did you think?"
+                placeholder="What did you think? Use @ to mention another user."
                 rows={4}
                 style={{
                   width: "100%", padding: "12px 14px", fontSize: 15,

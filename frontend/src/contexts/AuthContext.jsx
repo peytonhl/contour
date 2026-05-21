@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { api } from "../services/api.js";
 import { analytics, identify, reset } from "../services/analytics.js";
+import { usePushNotifications, unregisterCurrentDevice } from "../services/pushNotifications.js";
 
 const AuthContext = createContext(null);
 
@@ -53,13 +54,40 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
+    // Drop the device's push token first so the leaving user stops
+    // receiving pushes on this device. Fire-and-forget — we don't block
+    // sign-out on the network round-trip, and a failure here is harmless
+    // (the token just stays orphaned until APNs eventually invalidates it
+    // and the next 410 cleans it up server-side).
+    unregisterCurrentDevice();
     localStorage.removeItem("contour_token");
     setUser(null);
     reset();
   }
 
+  // Hook into the push-notification lifecycle. No-ops on web; on native
+  // it requests permission once per signed-in user, registers the device
+  // token with the backend, and rotates correctly across account switches.
+  usePushNotifications(user);
+
+  // Re-fetch /auth/me and update the in-memory user. Used by settings flows
+  // that mutate the profile (display name edit, photo change, etc.) so the
+  // change is immediately reflected in header chrome / nav without a full
+  // page reload. Safe to call even when not signed in — silently no-ops.
+  async function refreshMe() {
+    const token = localStorage.getItem("contour_token");
+    if (!token) return null;
+    try {
+      const u = await api.getMe(token);
+      setUser(u);
+      return u;
+    } catch {
+      return null;
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshMe }}>
       {children}
     </AuthContext.Provider>
   );

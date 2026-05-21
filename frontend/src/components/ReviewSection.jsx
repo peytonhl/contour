@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { ReportModal } from "./ReportModal.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
+import { MentionInput, MentionBody } from "./Mentions.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT = "#d97a3b";
@@ -125,17 +126,17 @@ function ReplyForm({ onSubmit, onCancel, autoFocus = false, placeholder = "Write
     // instead of squeezing the input to nothing. On desktop everything still
     // fits on one row.
     <form onSubmit={submit} style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-      <input
+      <MentionInput
         autoFocus={autoFocus}
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={placeholder}
         style={{
-          // minWidth 0 + flex: 1 keeps the input from forcing horizontal
-          // overflow when its content (long placeholder) exceeds the parent.
-          // flexBasis 200px gives it a sensible starting width before flex
-          // takes over.
-          flex: "1 1 200px", minWidth: 0,
+          // minWidth 0 keeps the field from forcing horizontal overflow.
+          // The MentionInput wrapper handles flex sizing via its own flex
+          // prop (passed through from `flex` on rest props), so we don't
+          // double-up here.
+          width: "100%", boxSizing: "border-box", minWidth: 0,
           padding: "10px 12px", background: "var(--surface2)",
           border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
           color: "var(--text)", fontSize: 13, outline: "none",
@@ -212,7 +213,9 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
               </button>
             )}
           </div>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>{node.body}</p>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+            <MentionBody body={node.body} mentions={node.mentions} />
+          </p>
           <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
             {/* Per-node Reply button: visible to everyone for consistency
                 with the top-level Reply and the platform's vote buttons.
@@ -485,8 +488,8 @@ function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
       />
 
       {/* Body */}
-      <p style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text-muted)", margin: 0 }}>
-        {rev.body}
+      <p style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text-muted)", margin: 0, whiteSpace: "pre-wrap" }}>
+        <MentionBody body={rev.body} mentions={rev.mentions} />
       </p>
 
       {/* Vote row */}
@@ -688,10 +691,11 @@ export function ReviewSection({ entityType, entityId, user }) {
             {summary?.user_review ? "Edit your review" : "Write a review"}
             {selectedRating && <span style={{ color: GOLD, marginLeft: 8 }}>· {selectedRating} / 5</span>}
           </div>
-          <textarea
+          <MentionInput
+            as="textarea"
             value={reviewText}
             onChange={(e) => setReviewText(e.target.value)}
-            placeholder="What did you think? Share your thoughts…"
+            placeholder="What did you think? Share your thoughts… Use @ to mention another user."
             rows={4}
             style={{
               width: "100%", boxSizing: "border-box",

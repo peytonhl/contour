@@ -1,16 +1,31 @@
-"""In-app notifications — follow, upvote, reply."""
+"""In-app notifications — follow, upvote, reply, mention.
 
-from typing import Optional
+This module also owns the push-notification register / preferences API
+on the same /notifications prefix. Push fanout is triggered from
+`create_notification` (the same helper other routers already call) so
+adding a new in-app notification type automatically pushes too —
+provided the recipient hasn't opted out via /notifications/preferences.
+"""
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select, update, func
+import json as _json
+from typing import Literal, Optional
+
+from fastapi import APIRouter, Body, Depends, Header, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import delete, select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Notification, User, Review
+from models import DeviceToken, Notification, User, Review
 from routers.auth import decode_jwt
+from services import push_sender
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+# Source of truth for which notification types can be toggled. Adding a
+# new type means adding a string here AND the corresponding branch in
+# services/push_sender.py's _short_body / _TYPE_TITLES.
+NOTIFICATION_TYPES = ("follow", "upvote", "reply", "mention")
 
 
 def _require_user(authorization: Optional[str] = Header(None)) -> str:
@@ -112,7 +127,17 @@ async def create_notification(
     entity_type: Optional[str] = None,
     entity_id: Optional[str] = None,
 ) -> None:
-    """Create a notification. Silently no-ops if user_id == actor_id."""
+    """Create a notification. Silently no-ops if user_id == actor_id.
+
+    Also fires a push notification for the same event — fire-and-forget,
+    so it doesn't block the calling request. The push sender consults the
+    recipient's `notification_prefs` JSON and skips opted-out types
+    itself; no need to pre-filter here.
+
+    Push fans out to ALL device tokens the recipient has registered —
+    multi-device users (phone + iPad, account-switch scenarios) all hear
+    about it at once.
+    """
     if user_id == actor_id:
         return
     db.add(Notification(
@@ -123,4 +148,149 @@ async def create_notification(
         entity_type=entity_type,
         entity_id=entity_id,
     ))
-    # Caller is responsible for commit
+    # Caller is responsible for the DB commit; the push send doesn't need
+    # the commit to have landed (it queries by user_id, not by the just-
+    # inserted Notification row), so we can schedule it immediately.
+    push_sender.send_for_notification(
+        recipient_user_id=user_id,
+        actor_user_id=actor_id,
+        n_type=type,
+        review_id=review_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+
+
+# ── Push token registration ──────────────────────────────────────────────────
+
+
+class RegisterTokenBody(BaseModel):
+    token: str
+    platform: Literal["ios", "android"]
+
+
+@router.post("/register-token")
+async def register_token(
+    body: RegisterTokenBody,
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Register or refresh a push token for the authenticated user.
+
+    Same token registered twice = idempotent UPDATE last_seen. Same token
+    under a different user (account switch on one device) = steals
+    ownership to the new user_id so the old user stops receiving pushes
+    on a device they're no longer signed into.
+    """
+    user_id = _require_user(authorization)
+    token = body.token.strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Empty token")
+
+    from datetime import datetime
+    existing = (await db.execute(
+        select(DeviceToken).where(DeviceToken.token == token)
+    )).scalar_one_or_none()
+    if existing:
+        existing.user_id = user_id
+        existing.platform = body.platform
+        existing.last_seen = datetime.utcnow()
+    else:
+        db.add(DeviceToken(
+            user_id=user_id, token=token, platform=body.platform,
+        ))
+    await db.commit()
+    return {"ok": True}
+
+
+class UnregisterTokenBody(BaseModel):
+    token: str
+
+
+@router.post("/unregister-token")
+async def unregister_token(
+    body: UnregisterTokenBody,
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Drop a push token. Called from the iOS app when the user signs out
+    or revokes notification permission. Tolerates unknown tokens (no-op
+    so the client doesn't have to track whether registration succeeded)."""
+    user_id = _require_user(authorization)
+    await db.execute(
+        delete(DeviceToken).where(
+            DeviceToken.token == body.token.strip(),
+            DeviceToken.user_id == user_id,
+        )
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+# ── Notification preferences ─────────────────────────────────────────────────
+
+
+def _default_prefs() -> dict:
+    return {t: True for t in NOTIFICATION_TYPES}
+
+
+def _load_prefs(stored: str | None) -> dict:
+    """Read a user's stored prefs into a dense dict. Missing keys default
+    to True (opt-in by default). Tolerates malformed JSON / wrong shape."""
+    prefs = _default_prefs()
+    if not stored:
+        return prefs
+    try:
+        loaded = _json.loads(stored)
+        if isinstance(loaded, dict):
+            for t in NOTIFICATION_TYPES:
+                v = loaded.get(t)
+                if isinstance(v, bool):
+                    prefs[t] = v
+    except Exception:
+        pass
+    return prefs
+
+
+@router.get("/preferences")
+async def get_preferences(
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return per-type push toggles for the authenticated user. Always
+    returns a dense dict — missing-from-storage keys default to True."""
+    user_id = _require_user(authorization)
+    user = (await db.execute(
+        select(User).where(User.id == user_id)
+    )).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _load_prefs(user.notification_prefs)
+
+
+class PreferencesBody(BaseModel):
+    follow: Optional[bool] = None
+    upvote: Optional[bool] = None
+    reply: Optional[bool] = None
+    mention: Optional[bool] = None
+
+
+@router.put("/preferences")
+async def update_preferences(
+    body: PreferencesBody,
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Partial update. Pass only the toggles the user is changing."""
+    user_id = _require_user(authorization)
+    user = (await db.execute(
+        select(User).where(User.id == user_id)
+    )).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    current = _load_prefs(user.notification_prefs)
+    updates = body.model_dump(exclude_none=True)
+    current.update(updates)
+    user.notification_prefs = _json.dumps(current)
+    await db.commit()
+    return current

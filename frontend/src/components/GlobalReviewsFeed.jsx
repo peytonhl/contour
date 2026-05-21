@@ -5,6 +5,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { BadgeLeaderboard } from "./Badges.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
+import { MentionBody } from "./Mentions.jsx";
 
 const GOLD = "#f59e0b";
 const ACCENT_A = "#d97a3b";
@@ -135,8 +136,8 @@ function ReviewCardItem({ item, user, onVote, badges }) {
         </span>
       </div>
 
-      <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.65, margin: 0, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-        {item.body}
+      <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.65, margin: 0, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>
+        <MentionBody body={item.body} mentions={item.mentions} />
       </p>
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>

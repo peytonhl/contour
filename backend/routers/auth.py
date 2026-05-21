@@ -456,6 +456,21 @@ class ProfileUpdate(BaseModel):
     bio: Optional[str] = None
     pinned_album_ids: Optional[list[str]] = None
     image_url: Optional[str] = None
+    # New: editable visible name. None = don't touch. Validated below for
+    # length, allowed character class, and case-insensitive uniqueness
+    # against the rest of the user table. The DB also enforces uniqueness
+    # via the y5z6a7b8c9d0 migration's functional index — the app-level
+    # check exists to return a clean 409 rather than a 500 on collision.
+    display_name: Optional[str] = None
+
+
+# What we accept in a display_name: letters, digits, space, underscore,
+# dot, hyphen. Length 2–30. Rejecting "@" specifically so users can't
+# embed an @-mention literal in their own name (would confuse the parser
+# in feature 3) and rejecting whitespace at the edges so accidental
+# trailing-space typos don't create a "different" name.
+import re as _re
+_DISPLAY_NAME_RE = _re.compile(r"^[A-Za-z0-9 _.\-]{2,30}$")
 
 
 @router.patch("/profile")
@@ -464,8 +479,10 @@ async def update_profile(
     authorization: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update the current user's editable profile fields (bio, pinned albums, photo)."""
+    """Update the current user's editable profile fields (display_name, bio,
+    pinned albums, photo)."""
     import json as _json
+    from sqlalchemy import func as _func
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -474,6 +491,35 @@ async def update_profile(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if body.display_name is not None:
+        candidate = body.display_name.strip()
+        if not _DISPLAY_NAME_RE.match(candidate):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Display name must be 2–30 chars and contain only "
+                    "letters, digits, spaces, _, ., or - (no @ or other "
+                    "punctuation)."
+                ),
+            )
+        # Only check uniqueness if the lower-cased value actually changes —
+        # users renaming with different casing of their own name (e.g.
+        # "peyton" → "Peyton") should succeed without tripping the
+        # collision check against themselves.
+        if candidate.lower() != (user.display_name or "").lower():
+            collision = (await db.execute(
+                select(User.id).where(
+                    _func.lower(User.display_name) == candidate.lower(),
+                    User.id != user_id,
+                )
+            )).scalar_one_or_none()
+            if collision is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="That display name is taken.",
+                )
+        user.display_name = candidate
 
     if body.bio is not None:
         user.bio = body.bio.strip()[:300] or None  # max 300 chars, empty → null
@@ -514,4 +560,9 @@ async def update_profile(
             user.image_url = None  # empty string → clear back to Google photo
 
     await db.commit()
-    return {"ok": True, "bio": user.bio, "image_url": user.image_url}
+    return {
+        "ok": True,
+        "display_name": user.display_name,
+        "bio": user.bio,
+        "image_url": user.image_url,
+    }

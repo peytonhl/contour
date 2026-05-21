@@ -28,6 +28,12 @@ class User(Base):
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     pinned_album_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array of up to 4 Spotify album IDs
+    # Per-notification-type push opt-outs as a JSON dict, e.g.
+    # {"follow": true, "upvote": false, "reply": true, "mention": true}.
+    # Missing keys = enabled. Null column = ALL enabled (the default for
+    # every user; only flips to JSON when the user explicitly opts out of
+    # something). See routers/notifications.py for the read/write API.
+    notification_prefs: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -51,6 +57,12 @@ class Review(Base):
     entity_type: Mapped[str] = mapped_column(String(16))
     entity_id: Mapped[str] = mapped_column(String(64), index=True)
     body: Mapped[str] = mapped_column(Text)
+    # JSON-encoded list of user IDs resolved from @-mention tokens in
+    # the body at write time. Stored explicitly so the frontend can
+    # render mention links + the notification fanout knows who to ping
+    # without having to re-parse on every read. Null / missing = no
+    # mentions. See migration z6a7b8c9d0e1.
+    mention_user_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -84,6 +96,9 @@ class ReviewReply(Base):
     review_id: Mapped[int] = mapped_column(Integer, index=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True)
     body: Mapped[str] = mapped_column(Text)
+    # Same shape as Review.mention_user_ids — JSON array of user IDs that
+    # this reply @-mentions. See migration z6a7b8c9d0e1.
+    mention_user_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Nullable: NULL = top-level reply (directly under the review). Non-null
     # points at another ReviewReply.id within the same review_id (validated
     # at the API layer). Indexed for fast tree-build queries.
@@ -148,12 +163,17 @@ class AnchorFetchStatus(Base):
 
 
 class Notification(Base):
-    """In-app notifications: follow, upvote, reply."""
+    """In-app notifications: follow, upvote, reply, mention.
+
+    `mention` notifications fire when another user @-tags the recipient in
+    a review or reply body. The fanout happens in routers/ratings.py via
+    services/mentions.py — see those for parsing + dedupe semantics.
+    """
     __tablename__ = "notifications"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True)   # recipient
-    type: Mapped[str] = mapped_column(String(16))                  # "follow" | "upvote" | "reply"
+    type: Mapped[str] = mapped_column(String(16))                  # "follow" | "upvote" | "reply" | "mention"
     actor_id: Mapped[str] = mapped_column(String(64))              # who triggered it
     review_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     entity_type: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
@@ -371,6 +391,33 @@ class BacklogItem(Base):
     entity_id: Mapped[str] = mapped_column(String(64), index=True)  # Spotify album or track ID
     added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class DeviceToken(Base):
+    """A push-notification device token registered by a logged-in user.
+
+    Tokens are written on app launch after permission grant (see the
+    frontend's PushPermissionGate) and looked up by services/push_sender.py
+    to fan a Notification out to every active device the recipient has
+    registered.
+
+    Stale tokens (Apple has rotated them, user uninstalled the app, etc.)
+    are detected lazily by APNs returning 410 Gone — the push sender
+    deletes those rows so future fanouts don't waste a request on them.
+
+    Token uniqueness is per-token (not per-user-token-pair) so an account
+    switch on a single device steals ownership cleanly: the second
+    register-token call wins via INSERT ... ON CONFLICT (token) → swap
+    user_id. See migration a7b8c9d0e1f2.
+    """
+    __tablename__ = "device_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    token: Mapped[str] = mapped_column(String(256), unique=True, index=True)
+    platform: Mapped[str] = mapped_column(String(16))  # "ios" | "android"
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class SearchEvent(Base):

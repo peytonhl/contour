@@ -24,6 +24,7 @@ function NotifIcon({ type }) {
   if (type === "follow") return <span style={{ fontSize: 18 }}>👤</span>;
   if (type === "upvote") return <span style={{ fontSize: 18 }}>▲</span>;
   if (type === "reply") return <span style={{ fontSize: 18 }}>💬</span>;
+  if (type === "mention") return <span style={{ fontSize: 18 }}>@</span>;
   return null;
 }
 
@@ -32,6 +33,7 @@ function notifText(n) {
   if (n.type === "follow") return <><strong>{name}</strong> started following you</>;
   if (n.type === "upvote") return <><strong>{name}</strong> upvoted your review</>;
   if (n.type === "reply") return <><strong>{name}</strong> replied to your review</>;
+  if (n.type === "mention") return <><strong>{name}</strong> mentioned you</>;
   return null;
 }
 

@@ -15,6 +15,7 @@ from routers.auth import optional_user_id
 from routers.moderation import blocked_user_ids
 from routers.notifications import create_notification
 from services import spotify
+from services import mentions as _mentions
 
 SPOTIFY_ID_RE = re.compile(r'^[A-Za-z0-9]{22}$')
 VALID_ENTITY_TYPES = {"album", "track", "artist"}
@@ -132,8 +133,15 @@ async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None
     )).all()
     reply_counts = {row[0]: row[1] for row in reply_rows}
 
-    # Batch: users
-    user_ids = list({r.user_id for r in reviews})
+    # Batch: users (authors + mentioned users). Combining the two avoids a
+    # second round-trip when reviews mention each other's authors.
+    mention_ids_per_review: dict[int, list[str]] = {
+        r.id: _mentions.load_ids(r.mention_user_ids) for r in reviews
+    }
+    all_mentioned: set[str] = set()
+    for ids in mention_ids_per_review.values():
+        all_mentioned.update(ids)
+    user_ids = list({r.user_id for r in reviews} | all_mentioned)
     user_objs = (await db.execute(
         select(User).where(User.id.in_(user_ids))
     )).scalars().all()
@@ -167,6 +175,17 @@ async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None
         # the two `default=datetime.utcnow` columns at insert time. 2s is well
         # above that skew and well below any real edit's response loop.
         edited = (rev.updated_at - rev.created_at).total_seconds() > 2
+        # Resolve mention IDs → {id, display_name} pairs the frontend can
+        # use to render @-tokens as links without a follow-up lookup. Drop
+        # any ID that no longer resolves to a user (deletion or mid-flight
+        # rename collision) so the renderer can fall back to plain text.
+        mentions_out = []
+        for mid in mention_ids_per_review.get(rev.id, []):
+            mu = user_map.get(mid)
+            if mu is None:
+                continue
+            mentions_out.append({"id": mu.id, "display_name": mu.display_name})
+
         out.append({
             "id": rev.id,
             "entity_type": rev.entity_type,
@@ -180,6 +199,7 @@ async def _enrich_reviews(reviews, db, user_id, entity_type=None, entity_id=None
             "downvotes": down,
             "user_vote": user_vote_map.get(rev.id),
             "replies_count": reply_counts.get(rev.id, 0),
+            "mentions": mentions_out,
             "_controversial": _controversial_score(up, down),
             "user": {
                 "id": rev.user_id,
@@ -433,14 +453,56 @@ async def upsert_review(
         )
     )).scalar_one_or_none()
 
+    body_text = body.body.strip()
+
+    # Resolve @-mentions BEFORE we know the review id so we can persist the
+    # ID list alongside the body and fire one notification per mentioned
+    # user once the commit lands. Self-mentions are filtered out by the
+    # resolver so users can't @ themselves into a notification.
+    mention_ids = await _mentions.resolve_mentions(
+        db, body_text, exclude_user_id=user_id
+    )
+
+    # Diff against the previous mention set so an edit only notifies the
+    # NEWLY added mentions, not everyone who was tagged in earlier versions.
+    prior_mention_ids: set[str] = set()
     if existing_review:
-        existing_review.body = body.body.strip()
+        prior_mention_ids = set(
+            _mentions.load_ids(existing_review.mention_user_ids)
+        )
+
+    if existing_review:
+        existing_review.body = body_text
         existing_review.updated_at = datetime.utcnow()
+        existing_review.mention_user_ids = _mentions.dump_ids(mention_ids)
         review = existing_review
     else:
-        review = Review(user_id=user_id, entity_type=entity_type,
-                        entity_id=entity_id, body=body.body.strip())
+        review = Review(
+            user_id=user_id, entity_type=entity_type,
+            entity_id=entity_id, body=body_text,
+            mention_user_ids=_mentions.dump_ids(mention_ids),
+        )
         db.add(review)
+        # Flush so review.id is populated for the notification's review_id
+        # FK without ending the transaction.
+        await db.flush()
+
+    # Fire one "mention" notification per newly-mentioned user. We use the
+    # existing create_notification helper so the same fanout path (and
+    # later, the push pipeline from feature 2) catches mentions for free.
+    for muid in mention_ids:
+        if muid in prior_mention_ids:
+            continue
+        await create_notification(
+            db,
+            user_id=muid,
+            type="mention",
+            actor_id=user_id,
+            review_id=review.id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+        )
+
     await db.commit()
     # Return the review id so the For You / Discover flow can open the
     # CardPreviewModal directly on the just-posted review without an
@@ -842,26 +904,45 @@ async def get_replies(
         if not replies:
             return []
 
-    user_ids = list({r.user_id for r in replies})
+    # Combine reply authors with @-mentioned users so the response carries
+    # both display names + IDs for mention-link rendering without a second
+    # round-trip.
+    mention_ids_per_reply: dict[int, list[str]] = {
+        r.id: _mentions.load_ids(r.mention_user_ids) for r in replies
+    }
+    all_mentioned: set[str] = set()
+    for ids in mention_ids_per_reply.values():
+        all_mentioned.update(ids)
+    user_ids = list({r.user_id for r in replies} | all_mentioned)
     users = (await db.execute(
         select(User).where(User.id.in_(user_ids))
     )).scalars().all()
     user_map = {u.id: u for u in users}
 
-    return [{
-        "id": r.id,
-        "body": r.body,
-        # NULL = top-level reply under the review; non-null = threaded reply
-        # pointing at another reply in the same review. Frontend uses this to
-        # build the tree client-side.
-        "parent_reply_id": r.parent_reply_id,
-        "created_at": r.created_at.isoformat() + "Z",
-        "user": {
-            "id": r.user_id,
-            "display_name": user_map[r.user_id].display_name if r.user_id in user_map else "Unknown",
-            "image_url": user_map[r.user_id].image_url if r.user_id in user_map else None,
-        },
-    } for r in replies]
+    out = []
+    for r in replies:
+        mentions_out = []
+        for mid in mention_ids_per_reply.get(r.id, []):
+            mu = user_map.get(mid)
+            if mu is None:
+                continue
+            mentions_out.append({"id": mu.id, "display_name": mu.display_name})
+        out.append({
+            "id": r.id,
+            "body": r.body,
+            # NULL = top-level reply under the review; non-null = threaded reply
+            # pointing at another reply in the same review. Frontend uses this to
+            # build the tree client-side.
+            "parent_reply_id": r.parent_reply_id,
+            "created_at": r.created_at.isoformat() + "Z",
+            "mentions": mentions_out,
+            "user": {
+                "id": r.user_id,
+                "display_name": user_map[r.user_id].display_name if r.user_id in user_map else "Unknown",
+                "image_url": user_map[r.user_id].image_url if r.user_id in user_map else None,
+            },
+        })
+    return out
 
 
 @router.post("/reviews/{review_id}/reply")
@@ -890,11 +971,22 @@ async def post_reply(
         if not parent or parent.review_id != review_id:
             raise HTTPException(status_code=400, detail="Invalid parent_reply_id")
 
+    body_text = body.body.strip()
+
+    # Resolve @-mentions in the reply body. Same pattern as upsert_review —
+    # self-mentions are filtered by the resolver. Reply mentions fire the
+    # same "mention" notification type so the recipient sees both forms in
+    # their notifications feed under a consistent label.
+    mention_ids = await _mentions.resolve_mentions(
+        db, body_text, exclude_user_id=user_id
+    )
+
     db.add(ReviewReply(
         review_id=review_id,
         user_id=user_id,
-        body=body.body.strip(),
+        body=body_text,
         parent_reply_id=body.parent_reply_id,
+        mention_user_ids=_mentions.dump_ids(mention_ids),
     ))
     # Notify the review author for top-level replies; for threaded replies
     # notify the parent reply's author instead so the right person hears
@@ -905,6 +997,23 @@ async def post_reply(
     if notify_user_id != user_id:
         await create_notification(db, user_id=notify_user_id, type="reply",
                                   actor_id=user_id, review_id=review_id)
+
+    # Fire one "mention" per @-tagged user. Skip the recipient who's
+    # already getting a "reply" notification — they'd otherwise get two
+    # pings for the same action.
+    for muid in mention_ids:
+        if muid == notify_user_id:
+            continue
+        await create_notification(
+            db,
+            user_id=muid,
+            type="mention",
+            actor_id=user_id,
+            review_id=review_id,
+            entity_type=review.entity_type,
+            entity_id=review.entity_id,
+        )
+
     await db.commit()
     return {"ok": True}
 
