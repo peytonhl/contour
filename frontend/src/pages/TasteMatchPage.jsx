@@ -208,7 +208,32 @@ export function TasteMatchPage() {
   const fileName = `contour-taste-match-${viewer.id}-${other.id}.png`;
 
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 16px 80px" }}>
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "20px 16px 80px" }}>
+      {/* Back affordance — the page has no global back affordance in the
+          Layout header on mobile (only the notifications bell), so users
+          landing here from /user/{id} or from a deep link had no exit.
+          navigate(-1) walks one entry back in history; on a deep-link
+          entry with no history we fall back to /friends since that's the
+          most sensible "where I came from" given the comparison surface. */}
+      <button
+        onClick={() => {
+          if (window.history.length > 1) navigate(-1);
+          else navigate("/friends");
+        }}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: "transparent", border: "none",
+          color: "var(--text-muted)", fontSize: 14,
+          padding: "8px 4px", marginBottom: 12,
+          cursor: "pointer",
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        Back
+      </button>
+
       {/* Head-to-head hero */}
       <div
         style={{

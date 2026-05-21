@@ -2,14 +2,26 @@
 //
 // /api/og/taste-match?viewer=<user_id>&other=<user_id>
 //
-// Design v2 (2026-05-20): rebalanced after the user reported v1 felt
-// avatar-heavy and the music content was tiny. Avatars shrunk to 120px;
-// album covers grow to 220×220 as the visual heroes (it's a music app —
-// MUSIC should be the hero, not the faces). Inline SVG star icon
-// replaces the Unicode ★ (Instrument Serif doesn't include U+2605, same
-// missing-glyph tofu as the review card). Each text element gets an
-// explicit `display: flex` because Satori's layout is undefined
-// without it.
+// Design v3 (2026-05-21): retooled to mirror the actual /taste-match/:id
+// page layout. Drops the heavy "Contour / TASTE MATCH" top bar (the page
+// has neither — it lets the avatars + stat speak), bumps the avatars to
+// 140px with thicker rings for visual weight, and rebuilds HighlightCard
+// to match the page's EntityCard:
+//
+//   ┌──────────────────────────────────────────┐
+//   │ BIGGEST AGREEMENT   (tint bg header bar) │
+//   ├──────────────────────────────────────────┤
+//   │ [img]  Title                             │
+//   │  180   Artist                            │
+//   │        N ratings on Contour              │
+//   ├──────────────────────────────────────────┤
+//   │ Viewer  3.0★  |  3.0★ apart  |  3.0★  Other │
+//   └──────────────────────────────────────────┘
+//
+// Brand identifier is a small footer "Contour" wordmark at the bottom.
+// Inline SVG star icon kept (Instrument Serif lacks U+2605). Each text
+// element retains explicit `display: flex` because Satori's layout is
+// undefined without it.
 
 import { ImageResponse } from '@vercel/og';
 
@@ -62,22 +74,30 @@ function StarIcon({ size = 28, color = GOLD }: { size?: number; color?: string }
   );
 }
 
-// One of the two big bottom cards. Album cover dominates; minimal text.
+// One of the two bottom cards. Mirrors frontend/src/pages/TasteMatchPage.jsx
+// EntityCard structure: tinted section-header bar on top, image-left +
+// meta-right body, footer with viewer rating | subline | other rating.
 function HighlightCard({
   kind,
   item,
+  viewerName,
+  otherName,
 }: {
   kind: 'agreement' | 'fight';
   item: any;
+  viewerName: string;
+  otherName: string;
 }) {
   const tint = kind === 'agreement' ? GOLD : ACCENT;
-  const heading = kind === 'agreement' ? 'Common ground' : 'Great divide';
+  const heading = kind === 'agreement' ? 'Biggest agreement' : 'Biggest fight';
 
-  // Build the rating-summary string + star color. For agreement we render
-  // ONE star + the shared rating; for a fight we render two ratings split
-  // by a separator.
   const aRating = Number(item.viewer_rating).toFixed(1);
   const bRating = Number(item.other_rating).toFixed(1);
+  const diff = Math.abs(Number(item.viewer_rating) - Number(item.other_rating)).toFixed(1);
+  const subline = kind === 'agreement'
+    ? `Both ${aRating}★`
+    : `${diff}★ apart`;
+  const totalRatings = item.total_ratings ?? 0;
 
   return (
     <div
@@ -87,89 +107,131 @@ function HighlightCard({
         flexDirection: 'column',
         background: SURFACE,
         border: `1px solid ${BORDER}`,
-        borderRadius: 20,
+        borderRadius: 16,
         overflow: 'hidden',
-        padding: 24,
-        gap: 16,
       }}
     >
-      {/* Section label */}
+      {/* Section header bar — same eyebrow shape as the page's
+          EntityCard: uppercase + tracked + tint color, with the tint
+          also tinging the background at low alpha for visual weight. */}
       <div
         style={{
           display: 'flex',
+          padding: '14px 22px',
           fontSize: 18,
           fontWeight: 700,
-          letterSpacing: '0.14em',
+          letterSpacing: '0.10em',
           color: tint,
           textTransform: 'uppercase',
+          borderBottom: `1px solid ${BORDER}`,
+          background: kind === 'agreement'
+            ? 'rgba(245, 158, 11, 0.08)'
+            : 'rgba(217, 122, 59, 0.08)',
         }}
       >
         {heading}
       </div>
 
-      {/* Album cover — the hero of each card */}
-      <div
-        style={{
-          display: 'flex',
-          width: 220,
-          height: 220,
-          borderRadius: 10,
-          overflow: 'hidden',
-          backgroundColor: '#1a1a1d',
-          alignSelf: 'center',
-        }}
-      >
-        {item.image_url && (
-          <img src={item.image_url} width={220} height={220} style={{ objectFit: 'cover' }} />
-        )}
+      {/* Body: album cover LEFT, title/artist/rating-count RIGHT. */}
+      <div style={{ display: 'flex', padding: 22, gap: 20 }}>
+        <div
+          style={{
+            display: 'flex',
+            width: 180,
+            height: 180,
+            borderRadius: 8,
+            overflow: 'hidden',
+            backgroundColor: '#1a1a1d',
+            flexShrink: 0,
+          }}
+        >
+          {item.image_url && (
+            <img src={item.image_url} width={180} height={180} style={{ objectFit: 'cover' }} />
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, justifyContent: 'center', gap: 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              fontFamily: 'Instrument Serif',
+              fontSize: 32,
+              lineHeight: 1.1,
+              color: TEXT,
+            }}
+          >
+            {truncate(item.name, 22)}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              fontSize: 20,
+              color: MUTED,
+            }}
+          >
+            {truncate((item.artists || []).join(', '), 26)}
+          </div>
+          {totalRatings > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                fontSize: 16,
+                color: MUTED,
+                marginTop: 4,
+              }}
+            >
+              {totalRatings} {totalRatings === 1 ? 'rating' : 'ratings'} on Contour
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Track / album title */}
-      <div
-        style={{
-          display: 'flex',
-          fontFamily: 'Instrument Serif',
-          fontSize: 30,
-          lineHeight: 1.1,
-          color: TEXT,
-        }}
-      >
-        {truncate(item.name, 28)}
-      </div>
-
-      {/* Artist */}
-      <div
-        style={{
-          display: 'flex',
-          fontSize: 20,
-          color: MUTED,
-          marginTop: -8,
-        }}
-      >
-        {truncate((item.artists || []).join(', '), 26)}
-      </div>
-
-      {/* Rating row — anchored to the bottom */}
+      {/* Footer: viewer rating | subline | other rating — same triptych
+          as the page's EntityCard footer. The middle slot reads as an
+          eyebrow / verdict; the side slots own each user's number. */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 10,
-          marginTop: 'auto',
-          paddingTop: 12,
+          justifyContent: 'space-between',
+          padding: '16px 22px',
           borderTop: `1px solid ${BORDER}`,
+          background: '#101013',
         }}
       >
-        <StarIcon size={24} color={tint} />
-        {kind === 'agreement' ? (
-          <div style={{ display: 'flex', fontSize: 22, color: TEXT, fontWeight: 700 }}>
-            Both {aRating}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+          <div style={{ display: 'flex', fontSize: 14, color: MUTED }}>
+            {truncate(viewerName, 14)}
           </div>
-        ) : (
-          <div style={{ display: 'flex', fontSize: 22, color: TEXT, fontWeight: 700 }}>
-            {aRating} <span style={{ display: 'flex', color: MUTED, padding: '0 8px' }}>vs</span> {bRating}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', fontSize: 24, color: ACCENT, fontWeight: 700, fontFamily: 'Instrument Serif' }}>
+              {aRating}
+            </div>
+            <StarIcon size={20} color={ACCENT} />
           </div>
-        )}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            fontSize: 16,
+            fontWeight: 700,
+            color: tint,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {subline}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+          <div style={{ display: 'flex', fontSize: 14, color: MUTED }}>
+            {truncate(otherName, 14)}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', fontSize: 24, color: ACCENT_B, fontWeight: 700, fontFamily: 'Instrument Serif' }}>
+              {bRating}
+            </div>
+            <StarIcon size={20} color={ACCENT_B} />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -215,122 +277,95 @@ export default async function handler(request: Request) {
           flexDirection: 'column',
           backgroundColor: BG,
           color: TEXT,
-          padding: '40px 50px',
-          gap: 22,
+          padding: '60px 60px 40px',
+          gap: 28,
         }}
       >
-        {/* Top bar — wordmark + eyebrow */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{
-            display: 'flex',
-            fontFamily: 'Instrument Serif',
-            fontSize: 64,
-            letterSpacing: '-0.02em',
-            color: TEXT,
-            lineHeight: 1,
-          }}>
-            Contour
-          </div>
-          <div style={{
-            display: 'flex',
-            fontSize: 22,
-            color: MUTED,
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            fontWeight: 600,
-          }}>
-            Taste Match
-          </div>
-        </div>
-
-        {/* Head-to-head — avatars smaller than v1 so they don't compete
-            with the album covers for visual hierarchy. */}
+        {/* Head-to-head — the page's hero. No "Contour / TASTE MATCH"
+            bar above it; we keep brand in a small footer below so the
+            avatars + stat get full visual weight, matching the page. */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 36,
+            gap: 44,
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
             <div
               style={{
                 display: 'flex',
-                width: 120,
-                height: 120,
+                width: 140,
+                height: 140,
                 borderRadius: '50%',
                 overflow: 'hidden',
-                border: `3px solid ${ACCENT}`,
+                border: `4px solid ${ACCENT}`,
                 background: SURFACE,
               }}
             >
-              <img src={avatarUrl(data.viewer, 256)} width={120} height={120} style={{ objectFit: 'cover' }} />
+              <img src={avatarUrl(data.viewer, 280)} width={140} height={140} style={{ objectFit: 'cover' }} />
             </div>
-            <div style={{ display: 'flex', fontSize: 22, color: TEXT, fontWeight: 600 }}>
+            <div style={{ display: 'flex', fontSize: 26, color: TEXT, fontWeight: 600 }}>
               {viewerName}
             </div>
           </div>
 
+          {/* "vs" — italic serif, same as the page. Anchor it slightly
+              upward so it visually sits between the avatars, not the
+              names. */}
           <div
             style={{
               display: 'flex',
               fontFamily: 'Instrument Serif',
               fontStyle: 'italic',
-              fontSize: 44,
+              fontSize: 52,
               color: MUTED,
               alignSelf: 'flex-start',
-              marginTop: 36,
+              marginTop: 52,
             }}
           >
             vs
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
             <div
               style={{
                 display: 'flex',
-                width: 120,
-                height: 120,
+                width: 140,
+                height: 140,
                 borderRadius: '50%',
                 overflow: 'hidden',
-                border: `3px solid ${ACCENT_B}`,
+                border: `4px solid ${ACCENT_B}`,
                 background: SURFACE,
               }}
             >
-              <img src={avatarUrl(data.other, 256)} width={120} height={120} style={{ objectFit: 'cover' }} />
+              <img src={avatarUrl(data.other, 280)} width={140} height={140} style={{ objectFit: 'cover' }} />
             </div>
-            <div style={{ display: 'flex', fontSize: 22, color: TEXT, fontWeight: 600 }}>
+            <div style={{ display: 'flex', fontSize: 26, color: TEXT, fontWeight: 600 }}>
               {otherName}
             </div>
           </div>
         </div>
 
-        {/* Stat hero — Satori's React Fragment handling broke the column
-            stacking in v2 (the % and subline rendered side-by-side
-            despite the parent's flexDirection:column). Wrapping the
-            conditional content in a single explicit div with its own
-            flex column ensures the children stack reliably. */}
+        {/* Stat hero — wrap conditional in a single explicit flex column
+            (Satori's React Fragment handling can collapse stacking
+            otherwise). The fontSize echoes the page's 88px scaled up
+            to the 1080-wide canvas. */}
         {sharedCount > 0 ? (
           <div
             style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 6,
+              gap: 10,
             }}
           >
             <div
               style={{
                 display: 'flex',
                 fontFamily: 'Instrument Serif',
-                fontSize: 160,
+                fontSize: 170,
                 color: TEXT,
                 lineHeight: 1,
                 fontVariantNumeric: 'tabular-nums',
@@ -342,13 +377,13 @@ export default async function handler(request: Request) {
             <div
               style={{
                 display: 'flex',
-                fontSize: 20,
+                fontSize: 22,
                 color: MUTED,
                 letterSpacing: '0.16em',
                 textTransform: 'uppercase',
               }}
             >
-              Match · {agreementCount} of {sharedCount} shared
+              Agreement on {agreementCount} of {sharedCount} shared ratings
             </div>
           </div>
         ) : (
@@ -357,6 +392,7 @@ export default async function handler(request: Request) {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
+              padding: '20px 0',
             }}
           >
             <div
@@ -373,27 +409,51 @@ export default async function handler(request: Request) {
           </div>
         )}
 
-        {/* Highlight cards — album covers are 220×220, the visual hero
-            of each card. No marginTop:auto — v2 had it which left a 300px
-            void between the stat hero and the cards on the 1080-tall
-            canvas. Letting the cards flow naturally with the parent's
-            gap keeps the composition tight. */}
+        {/* Highlight cards — restyled to match the page's EntityCard.
+            Stacked vertically on the canvas just like the page (instead
+            of side-by-side) so each card has room for the labeled
+            header + image-left/meta-right body + bottom rating triptych
+            without cramping. */}
+        {(data.biggest_agreement || data.biggest_fight) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {data.biggest_agreement && (
+              <HighlightCard
+                kind="agreement"
+                item={data.biggest_agreement}
+                viewerName={viewerName}
+                otherName={otherName}
+              />
+            )}
+            {data.biggest_fight && (
+              <HighlightCard
+                kind="fight"
+                item={data.biggest_fight}
+                viewerName={viewerName}
+                otherName={otherName}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Footer wordmark — small + bottom-anchored so the brand is
+            present without competing with the head-to-head. */}
         <div
           style={{
             display: 'flex',
-            gap: 22,
+            justifyContent: 'center',
+            marginTop: 'auto',
           }}
         >
-          {data.biggest_agreement ? (
-            <HighlightCard kind="agreement" item={data.biggest_agreement} />
-          ) : (
-            <div style={{ flex: 1, display: 'flex' }} />
-          )}
-          {data.biggest_fight ? (
-            <HighlightCard kind="fight" item={data.biggest_fight} />
-          ) : (
-            <div style={{ flex: 1, display: 'flex' }} />
-          )}
+          <div style={{
+            display: 'flex',
+            fontFamily: 'Instrument Serif',
+            fontSize: 36,
+            letterSpacing: '-0.02em',
+            color: MUTED,
+            lineHeight: 1,
+          }}>
+            Contour
+          </div>
         </div>
       </div>
     ),
