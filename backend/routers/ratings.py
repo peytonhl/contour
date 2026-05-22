@@ -823,9 +823,20 @@ async def delete_review(
 async def list_reviews(
     entity_type: str, entity_id: str,
     sort: str = Query("recent", pattern="^(recent|top|controversial)$"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
 ):
+    """List reviews on an entity. Paginated by `limit` + `offset` over the
+    sort-applied result set — i.e., sort runs on the full pool BEFORE the
+    slice, so "top" / "controversial" remain stable across pages and a
+    given review keeps its rank as the user requests more pages.
+
+    Response shape is `{items, has_more, total}`. Previously bare list;
+    callers must read .items now. Capacitor live-update model means the
+    shape change reaches every client when the new bundle is loaded.
+    """
     reviews = (await db.execute(
         select(Review).where(
             Review.entity_type == entity_type,
@@ -851,7 +862,14 @@ async def list_reviews(
     # Remove internal sort key
     for r in out:
         r.pop("_controversial", None)
-    return out
+
+    total = len(out)
+    page = out[offset:offset + limit]
+    return {
+        "items": page,
+        "has_more": offset + limit < total,
+        "total": total,
+    }
 
 
 @router.post("/reviews/{review_id}/vote")
@@ -985,24 +1003,45 @@ async def vote_reply(
 @router.get("/reviews/{review_id}/replies")
 async def get_replies(
     review_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
 ):
-    replies = (await db.execute(
+    """List replies on a review. Paginated by `limit` + `offset` over the
+    chronologically-ordered (created_at asc) result set. Default page size
+    is 50 — bigger than the review page because each reply is a much
+    smaller payload than a parent review row.
+
+    Response shape: `{items, has_more, total}`. Frontend's buildReplyTree
+    handles cases where a reply's parent is in a not-yet-loaded page — the
+    orphan re-roots as a top-level reply so the thread still renders
+    instead of dropping rows.
+
+    Block filtering applies BEFORE pagination so a viewer never sees
+    blocked-user replies counted toward their page total.
+    """
+    all_replies = (await db.execute(
         select(ReviewReply)
         .where(ReviewReply.review_id == review_id)
         .order_by(ReviewReply.created_at.asc())
     )).scalars().all()
 
-    if not replies:
-        return []
+    if not all_replies:
+        return {"items": [], "has_more": False, "total": 0}
 
     # Hide replies from users the viewer has blocked.
     blocked = await blocked_user_ids(db, user_id)
     if blocked:
-        replies = [r for r in replies if r.user_id not in blocked]
-        if not replies:
-            return []
+        all_replies = [r for r in all_replies if r.user_id not in blocked]
+        if not all_replies:
+            return {"items": [], "has_more": False, "total": 0}
+
+    total = len(all_replies)
+    replies = all_replies[offset:offset + limit]
+    has_more = offset + limit < total
+    if not replies:
+        return {"items": [], "has_more": has_more, "total": total}
 
     # Batch-fetch all reply votes for this thread in one query. Aggregating
     # to {reply_id: {up, down}} client-side keeps this proportional to the
@@ -1067,7 +1106,7 @@ async def get_replies(
                 "image_url": user_map[r.user_id].image_url if r.user_id in user_map else None,
             },
         })
-    return out
+    return {"items": out, "has_more": has_more, "total": total}
 
 
 @router.post("/reviews/{review_id}/reply")

@@ -113,14 +113,20 @@ export const api = {
         ? { body, value, mention_user_ids: mentionUserIds }
         : { body, value }),
   deleteReview: (reviewId) => del(`/ratings/reviews/${reviewId}`),
-  getReviews: (entityType, entityId, sort = "recent") => request(`/ratings/${entityType}/${entityId}/reviews?sort=${sort}`),
+  // Reviews are paginated: response shape is { items, has_more, total }.
+  // Default page size on the server is 20 (max 100). Sort runs over the
+  // full pool before slicing so ranks stay stable across pages.
+  getReviews: (entityType, entityId, sort = "recent", limit = 20, offset = 0) =>
+    request(`/ratings/${entityType}/${entityId}/reviews?sort=${sort}&limit=${limit}&offset=${offset}`),
   voteReview: (reviewId, value) => post(`/ratings/reviews/${reviewId}/vote`, { value }),
   // Vote on a sub-comment. Same toggle/switch/create semantics as voteReview,
   // but writes to a separate table on the backend so reply votes never feed
   // into the parent review's controversial-sort score.
   voteReply: (reviewId, replyId, value) =>
     post(`/ratings/reviews/${reviewId}/replies/${replyId}/vote`, { value }),
-  getReplies: (reviewId) => request(`/ratings/reviews/${reviewId}/replies`),
+  // Replies paginated too: { items, has_more, total }. Default 50 per page.
+  getReplies: (reviewId, limit = 50, offset = 0) =>
+    request(`/ratings/reviews/${reviewId}/replies?limit=${limit}&offset=${offset}`),
   // parent_reply_id is optional — when set, the reply is threaded under
   // another reply (Reddit-style). Null/omitted = top-level reply on the
   // review itself.

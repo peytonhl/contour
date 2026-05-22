@@ -100,7 +100,7 @@ export function NotificationsPage() {
               >
                 {/* Actor avatar */}
                 {n.actor?.image_url
-                  ? <img src={n.actor.image_url} alt={n.actor.display_name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                  ? <img src={n.actor.image_url} alt={n.actor.display_name} loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                   : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <NotifIcon type={n.type} />
                     </div>

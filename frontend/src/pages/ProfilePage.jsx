@@ -41,7 +41,7 @@ function ListCollage({ images }) {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 52, height: 52, borderRadius: "var(--radius-md)", overflow: "hidden", flexShrink: 0 }}>
       {slots.map((i) =>
         images[i]
-          ? <img key={i} src={images[i]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ? <img key={i} src={images[i]} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           : <div key={i} style={{ background: "var(--surface2)" }} />
       )}
     </div>
@@ -926,7 +926,7 @@ export function ProfilePage() {
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}
               >
                 {u.image_url
-                  ? <img src={u.image_url} alt={u.display_name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                  ? <img src={u.image_url} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                   : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
                 }
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{u.display_name}</span>
@@ -949,7 +949,7 @@ export function ProfilePage() {
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}
               >
                 {u.image_url
-                  ? <img src={u.image_url} alt={u.display_name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                  ? <img src={u.image_url} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                   : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
                 }
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{u.display_name}</span>

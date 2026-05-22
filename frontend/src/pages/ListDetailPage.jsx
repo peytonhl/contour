@@ -279,7 +279,7 @@ export function ListDetailPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <Link to={`/user/${list.owner?.id}`} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", alignSelf: "flex-start" }}>
           {list.owner?.image_url
-            ? <img src={list.owner.image_url} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
+            ? <img src={list.owner.image_url} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
             : <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--surface2)" }} />
           }
           <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>{list.owner?.display_name}</span>

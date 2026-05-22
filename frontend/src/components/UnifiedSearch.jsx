@@ -107,7 +107,7 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
         // Selected state — show badge
         <div style={{ ...styles.selectedBadge, borderColor: accentColor + "66" }}>
           {selected.image_url
-            ? <img src={selected.image_url} alt="" style={{ width: 32, height: 32, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+            ? <img src={selected.image_url} alt="" loading="lazy" decoding="async" style={{ width: 32, height: 32, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
             : <div style={{ width: 32, height: 32, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
           }
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -162,7 +162,7 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
                       onMouseDown={() => handleSelect({ ...album, _type: "album" })}
                     >
                       {album.image_url
-                        ? <img src={album.image_url} alt="" style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                        ? <img src={album.image_url} alt="" loading="lazy" decoding="async" style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
                         : <div style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                       }
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -192,7 +192,7 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
                       onMouseDown={() => handleSelect({ ...track, _type: "track" })}
                     >
                       {track.image_url
-                        ? <img src={track.image_url} alt="" style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                        ? <img src={track.image_url} alt="" loading="lazy" decoding="async" style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
                         : <div style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                       }
                       <div style={{ flex: 1, minWidth: 0 }}>

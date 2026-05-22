@@ -115,7 +115,7 @@ function AlbumSlot({ album, isOwner, onClick, onRemove }) {
     >
       <Link to={`/album/${album.id}`}>
         {album.image_url
-          ? <img src={album.image_url} alt={album.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ? <img src={album.image_url} alt={album.name} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : <div style={{ width: "100%", height: "100%", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
         }
       </Link>
@@ -292,7 +292,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                     borderRadius: "var(--radius-xl)", padding: "5px 10px 5px 6px",
                   }}>
                     {p.image_url && (
-                      <img src={p.image_url} alt="" style={{ width: 22, height: 22, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />
+                      <img src={p.image_url} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />
                     )}
                     <span style={{ fontSize: 12, fontWeight: 700, color: ACCENT_A, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                     <button onClick={() => toggle(p)} aria-label="Remove pinned album" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
@@ -367,7 +367,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                   }}
                 >
                   {album.image_url
-                    ? <img src={album.image_url} alt={album.name} style={{ width: 60, height: 60, borderRadius: "var(--radius-md)", objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }} />
+                    ? <img src={album.image_url} alt={album.name} loading="lazy" decoding="async" style={{ width: 60, height: 60, borderRadius: "var(--radius-md)", objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }} />
                     : <div style={{ width: 60, height: 60, borderRadius: "var(--radius-md)", background: "var(--surface2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
                           <circle cx="12" cy="12" r="9" />

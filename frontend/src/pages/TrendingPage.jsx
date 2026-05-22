@@ -203,7 +203,7 @@ function RankedAlbumList({ items, startRank = 2, surface }) {
               {String(rank).padStart(2, "0")}
             </div>
             {it.image_url
-              ? <img src={it.image_url} alt="" style={{ width: 56, height: 56, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+              ? <img src={it.image_url} alt="" loading="lazy" decoding="async" style={{ width: 56, height: 56, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
               : <div style={{ width: 56, height: 56, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
             }
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -263,7 +263,7 @@ function HorizontalAlbumShelf({ items, surface }) {
           }}
         >
           {it.image_url
-            ? <img src={it.image_url} alt={it.name ?? ""} style={{ width: 148, height: 148, borderRadius: "var(--radius-md)", objectFit: "cover" }} />
+            ? <img src={it.image_url} alt={it.name ?? ""} loading="lazy" decoding="async" style={{ width: 148, height: 148, borderRadius: "var(--radius-md)", objectFit: "cover" }} />
             : <div style={{ width: 148, height: 148, borderRadius: "var(--radius-md)", background: "var(--surface2)" }} />
           }
           <div style={{
@@ -311,7 +311,7 @@ function ReviewList({ items, surface }) {
             }}
           >
             {target?.image_url
-              ? <img src={target.image_url} alt="" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+              ? <img src={target.image_url} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
               : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
             }
             <div style={{ flex: 1, minWidth: 0 }}>

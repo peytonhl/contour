@@ -195,7 +195,7 @@ function LeaderboardRow({ entry, sort, onCompare }) {
 
           {/* Art */}
           {entry.image_url
-            ? <img src={entry.image_url} alt={entry.name} style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+            ? <img src={entry.image_url} alt={entry.name} loading="lazy" decoding="async" style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
             : <div style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
           }
 

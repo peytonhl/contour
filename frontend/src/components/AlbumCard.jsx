@@ -110,7 +110,7 @@ export function AlbumCard({ meta, accentColor, enriching, detailLink }) {
     <div style={{ ...styles.card, borderColor: accentColor + "44" }}>
       <div style={styles.header}>
         {meta.image_url ? (
-          <img src={meta.image_url} alt={meta.name} style={styles.art} />
+          <img src={meta.image_url} alt={meta.name} loading="lazy" decoding="async" style={styles.art} />
         ) : (
           <div style={styles.artPlaceholder} />
         )}

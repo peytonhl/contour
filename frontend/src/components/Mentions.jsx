@@ -366,7 +366,7 @@ export function MentionInput({
               }}
             >
               {u.image_url
-                ? <img src={u.image_url} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
+                ? <img src={u.image_url} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
                 : <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--surface2)" }} />}
               <span style={{ fontSize: 13, fontWeight: 600 }}>{u.display_name}</span>
             </button>

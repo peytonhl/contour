@@ -131,7 +131,7 @@ function FeaturedCard({ item, type }) {
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; }}
     >
       {item.image_url
-        ? <img src={item.image_url} alt={item.name} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
+        ? <img src={item.image_url} alt={item.name} loading="lazy" decoding="async" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
         : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)" }} />
       }
       <div style={{ padding: "10px 12px", flex: 1 }}>
@@ -277,7 +277,7 @@ export function SearchPage() {
                       style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0, cursor: "pointer" }}
                     >
                       {item.image_url
-                        ? <img src={item.image_url} alt={item.name} style={{ width: 40, height: 40, borderRadius: (item._type === "artist" || item._type === "user") ? "50%" : 5, objectFit: "cover", flexShrink: 0 }} />
+                        ? <img src={item.image_url} alt={item.name} loading="lazy" decoding="async" style={{ width: 40, height: 40, borderRadius: (item._type === "artist" || item._type === "user") ? "50%" : 5, objectFit: "cover", flexShrink: 0 }} />
                         : <div style={{ width: 40, height: 40, borderRadius: (item._type === "artist" || item._type === "user") ? "50%" : 5, background: "var(--surface2)", flexShrink: 0 }} />
                       }
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -398,7 +398,7 @@ export function SearchPage() {
                 onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
               >
                 {item.image_url
-                  ? <img src={item.image_url} alt={item.name} style={{ width: 24, height: 24, borderRadius: item._type === "artist" ? "50%" : 4, objectFit: "cover", flexShrink: 0 }} />
+                  ? <img src={item.image_url} alt={item.name} loading="lazy" decoding="async" style={{ width: 24, height: 24, borderRadius: item._type === "artist" ? "50%" : 4, objectFit: "cover", flexShrink: 0 }} />
                   : <div style={{ width: 24, height: 24, borderRadius: item._type === "artist" ? "50%" : 4, background: "var(--surface2)", flexShrink: 0 }} />
                 }
                 <div style={{ textAlign: "left", minWidth: 0 }}>

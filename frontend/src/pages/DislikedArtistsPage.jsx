@@ -139,7 +139,7 @@ export function DislikedArtistsPage() {
                   onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                 >
                   {a.image_url
-                    ? <img src={a.image_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                    ? <img src={a.image_url} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                     : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
                   }
                   <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{a.name}</span>
@@ -192,7 +192,7 @@ export function DislikedArtistsPage() {
               }}>
                 <Link to={`/artist/${a.id}`} style={{ flexShrink: 0 }}>
                   {a.image_url
-                    ? <img src={a.image_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
+                    ? <img src={a.image_url} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
                     : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)" }} />
                   }
                 </Link>

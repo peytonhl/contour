@@ -191,7 +191,7 @@ export function SuggestedUser({ u, onFollow }) {
     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
       <Link to={`/user/${u.id}`} style={{ flexShrink: 0 }}>
         {u.image_url
-          ? <img src={u.image_url} alt={u.display_name} style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover" }} />
+          ? <img src={u.image_url} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover" }} />
           : <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--surface2)" }} />
         }
       </Link>

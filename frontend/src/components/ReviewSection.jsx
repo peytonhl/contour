@@ -218,7 +218,7 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
       <div style={{ display: "flex", gap: 10 }}>
         <Link to={`/user/${node.user.id}`} style={{ flexShrink: 0 }}>
           {node.user.image_url
-            ? <img src={node.user.image_url} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
+            ? <img src={node.user.image_url} alt="" loading="lazy" decoding="async" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
             : <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--surface2)" }} />
           }
         </Link>
@@ -316,8 +316,17 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
 // Exported so the Friends tab (FollowingTab.jsx) and Community tab
 // (GlobalReviewsFeed.jsx) render replies with the same UX as the
 // album-page review section.
+// Replies are paginated server-side too (default page size 50). On the
+// first expand we pull page 1; subsequent pages append via "Load more
+// replies." Server count (`total`) drives the visible "▾ N replies"
+// number so it stays accurate as new replies arrive even before any
+// pagination state shifts.
+const REPLIES_PAGE_SIZE = 50;
+
 export function ReplyThread({ reviewId, user, initialCount }) {
   const [flatReplies, setFlatReplies] = useState(null); // null = not loaded
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [expanded, setExpanded] = useState(false);
   // replyingTo: null = no form open, "root" = top-level reply form (replies
   // to the review itself), <id> = form is open under that specific reply.
@@ -327,9 +336,10 @@ export function ReplyThread({ reviewId, user, initialCount }) {
   const [reportingReplyId, setReportingReplyId] = useState(null);
 
   async function load() {
-    const data = await api.getReplies(reviewId);
-    setFlatReplies(data);
-    setCount(data.length);
+    const data = await api.getReplies(reviewId, REPLIES_PAGE_SIZE, 0);
+    setFlatReplies(data.items ?? []);
+    setHasMore(!!data.has_more);
+    setCount(data.total ?? (data.items?.length ?? 0));
     setExpanded(true);
   }
 
@@ -342,11 +352,32 @@ export function ReplyThread({ reviewId, user, initialCount }) {
     }
   }
 
+  async function loadMore() {
+    if (loadingMore || !hasMore || !flatReplies) return;
+    setLoadingMore(true);
+    try {
+      const next = await api.getReplies(reviewId, REPLIES_PAGE_SIZE, flatReplies.length);
+      setFlatReplies((prev) => {
+        const seen = new Set((prev ?? []).map((r) => r.id));
+        return [...(prev ?? []), ...(next.items ?? []).filter((r) => !seen.has(r.id))];
+      });
+      setHasMore(!!next.has_more);
+      setCount(next.total ?? count);
+    } catch {
+      // Silent — button stays for retry.
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   async function submitReply(parentReplyId, text, mentionUserIds) {
     await api.postReply(reviewId, text, parentReplyId, mentionUserIds);
-    const fresh = await api.getReplies(reviewId);
-    setFlatReplies(fresh);
-    setCount(fresh.length);
+    // Reload page 1 after a post — simpler than splicing the new row into
+    // the right position with the rest of the loaded pages intact.
+    const fresh = await api.getReplies(reviewId, REPLIES_PAGE_SIZE, 0);
+    setFlatReplies(fresh.items ?? []);
+    setHasMore(!!fresh.has_more);
+    setCount(fresh.total ?? (fresh.items?.length ?? 0));
     setExpanded(true);
     setReplyingTo(null);
   }
@@ -445,6 +476,23 @@ export function ReplyThread({ reviewId, user, initialCount }) {
         />
       ))}
 
+      {expanded && hasMore && (
+        <button
+          onClick={loadMore}
+          disabled={loadingMore}
+          style={{
+            marginTop: 10, marginLeft: 34,
+            padding: "6px 14px", fontSize: 12, fontWeight: 600,
+            background: "none", border: "1px solid var(--border)",
+            borderRadius: "var(--radius-xl)", color: "var(--text-muted)",
+            cursor: loadingMore ? "default" : "pointer",
+            opacity: loadingMore ? 0.6 : 1,
+          }}
+        >
+          {loadingMore ? "Loading…" : "Load more replies"}
+        </button>
+      )}
+
       <ReportModal
         open={reportingReplyId !== null}
         onClose={() => setReportingReplyId(null)}
@@ -490,7 +538,7 @@ function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Link to={`/user/${rev.user.id}`} style={{ flexShrink: 0 }}>
             {rev.user.image_url
-              ? <img src={rev.user.image_url} alt={rev.user.display_name} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
+              ? <img src={rev.user.image_url} alt={rev.user.display_name} loading="lazy" decoding="async" style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
               : <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
             }
           </Link>
@@ -599,9 +647,18 @@ function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+// Reviews are paginated server-side (default page size 20). State tracks the
+// loaded items, whether the server says there are more, the offset of the
+// next page to request, and a flag while we're fetching the next page. Sort
+// changes always reset to offset 0 because sort order can differ wildly
+// (recent vs top) and we'd otherwise show a confusing partial slice.
+const REVIEWS_PAGE_SIZE = 20;
+
 export function ReviewSection({ entityType, entityId, user }) {
   const [summary, setSummary] = useState(null);
   const [reviews, setReviews] = useState([]);
+  const [hasMoreReviews, setHasMoreReviews] = useState(false);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
   const [sort, setSort] = useState("recent");
   const [hover, setHover] = useState(null);
   const [selectedRating, setSelectedRating] = useState(null);
@@ -617,10 +674,11 @@ export function ReviewSection({ entityType, entityId, user }) {
   async function load(s = sort) {
     const [sum, revs] = await Promise.all([
       api.getRatingSummary(entityType, entityId),
-      api.getReviews(entityType, entityId, s),
+      api.getReviews(entityType, entityId, s, REVIEWS_PAGE_SIZE, 0),
     ]);
     setSummary(sum);
-    setReviews(revs);
+    setReviews(revs.items ?? []);
+    setHasMoreReviews(!!revs.has_more);
     if (sum.user_rating) setSelectedRating(sum.user_rating);
     // Always sync — clears local state when the user just deleted their
     // review so the textarea doesn't keep a stale draft.
@@ -629,12 +687,37 @@ export function ReviewSection({ entityType, entityId, user }) {
 
   useEffect(() => { load(); }, [entityType, entityId]);
 
-  // Reload reviews when sort changes (keep summary cached)
+  // Reload reviews when sort changes (keep summary cached). Always resets
+  // to offset 0 — see the comment on REVIEWS_PAGE_SIZE.
   useEffect(() => {
-    api.getReviews(entityType, entityId, sort)
-      .then(setReviews)
+    api.getReviews(entityType, entityId, sort, REVIEWS_PAGE_SIZE, 0)
+      .then((revs) => {
+        setReviews(revs.items ?? []);
+        setHasMoreReviews(!!revs.has_more);
+      })
       .catch(() => {});
   }, [sort]);
+
+  async function loadMoreReviews() {
+    if (loadingMoreReviews || !hasMoreReviews) return;
+    setLoadingMoreReviews(true);
+    try {
+      const next = await api.getReviews(entityType, entityId, sort, REVIEWS_PAGE_SIZE, reviews.length);
+      // Append-on-load. Filter by id so the optimistic-vote flow that may
+      // have edited an in-flight row in `reviews` doesn't get clobbered if
+      // the same row somehow appears in the next page (shouldn't happen
+      // with stable sort + offset, but defensive).
+      setReviews((prev) => {
+        const seen = new Set(prev.map((r) => r.id));
+        return [...prev, ...(next.items ?? []).filter((r) => !seen.has(r.id))];
+      });
+      setHasMoreReviews(!!next.has_more);
+    } catch {
+      // Silent — the button stays visible so the user can retry.
+    } finally {
+      setLoadingMoreReviews(false);
+    }
+  }
 
   async function handleStarClick(val) {
     if (!user) return;
@@ -702,8 +785,15 @@ export function ReviewSection({ entityType, entityId, user }) {
       ));
     } catch {
       // Server failed — refetch the row's authoritative state by reloading
-      // the whole reviews list. Cheap; vote failures should be rare.
-      api.getReviews(entityType, entityId, sort).then(setReviews).catch(() => {});
+      // the first page (cheap; vote failures should be rare). Don't try to
+      // restore the full pagination state — losing your scroll position is
+      // a small cost for the cleaner refetch path.
+      api.getReviews(entityType, entityId, sort, REVIEWS_PAGE_SIZE, 0)
+        .then((revs) => {
+          setReviews(revs.items ?? []);
+          setHasMoreReviews(!!revs.has_more);
+        })
+        .catch(() => {});
     }
   }
 
@@ -825,6 +915,22 @@ export function ReviewSection({ entityType, entityId, user }) {
               entityId={entityId}
             />
           ))}
+          {hasMoreReviews && (
+            <button
+              onClick={loadMoreReviews}
+              disabled={loadingMoreReviews}
+              style={{
+                marginTop: 12, alignSelf: "center",
+                padding: "8px 20px", fontSize: 13, fontWeight: 600,
+                background: "var(--surface2)", border: "1px solid var(--border)",
+                borderRadius: "var(--radius-xl)", color: "var(--text-muted)",
+                cursor: loadingMoreReviews ? "default" : "pointer",
+                opacity: loadingMoreReviews ? 0.6 : 1,
+              }}
+            >
+              {loadingMoreReviews ? "Loading…" : "Load more reviews"}
+            </button>
+          )}
         </div>
       )}
 

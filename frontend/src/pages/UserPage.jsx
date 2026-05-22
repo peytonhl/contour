@@ -20,7 +20,7 @@ function ListCollage({ images }) {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 52, height: 52, borderRadius: "var(--radius-md)", overflow: "hidden", flexShrink: 0 }}>
       {slots.map((i) =>
         images[i]
-          ? <img key={i} src={images[i]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ? <img key={i} src={images[i]} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           : <div key={i} style={{ background: "var(--surface2)" }} />
       )}
     </div>
@@ -583,7 +583,7 @@ function UserList({ users, emptyText, footer }) {
           onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
         >
           {u.image_url
-            ? <img src={u.image_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+            ? <img src={u.image_url} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
             : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
           }
           <div style={{ flex: 1, minWidth: 0 }}>

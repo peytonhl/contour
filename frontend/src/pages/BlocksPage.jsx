@@ -56,7 +56,7 @@ export function BlocksPage() {
             }}>
               <Link to={`/user/${b.user_id}`} style={{ flexShrink: 0 }}>
                 {b.image_url
-                  ? <img src={b.image_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
+                  ? <img src={b.image_url} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
                   : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)" }} />
                 }
               </Link>
