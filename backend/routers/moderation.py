@@ -29,6 +29,7 @@ from models import (
     Review,
     ReviewLike,
     ReviewReply,
+    ReviewReplyVote,
     ReviewVote,
     TrackCache,
     User,
@@ -291,6 +292,10 @@ async def resolve_report(
         if report.target_type == "review":
             await db.execute(delete(Review).where(Review.id == report.target_id))
         else:
+            # Wipe vote rows pointing at this reply before deleting the reply
+            # itself; the votes live in a separate table (ReviewReplyVote) so
+            # they would otherwise be orphaned.
+            await db.execute(delete(ReviewReplyVote).where(ReviewReplyVote.reply_id == report.target_id))
             await db.execute(delete(ReviewReply).where(ReviewReply.id == report.target_id))
         # Auto-resolve all other open reports against the same target — same
         # content, same outcome. Saves admin clicks.
@@ -388,6 +393,14 @@ async def _delete_orphan_references(db: AsyncSession, entity_type: str, entity_i
 
     if review_ids:
         # Cascades — no FK constraints in this app, so do it explicitly.
+        # Reply votes must go first (before the replies they point at).
+        reply_ids_to_wipe = [r[0] for r in (await db.execute(
+            select(ReviewReply.id).where(ReviewReply.review_id.in_(review_ids))
+        )).all()]
+        if reply_ids_to_wipe:
+            removed["reply_votes"] = (await db.execute(
+                delete(ReviewReplyVote).where(ReviewReplyVote.reply_id.in_(reply_ids_to_wipe))
+            )).rowcount or 0
         removed["votes"] = (await db.execute(
             delete(ReviewVote).where(ReviewVote.review_id.in_(review_ids))
         )).rowcount or 0

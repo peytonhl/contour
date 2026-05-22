@@ -170,11 +170,48 @@ function ReplyForm({ onSubmit, onCancel, autoFocus = false, placeholder = "Write
   );
 }
 
-function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitReply, collapsedIds, onToggleCollapse, onReport }) {
+function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitReply, collapsedIds, onToggleCollapse, onReport, onVote }) {
   const indent = Math.min(depth, MAX_REPLY_INDENT_DEPTH) * 16;
   const isCollapsed = collapsedIds.has(node.id);
   const hasChildren = node.children.length > 0;
   const descendants = hasChildren ? countDescendants(node) : 0;
+
+  // Reply-vote UI mirrors the parent-review vote arrows: ▲ for upvote, ▼ for
+  // downvote, active color when the viewer cast that vote. Signed-out users
+  // see the arrows but a click is a no-op (tooltip explains). Self-votes are
+  // blocked here for parity with how the parent review vote is rendered on
+  // own-profile (no self-voting affordance shown).
+  const canVote = user && user.id !== node.user.id;
+  function renderVote(value, glyph, count) {
+    const isActive = node.user_vote === value;
+    const accessibleLabel = !user
+      ? "Sign in to vote"
+      : !canVote
+        ? "You can't vote on your own reply"
+        : isActive
+          ? "Remove vote"
+          : value === 1 ? "Upvote reply" : "Downvote reply";
+    return (
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          if (!canVote) return;
+          onVote(node.id, value);
+        }}
+        title={accessibleLabel}
+        aria-label={accessibleLabel}
+        style={{
+          background: "none", border: "none",
+          padding: "4px 6px", fontSize: 12,
+          color: isActive ? ACCENT : "var(--text-muted)",
+          fontWeight: isActive ? 700 : 400,
+          cursor: canVote ? "pointer" : "default",
+        }}
+      >
+        {glyph} {count > 0 ? count : ""}
+      </button>
+    );
+  }
 
   return (
     <div style={{ marginTop: 10, paddingLeft: indent, borderLeft: depth > 0 ? "2px solid var(--border)" : "none" }}>
@@ -217,6 +254,11 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
             <MentionBody body={node.body} mentions={node.mentions} />
           </p>
           <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
+            {/* Vote arrows. Same shape as the parent review's vote control —
+                see the comment on `renderVote` above for what's intentional
+                about which states are clickable. */}
+            {renderVote(1, "▲", node.upvotes ?? 0)}
+            {renderVote(-1, "▼", node.downvotes ?? 0)}
             {/* Per-node Reply button: visible to everyone for consistency
                 with the top-level Reply and the platform's vote buttons.
                 Signed-out users get a tooltip; clicking is a no-op. */}
@@ -264,6 +306,7 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
           collapsedIds={collapsedIds}
           onToggleCollapse={onToggleCollapse}
           onReport={onReport}
+          onVote={onVote}
         />
       ))}
     </div>
@@ -306,6 +349,28 @@ export function ReplyThread({ reviewId, user, initialCount }) {
     setCount(fresh.length);
     setExpanded(true);
     setReplyingTo(null);
+  }
+
+  // Reply-vote handler. Authoritative counts come from the server response
+  // (mirrors how the parent review's voteReview handler works), so a fast
+  // double-tap can't desync. flatReplies stays a flat list — only the one
+  // row matching replyId gets its vote fields swapped in place; the tree
+  // rebuilds from the same data on the next render.
+  async function handleReplyVote(replyId, value) {
+    if (!user) return;
+    try {
+      const res = await api.voteReply(reviewId, replyId, value);
+      setFlatReplies((prev) => (prev ?? []).map((r) =>
+        r.id === replyId
+          ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote }
+          : r
+      ));
+    } catch {
+      // Vote endpoint requires auth; silent on transient network failure
+      // keeps the UI feeling responsive instead of throwing an alert. If
+      // a re-fetch is wanted on next render the next getReplies() will
+      // pick up the canonical state.
+    }
   }
 
   function toggleCollapse(replyId) {
@@ -376,6 +441,7 @@ export function ReplyThread({ reviewId, user, initialCount }) {
           collapsedIds={collapsedIds}
           onToggleCollapse={toggleCollapse}
           onReport={setReportingReplyId}
+          onVote={handleReplyVote}
         />
       ))}
 

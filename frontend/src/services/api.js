@@ -115,6 +115,11 @@ export const api = {
   deleteReview: (reviewId) => del(`/ratings/reviews/${reviewId}`),
   getReviews: (entityType, entityId, sort = "recent") => request(`/ratings/${entityType}/${entityId}/reviews?sort=${sort}`),
   voteReview: (reviewId, value) => post(`/ratings/reviews/${reviewId}/vote`, { value }),
+  // Vote on a sub-comment. Same toggle/switch/create semantics as voteReview,
+  // but writes to a separate table on the backend so reply votes never feed
+  // into the parent review's controversial-sort score.
+  voteReply: (reviewId, replyId, value) =>
+    post(`/ratings/reviews/${reviewId}/replies/${replyId}/vote`, { value }),
   getReplies: (reviewId) => request(`/ratings/reviews/${reviewId}/replies`),
   // parent_reply_id is optional — when set, the reply is threaded under
   // another reply (Reddit-style). Null/omitted = top-level reply on the

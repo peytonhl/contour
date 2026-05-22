@@ -87,6 +87,21 @@ class ReviewVote(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class ReviewReplyVote(Base):
+    """Up/down votes on replies (sub-comments). Mirrors ReviewVote's shape but
+    keyed on a reply_id. Deliberately a separate table from ReviewVote so the
+    review-level controversial-sort score (in ratings._controversial_score)
+    stays scoped to *review* votes only — reply votes never bubble into a
+    parent review's ranking. value=1 upvote, value=-1 downvote."""
+    __tablename__ = "review_reply_votes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    reply_id: Mapped[int] = mapped_column(Integer, index=True)
+    value: Mapped[int] = mapped_column(Integer)  # 1 or -1
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class ReviewReply(Base):
     """Replies to reviews. Threaded — `parent_reply_id` lets a reply target
     another reply (Reddit-style); NULL means top-level reply to the review."""

@@ -10,7 +10,7 @@ from sqlalchemy import func, select, delete, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, AsyncSessionLocal
-from models import AlbumCache, AppleMusicLink, Rating, Review, ReviewLike, ReviewVote, ReviewReply, TrackCache, User, UserTasteProfile
+from models import AlbumCache, AppleMusicLink, Rating, Review, ReviewLike, ReviewVote, ReviewReply, ReviewReplyVote, TrackCache, User, UserTasteProfile
 from routers.auth import optional_user_id
 from routers.moderation import blocked_user_ids
 from routers.notifications import create_notification
@@ -803,7 +803,14 @@ async def delete_review(
         raise HTTPException(status_code=403, detail="You can only delete your own review")
 
     # Mirror the cascade order used by moderation._resolve_report — no FKs
-    # are enforced at the DB level so the API has to spell it out.
+    # are enforced at the DB level so the API has to spell it out. Reply
+    # votes must be wiped BEFORE the replies themselves, otherwise the
+    # subquery loses its target IDs.
+    reply_ids_to_clean = [r[0] for r in (await db.execute(
+        select(ReviewReply.id).where(ReviewReply.review_id == review_id)
+    )).all()]
+    if reply_ids_to_clean:
+        await db.execute(delete(ReviewReplyVote).where(ReviewReplyVote.reply_id.in_(reply_ids_to_clean)))
     await db.execute(delete(ReviewVote).where(ReviewVote.review_id == review_id))
     await db.execute(delete(ReviewLike).where(ReviewLike.review_id == review_id))
     await db.execute(delete(ReviewReply).where(ReviewReply.review_id == review_id))
@@ -901,6 +908,80 @@ async def vote_review(
     return {"upvotes": upvotes, "downvotes": downvotes, "user_vote": user_vote}
 
 
+@router.post("/reviews/{review_id}/replies/{reply_id}/vote")
+async def vote_reply(
+    review_id: int, reply_id: int, body: VoteIn,
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(optional_user_id),
+):
+    """Up/down vote on a single reply. Mirrors vote_review in behavior
+    (toggle off on same value, switch on opposite value, create on new)
+    but writes to the separate ReviewReplyVote table. The review_id in
+    the URL is verified against the reply's stored review_id so a client
+    can't vote on a reply by guessing IDs in a totally different thread.
+
+    Critically: reply votes are NOT factored into the parent review's
+    controversial-sort score. The hierarchy is "votes on a reply rank
+    only the replies among themselves; the parent review's ranking
+    looks only at votes cast on the parent review itself." Achieved by
+    keeping the data in a separate table — ratings._controversial_score
+    only ever sees ReviewVote rows."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in to vote")
+
+    # Verify the reply exists and actually belongs to this review.
+    reply = (await db.execute(
+        select(ReviewReply).where(ReviewReply.id == reply_id)
+    )).scalar_one_or_none()
+    if not reply:
+        raise HTTPException(status_code=404, detail="Reply not found")
+    if reply.review_id != review_id:
+        raise HTTPException(status_code=400, detail="Reply does not belong to this review")
+
+    existing = (await db.execute(
+        select(ReviewReplyVote).where(
+            ReviewReplyVote.user_id == user_id,
+            ReviewReplyVote.reply_id == reply_id,
+        )
+    )).scalar_one_or_none()
+
+    is_new_upvote = False
+    if existing:
+        if existing.value == body.value:
+            # Same vote — toggle off (matches the parent review's behavior)
+            await db.execute(delete(ReviewReplyVote).where(
+                ReviewReplyVote.user_id == user_id,
+                ReviewReplyVote.reply_id == reply_id,
+            ))
+            user_vote = None
+        else:
+            existing.value = body.value
+            user_vote = body.value
+            is_new_upvote = body.value == 1
+    else:
+        db.add(ReviewReplyVote(user_id=user_id, reply_id=reply_id, value=body.value))
+        user_vote = body.value
+        is_new_upvote = body.value == 1
+
+    # Symmetry with vote_review: notify the reply author on a fresh upvote.
+    # Same notification type ("upvote") + review_id so the existing notification
+    # template + click-through (which links to the entity page anchored at the
+    # review) still works without a new notification type.
+    if is_new_upvote and reply.user_id != user_id:
+        await create_notification(db, user_id=reply.user_id, type="upvote",
+                                  actor_id=user_id, review_id=review_id)
+
+    await db.commit()
+
+    # Return updated counts
+    vote_rows = (await db.execute(
+        select(ReviewReplyVote).where(ReviewReplyVote.reply_id == reply_id)
+    )).scalars().all()
+    upvotes = sum(1 for v in vote_rows if v.value == 1)
+    downvotes = sum(1 for v in vote_rows if v.value == -1)
+    return {"upvotes": upvotes, "downvotes": downvotes, "user_vote": user_vote}
+
+
 @router.get("/reviews/{review_id}/replies")
 async def get_replies(
     review_id: int,
@@ -922,6 +1003,24 @@ async def get_replies(
         replies = [r for r in replies if r.user_id not in blocked]
         if not replies:
             return []
+
+    # Batch-fetch all reply votes for this thread in one query. Aggregating
+    # to {reply_id: {up, down}} client-side keeps this proportional to the
+    # number of distinct replies (typically <50), not to the vote count.
+    reply_ids = [r.id for r in replies]
+    reply_vote_rows = (await db.execute(
+        select(ReviewReplyVote).where(ReviewReplyVote.reply_id.in_(reply_ids))
+    )).scalars().all()
+    reply_vote_map: dict[int, dict[str, int]] = {}
+    reply_user_vote_map: dict[int, int] = {}
+    for v in reply_vote_rows:
+        bucket = reply_vote_map.setdefault(v.reply_id, {"up": 0, "down": 0})
+        if v.value == 1:
+            bucket["up"] += 1
+        elif v.value == -1:
+            bucket["down"] += 1
+        if user_id and v.user_id == user_id:
+            reply_user_vote_map[v.reply_id] = v.value
 
     # Combine reply authors with @-mentioned users so the response carries
     # both display names + IDs for mention-link rendering without a second
@@ -946,6 +1045,7 @@ async def get_replies(
             if mu is None:
                 continue
             mentions_out.append({"id": mu.id, "display_name": mu.display_name})
+        votes = reply_vote_map.get(r.id, {"up": 0, "down": 0})
         out.append({
             "id": r.id,
             "body": r.body,
@@ -955,6 +1055,12 @@ async def get_replies(
             "parent_reply_id": r.parent_reply_id,
             "created_at": r.created_at.isoformat() + "Z",
             "mentions": mentions_out,
+            # Vote shape mirrors what GET /reviews/... returns for the parent
+            # review (upvotes / downvotes / user_vote) so the same vote UI
+            # used at the top level can be reused for replies.
+            "upvotes": votes["up"],
+            "downvotes": votes["down"],
+            "user_vote": reply_user_vote_map.get(r.id),
             "user": {
                 "id": r.user_id,
                 "display_name": user_map[r.user_id].display_name if r.user_id in user_map else "Unknown",
