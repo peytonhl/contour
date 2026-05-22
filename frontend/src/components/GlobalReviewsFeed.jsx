@@ -6,6 +6,8 @@ import { BadgeLeaderboard } from "./Badges.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
 import { MentionBody } from "./Mentions.jsx";
+import { EmptyState } from "./EmptyState.jsx";
+import { PenIcon } from "./Icons.jsx";
 import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
 
 const ENTITY_COLOR = { album: ACCENT_A, track: ACCENT_B, artist: "#fb923c" };
@@ -242,13 +244,10 @@ export function GlobalReviewsFeed() {
         <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>
       )}
       {!loading && reviews.length === 0 && (
-        <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60, display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }}>
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
-          <p style={{ margin: 0, fontSize: 14 }}>No reviews yet. Be the first to write one.</p>
-        </div>
+        <EmptyState
+          icon={<PenIcon size={28} />}
+          description="No reviews yet. Be the first to write one."
+        />
       )}
       {!loading && reviews.map((item) => (
         <ReviewCardItem key={item.id} item={item} user={user} onVote={handleVote} badges={badges} />

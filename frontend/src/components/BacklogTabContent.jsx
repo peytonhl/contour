@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
+import { EmptyState } from "./EmptyState.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B } from "../theme.js";
 
 function formatDate(iso) {
@@ -103,11 +104,14 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
       {/* Items */}
       {loading && <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>Loading…</p>}
       {!loading && items.length === 0 && (
-        <p style={{ color: "var(--text-muted)", fontSize: 14, padding: "20px 0" }}>
-          {isOwner
-            ? "Your backlog is empty. Tap “+ Want to listen” on an album or track to save it for later."
-            : "Nothing here yet."}
-        </p>
+        isOwner ? (
+          <EmptyState
+            title="Your backlog is empty"
+            description={<>Tap <strong style={{ color: "var(--text)" }}>+ Want to listen</strong> on any album or track to save it for later.</>}
+          />
+        ) : (
+          <EmptyState description="Nothing here yet." />
+        )
       )}
 
       {items.map((it) => {

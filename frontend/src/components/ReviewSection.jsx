@@ -447,6 +447,7 @@ function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
           <button
             onClick={handleShare}
             title="Share this review"
+            aria-label="Share this review"
             style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12, padding: "4px 6px", flexShrink: 0 }}
           >
             ↗

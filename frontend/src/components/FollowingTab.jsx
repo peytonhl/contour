@@ -6,6 +6,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
 import { MentionBody } from "./Mentions.jsx";
+import { EmptyState } from "./EmptyState.jsx";
 import { ACCENT_A, GOLD } from "../theme.js";
 
 const ENTITY_COLOR = { album: ACCENT_A, track: "#6a90b5", artist: "#fb923c" };
@@ -71,11 +72,15 @@ function ReviewActionRow({ item, viewer }) {
 
   function voteBtn(value, label, count) {
     const active = userVote === value;
+    const accessibleLabel = viewer
+      ? (active ? "Remove vote" : value === 1 ? "Upvote review" : "Downvote review")
+      : "Sign in to vote";
     return (
       <button
         onClick={() => handleVote(value)}
         disabled={!viewer || voting}
-        title={viewer ? (active ? "Remove vote" : value === 1 ? "Upvote" : "Downvote") : "Sign in to vote"}
+        title={accessibleLabel}
+        aria-label={accessibleLabel}
         style={{
           background: "none",
           border: "none",
@@ -266,13 +271,12 @@ export function FollowingTab() {
       )}
       {user && loadingFollowing && <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>}
       {user && !loadingFollowing && following.length === 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "24px 0" }}>
-          <div style={{ textAlign: "center", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", margin: 0 }}>Nothing here yet</p>
-            <p style={{ fontSize: 13, margin: 0 }}>Follow people to see their ratings and reviews here.</p>
-          </div>
+        <EmptyState
+          title="Nothing here yet"
+          description="Follow people to see their ratings and reviews here."
+        >
           {suggested.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 20, alignSelf: "stretch", textAlign: "left" }}>
               <p style={{ fontFamily: "var(--font-display)", fontSize: 17, color: "var(--text)", margin: 0 }}>
                 People to follow
               </p>
@@ -281,7 +285,7 @@ export function FollowingTab() {
               ))}
             </div>
           )}
-        </div>
+        </EmptyState>
       )}
       {user && !loadingFollowing && following.map((item, i) => (
         <FollowingItem key={`${item.type}-${item.user?.id}-${item.entity_id}-${i}`} item={item} />

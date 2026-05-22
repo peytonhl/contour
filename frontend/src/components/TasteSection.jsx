@@ -258,6 +258,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button
                   onClick={onClose}
+                  aria-label="Close"
                   style={{
                     background: "var(--surface2)", border: "1px solid var(--border)",
                     borderRadius: "50%", width: 32, height: 32,
@@ -294,7 +295,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                       <img src={p.image_url} alt="" style={{ width: 22, height: 22, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />
                     )}
                     <span style={{ fontSize: 12, fontWeight: 700, color: ACCENT_A, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                    <button onClick={() => toggle(p)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
+                    <button onClick={() => toggle(p)} aria-label="Remove pinned album" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
                   </div>
                 ))}
               </div>

@@ -10,6 +10,7 @@ import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { MentionBody } from "../components/Mentions.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
+import { EmptyState } from "../components/EmptyState.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { CompareTastePicker } from "../components/CompareTastePicker.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
@@ -29,39 +30,10 @@ async function probeHotTakeEligibility(userId) {
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
-
-// Empty-state block that gives the user somewhere to go. Replaces the flat
-// "No X yet." EmptyHint on tabs where the next action is obvious — Ratings,
-// Reviews, and Following all have a clear destination (For You feed or
-// Friends page) that turns the empty state from a dead end into a
-// one-tap onramp.
-function ActionableEmpty({ message, ctaLabel, to }) {
-  return (
-    <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center",
-      gap: 12, padding: "40px 20px", textAlign: "center",
-    }}>
-      <p style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)", margin: 0 }}>
-        {message}
-      </p>
-      <Link
-        to={to}
-        style={{
-          padding: "8px 18px",
-          background: `${ACCENT}18`,
-          border: `1px solid ${ACCENT}66`,
-          borderRadius: "var(--radius-xl)",
-          color: ACCENT,
-          fontSize: 13, fontWeight: 700,
-          textDecoration: "none",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {ctaLabel}
-      </Link>
-    </div>
-  );
-}
+// The local `ActionableEmpty` lived here. It became <EmptyState> in
+// components/EmptyState.jsx so notifications, followed feed, etc. could all
+// share the look. Three call sites in this file use it (Ratings / Reviews /
+// Following tabs).
 
 function ListCollage({ images }) {
   const slots = [0, 1, 2, 3];
@@ -738,10 +710,10 @@ export function ProfilePage() {
         {tab === "ratings" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {!profile?.ratings?.length && (
-              <ActionableEmpty
-                message="No ratings yet."
+              <EmptyState
+                description="No ratings yet."
                 ctaLabel="Find something to rate"
-                to="/"
+                ctaTo="/"
               />
             )}
             {(tabExpanded ? profile?.ratings : profile?.ratings?.slice(0, TAB_VISIBLE_LIMIT))?.map((r, i) => (
@@ -757,10 +729,10 @@ export function ProfilePage() {
         {tab === "reviews" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {!profile?.reviews?.length && (
-              <ActionableEmpty
-                message="No reviews yet."
+              <EmptyState
+                description="No reviews yet."
                 ctaLabel="Rate something to get started"
-                to="/"
+                ctaTo="/"
               />
             )}
             {/* Own-profile review rows. Mirrors UserPage's review row layout
@@ -833,6 +805,7 @@ export function ProfilePage() {
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShareReviewId(r.id); }}
                       title="Share this review"
+                      aria-label="Share this review"
                       style={{
                         display: "flex", alignItems: "center", gap: 5,
                         background: "none", border: "none", padding: "2px 4px",
@@ -938,10 +911,10 @@ export function ProfilePage() {
         {tab === "following" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {!following.length && (
-              <ActionableEmpty
-                message="Not following anyone yet."
+              <EmptyState
+                description="Not following anyone yet."
                 ctaLabel="Find people to follow"
-                to="/friends"
+                ctaTo="/friends"
               />
             )}
             {(tabExpanded ? following : following.slice(0, TAB_VISIBLE_LIMIT)).map((u) => (

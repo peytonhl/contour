@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
 import { userAvatar } from "../utils/userAvatar.js";
 import { AppleSignInButton } from "./AppleSignInButton.jsx";
+import { BellIcon } from "./Icons.jsx";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 import { ACCENT_A, ACCENT_B } from "../theme.js";
 
@@ -75,14 +76,9 @@ function InfoIcon() {
   );
 }
 
-function BellIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  );
-}
+// BellIcon was local; moved to components/Icons.jsx so it can be reused by
+// the NotificationsPage empty state. Imported below alongside the other
+// icons used here.
 
 // ── Bottom nav tab item ───────────────────────────────────────────────────────
 // `dot` renders a small accent-colored unread indicator over the icon's
@@ -320,7 +316,7 @@ export function Layout() {
         <div className="hide-mobile" style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 12 }}>
           {user && (
             <Link to="/notifications" onClick={() => setUnread(0)} style={{ position: "relative", display: "flex", alignItems: "center", padding: "8px 10px", color: "var(--text-muted)", textDecoration: "none" }}>
-              <BellIcon />
+              <BellIcon size={20} />
               {unread > 0 && (
                 <span style={{
                   position: "absolute", top: 4, right: 4,
@@ -360,7 +356,7 @@ export function Layout() {
         <div className="show-mobile" style={{ display: "none", alignItems: "center", gap: 4, marginLeft: "auto" }}>
           {!loading && user && (
             <Link to="/notifications" onClick={() => setUnread(0)} style={{ position: "relative", display: "flex", alignItems: "center", padding: "12px 8px", color: "var(--text-muted)", textDecoration: "none" }}>
-              <BellIcon />
+              <BellIcon size={20} />
               {unread > 0 && (
                 <span style={{
                   position: "absolute", top: 6, right: 2,

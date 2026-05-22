@@ -2287,7 +2287,7 @@ function ForYouFeed() {
             <span style={{ fontFamily: "var(--font-display)", fontSize: 17, color: "rgba(255,255,255,0.92)" }}>
               Feed settings
             </span>
-            <button onClick={() => setSettingsOpen(false)} style={{ fontSize: 16, background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer" }}>✕</button>
+            <button onClick={() => setSettingsOpen(false)} aria-label="Close feed settings" style={{ fontSize: 16, background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer" }}>✕</button>
           </div>
 
           {/* Language filter — three modes. Replaces the older English-only

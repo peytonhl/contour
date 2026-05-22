@@ -129,6 +129,7 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
           </span>
           <button
             onClick={() => onSelect(null)}
+            aria-label="Clear selection"
             style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: 18, lineHeight: 1, padding: "0 2px", cursor: "pointer", flexShrink: 0 }}
           >×</button>
         </div>

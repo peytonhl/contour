@@ -467,6 +467,7 @@ export function UserPage() {
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShareReviewId(r.id); }}
                       title="Share this review"
+                      aria-label="Share this review"
                       style={{
                         display: "flex", alignItems: "center", gap: 5,
                         background: "none", border: "none", padding: "2px 4px",

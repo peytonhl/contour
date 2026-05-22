@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-import { UsersIcon, ChatBubbleIcon } from "../components/Icons.jsx";
+import { UsersIcon, ChatBubbleIcon, BellIcon } from "../components/Icons.jsx";
+import { EmptyState } from "../components/EmptyState.jsx";
 import { ACCENT_A } from "../theme.js";
 
 function timeAgo(iso) {
@@ -73,10 +74,11 @@ export function NotificationsPage() {
       {loading && <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>}
 
       {!loading && notifs.length === 0 && (
-        <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 36 }}>🔔</div>
-          <p style={{ margin: 0 }}>Nothing yet. When someone follows you, upvotes a review, or replies, it'll show up here.</p>
-        </div>
+        <EmptyState
+          icon={<BellIcon size={32} />}
+          title="Nothing yet"
+          description="When someone follows you, upvotes a review, or replies, it'll show up here."
+        />
       )}
 
       {!loading && notifs.length > 0 && (

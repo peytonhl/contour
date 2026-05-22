@@ -173,9 +173,9 @@ function ListItemRow({ item, index, isOwner, isRanked, onMoveUp, onMoveDown, onR
       {/* Owner controls */}
       {isOwner && (
         <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-          <button onClick={onMoveUp} disabled={isFirst} style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: isFirst ? "var(--border)" : "var(--text-muted)", cursor: isFirst ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
-          <button onClick={onMoveDown} disabled={isLast} style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: isLast ? "var(--border)" : "var(--text-muted)", cursor: isLast ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↓</button>
-          <button onClick={onRemove} style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: "var(--danger)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+          <button onClick={onMoveUp} disabled={isFirst} aria-label="Move up" style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: isFirst ? "var(--border)" : "var(--text-muted)", cursor: isFirst ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
+          <button onClick={onMoveDown} disabled={isLast} aria-label="Move down" style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: isLast ? "var(--border)" : "var(--text-muted)", cursor: isLast ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>↓</button>
+          <button onClick={onRemove} aria-label="Remove from list" style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: "var(--danger)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
         </div>
       )}
     </div>

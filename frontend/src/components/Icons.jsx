@@ -61,6 +61,17 @@ export function ChatBubbleIcon({ size = 16 }) {
   );
 }
 
+// Bell — notifications. Previously lived as a local helper in Layout.jsx;
+// extracted so the NotificationsPage empty state can drop its 🔔 emoji.
+export function BellIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} {...baseProps} strokeWidth={1.5}>
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
 // Triangle alert — replaces the OS-fragmented ⚠ emoji wherever it appeared.
 export function AlertIcon({ size = 16 }) {
   return (
