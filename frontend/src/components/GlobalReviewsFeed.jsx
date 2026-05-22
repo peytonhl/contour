@@ -179,7 +179,6 @@ export function GlobalReviewsFeed() {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [badges, setBadges] = useState(null);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   useEffect(() => {
     api.getBadges().then(setBadges).catch(() => {});
@@ -204,10 +203,17 @@ export function GlobalReviewsFeed() {
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 20px" }}>
-      {/* Sort row + Top 5 leaderboard toggle. Top 5 surfaces community-wide
-          "discover people to follow" data; lives here since it's the only
-          community-flavored surface after the /feed page was retired. */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 0 6px", borderBottom: "1px solid var(--border)", marginBottom: showLeaderboard ? 14 : 4 }}>
+      {/* Community Top 5 — promoted from a toggleable section to a permanent
+          surface at the top of the Community tab. The reasoning: this is the
+          only place in the app where users can see WHO the prolific reviewers
+          / most-upvoted critics / most-followed connectors are, and hiding it
+          behind a button defeated the engagement loop. BadgeLeaderboard
+          self-handles the null state (returns nothing while badges load) so
+          we don't need a loading skeleton here. */}
+      <BadgeLeaderboard badges={badges} />
+
+      {/* Sort row for the global review feed below. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 0 6px", borderBottom: "1px solid var(--border)", marginBottom: 4 }}>
         <div style={{ display: "flex", gap: 0 }}>
           {SORT_LABELS.map(({ key, label }) => (
             <button key={key} onClick={() => setSort(key)}
@@ -222,23 +228,10 @@ export function GlobalReviewsFeed() {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setShowLeaderboard((v) => !v)}
-          title="See the top reviewers, most-upvoted users, and most-followed users"
-          style={{
-            display: "flex", alignItems: "center", gap: 5,
-            fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: "var(--radius-xl)",
-            background: showLeaderboard ? "var(--surface2)" : "transparent",
-            border: `1px solid ${showLeaderboard ? "var(--border)" : "transparent"}`,
-            color: showLeaderboard ? "var(--text)" : "var(--text-muted)",
-            cursor: "pointer", flexShrink: 0,
-          }}
-        >
-          Top users
-        </button>
       </div>
 
-      {showLeaderboard && <BadgeLeaderboard badges={badges} />}
+      {/* (BadgeLeaderboard was previously rendered here behind a toggle —
+          now lives permanently above the sort row.) */}
 
       {loading && (
         <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>

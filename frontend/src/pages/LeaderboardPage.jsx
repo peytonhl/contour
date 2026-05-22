@@ -52,6 +52,119 @@ function ClassificationBadge({ type }) {
   );
 }
 
+// Editorial hero for the #1 entry. Deliberately not modeled on TrendingPage's
+// HeroAlbumSpotlight: Trending's hero treats the album as cinematic
+// protagonist (large cover + headline + tagline pulls the eye), which is the
+// right tone for "what's hot this week." Leaderboard is a different surface —
+// an all-time chart whose unique value is era-adjusted scoring — so the hero
+// here leads with the *stat*, not the artwork. The album is credited
+// underneath as the holder of the number, not the subject of a poster.
+//
+// Practical effect: a user landing on /charts after /trending immediately
+// reads them as different page types instead of "more of the same."
+function LeaderboardChampionHero({ entry, sort, onCompare }) {
+  if (!entry) return null;
+
+  const isEra = sort === "era";
+  const value = isEra ? entry.era_adjusted_streams : entry.streams;
+  const valueLabel = isEra ? "Era-adjusted streams" : "Total plays";
+  const showMultiplier = entry.multiplier && entry.multiplier > 1.05;
+
+  return (
+    <div style={{
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius-lg)",
+      padding: "28px 24px 22px",
+      display: "flex", flexDirection: "column", gap: 18,
+    }}>
+      {/* Stat block — the page's signature visual */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{
+          fontFamily: "var(--font-display)", fontStyle: "italic",
+          fontSize: 14, color: ACCENT_A,
+        }}>
+          Currently leading
+        </span>
+        <span style={{
+          fontSize: 12, fontWeight: 500, color: "var(--text-muted)",
+        }}>
+          {valueLabel}
+        </span>
+        <span style={{
+          fontFamily: "var(--font-display)",
+          fontSize: 76, fontWeight: 400, color: "var(--text)",
+          letterSpacing: "-0.02em", lineHeight: 0.95,
+          fontVariantNumeric: "tabular-nums", marginTop: 2,
+        }}>
+          {formatStreams(value)}
+        </span>
+        {isEra && showMultiplier && (
+          <span style={{
+            fontSize: 13, color: "var(--text-muted)", marginTop: 4,
+            fontVariantNumeric: "tabular-nums",
+          }}>
+            from {formatStreams(entry.streams)} raw ·{" "}
+            <span style={{ color: ACCENT_A, fontWeight: 600 }}>×{entry.multiplier.toFixed(2)} scale</span>
+          </span>
+        )}
+      </div>
+
+      {/* Album credit row */}
+      <Link
+        to={`/album/${entry.spotify_id}`}
+        style={{
+          display: "flex", alignItems: "center", gap: 14,
+          padding: "12px 0 0",
+          borderTop: "1px solid var(--border)",
+          textDecoration: "none", color: "var(--text)",
+        }}
+      >
+        {entry.image_url
+          ? <img src={entry.image_url} alt="" style={{
+              width: 60, height: 60, borderRadius: "var(--radius-md)",
+              objectFit: "cover", flexShrink: 0, boxShadow: "var(--shadow-1)",
+            }} />
+          : <div style={{
+              width: 60, height: 60, borderRadius: "var(--radius-md)",
+              background: "var(--surface2)", flexShrink: 0,
+            }} />
+        }
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontFamily: "var(--font-display)", fontSize: 20,
+            color: "var(--text)", lineHeight: 1.15,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {entry.name}
+          </div>
+          <div style={{
+            fontSize: 13, color: "var(--text-muted)", marginTop: 2,
+            display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+          }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {entry.artist} · {entry.release_date?.slice(0, 4)}
+            </span>
+            <ClassificationBadge type={entry.classification} />
+            <StarRating value={entry.avg_rating} />
+          </div>
+        </div>
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCompare(entry); }}
+          style={{
+            fontSize: 12, fontWeight: 700, padding: "6px 14px",
+            borderRadius: "var(--radius-xl)",
+            border: `1px solid ${ACCENT_B}50`, background: `${ACCENT_B}15`, color: ACCENT_B,
+            cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+          }}
+        >
+          Compare
+        </button>
+      </Link>
+    </div>
+  );
+}
+
 function LeaderboardRow({ entry, sort, onCompare }) {
   const isTop3 = entry.rank <= 3;
   const [hovered, setHovered] = useState(false);
@@ -248,25 +361,33 @@ export function LeaderboardPage() {
           {decade === "all" ? "No data yet." : `No albums found from the ${decade}.`}
         </div>
       ) : (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 14,
-            padding: "10px 16px", borderBottom: "1px solid var(--border)",
-            background: "var(--surface2)",
-          }}>
-            <span style={{ width: 28, flexShrink: 0 }} />
-            <span style={{ width: 44, flexShrink: 0 }} />
-            <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "var(--text-muted)" }}>
-              Album
-            </span>
-            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", flexShrink: 0 }}>
-              {sort === "era" ? "Era score" : "Plays"}
-            </span>
+        <>
+          {/* Editorial hero — the #1 entry is given the magazine-stat
+              treatment so the page reads as different from /trending. The
+              row also appears in the list below at rank 1, dropped to avoid
+              showing the same album twice. */}
+          <LeaderboardChampionHero entry={entries[0]} sort={sort} onCompare={handleCompare} />
+
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 14,
+              padding: "10px 16px", borderBottom: "1px solid var(--border)",
+              background: "var(--surface2)",
+            }}>
+              <span style={{ width: 28, flexShrink: 0 }} />
+              <span style={{ width: 44, flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "var(--text-muted)" }}>
+                Album
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", flexShrink: 0 }}>
+                {sort === "era" ? "Era score" : "Plays"}
+              </span>
+            </div>
+            {entries.slice(1).map((entry) => (
+              <LeaderboardRow key={entry.spotify_id} entry={entry} sort={sort} onCompare={handleCompare} />
+            ))}
           </div>
-          {entries.map((entry) => (
-            <LeaderboardRow key={entry.spotify_id} entry={entry} sort={sort} onCompare={handleCompare} />
-          ))}
-        </div>
+        </>
       )}
 
       {/* Explainer */}
