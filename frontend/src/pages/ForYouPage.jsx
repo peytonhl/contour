@@ -1290,13 +1290,21 @@ const DiscoverCard = memo(DiscoverCardBase, (prev, next) => (
 // one chunk lights up). The lit chunks carry a soft accent glow so a newly
 // filled chunk reads as a small reward, not a passive state change.
 function ColdStartBanner({ ratingCount }) {
-  if (ratingCount >= PERSONALIZATION_RAMP) return null;
+  // Visible while the user is in the cold-start band: 0..PERSONALIZATION_RAMP
+  // inclusive (≤ 5). At exactly 5 the bar is full and we swap to a one-rating
+  // "feed calibrated" celebration; on the 6th rating the banner is gone for
+  // good. The "≤ 5" gate (rather than "< 5") is deliberate so the bar gets
+  // to visibly reach 5/5 before disappearing — fades to nothing on a fill
+  // moment feels better than vanishing mid-stride.
+  if (ratingCount > PERSONALIZATION_RAMP) return null;
   const remaining = PERSONALIZATION_RAMP - ratingCount;
   const label = ratingCount === 0
     ? "Rate 5 tracks to calibrate your feed"
-    : remaining === 1
-      ? "One more to dial it in"
-      : `${ratingCount} of ${PERSONALIZATION_RAMP}: feed is sharpening`;
+    : ratingCount >= PERSONALIZATION_RAMP
+      ? "Feed calibrated — keep rating to refine"
+      : remaining === 1
+        ? "One more to dial it in"
+        : `${ratingCount} of ${PERSONALIZATION_RAMP}: feed is sharpening`;
 
   return (
     <div style={{
@@ -1308,7 +1316,11 @@ function ColdStartBanner({ ratingCount }) {
       display: "flex", alignItems: "center", gap: 10,
       flexShrink: 0,
     }}>
-      {/* Segmented progress — one chunk per rating up to the ramp */}
+      {/* Segmented progress — one chunk per rating up to the ramp. Filled
+          chunks are solid amber (the brand accent); the old amber→cobalt
+          gradient leaked entity-B color into a brand surface where it
+          didn't carry the "side B in Compare" semantic that color is
+          reserved for. */}
       <div style={{ flex: 1, display: "flex", gap: 4, height: 5 }}>
         {Array.from({ length: PERSONALIZATION_RAMP }, (_, i) => {
           const filled = i < ratingCount;
@@ -1317,9 +1329,7 @@ function ColdStartBanner({ ratingCount }) {
               key={i}
               style={{
                 flex: 1, borderRadius: "var(--radius-sm)",
-                background: filled
-                  ? `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`
-                  : "rgba(255,255,255,0.1)",
+                background: filled ? ACCENT_A : "rgba(255,255,255,0.1)",
                 boxShadow: filled ? `0 0 6px ${ACCENT_A}80` : "none",
                 transition: "background 0.35s ease, box-shadow 0.35s ease",
               }}
@@ -1327,7 +1337,7 @@ function ColdStartBanner({ ratingCount }) {
           );
         })}
       </div>
-      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap", flexShrink: 0, fontWeight: 600 }}>
+      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", whiteSpace: "nowrap", flexShrink: 0, fontWeight: 600 }}>
         {label}
       </span>
     </div>
