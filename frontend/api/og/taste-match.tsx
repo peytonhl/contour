@@ -101,8 +101,17 @@ function HighlightCard({
 
   return (
     <div
+      // NO `flex: 1` here — that was a hold-over from v2 when the
+      // two cards rendered side-by-side and `flex: 1` made them
+      // share horizontal width. In v3 the parent is a vertical
+      // column flex container, so `flex: 1` resolves to flex-basis
+      // 0 + flex-grow 1 against an unbounded height — both cards
+      // collapsed to zero height and produced an empty gap below
+      // the stat hero. Letting them size to content (header bar +
+      // 180px image-row body + footer triptych) renders them at
+      // their natural ~280px each, fitting comfortably in the
+      // remaining canvas above the Contour footer.
       style={{
-        flex: 1,
         display: 'flex',
         flexDirection: 'column',
         background: SURFACE,
