@@ -315,7 +315,7 @@ export default async function handler(request: Request) {
             >
               <img src={avatarUrl(data.viewer, 280)} width={140} height={140} style={{ objectFit: 'cover' }} />
             </div>
-            <div style={{ display: 'flex', fontSize: 26, color: TEXT, fontWeight: 600 }}>
+            <div style={{ display: 'flex', fontSize: 34, color: TEXT, fontWeight: 600 }}>
               {viewerName}
             </div>
           </div>
@@ -351,7 +351,7 @@ export default async function handler(request: Request) {
             >
               <img src={avatarUrl(data.other, 280)} width={140} height={140} style={{ objectFit: 'cover' }} />
             </div>
-            <div style={{ display: 'flex', fontSize: 26, color: TEXT, fontWeight: 600 }}>
+            <div style={{ display: 'flex', fontSize: 34, color: TEXT, fontWeight: 600 }}>
               {otherName}
             </div>
           </div>
@@ -386,9 +386,9 @@ export default async function handler(request: Request) {
             <div
               style={{
                 display: 'flex',
-                fontSize: 22,
+                fontSize: 30,
                 color: MUTED,
-                letterSpacing: '0.16em',
+                letterSpacing: '0.14em',
                 textTransform: 'uppercase',
               }}
             >
@@ -456,7 +456,7 @@ export default async function handler(request: Request) {
           <div style={{
             display: 'flex',
             fontFamily: 'Instrument Serif',
-            fontSize: 36,
+            fontSize: 56,
             letterSpacing: '-0.02em',
             color: MUTED,
             lineHeight: 1,
