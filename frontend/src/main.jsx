@@ -58,7 +58,7 @@ requestAnimationFrame(() => {
 
 // Snap the HTML boot splash off (display:none) once two conditions are met:
 //   a) Instrument Serif (the Layout header's font) has finished loading.
-//   b) The wordmark has been on screen for at least 700ms (brand moment).
+//   b) The wordmark has been on screen for at least MIN_HOLD_MS (brand moment).
 //
 // We deliberately do NOT cross-fade — that produced a "logo jumping around"
 // glitch on mobile (reported 2026-05-16). Here's what was happening:
@@ -69,8 +69,8 @@ requestAnimationFrame(() => {
 // During a 320ms opacity transition on the boot splash, intermediate
 // opacities (~0.3–0.7) made BOTH wordmarks visible at the same time, in
 // different positions, in different fonts. A clean display:none snap
-// after the wordmark has been stable for 700ms feels like an intentional
-// reveal instead of a cross-fade ghost.
+// after the wordmark has been stable feels like an intentional reveal
+// instead of a cross-fade ghost.
 //
 // The font-load wait fixes a SECOND snap that survived the cross-fade
 // fix: Instrument Serif is loaded via Google Fonts with display=swap,
@@ -81,12 +81,23 @@ requestAnimationFrame(() => {
 // AFTER the splash already hid. Waiting until document.fonts has the
 // face ready means the Layout wordmark is correct on first paint.
 //
+// MIN_HOLD_MS — was 700ms (deliberate "brand moment"). Reduced to 350ms
+// on first launch after feedback that the wait felt slow, and dropped
+// to 0 for repeat visits where the SW is already controlling the page
+// (= user has been here before; the brand reinforcement is unnecessary
+// every time). The font-load wait still floors the actual hide, so the
+// Layout-header flash regression can't come back.
+//
 // requestAnimationFrame gates the timer on React's first paint: we want
 // the brand moment to start counting from when the wordmark is actually
 // on screen, not from the moment main.jsx parsed.
 requestAnimationFrame(() => {
   const start = performance.now();
-  const MIN_HOLD_MS = 700;
+  // SW-controlled = repeat visit (the SW takes control on the SECOND load;
+  // first load registers but doesn't control). Returning users skip the
+  // brand pause entirely — they don't need re-introducing to the wordmark.
+  const isRepeatLoad = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+  const MIN_HOLD_MS = isRepeatLoad ? 0 : 350;
 
   // Request Instrument Serif at 26px (Layout header size) and 76px (Era
   // Score) so both the header and the first signature stat have the font
