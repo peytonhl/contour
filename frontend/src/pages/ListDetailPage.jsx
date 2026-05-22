@@ -357,7 +357,7 @@ export function ListDetailPage() {
       {/* Add item search (owner only) */}
       {list.is_owner && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+          <p style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 17, color: "var(--text)" }}>
             Add to list
           </p>
           <AddItemSearch onAdd={addItem} existingIds={existingIds} />

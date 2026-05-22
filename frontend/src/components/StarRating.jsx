@@ -62,7 +62,7 @@ export function StarRating({ entityType, entityId, summary, onRated, user }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>
         Rating
       </span>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

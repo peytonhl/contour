@@ -60,8 +60,6 @@ const styles = {
   statLabel: {
     fontSize: 11,
     fontWeight: 600,
-    letterSpacing: "0.07em",
-    textTransform: "uppercase",
     color: "var(--text-muted)",
   },
   statValue: {

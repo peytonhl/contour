@@ -183,7 +183,7 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
       {/* Popular in backlogs — discovery surface for owners only */}
       {showSuggestions && suggestions.length > 0 && (
         <div style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--border)" }}>
-          <h3 style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)", margin: "0 0 12px" }}>
+          <h3 style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 400, color: "var(--text)", margin: "0 0 12px" }}>
             Popular in backlogs
           </h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

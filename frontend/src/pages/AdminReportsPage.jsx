@@ -121,7 +121,7 @@ export function AdminReportsPage() {
               </div>
 
               <div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>
                   Content
                 </div>
                 {r.target_exists ? (

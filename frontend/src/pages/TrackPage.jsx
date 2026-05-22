@@ -12,7 +12,6 @@ import { EntityHeroSkeleton } from "../components/Skeleton.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
-const ACCENT = "#6a90b5";
 const DISCLAIMER = "Stream trajectory is a modeled approximation calibrated to the known total stream count. Exact day-by-day data requires Luminate licensing.";
 
 function formatStreams(n) {
@@ -344,8 +343,8 @@ export function TrackPage() {
           }
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", flex: 1, minWidth: 0 }}>
             <div style={{
-              fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.1em",
-              textTransform: "uppercase", color: "var(--text-dim)",
+              fontSize: "var(--text-sm)", fontWeight: 500,
+              color: "var(--text-dim)",
             }}>Track</div>
 
             <h1 style={{
@@ -460,8 +459,8 @@ export function TrackPage() {
           marginTop: "var(--space-3)",
         }}>
           <span style={{
-            fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em",
-            textTransform: "uppercase", color: "var(--text-dim)",
+            fontSize: "var(--text-sm)", fontWeight: 500,
+            color: "var(--text-dim)",
             marginRight: "var(--space-1)",
           }}>
             Listen on
@@ -549,7 +548,7 @@ export function TrackPage() {
             <TrajectoryChart
               trajectory={trajectory.trajectory}
               milestones={trajectory.riaa_milestones}
-              accentColor="var(--accent-b)"
+              accentColor="var(--accent-a)"
               disclaimer={trajectory.stream_source !== "kworb" ? DISCLAIMER : undefined}
             />
           ) : (

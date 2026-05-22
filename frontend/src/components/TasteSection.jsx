@@ -7,14 +7,12 @@ const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
 const GOLD = "#f59e0b";
 
-// Section-header-style ghost action button. Reads as a sub-action of the
-// "MUSIC TASTE" header (same case + tracking, lighter weight) rather than
-// a tinted pill competing with the chips elsewhere on the page.
+// Ghost action button paired with the "Music taste" section header. Lighter
+// than the tinted pills used elsewhere on the page so it reads as a sub-
+// action of the header, not a competing CTA.
 const tasteActionBtn = {
-  fontSize: 11,
-  fontWeight: 600,
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
+  fontSize: 13,
+  fontWeight: 500,
   color: "var(--text-muted)",
   background: "transparent",
   border: "none",
@@ -755,8 +753,8 @@ export function TasteSection({ userId, isOwner, ratings = [] }) {
       }}>
         {/* Section header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-            Music Taste
+          <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 400, color: "var(--text)" }}>
+            Music taste
           </h3>
           {isOwner && (
             <div style={{ display: "flex", gap: 18 }}>
@@ -834,8 +832,8 @@ export function TasteSection({ userId, isOwner, ratings = [] }) {
             so the section feels balanced when both are present. */}
         {topRated.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-              Top Rated
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>
+              Top rated
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {topRated.map((r) => (
@@ -885,8 +883,8 @@ export function TasteSection({ userId, isOwner, ratings = [] }) {
         {/* Genre badges */}
         {taste?.top_genres?.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-              Favorite Genres
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>
+              Favorite genres
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {taste.top_genres.map((g) => <GenreBadge key={g} genre={g} />)}
@@ -897,8 +895,8 @@ export function TasteSection({ userId, isOwner, ratings = [] }) {
         {/* Rating distribution */}
         {taste?.rating_distribution && Object.values(taste.rating_distribution).some((v) => v > 0) && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-              Rating Distribution
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>
+              Rating distribution
             </p>
             <RatingDistribution distribution={taste.rating_distribution} average={taste.average_rating} />
           </div>

@@ -14,9 +14,8 @@ const ACCENT_A = "#d97a3b";
 function SectionLabel({ children }) {
   return (
     <h2 style={{
-      fontSize: 11, fontWeight: 700, letterSpacing: "0.07em",
-      textTransform: "uppercase", color: "var(--text-muted)",
-      margin: "0 0 8px",
+      fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 400,
+      color: "var(--text)", margin: "0 0 8px",
     }}>
       {children}
     </h2>

@@ -196,7 +196,7 @@ export function ImportPage() {
 
           {result.unmatched_count > 0 && result.unmatched?.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 8px" }}>
+              <h3 style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 400, color: "var(--text)", margin: "0 0 8px" }}>
                 Not matched
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto", padding: "8px 12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>

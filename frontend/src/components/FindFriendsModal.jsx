@@ -169,9 +169,8 @@ export function FindFriendsModal({ open, onClose }) {
         }}>
           {!showingSearch && rows.length > 0 && (
             <p style={{
-              fontSize: 12, fontWeight: 700,
-              letterSpacing: "0.05em", textTransform: "uppercase",
-              color: "var(--text-muted)", margin: "0 0 4px",
+              fontFamily: "var(--font-display)", fontSize: 17,
+              color: "var(--text)", margin: "0 0 4px",
             }}>
               Suggested for you
             </p>

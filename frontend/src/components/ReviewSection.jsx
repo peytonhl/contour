@@ -651,7 +651,7 @@ export function ReviewSection({ entityType, entityId, user }) {
       {/* Community score + your rating */}
       <div style={{ display: "flex", gap: 32, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)" }}>Community Rating</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>Community rating</span>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Stars value={summary?.average ?? 0} size={20} />
             {summary?.average ? (
@@ -669,8 +669,8 @@ export function ReviewSection({ entityType, entityId, user }) {
 
         {user ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-              {selectedRating ? "Your Rating" : "Rate This"}
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>
+              {selectedRating ? "Your rating" : "Rate this"}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Stars value={displayRating} size={24} interactive onHover={setHover} onClick={handleStarClick} />
@@ -685,7 +685,7 @@ export function ReviewSection({ entityType, entityId, user }) {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-muted)" }}>Rate This</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>Rate this</span>
             <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Sign in to rate and review</span>
           </div>
         )}

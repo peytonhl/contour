@@ -268,8 +268,8 @@ export function ArtistPage() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", flex: 1, minWidth: 0 }}>
             <div style={{
-              fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.1em",
-              textTransform: "uppercase", color: "var(--text-dim)",
+              fontSize: "var(--text-sm)", fontWeight: 500,
+              color: "var(--text-dim)",
             }}>Artist</div>
 
             <h1 style={{
@@ -307,10 +307,10 @@ export function ArtistPage() {
             display: "flex", flexDirection: "column", gap: "var(--space-2)",
           }}>
             <span style={{
-              fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em",
-              textTransform: "uppercase", color: "var(--text-dim)",
+              fontSize: "var(--text-sm)", fontWeight: 500,
+              color: "var(--text-dim)",
             }}>
-              Catalog Streams · {albums.length} release{albums.length !== 1 ? "s" : ""}
+              Catalog streams · {albums.length} release{albums.length !== 1 ? "s" : ""}
             </span>
             <span style={{
               fontSize: "var(--text-4xl)", fontWeight: 800, color: "var(--text)",

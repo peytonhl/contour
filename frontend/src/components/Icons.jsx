@@ -50,6 +50,17 @@ export function UsersIcon({ size = 16 }) {
   );
 }
 
+// Chat bubble — used for the "reply" notification type. Replaces the
+// OS-fragmented 💬 emoji that was rendering inconsistently across iOS,
+// Android WebView, and Windows browsers.
+export function ChatBubbleIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} {...baseProps}>
+      <path d="M21 11.5 c0 4.4 -4 8 -9 8 c -1.4 0 -2.7 -0.3 -3.9 -0.8 L3 20.5 l1.4 -4.5 C3.5 14.7 3 13.2 3 11.5 c0 -4.4 4 -8 9 -8 s9 3.6 9 8 z" />
+    </svg>
+  );
+}
+
 // Triangle alert — replaces the OS-fragmented ⚠ emoji wherever it appeared.
 export function AlertIcon({ size = 16 }) {
   return (

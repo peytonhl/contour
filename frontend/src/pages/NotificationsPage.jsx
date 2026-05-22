@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { UsersIcon, ChatBubbleIcon } from "../components/Icons.jsx";
 
 const ACCENT_A = "#d97a3b";
 
@@ -20,11 +21,17 @@ function timeAgo(iso) {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+// Notification-type glyph. The geometric ▲ and the @ character render
+// consistently across platforms, so we keep those as text; the figure
+// and chat-bubble glyphs are OS-dependent emoji that rendered as colorful
+// inline graphics on iOS and tofu/outline-only on some Android WebViews —
+// SVG keeps the icon set monochrome and on-brand.
 function NotifIcon({ type }) {
-  if (type === "follow") return <span style={{ fontSize: 18 }}>👤</span>;
-  if (type === "upvote") return <span style={{ fontSize: 18 }}>▲</span>;
-  if (type === "reply") return <span style={{ fontSize: 18 }}>💬</span>;
-  if (type === "mention") return <span style={{ fontSize: 18 }}>@</span>;
+  const style = { color: "var(--text-muted)", display: "inline-flex" };
+  if (type === "follow") return <span style={style}><UsersIcon size={18} /></span>;
+  if (type === "upvote") return <span style={{ fontSize: 18, color: "var(--text-muted)" }}>▲</span>;
+  if (type === "reply") return <span style={style}><ChatBubbleIcon size={18} /></span>;
+  if (type === "mention") return <span style={{ fontSize: 18, color: "var(--text-muted)", fontWeight: 700 }}>@</span>;
   return null;
 }
 

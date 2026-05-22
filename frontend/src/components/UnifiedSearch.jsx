@@ -101,7 +101,7 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
 
   return (
     <div style={styles.wrapper} ref={wrapperRef}>
-      <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: accentColor }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: accentColor }}>
         {label}
       </span>
 

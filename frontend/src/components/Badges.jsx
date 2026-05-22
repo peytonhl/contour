@@ -73,10 +73,10 @@ export function BadgeLeaderboard({ badges }) {
       marginBottom: "var(--space-5)",
     }}>
       <div style={{
-        fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.06em",
-        textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 14,
+        fontFamily: "var(--font-display)", fontSize: "var(--text-lg)",
+        color: "var(--text)", marginBottom: 14,
       }}>
-        Community Top 5
+        Community top 5
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {BADGE_DEFS.map((def) => {

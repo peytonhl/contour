@@ -75,9 +75,7 @@ export function EditionPicker({ album, accentColor, onEditionsChange }) {
           cursor: "pointer",
           color: accentColor,
           fontWeight: 600,
-          fontSize: 12,
-          letterSpacing: "0.05em",
-          textTransform: "uppercase",
+          fontSize: 13,
         }}
       >
         <span>

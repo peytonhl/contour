@@ -63,11 +63,9 @@ function EntityCard({ kind, item, viewerName, otherName }) {
       <div
         style={{
           padding: "10px 16px",
-          fontSize: 12,
-          fontWeight: 700,
-          letterSpacing: "0.04em",
+          fontSize: 13,
+          fontWeight: 600,
           color: tint,
-          textTransform: "uppercase",
           borderBottom: "1px solid var(--border)",
         }}
       >
@@ -144,7 +142,7 @@ function EntityCard({ kind, item, viewerName, otherName }) {
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{viewerName || "You"}</span>
           <StarRating value={item.viewer_rating} color={ACCENT} />
         </div>
-        <span style={{ fontSize: 12, color: tint, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+        <span style={{ fontSize: 12, color: tint, fontWeight: 600 }}>
           {subline}
         </span>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
@@ -285,9 +283,7 @@ export function TasteMatchPage() {
             </div>
             <div
               style={{
-                fontSize: 12,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
+                fontSize: 13,
                 color: "var(--text-muted)",
                 marginTop: 8,
               }}

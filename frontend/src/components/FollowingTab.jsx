@@ -275,7 +275,7 @@ export function FollowingTab() {
           </div>
           {suggested.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
+              <p style={{ fontFamily: "var(--font-display)", fontSize: 17, color: "var(--text)", margin: 0 }}>
                 People to follow
               </p>
               {suggested.map((u) => (
@@ -298,7 +298,7 @@ export function FollowingTab() {
           following.length). */}
       {user && !loadingFollowing && following.length > 0 && suggested.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "28px 0 8px", borderTop: "1px solid var(--border)", marginTop: 12 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
+          <p style={{ fontFamily: "var(--font-display)", fontSize: 17, color: "var(--text)", margin: 0 }}>
             More people to follow
           </p>
           {suggested.map((u) => (
