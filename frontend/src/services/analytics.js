@@ -52,6 +52,7 @@ export const analytics = {
   eraAdjustmentViewed: (entity_type) =>
     track("era_adjustment_viewed", { entity_type }),
   comparisonCreated: () => track("comparison_created"),
+  comparisonShared: (sides) => track("comparison_shared", { sides }),
   listCreated: () => track("list_created"),
   forYouTrackPlayed: (tier_source) =>
     track("for_you_track_played", { tier_source }),

@@ -457,17 +457,15 @@ the JS console on iPhone.
 
 ### Branch rules
 
-Two workflows depending on context:
+**Active Claude session (Claude + Peyton working together)** — commit
+directly to `master` and push. Merge to master is the deploy. No PR, no
+`develop` intermediate. The `develop` branch exists in the remote but is
+abandoned (far behind master, last meaningful work was reverted CORS
+changes); do not commit there or attempt to revive it without an explicit
+cleanup pass.
 
-**Active Claude session (Claude + Peyton working together)**
-- Commit to `develop`, push, then merge `develop` → `master` directly and push
-- No PR needed — merge to master is the deploy, do it immediately when work is complete
-- Command: `git checkout master && git merge develop && git push && git checkout develop`
-
-**Peyton submitting work via GitHub mobile**
-- Work on `develop`, open a PR to `master`
-- Peyton reviews and merges via the GitHub app on his own schedule
-- Claude should open the PR but not merge it
+**Peyton submitting work via GitHub mobile** — Peyton opens a branch and
+PR directly on GitHub; Claude is not in the loop for those.
 
 ---
 

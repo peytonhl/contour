@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { UnifiedSearch } from "./UnifiedSearch.jsx";
 import { AlbumCard } from "./AlbumCard.jsx";
 import { ComparisonChart } from "./ComparisonChart.jsx";
 import { EditionPicker } from "./EditionPicker.jsx";
+import { CardPreviewModal } from "./CardPreviewModal.jsx";
 
 const ACCENT_A = "#d97a3b";
 const ACCENT_B = "#6a90b5";
@@ -15,6 +15,82 @@ const POLL_INTERVAL = 4000;
 // Tag an existing album object (from props) with _type so it fits the unified selection shape
 function tagAlbum(album) {
   return album ? { ...album, _type: "album" } : null;
+}
+
+// Saves the current comparison on click, then opens CardPreviewModal pointing
+// at the OG renderer. Same UX SavedComparisonPage uses (preview the PNG, then
+// share/save). Replaces the older two-state "Share" / "Shareable link ↗" flow
+// where a successful save just swapped a small pill nobody noticed, and any
+// failure produced nothing-happens-on-tap. Errors are surfaced inline rather
+// than swallowed — the modal does the rest. The button takes the full
+// comparison object so it can build the share label and pass the saved id
+// down to the modal.
+function ShareCardButton({ comparison, disabled }) {
+  const [savedId, setSavedId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function onClick() {
+    if (busy || disabled) return;
+    setError(null);
+    if (savedId) { setOpen(true); return; }
+    setBusy(true);
+    try {
+      const { id } = await api.saveComparison({
+        result: comparison,
+        name_a: comparison.album_a.name,
+        name_b: comparison.album_b.name,
+        name_c: comparison.album_c?.name ?? null,
+      });
+      analytics.comparisonShared(comparison.album_c ? 3 : 2);
+      setSavedId(id);
+      setOpen(true);
+    } catch (e) {
+      setError(e?.message || "Couldn't save. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const label =
+    `${comparison.album_a.name} vs ${comparison.album_b.name}` +
+    (comparison.album_c ? ` vs ${comparison.album_c.name}` : "") +
+    " on Contour";
+
+  return (
+    <>
+      <button
+        onClick={onClick}
+        disabled={disabled || busy}
+        style={{
+          padding: "12px 20px",
+          background: ACCENT_A,
+          border: "none", borderRadius: "var(--radius-md)",
+          color: "#000", fontWeight: 700, fontSize: 14,
+          cursor: (disabled || busy) ? "default" : "pointer",
+          opacity: (disabled || busy) ? 0.6 : 1,
+        }}
+      >
+        {busy ? "Generating…" : "Share card"}
+      </button>
+      {error && (
+        <span style={{ color: "var(--danger)", fontSize: 12 }}>
+          {error}
+        </span>
+      )}
+      {savedId && (
+        <CardPreviewModal
+          open={open}
+          onClose={() => setOpen(false)}
+          cardUrl={`${window.location.origin}/api/og/comparison?id=${savedId}`}
+          shareUrl={`${window.location.origin}/compare/${savedId}`}
+          shareText={label}
+          fileName={`contour-comparison-${savedId}.png`}
+        />
+      )}
+    </>
+  );
 }
 
 export function ComparisonWidget({
@@ -33,8 +109,6 @@ export function ComparisonWidget({
 
   const [comparison, setComparison] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savedId, setSavedId] = useState(null);
   const [error, setError] = useState(null);
   const [enriching, setEnriching] = useState(false);
 
@@ -45,7 +119,6 @@ export function ComparisonWidget({
   useEffect(() => {
     autoRunRef.current = false;
     setComparison(null);
-    setSavedId(null);
     // Clear all slots immediately so stale selections don't trigger the auto-run
     // before the new albums finish loading
     setSelectionA(null);
@@ -125,19 +198,16 @@ export function ComparisonWidget({
     setSelectionA(item);
     setEditionsA(item?._type === "album" ? [item.id] : []);
     setComparison(null);
-    setSavedId(null);
   }
   function handleSelectB(item) {
     setSelectionB(item);
     setEditionsB(item?._type === "album" ? [item.id] : []);
     setComparison(null);
-    setSavedId(null);
   }
   function handleSelectC(item) {
     setSelectionC(item);
     setEditionsC(item?._type === "album" ? [item.id] : []);
     setComparison(null);
-    setSavedId(null);
   }
 
   useEffect(() => {
@@ -191,7 +261,6 @@ export function ComparisonWidget({
     if (!selectionA || !selectionB) return;
     setLoading(true);
     setError(null);
-    setSavedId(null);
     try {
       const data = await api.compare(selectionA.id, selectionB.id, selectionC?.id ?? null, {
         editionIdsA: selectionA._type === "album" && editionsA.length ? editionsA : null,
@@ -207,24 +276,6 @@ export function ComparisonWidget({
       setError(e.message);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function saveComparison() {
-    if (!comparison) return;
-    setSaving(true);
-    try {
-      const { id } = await api.saveComparison({
-        result: comparison,
-        name_a: comparison.album_a.name,
-        name_b: comparison.album_b.name,
-        name_c: comparison.album_c?.name ?? null,
-      });
-      setSavedId(id);
-    } catch {
-      // silently fail
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -274,15 +325,17 @@ export function ComparisonWidget({
           Compare
         </button>
 
-        {/* The Share / shareable-link affordance is currently hidden — the
-            saveComparison API call silently fails in production (catch{}
-            in the handler swallows whatever the actual error is, and from
-            a user's perspective the button does nothing). Per feedback
-            "we shouldn't have that available if it doesn't work" we keep
-            it out of the UI until the root cause is diagnosed and fixed.
-            saveComparison() and savedId state are left in place because
-            they'll be needed when the feature is restored — just not
-            rendering the buttons. */}
+        {/* Share card — visible once a comparison exists and isn't still
+            enriching (sharing a half-rendered trajectory would be a worse
+            artifact than no share). The button saves the comparison on
+            click and opens CardPreviewModal with the OG-rendered PNG. */}
+        {comparison && !loading && (
+          <ShareCardButton
+            key={`${comparison.album_a.id}|${comparison.album_b.id}|${comparison.album_c?.id ?? ""}`}
+            comparison={comparison}
+            disabled={enriching}
+          />
+        )}
 
         {enriching && (
           <span style={{ fontSize: 12, color: ACCENT_B, display: "flex", alignItems: "center", gap: 6 }}>
