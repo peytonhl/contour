@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { api } from "../services/api.js";
-
-const DANGER = "#f87171";
+import { DANGER } from "../theme.js";
 
 /**
  * Block / unblock toggle for use on a UserPage's hero. Default state comes

@@ -1,8 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { ComparisonWidget } from "../components/ComparisonWidget.jsx";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
+import { ACCENT_A, ACCENT_B } from "../theme.js";
 
 export function ComparePage() {
   const [searchParams] = useSearchParams();

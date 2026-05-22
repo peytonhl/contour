@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-
-const ACCENT = "#d97a3b";
-const DANGER = "#f87171";
-const GREEN = "#6a90b5";
+import { ACCENT_A as ACCENT, ACCENT_B as GREEN, DANGER } from "../theme.js";
 
 const REASON_LABEL = {
   spam: "Spam",

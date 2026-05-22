@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { userAvatar } from "../utils/userAvatar.js";
-
-const ACCENT = "#d97a3b";
+import { ACCENT_A as ACCENT } from "../theme.js";
 
 /**
  * Modal user-search for the "Compare taste with…" entry point on the

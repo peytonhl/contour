@@ -2,10 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { GENRE_OPTIONS_BASE, GENRE_OPTIONS_EXTENDED, GenreChip } from "./OnboardingModal.jsx";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const GOLD = "#f59e0b";
+import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
 
 // Ghost action button paired with the "Music taste" section header. Lighter
 // than the tinted pills used elsewhere on the page so it reads as a sub-

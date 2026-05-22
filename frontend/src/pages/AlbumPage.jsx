@@ -9,10 +9,11 @@ import { ShareButton } from "../components/ShareButton.jsx";
 import { WantToListenButton } from "../components/WantToListenButton.jsx";
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { EntityHeroSkeleton } from "../components/Skeleton.jsx";
+import { NoChartData } from "../components/NoChartData.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
+import { ACCENT_A as ACCENT } from "../theme.js";
 
-const ACCENT = "#d97a3b";
 const DISCLAIMER = "Stream trajectory is a modeled approximation calibrated to the known total stream count. Exact day-by-day data requires Luminate licensing.";
 
 function formatStreams(n) {
@@ -78,41 +79,10 @@ function RiaaTooltip() {
   );
 }
 
-function StatBlock({ label, value }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)" }}>{label}</span>
-      <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{value ?? "—"}</span>
-    </div>
-  );
-}
-
-function NoChartData({ releaseDate }) {
-  const year = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : null;
-  const isEarlyEra = year && year < 2013;
-  return (
-    <div style={{
-      background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
-      padding: "52px 24px", display: "flex", flexDirection: "column",
-      alignItems: "center", gap: 12, textAlign: "center",
-    }}>
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
-        {isEarlyEra
-          ? <><path d="M1 6l5 5 5-5 5 5 5-5"/><path d="M1 12l5 5 5-5 5 5 5-5"/></>
-          : <><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>
-        }
-      </svg>
-      <div style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 400, color: "var(--text)" }}>
-        {isEarlyEra ? "This one predates the chart." : "No trajectory yet."}
-      </div>
-      <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 420, lineHeight: 1.65 }}>
-        {isEarlyEra
-          ? `Releases from ${year} predate widespread streaming, so the day-by-day curve isn't in our sources. The era adjustment still applies — it's why older albums get a fair shot.`
-          : "We haven't indexed a trajectory for this album yet. Check back in a few days, or rate it now and the page will catch up."}
-      </div>
-    </div>
-  );
-}
+// StatBlock + NoChartData were defined inline here. StatBlock was unused
+// (defined, never rendered) and NoChartData was duplicated with the TrackPage
+// version. Both were extracted: NoChartData moved to components/NoChartData.jsx,
+// StatBlock deleted.
 
 export function AlbumPage() {
   const { id } = useParams();
@@ -425,7 +395,7 @@ export function AlbumPage() {
               disclaimer={trajectory.stream_source !== "kworb" ? DISCLAIMER : undefined}
             />
           ) : (
-            <NoChartData releaseDate={album.release_date} />
+            <NoChartData releaseDate={album.release_date} entityLabel="album" />
           )}
         </div>
       </div>

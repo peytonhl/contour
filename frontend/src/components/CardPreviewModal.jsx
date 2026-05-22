@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { shareCard, saveCard } from "../utils/share.js";
-
-const ACCENT = "#d97a3b";
+import { ACCENT_A as ACCENT } from "../theme.js";
 
 // Version stamp appended to every OG card URL. Bump this when the card
 // design changes meaningfully — the OG handler sends Cache-Control with

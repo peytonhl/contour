@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { FollowingTab } from "../components/FollowingTab.jsx";
 import { FindFriendsModal } from "../components/FindFriendsModal.jsx";
-
-const ACCENT = "#d97a3b";
+import { ACCENT_A as ACCENT } from "../theme.js";
 
 // Top-level Friends surface — bottom-nav and desktop-nav target. Wraps the
 // existing FollowingTab component (which still drives the For You "Friends"

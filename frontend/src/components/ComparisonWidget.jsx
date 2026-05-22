@@ -6,10 +6,7 @@ import { AlbumCard } from "./AlbumCard.jsx";
 import { ComparisonChart } from "./ComparisonChart.jsx";
 import { EditionPicker } from "./EditionPicker.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const ACCENT_C = "#fb923c"; // orange — third overlay series
+import { ACCENT_A, ACCENT_B, ACCENT_C } from "../theme.js";
 const POLL_INTERVAL = 4000;
 
 // Tag an existing album object (from props) with _type so it fits the unified selection shape

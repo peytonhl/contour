@@ -4,10 +4,7 @@ import { api } from "../services/api.js";
 import { ComparisonChart } from "../components/ComparisonChart.jsx";
 import { AlbumCard } from "../components/AlbumCard.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const ACCENT_C = "#fb923c";
+import { ACCENT_A, ACCENT_B, ACCENT_C } from "../theme.js";
 
 // "Share card" button — opens the CardPreviewModal which renders the
 // generated comparison PNG inline and dispatches share/save through

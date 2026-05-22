@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../services/api.js";
-
-const ACCENT = "#d97a3b";
-const DANGER = "#f87171";
+import { ACCENT_A as ACCENT, DANGER } from "../theme.js";
 
 const REASONS = [
   { value: "spam",              label: "Spam or unwanted commercial content" },

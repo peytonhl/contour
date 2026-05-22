@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { api } from "../services/api.js";
-
-const ACCENT_ALBUM = "#d97a3b";
-const ACCENT_TRACK = "#6a90b5";
+import { ACCENT_A as ACCENT_ALBUM, ACCENT_B as ACCENT_TRACK } from "../theme.js";
 
 function formatDuration(ms) {
   if (!ms) return null;

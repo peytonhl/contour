@@ -10,10 +10,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { AlertIcon } from "./Icons";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const ACCENT_C = "#fb923c";
+import { ACCENT_A, ACCENT_B, ACCENT_C } from "../theme.js";
 
 // ── Milestone timeline ───────────────────────────────────────────────────────
 // Renders below the chart. Replaces the previous in-chart ReferenceLines +

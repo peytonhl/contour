@@ -1,6 +1,5 @@
 import { NavLink } from "react-router-dom";
-
-const ACCENT_A = "#d97a3b";
+import { ACCENT_A } from "../theme.js";
 
 // Shared tab bar rendered at the top of /search, /trending, and /charts so
 // the three pages feel like one surface with three views. Each tab is a

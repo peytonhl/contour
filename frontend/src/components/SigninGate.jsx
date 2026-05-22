@@ -3,15 +3,13 @@ import { useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { AppleSignInButton } from "./AppleSignInButton.jsx";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
+import { ACCENT_A, ACCENT_B } from "../theme.js";
 
 // Key used to persist "browse without signing in" across reloads. Sits
 // alongside contour_token in localStorage. Cleared automatically once the
 // user actually signs in (handled by Layout's sign-in CTAs which navigate
 // away from this gate's render path).
 const GUEST_MODE_KEY = "contour_guest_mode";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
 
 // Helpers exported for reuse in other components (e.g. action handlers that
 // need to flip a guest user into a "sign in to continue" state).

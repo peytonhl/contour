@@ -12,10 +12,7 @@ import { MentionBody } from "../components/Mentions.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { CompareTastePicker } from "../components/CompareTastePicker.jsx";
-
-const GOLD = "#f59e0b";
-const ACCENT = "#d97a3b";
-const ACCENT_B = "#6a90b5";
+import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
 
 // Eligibility probe — runs once on profile load. The button is only
 // rendered when the backend confirms a qualifying hot take exists; this

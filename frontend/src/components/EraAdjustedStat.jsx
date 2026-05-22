@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-
-const ACCENT = "#d97a3b";
+import { ACCENT_A as ACCENT } from "../theme.js";
 
 function fmt(n) {
   if (!n && n !== 0) return "—";

@@ -12,11 +12,7 @@ import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { MentionBody } from "../components/Mentions.jsx";
-
-const ACCENT = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const GOLD = "#f59e0b";
-const DANGER = "#f87171";
+import { ACCENT_A as ACCENT, ACCENT_B, GOLD, DANGER } from "../theme.js";
 
 function ListCollage({ images }) {
   const slots = [0, 1, 2, 3];

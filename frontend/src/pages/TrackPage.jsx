@@ -9,6 +9,7 @@ import { ShareButton } from "../components/ShareButton.jsx";
 import { WantToListenButton } from "../components/WantToListenButton.jsx";
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { EntityHeroSkeleton } from "../components/Skeleton.jsx";
+import { NoChartData } from "../components/NoChartData.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 
@@ -77,39 +78,11 @@ function RiaaTooltip() {
   );
 }
 
-function StatBlock({ label, value }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)" }}>{label}</span>
-      <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{value ?? "—"}</span>
-    </div>
-  );
-}
-
-function NoChartData({ releaseDate }) {
-  const year = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : null;
-  const isEarlyEra = year && year < 2013;
-  return (
-    <div style={{
-      background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)",
-      padding: "52px 24px", display: "flex", flexDirection: "column",
-      alignItems: "center", gap: 12, textAlign: "center",
-    }}>
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
-        {isEarlyEra
-          ? <><path d="M1 6l5 5 5-5 5 5 5-5"/><path d="M1 12l5 5 5-5 5 5 5-5"/></>
-          : <><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>
-        }
-      </svg>
-      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-muted)" }}>No streaming data available</div>
-      <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 420, lineHeight: 1.6, opacity: 0.75 }}>
-        {isEarlyEra
-          ? `Releases from ${year} predate widespread streaming adoption. Historical data is often absent from our sources.`
-          : "Streaming data isn't available for this track yet. It may not be indexed by our data sources."}
-      </div>
-    </div>
-  );
-}
+// StatBlock + NoChartData were defined inline. StatBlock was unused.
+// NoChartData was extracted to components/NoChartData.jsx and given the
+// brand-aligned copy + serif headline that AlbumPage already used (the
+// flat "No streaming data available" string was the older variant). The
+// shared component accepts `entityLabel="track"` to keep the copy precise.
 
 /**
  * Inline 30s preview player. Mirrors the audio plumbing from
@@ -552,7 +525,7 @@ export function TrackPage() {
               disclaimer={trajectory.stream_source !== "kworb" ? DISCLAIMER : undefined}
             />
           ) : (
-            <NoChartData releaseDate={track.release_date} />
+            <NoChartData releaseDate={track.release_date} entityLabel="track" />
           )}
         </div>
       </div>

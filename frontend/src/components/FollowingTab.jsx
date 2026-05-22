@@ -6,9 +6,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
 import { MentionBody } from "./Mentions.jsx";
-
-const GOLD = "#f59e0b";
-const ACCENT_A = "#d97a3b";
+import { ACCENT_A, GOLD } from "../theme.js";
 
 const ENTITY_COLOR = { album: ACCENT_A, track: "#6a90b5", artist: "#fb923c" };
 

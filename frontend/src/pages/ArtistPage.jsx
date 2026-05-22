@@ -8,8 +8,7 @@ import { EntityHeroSkeleton, RowSkeleton } from "../components/Skeleton.jsx";
 import { AlertIcon } from "../components/Icons.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
-
-const ACCENT_A = "#d97a3b";
+import { ACCENT_A } from "../theme.js";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 function formatStreams(n) {

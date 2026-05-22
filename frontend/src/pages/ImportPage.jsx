@@ -3,9 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
+import { ACCENT_A, ACCENT_B } from "../theme.js";
 
 /**
  * RYM CSV import page.

@@ -2,9 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
-
-const ACCENT = "#d97a3b";
-const ACCENT_B = "#6a90b5";
+import { ACCENT_A as ACCENT, ACCENT_B } from "../theme.js";
 
 function formatDate(iso) {
   if (!iso) return "";

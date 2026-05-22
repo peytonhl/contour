@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
+import { ACCENT_A as ACCENT } from "../theme.js";
 
 // Regex MUST match backend/services/mentions.py's _MENTION_RE — same prefix
 // boundary (start of string or non-name char), same token shape (starts
@@ -15,8 +16,6 @@ const MENTION_RE =
 // the "in progress" mention prefix at cursor.
 const IN_PROGRESS_RE =
   /(?:^|[^A-Za-z0-9_.\-])@([A-Za-z0-9_][A-Za-z0-9_.\-]{0,29})$/;
-
-const ACCENT = "#d97a3b";
 
 // ── Body renderer ────────────────────────────────────────────────────────────
 

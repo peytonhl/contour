@@ -1,7 +1,5 @@
 import { useState } from "react";
-
-const ACCENT = "#d97a3b";
-const GOLD = "#f59e0b";
+import { ACCENT_A as ACCENT, GOLD } from "../theme.js";
 
 function Star({ fill, size = 20 }) {
   return (

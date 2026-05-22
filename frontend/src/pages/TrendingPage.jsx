@@ -4,10 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const GOLD = "#f59e0b";
+import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
 
 const WINDOW_OPTIONS = [
   { key: "24h", label: "24h" },

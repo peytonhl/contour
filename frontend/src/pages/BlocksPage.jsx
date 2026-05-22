@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-
-const ACCENT = "#d97a3b";
+import { ACCENT_A as ACCENT } from "../theme.js";
 
 export function BlocksPage() {
   const { user, loading: authLoading } = useAuth();

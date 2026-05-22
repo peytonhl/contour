@@ -1,4 +1,4 @@
-const ACCENT_A = "#d97a3b";
+import { ACCENT_A } from "../theme.js";
 
 function Section({ title, children }) {
   return (

@@ -2,10 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const GOLD = "#f59e0b";
+import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
 
 function formatDuration(ms) {
   if (!ms) return null;

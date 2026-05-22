@@ -1,4 +1,4 @@
-const ACCENT = "#d97a3b";
+import { ACCENT_A as ACCENT } from "../theme.js";
 
 /**
  * Letterboxd-style profile nav: each tab cell shows a large count above a

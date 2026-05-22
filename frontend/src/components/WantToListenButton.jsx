@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-
-const ACCENT_B = "#6a90b5";
+import { ACCENT_B } from "../theme.js";
 
 /**
  * Toggleable "Want to listen" button shown on entity hero rows.

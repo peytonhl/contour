@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
-
-const ACCENT_A = "#d97a3b";
+import { ACCENT_A } from "../theme.js";
 
 // ── Reusable row primitives ──────────────────────────────────────────────────
 // Two flavors of row: a Link row (for navigating to another page) and a

@@ -4,10 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
-
-const ACCENT = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const GOLD = "#f59e0b";
+import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
 
 function Avatar({ user, size = 88, ring }) {
   return (

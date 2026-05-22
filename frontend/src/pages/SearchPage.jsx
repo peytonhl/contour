@@ -6,10 +6,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { AppleSignInButton } from "../components/AppleSignInButton.jsx";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const ACCENT_C = "#fb923c";
+import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD } from "../theme.js";
 
 // withNativeAuthFlag appends ?from=native inside the Capacitor shell so the
 // backend OAuth callback redirects via the contour:// URL scheme. No-op on web.
@@ -34,7 +31,6 @@ function formatStreams(n) {
 
 const TYPE_LABELS = { album: "album", track: "track", artist: "artist", user: "user" };
 const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C, user: "#60a5fa" };
-const GOLD = "#f59e0b";
 
 // ── Inline rating widget for search results ───────────────────────────────────
 // 5 tappable stars rendered to the right of an album/track row in the search

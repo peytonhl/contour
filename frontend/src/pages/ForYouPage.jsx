@@ -34,10 +34,7 @@ import { MentionInput } from "../components/Mentions.jsx";
 // Friends icon → /friends) instead of two competing surfaces.
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { AlertIcon } from "../components/Icons.jsx";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const GOLD = "#f59e0b";
+import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
 
 // ── LocalStorage keys ─────────────────────────────────────────────────────────
 const GENRES_KEY = "contour_genres_v1";

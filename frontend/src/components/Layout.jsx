@@ -5,9 +5,7 @@ import { api } from "../services/api.js";
 import { userAvatar } from "../utils/userAvatar.js";
 import { AppleSignInButton } from "./AppleSignInButton.jsx";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
+import { ACCENT_A, ACCENT_B } from "../theme.js";
 
 // ── Google "G" logo (official multicolor) ────────────────────────────────────
 function GoogleIcon({ size = 18 }) {

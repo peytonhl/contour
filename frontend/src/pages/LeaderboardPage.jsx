@@ -2,10 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const GOLD = "#f59e0b";
+import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
 const SILVER = "#9ca3af";
 const BRONZE = "#b45309";
 

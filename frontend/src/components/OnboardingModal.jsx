@@ -2,10 +2,9 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
+import { ACCENT_A, ACCENT_B } from "../theme.js";
 
 const STORAGE_KEY = "contour_onboarded_v2";
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
 
 // ── Genre picker data (also exported for reuse in TasteSection) ───────────────
 //

@@ -5,10 +5,7 @@ import { analytics } from "../services/analytics.js";
 import { ReportModal } from "./ReportModal.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionInput, MentionBody } from "./Mentions.jsx";
-
-const GOLD = "#f59e0b";
-const ACCENT = "#d97a3b";
-const DANGER = "#f87171";
+import { ACCENT_A as ACCENT, GOLD, DANGER } from "../theme.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function timeAgo(iso) {

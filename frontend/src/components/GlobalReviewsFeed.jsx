@@ -6,11 +6,7 @@ import { BadgeLeaderboard } from "./Badges.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
 import { MentionBody } from "./Mentions.jsx";
-
-const GOLD = "#f59e0b";
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const DANGER = "#f87171";
+import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
 
 const ENTITY_COLOR = { album: ACCENT_A, track: ACCENT_B, artist: "#fb923c" };
 const SORT_LABELS = [

@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
-
-const ACCENT_A = "#d97a3b";
-const ACCENT_B = "#6a90b5";
-const GOLD = "#f59e0b";
-const DANGER = "#f87171";
+import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
 
 // ── Page-level building blocks (mirror SettingsPage's primitives) ────────────
 function SectionLabel({ children }) {
