@@ -276,6 +276,19 @@ button, a, [role="button"] {
   }
 }
 
+/* ── Profile body reorder ──
+   The .profile-body wraps a `.profile-taste-section` (TasteSection) and a
+   `.profile-tab-content` (the data for the active StatTab). DOM order is
+   taste-then-tabs, but the *interaction* model is "tap a stat tab, see its
+   data" — meaning the active tab's content needs to sit right under the
+   StatTabs strip, not 600px down past the TasteSection. We reorder via
+   `flex order` instead of restructuring the DOM so the markup stays simple
+   and TasteSection's lazy-render side effects (image loads, etc.) don't
+   move around. Was previously mobile-only; promoted to apply on every
+   viewport after the same complaint showed up on desktop. */
+.profile-tab-content { order: 1; }
+.profile-taste-section { order: 2; margin-top: 28px; }
+
 /* ── Responsive utilities ── */
 /* ── Bottom nav (mobile only) ── */
 .bottom-nav { display: none; }
@@ -384,17 +397,6 @@ button, a, [role="button"] {
   .stat-tabs .stat-tab-button:nth-child(3n) {
     border-right: none;
   }
-
-  /* Profile page mobile reorder: tab content sits IMMEDIATELY below the
-     StatTabs (so tapping a tab shows the data right under it). The
-     TasteSection moves below the tab content. Implemented via CSS order
-     since the markup is the same desktop+mobile. */
-  .profile-body {
-    display: flex !important;
-    flex-direction: column !important;
-  }
-  .profile-tab-content { order: 1; }
-  .profile-taste-section { order: 2; margin-top: 28px; }
 
   /* Defensive: hard-cap horizontal overflow on the profile root so a
      stray wide element never produces page-level horizontal scroll

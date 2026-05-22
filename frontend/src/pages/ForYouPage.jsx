@@ -1863,6 +1863,35 @@ function ForYouFeed() {
     return () => window.removeEventListener("keydown", onKey);
   }, [activeIdx, goToCard]);
 
+  // Desktop wheel-to-advance — without this, desktop users had only arrow
+  // keys to navigate (no visible hint that arrow keys did anything), so the
+  // natural "scroll down to see more" instinct produced nothing-happens-on-
+  // scroll which reads as "the deck is stuck." Mouse wheel + trackpad both
+  // fire `wheel` events; touch swipes don't, so mobile isn't affected.
+  //
+  // Throttled to one advance per ~350ms — without this, a single trackpad
+  // gesture (which emits many small wheel events) would advance five cards
+  // at once. The minimum-delta gate filters out trackpad inertia tail-off
+  // that would otherwise re-trigger advancement after the user stopped
+  // actively scrolling.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let lastAdvance = 0;
+    function onWheel(e) {
+      if (transitioning) return;
+      if (Math.abs(e.deltaY) < 8) return;
+      const now = Date.now();
+      if (now - lastAdvance < 350) return;
+      e.preventDefault();
+      if (e.deltaY > 0) goToCard(activeIdx + 1);
+      else goToCard(activeIdx - 1);
+      lastAdvance = now;
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [activeIdx, transitioning, goToCard]);
+
   /**
    * For Deezer-sourced tracks, resolve to a Spotify track ID that we've
    * confirmed actually fetches. Returns null when no verified match exists —

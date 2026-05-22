@@ -693,10 +693,12 @@ export function ProfilePage() {
       )}
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
-      {/* On mobile, CSS reorders the .profile-tab-content above the
-          .profile-taste-section so tapping a tab shows the data right
-          beneath it. Desktop keeps the original "Taste → tab content"
-          order since the wider layout makes both visible at once. */}
+      {/* CSS reorders .profile-tab-content above .profile-taste-section on
+          every viewport (see index.css). The interaction model is "tap a
+          StatTab, see its data right beneath" — having TasteSection in
+          between pushes the active tab's content too far down to feel
+          connected to the tap. Was mobile-only originally; extended to
+          desktop after the same complaint surfaced there. */}
       <div className="profile-body" style={{ padding: "28px 28px", display: "flex", flexDirection: "column", gap: 28 }}>
 
         {/* Taste */}
