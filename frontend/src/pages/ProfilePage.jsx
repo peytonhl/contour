@@ -11,6 +11,7 @@ import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { MentionBody } from "../components/Mentions.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { EmptyState } from "../components/EmptyState.jsx";
+import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { CompareTastePicker } from "../components/CompareTastePicker.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
@@ -202,6 +203,10 @@ export function ProfilePage() {
 
   const [badges, setBadges] = useState(null);
   const [lists, setLists] = useState([]);
+  const [listsHasMore, setListsHasMore] = useState(false);
+  const [loadingMoreLists, setLoadingMoreLists] = useState(false);
+  const [loadingMoreRatings, setLoadingMoreRatings] = useState(false);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
   const [showCreateList, setShowCreateList] = useState(false);
   const [newListTitle, setNewListTitle] = useState("");
   const [newListDesc, setNewListDesc] = useState("");
@@ -214,15 +219,17 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (!user) { navigate("/"); return; }
+    const emptyPage = { items: [], has_more: false, total: 0 };
     Promise.all([
       api.getProfile(),
       api.getFollowing(user.id).catch(() => []),
       api.getFollowers(user.id).catch(() => []),
-      api.getUserLists(user.id).catch(() => []),
+      api.getUserLists(user.id).catch(() => emptyPage),
     ])
       .then(([p, fwing, fwers, userLists]) => {
         // /auth/profile returns user fields nested under a `user` key:
-        //   {user: {id, display_name, image_url, bio}, ratings, reviews}
+        //   {user: {id, display_name, image_url, bio}, ratings, reviews,
+        //    ratings_has_more, reviews_has_more, ratings_total, reviews_total}
         // But the rest of this page reads (and the bio/photo edit handlers
         // patch) those fields at the top level (`profile.image_url`,
         // `profile.bio`). Spreading `p.user` over `p` lifts them so both
@@ -233,7 +240,8 @@ export function ProfilePage() {
         setProfile({ ...p, ...p.user });
         setFollowing(fwing);
         setFollowers(fwers);
-        setLists(userLists);
+        setLists(userLists.items ?? []);
+        setListsHasMore(!!userLists.has_more);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -242,6 +250,53 @@ export function ProfilePage() {
     // page render. Button only renders when this resolves to true.
     probeHotTakeEligibility(user.id).then(setHasHotTake);
   }, [user]);
+
+  // ── Load-more handlers per tab ──────────────────────────────────────────
+  // /auth/profile gives us page 1 of ratings + reviews + the has_more flags.
+  // For page 2+, we paginate against /users/{user.id}/ratings (or /reviews)
+  // and append onto profile.ratings / profile.reviews. Lists has its own
+  // state since /auth/profile doesn't include them.
+  async function loadMoreRatings() {
+    if (loadingMoreRatings || !profile?.ratings_has_more) return;
+    setLoadingMoreRatings(true);
+    try {
+      const offset = profile.ratings.length;
+      const next = await api.getUserRatings(user.id, 50, offset);
+      setProfile((p) => p ? ({
+        ...p,
+        ratings: [...p.ratings, ...(next.items ?? [])],
+        ratings_has_more: !!next.has_more,
+      }) : p);
+    } catch { /* button stays for retry */ }
+    finally { setLoadingMoreRatings(false); }
+  }
+  async function loadMoreReviews() {
+    if (loadingMoreReviews || !profile?.reviews_has_more) return;
+    setLoadingMoreReviews(true);
+    try {
+      const offset = profile.reviews.length;
+      const next = await api.getUserReviews(user.id, 30, offset);
+      setProfile((p) => p ? ({
+        ...p,
+        reviews: [...p.reviews, ...(next.items ?? [])],
+        reviews_has_more: !!next.has_more,
+      }) : p);
+    } catch { /* button stays for retry */ }
+    finally { setLoadingMoreReviews(false); }
+  }
+  async function loadMoreLists() {
+    if (loadingMoreLists || !listsHasMore) return;
+    setLoadingMoreLists(true);
+    try {
+      const next = await api.getUserLists(user.id, 20, lists.length);
+      setLists((prev) => {
+        const seen = new Set(prev.map((l) => l.id));
+        return [...prev, ...(next.items ?? []).filter((l) => !seen.has(l.id))];
+      });
+      setListsHasMore(!!next.has_more);
+    } catch { /* button stays for retry */ }
+    finally { setLoadingMoreLists(false); }
+  }
 
   async function handleSaveBio() {
     setSavingBio(true);
@@ -724,6 +779,9 @@ export function ProfilePage() {
             {!tabExpanded && (profile?.ratings?.length ?? 0) > TAB_VISIBLE_LIMIT && (
               <ShowAllButton total={profile.ratings.length} onClick={() => setTabExpanded(true)} />
             )}
+            {(tabExpanded || (profile?.ratings?.length ?? 0) <= TAB_VISIBLE_LIMIT) && profile?.ratings_has_more && (
+              <LoadMoreButton onClick={loadMoreRatings} loading={loadingMoreRatings} label="Load more ratings" />
+            )}
           </div>
         )}
 
@@ -823,6 +881,9 @@ export function ProfilePage() {
             {!tabExpanded && (profile?.reviews?.length ?? 0) > TAB_VISIBLE_LIMIT && (
               <ShowAllButton total={profile.reviews.length} onClick={() => setTabExpanded(true)} />
             )}
+            {(tabExpanded || (profile?.reviews?.length ?? 0) <= TAB_VISIBLE_LIMIT) && profile?.reviews_has_more && (
+              <LoadMoreButton onClick={loadMoreReviews} loading={loadingMoreReviews} label="Load more reviews" />
+            )}
           </div>
         )}
 
@@ -905,6 +966,9 @@ export function ProfilePage() {
             ))}
             {!tabExpanded && lists.length > TAB_VISIBLE_LIMIT && (
               <ShowAllButton total={lists.length} onClick={() => setTabExpanded(true)} />
+            )}
+            {(tabExpanded || lists.length <= TAB_VISIBLE_LIMIT) && listsHasMore && (
+              <LoadMoreButton onClick={loadMoreLists} loading={loadingMoreLists} label="Load more lists" />
             )}
           </div>
         )}

@@ -339,6 +339,21 @@ async def get_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Page-1 fetch of ratings + reviews (50 each). Beyond that, the frontend
+    # paginates against /users/{user.id}/ratings + /users/{id}/reviews which
+    # now both accept offset and return {items, has_more, total}. We surface
+    # totals + has_more here so ProfilePage can decide whether to render a
+    # "Load more" button without a second round-trip.
+    from sqlalchemy import func as _sa_func
+    ratings_total_row = await db.execute(
+        select(_sa_func.count()).select_from(Rating).where(Rating.user_id == user_id)
+    )
+    ratings_total = ratings_total_row.scalar() or 0
+    reviews_total_row = await db.execute(
+        select(_sa_func.count()).select_from(Review).where(Review.user_id == user_id)
+    )
+    reviews_total = reviews_total_row.scalar() or 0
+
     ratings_result = await db.execute(
         select(Rating)
         .where(Rating.user_id == user_id)
@@ -483,6 +498,10 @@ async def get_profile(
             }
             for r in reviews
         ],
+        "ratings_total": ratings_total,
+        "ratings_has_more": ratings_total > len(ratings),
+        "reviews_total": reviews_total,
+        "reviews_has_more": reviews_total > len(reviews),
     }
 
 

@@ -5,6 +5,7 @@ import { analytics } from "../services/analytics.js";
 import { ReportModal } from "./ReportModal.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionInput, MentionBody } from "./Mentions.jsx";
+import { LoadMoreButton } from "./LoadMoreButton.jsx";
 import { ACCENT_A as ACCENT, GOLD, DANGER } from "../theme.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -477,20 +478,12 @@ export function ReplyThread({ reviewId, user, initialCount }) {
       ))}
 
       {expanded && hasMore && (
-        <button
-          onClick={loadMore}
-          disabled={loadingMore}
-          style={{
-            marginTop: 10, marginLeft: 34,
-            padding: "6px 14px", fontSize: 12, fontWeight: 600,
-            background: "none", border: "1px solid var(--border)",
-            borderRadius: "var(--radius-xl)", color: "var(--text-muted)",
-            cursor: loadingMore ? "default" : "pointer",
-            opacity: loadingMore ? 0.6 : 1,
-          }}
-        >
-          {loadingMore ? "Loading…" : "Load more replies"}
-        </button>
+        // Nested under a reply thread — align left under the indented thread
+        // so the button doesn't drift to the center of a card. The 34px
+        // marginLeft matches the depth-0 reply indentation + avatar gutter.
+        <div style={{ marginLeft: 34 }}>
+          <LoadMoreButton onClick={loadMore} loading={loadingMore} label="Load more replies" align="flex-start" />
+        </div>
       )}
 
       <ReportModal
@@ -916,20 +909,7 @@ export function ReviewSection({ entityType, entityId, user }) {
             />
           ))}
           {hasMoreReviews && (
-            <button
-              onClick={loadMoreReviews}
-              disabled={loadingMoreReviews}
-              style={{
-                marginTop: 12, alignSelf: "center",
-                padding: "8px 20px", fontSize: 13, fontWeight: 600,
-                background: "var(--surface2)", border: "1px solid var(--border)",
-                borderRadius: "var(--radius-xl)", color: "var(--text-muted)",
-                cursor: loadingMoreReviews ? "default" : "pointer",
-                opacity: loadingMoreReviews ? 0.6 : 1,
-              }}
-            >
-              {loadingMoreReviews ? "Loading…" : "Load more reviews"}
-            </button>
+            <LoadMoreButton onClick={loadMoreReviews} loading={loadingMoreReviews} label="Load more reviews" />
           )}
         </div>
       )}

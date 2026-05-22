@@ -274,9 +274,15 @@ export const api = {
   toggleFollow: (id) => post(`/users/${id}/follow`, {}),
   getFollowing: (id) => request(`/users/${id}/following`),
   getFollowers: (id) => request(`/users/${id}/followers`),
-  getUserReviews: (id) => request(`/users/${id}/reviews`),
-  getUserRatings: (id) => request(`/users/${id}/ratings`),
-  getUserLists: (id) => request(`/users/${id}/lists`),
+  // All three endpoints return { items, has_more, total }. Server defaults
+  // are 30/50/20 (reviews/ratings/lists). Pass limit + offset for "Load
+  // more" pagination on the UserPage tabs.
+  getUserReviews: (id, limit = 30, offset = 0) =>
+    request(`/users/${id}/reviews?limit=${limit}&offset=${offset}`),
+  getUserRatings: (id, limit = 50, offset = 0) =>
+    request(`/users/${id}/ratings?limit=${limit}&offset=${offset}`),
+  getUserLists: (id, limit = 20, offset = 0) =>
+    request(`/users/${id}/lists?limit=${limit}&offset=${offset}`),
   // Head-to-head taste comparison vs another user (auth required — viewer
   // is the JWT subject). Returns shared/agreement counts plus the obscure
   // biggest-agreement + biggest-fight picks. Drives /compare/taste/:id.

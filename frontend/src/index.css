@@ -234,6 +234,22 @@ button, a, [role="button"] {
   to   { opacity: 1; }
 }
 
+/* ── Lazy image placeholder ──
+   Every <img loading="lazy" …> gets a surface2 background so it paints
+   as a neutral filled box BEFORE the image arrives, instead of flashing
+   blank-white between layout and load. The image covers this background
+   via objectFit:cover once decoded, so the placeholder is invisible
+   when the image is present. Hero images intentionally skip the lazy
+   attribute (they're fetchpriority="high" and load before user input),
+   so this rule doesn't touch them.
+
+   Inline `style={{ background: ... }}` overrides this rule via CSS
+   specificity — components that want a different placeholder color
+   (e.g., the genre-tinted backgrounds in some chips) keep theirs. */
+img[loading="lazy"] {
+  background-color: var(--surface2);
+}
+
 /* ── Skeleton shimmer ──
    Used by <Skeleton /> primitive. Gradient sweeps L→R every 1.4s; muted
    enough that several stacked skeletons don't strobe. */

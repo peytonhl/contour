@@ -655,17 +655,31 @@ async def get_taste_match(
 
 
 @router.get("/{user_id}/ratings")
-async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
-    """Return all ratings for a user, enriched with entity metadata, newest first."""
+async def get_user_ratings(
+    user_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return ratings for a user, enriched with entity metadata, newest first.
+    Paginated — default page 50, max 200. Total count is computed via a cheap
+    COUNT separately so `has_more` is accurate without hydrating extra rows.
+    """
+    total_row = await db.execute(
+        select(func.count()).select_from(Rating).where(Rating.user_id == user_id)
+    )
+    total = total_row.scalar() or 0
+
     ratings = (await db.execute(
         select(Rating)
         .where(Rating.user_id == user_id)
         .order_by(desc(Rating.created_at))
-        .limit(200)
+        .limit(limit)
+        .offset(offset)
     )).scalars().all()
 
     if not ratings:
-        return []
+        return {"items": [], "has_more": False, "total": total}
 
     unique_entities = list({(r.entity_type, r.entity_id) for r in ratings})
 
@@ -675,7 +689,7 @@ async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
     )
     enriched = {k: v for k, v in raw if isinstance(v, dict)}
 
-    return [
+    items = [
         {
             "entity_type": r.entity_type,
             "entity_id": r.entity_id,
@@ -687,15 +701,39 @@ async def get_user_ratings(user_id: str, db: AsyncSession = Depends(get_db)):
         }
         for r in ratings
     ]
+    return {
+        "items": items,
+        "has_more": offset + limit < total,
+        "total": total,
+    }
 
 
 @router.get("/{user_id}/lists")
-async def get_user_lists(user_id: str, db: AsyncSession = Depends(get_db)):
-    """Return all lists created by a user, newest first."""
+async def get_user_lists(
+    user_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return lists created by a user, newest first. Paginated because each
+    list does up to 4 Spotify metadata fetches for its preview collage —
+    on a power user with 20+ lists the previous unbounded version triggered
+    80+ Spotify calls per request.
+
+    Total count is computed separately (cheap COUNT) so the response carries
+    has_more without paying for hydrating the full unpaginated list.
+    """
+    total_row = await db.execute(
+        select(func.count()).select_from(UserList).where(UserList.user_id == user_id)
+    )
+    total = total_row.scalar() or 0
+
     lists = (await db.execute(
         select(UserList)
         .where(UserList.user_id == user_id)
         .order_by(desc(UserList.updated_at))
+        .limit(limit)
+        .offset(offset)
     )).scalars().all()
 
     result = []
@@ -739,30 +777,42 @@ async def get_user_lists(user_id: str, db: AsyncSession = Depends(get_db)):
             "updated_at": lst.updated_at.isoformat() + "Z",
         })
 
-    return result
+    return {
+        "items": result,
+        "has_more": offset + limit < total,
+        "total": total,
+    }
 
 
 @router.get("/{user_id}/reviews")
 async def get_user_reviews(
     user_id: str,
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     viewer_id: Optional[str] = Depends(optional_user_id),
 ):
     """
-    Return a user's most recent reviews, enriched with entity metadata + vote
-    counts + the viewer's current vote on each (so the UserPage Reviews tab
-    can render an interactive vote row that mirrors the album-page review
-    section).
+    Return a user's most recent reviews, paginated, enriched with entity
+    metadata + vote counts + the viewer's current vote on each (so the
+    UserPage Reviews tab can render an interactive vote row that mirrors
+    the album-page review section).
     """
+    total_row = await db.execute(
+        select(func.count()).select_from(Review).where(Review.user_id == user_id)
+    )
+    total = total_row.scalar() or 0
+
     reviews = (await db.execute(
         select(Review)
         .where(Review.user_id == user_id)
         .order_by(desc(Review.created_at))
-        .limit(30)
+        .limit(limit)
+        .offset(offset)
     )).scalars().all()
 
     if not reviews:
-        return []
+        return {"items": [], "has_more": False, "total": total}
 
     # Enrich with Spotify metadata + ratings
     unique_entities = list({(r.entity_type, r.entity_id) for r in reviews})
@@ -831,7 +881,7 @@ async def get_user_reviews(
             out.append({"id": mu.id, "display_name": mu.display_name})
         return out
 
-    return [
+    items = [
         {
             "id": r.id,
             "entity_type": r.entity_type,
@@ -849,6 +899,11 @@ async def get_user_reviews(
         }
         for r in reviews
     ]
+    return {
+        "items": items,
+        "has_more": offset + limit < total,
+        "total": total,
+    }
 
 
 @router.post("/{user_id}/follow")

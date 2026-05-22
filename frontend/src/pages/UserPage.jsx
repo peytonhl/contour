@@ -10,6 +10,7 @@ import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
+import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { MentionBody } from "../components/Mentions.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD, DANGER } from "../theme.js";
@@ -51,20 +52,28 @@ function ShowAllButton({ total, onClick }) {
       onClick={onClick}
       style={{
         alignSelf: "flex-start",
+        // 14px top margin paired with 10px vertical padding hits a 44px+ hit
+        // target with the surrounding row's whitespace — meets iOS HIG even
+        // though the visible button is small.
         marginTop: 14,
-        padding: "7px 16px",
+        padding: "10px 16px",
         background: "none",
         border: "1px solid var(--border)",
         borderRadius: "var(--radius-sm)",
         color: "var(--text-muted)",
         fontSize: 13, fontWeight: 600,
         cursor: "pointer",
+        minHeight: 38,
       }}
     >
       Show all {total}
     </button>
   );
 }
+
+// LoadMoreButton lives in its own file now — used here + ProfilePage +
+// ReviewSection. See components/LoadMoreButton.jsx for the standards
+// it enforces (44px hit target, hover lift, etc).
 
 function timeAgo(iso) {
   // Backend serializes naive UTC; normalize tz-less strings to UTC.
@@ -84,8 +93,14 @@ export function UserPage() {
   const { user: me } = useAuth();
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
+  const [reviewsHasMore, setReviewsHasMore] = useState(false);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
   const [lists, setLists] = useState([]);
+  const [listsHasMore, setListsHasMore] = useState(false);
+  const [loadingMoreLists, setLoadingMoreLists] = useState(false);
   const [ratings, setRatings] = useState([]);
+  const [ratingsHasMore, setRatingsHasMore] = useState(false);
+  const [loadingMoreRatings, setLoadingMoreRatings] = useState(false);
   const [following, setFollowing] = useState([]);
   const [followers, setFollowers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -112,25 +127,74 @@ export function UserPage() {
 
   useEffect(() => {
     setLoading(true);
+    const emptyPage = { items: [], has_more: false, total: 0 };
     Promise.all([
       api.getUser(id),
-      api.getUserReviews(id).catch(() => []),
-      api.getUserLists(id).catch(() => []),
-      api.getUserRatings(id).catch(() => []),
+      api.getUserReviews(id).catch(() => emptyPage),
+      api.getUserLists(id).catch(() => emptyPage),
+      api.getUserRatings(id).catch(() => emptyPage),
       api.getFollowing(id).catch(() => []),
       api.getFollowers(id).catch(() => []),
     ])
       .then(([p, rev, userLists, userRatings, followingList, followersList]) => {
         setProfile(p);
-        setReviews(rev);
-        setLists(userLists);
-        setRatings(userRatings);
+        setReviews(rev.items ?? []);
+        setReviewsHasMore(!!rev.has_more);
+        setLists(userLists.items ?? []);
+        setListsHasMore(!!userLists.has_more);
+        setRatings(userRatings.items ?? []);
+        setRatingsHasMore(!!userRatings.has_more);
         setFollowing(followingList);
         setFollowers(followersList);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [id]);
+
+  // "Load more" handlers per tab. Each appends the next server page to the
+  // existing array and updates the has_more flag. De-dupe by id (defensive
+  // against the rare case where a row was added/edited between pages).
+  async function loadMoreReviews() {
+    if (loadingMoreReviews || !reviewsHasMore) return;
+    setLoadingMoreReviews(true);
+    try {
+      const next = await api.getUserReviews(id, 30, reviews.length);
+      setReviews((prev) => {
+        const seen = new Set(prev.map((r) => r.id));
+        return [...prev, ...(next.items ?? []).filter((r) => !seen.has(r.id))];
+      });
+      setReviewsHasMore(!!next.has_more);
+    } catch { /* button stays for retry */ }
+    finally { setLoadingMoreReviews(false); }
+  }
+  async function loadMoreLists() {
+    if (loadingMoreLists || !listsHasMore) return;
+    setLoadingMoreLists(true);
+    try {
+      const next = await api.getUserLists(id, 20, lists.length);
+      setLists((prev) => {
+        const seen = new Set(prev.map((l) => l.id));
+        return [...prev, ...(next.items ?? []).filter((l) => !seen.has(l.id))];
+      });
+      setListsHasMore(!!next.has_more);
+    } catch { /* button stays for retry */ }
+    finally { setLoadingMoreLists(false); }
+  }
+  async function loadMoreRatings() {
+    if (loadingMoreRatings || !ratingsHasMore) return;
+    setLoadingMoreRatings(true);
+    try {
+      const next = await api.getUserRatings(id, 50, ratings.length);
+      // Ratings rows don't have a stable id (one row per entity rating), so
+      // de-dupe by (entity_type, entity_id) instead.
+      setRatings((prev) => {
+        const seen = new Set(prev.map((r) => `${r.entity_type}:${r.entity_id}`));
+        return [...prev, ...(next.items ?? []).filter((r) => !seen.has(`${r.entity_type}:${r.entity_id}`))];
+      });
+      setRatingsHasMore(!!next.has_more);
+    } catch { /* button stays for retry */ }
+    finally { setLoadingMoreRatings(false); }
+  }
 
   async function handleFollow() {
     if (!me) return;
@@ -343,6 +407,9 @@ export function UserPage() {
             {!tabExpanded && ratings.length > TAB_VISIBLE_LIMIT && (
               <ShowAllButton total={ratings.length} onClick={() => setTabExpanded(true)} />
             )}
+            {(tabExpanded || ratings.length <= TAB_VISIBLE_LIMIT) && ratingsHasMore && (
+              <LoadMoreButton onClick={loadMoreRatings} loading={loadingMoreRatings} label="Load more ratings" />
+            )}
           </div>
         )}
 
@@ -484,6 +551,9 @@ export function UserPage() {
             {!tabExpanded && reviews.length > TAB_VISIBLE_LIMIT && (
               <ShowAllButton total={reviews.length} onClick={() => setTabExpanded(true)} />
             )}
+            {(tabExpanded || reviews.length <= TAB_VISIBLE_LIMIT) && reviewsHasMore && (
+              <LoadMoreButton onClick={loadMoreReviews} loading={loadingMoreReviews} label="Load more reviews" />
+            )}
           </div>
         )}
 
@@ -516,6 +586,9 @@ export function UserPage() {
             ))}
             {!tabExpanded && lists.length > TAB_VISIBLE_LIMIT && (
               <ShowAllButton total={lists.length} onClick={() => setTabExpanded(true)} />
+            )}
+            {(tabExpanded || lists.length <= TAB_VISIBLE_LIMIT) && listsHasMore && (
+              <LoadMoreButton onClick={loadMoreLists} loading={loadingMoreLists} label="Load more lists" />
             )}
           </div>
         )}
