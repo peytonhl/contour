@@ -80,39 +80,6 @@ function truncate(text, max = 220) {
   return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 }
 
-// Pre-fetch a remote image and inline it as a base64 data URL.
-//
-// Why: @vercel/og 0.6.4's internal image fetcher couldn't pull from
-// i.scdn.co (Spotify's cover CDN) — the wrapper rendered at the
-// correct size but the img content came back transparent, leaving
-// only the dark placeholder bg visible (repro: review 73, v16/v17).
-// Satori either issued the fetch with a UA the CDN rejects or hit
-// some Edge-runtime fetch quirk; either way doing the fetch ourselves
-// with a permissive UA and handing Satori a `data:` URL sidesteps it.
-//
-// Returns { url: data-url-or-null, error: string-or-null } so callers
-// can surface what happened in debug mode without breaking the card.
-async function fetchAsDataUrl(url) {
-  if (!url) return { url: null, error: 'no-url' };
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Contour/1.0)' },
-    });
-    if (!res.ok) return { url: null, error: `http-${res.status}` };
-    const buf = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const b64 = btoa(binary);
-    const ct = res.headers.get('content-type') || 'image/jpeg';
-    return { url: `data:${ct};base64,${b64}`, error: null };
-  } catch (e) {
-    return { url: null, error: `exception: ${(e && (e.message || e.name)) || 'unknown'}` };
-  }
-}
-
 export default async function handler(request) {
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
@@ -129,49 +96,18 @@ export default async function handler(request) {
     return new Response('Failed to load review', { status: 502 });
   }
 
-  const reviewBody = truncate(data.review.body, 220);
-  const rating = data.review.rating;  // raw number; rendered with inline SVG star below
-  const entityName = data.entity.name ?? 'Unknown';
-  const entityArtist = data.entity.artist ?? '';
-  const authorName = data.author.display_name;
-
-  // Pre-fetch fonts AND the cover/avatar in parallel. The author's
-  // image is usually a `data:` URL already (Google profile pic baked
-  // in at signup) so fetchAsDataUrl is skipped via the `data:` check.
-  // The cover is the one that actually needs the inlining workaround.
-  const wrapAlreadyData = (u) => Promise.resolve({ url: u ?? null, error: u ? null : 'no-url' });
-  const [fontRegular, fontItalic, coverFetch, authorFetch] = await Promise.all([
-    fontPromise,
-    fontItalicPromise,
-    data.entity.cover_url && !data.entity.cover_url.startsWith('data:')
-      ? fetchAsDataUrl(data.entity.cover_url)
-      : wrapAlreadyData(data.entity.cover_url),
-    data.author.image_url && !data.author.image_url.startsWith('data:')
-      ? fetchAsDataUrl(data.author.image_url)
-      : wrapAlreadyData(data.author.image_url),
-  ]);
-
-  // Debug surface: ?debug=1 returns a JSON dump instead of the PNG so
-  // we can confirm what the cover-fetch path actually did. Strips the
-  // base64 payload so the response stays readable.
-  if (url.searchParams.get('debug') === '1') {
-    return new Response(JSON.stringify({
-      original_cover_url: data.entity.cover_url,
-      original_author_image: data.author.image_url?.slice(0, 80) + (data.author.image_url?.length > 80 ? '…' : ''),
-      cover_fetch_error: coverFetch.error,
-      cover_fetch_ok: !!coverFetch.url,
-      cover_data_url_prefix: coverFetch.url?.slice(0, 60) ?? null,
-      author_fetch_error: authorFetch.error,
-      author_fetch_ok: !!authorFetch.url,
-    }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } });
-  }
-
+  const [fontRegular, fontItalic] = await Promise.all([fontPromise, fontItalicPromise]);
   const fonts = [];
   if (fontRegular) fonts.push({ name: 'Instrument Serif', data: fontRegular, weight: 400, style: 'normal' });
   if (fontItalic)  fonts.push({ name: 'Instrument Serif', data: fontItalic,  weight: 400, style: 'italic'  });
 
-  const coverUrl = coverFetch.url;
-  const authorImage = authorFetch.url;
+  const reviewBody = truncate(data.review.body, 220);
+  const rating = data.review.rating;  // raw number; rendered with inline SVG star below
+  const entityName = data.entity.name ?? 'Unknown';
+  const entityArtist = data.entity.artist ?? '';
+  const coverUrl = data.entity.cover_url;
+  const authorName = data.author.display_name;
+  const authorImage = data.author.image_url;
 
   return new ImageResponse(
     (
@@ -234,12 +170,9 @@ export default async function handler(request) {
               didn't fit in 1080px — the quote was crashing through the
               rating row (see v16 bug repro on review 73, Life of the
               Party). 440 + 44px quote leaves clean spacing.
-              No wrapper — v16's `<div display:flex>` around the img
-              was preventing Satori from drawing the image content
-              (renders as the wrapper bg only, even when the cover is
-              a valid base64 data URL — verified via debug=1). Bare
-              <img> matches the author-avatar pattern below, which
-              has always worked. */}
+              The inset boxShadow gives all-black covers (Donda etc.) a
+              visible edge against the page bg — without it the cover
+              boundary disappears entirely for solid-black artwork. */}
           {coverUrl ? (
             <img
               src={coverUrl}
@@ -250,6 +183,7 @@ export default async function handler(request) {
                 objectFit: 'cover',
                 alignSelf: 'center',
                 flexShrink: 0,
+                boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.08)',
               }}
             />
           ) : (

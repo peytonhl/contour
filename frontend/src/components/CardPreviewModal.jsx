@@ -64,15 +64,18 @@ import { ACCENT_A as ACCENT } from "../theme.js";
 //                    on top of the quote's last line — shrunk to cover
 //                    440 / quote 44 / lineHeight 1.2 so a max-truncate
 //                    body cleanly fits four lines.
-//  v18 (2026-05-24): review.tsx — black cover fix. Satori in
-//                    @vercel/og 0.6.4 was failing to fetch i.scdn.co
-//                    images at render time (wrapper rendered at 440×440
-//                    but img content came back transparent). Pre-fetch
-//                    the cover + author image in the handler with a
-//                    permissive UA and pass them to Satori as base64
-//                    `data:` URLs, sidestepping Satori's internal
-//                    fetcher entirely.
-const CARD_VERSION = "18";
+//  v18 (2026-05-24): (misdiagnosis) — chased a "black cover" bug on
+//                    review 73 (Donda / Life Of The Party) that turned
+//                    out to be a real all-black 640×640 album jacket
+//                    rendering correctly. Cover fetch path + debug
+//                    surface added in this version were reverted in
+//                    v19; only artifact kept is the inset 1px
+//                    boxShadow so solid-black covers still have a
+//                    visible edge against the card bg.
+//  v19 (2026-05-24): added inset boxShadow on cover img + reverted
+//                    the unnecessary fetchAsDataUrl pre-fetch and
+//                    debug=1 path from v18.
+const CARD_VERSION = "19";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
