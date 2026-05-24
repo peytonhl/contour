@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select, func, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from constants import HIGH_RATING_THRESHOLD
 from database import get_db
 from models import User, UserFollow, Rating, Review, ReviewVote, UserList, UserListItem, UserTasteProfile, AlbumCache, TrackCache
 from routers.auth import decode_jwt, optional_user_id
@@ -405,7 +406,7 @@ async def get_user_taste(user_id: str, db: AsyncSession = Depends(get_db)):
             distribution[star] += 1
 
     # ── 2. Top genres from highly-rated content ───────────────────────────────
-    top_rated = [r for r in ratings if r.value >= 4][:12]
+    top_rated = [r for r in ratings if r.value >= HIGH_RATING_THRESHOLD][:12]
 
     # Resolve each rated entity → primary artist ID. TrackCache stores
     # artist_ids_json, AlbumCache only stores the artist name; in both cases

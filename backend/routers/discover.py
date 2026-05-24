@@ -153,6 +153,7 @@ logger = logging.getLogger(__name__)
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from constants import HIGH_RATING_THRESHOLD, LOW_RATING_THRESHOLD
 from database import get_db
 from models import AlbumCache, ArtistCache, Rating, TrackCache, UserTasteProfile
 from routers.auth import optional_user_id, require_user_id
@@ -659,7 +660,7 @@ async def _compute_target_popularity(db: AsyncSession, user_id: str) -> float | 
         .where(
             Rating.user_id == user_id,
             Rating.entity_type == "track",
-            Rating.value >= 4.0,
+            Rating.value >= HIGH_RATING_THRESHOLD,
             TrackCache.popularity.is_not(None),
         )
     )
@@ -711,7 +712,7 @@ async def _compute_user_genre_signal(
         .where(
             Rating.user_id == user_id,
             Rating.entity_type == "track",
-            Rating.value >= 4.0,
+            Rating.value >= HIGH_RATING_THRESHOLD,
         )
     )).all()
     if not rows:
@@ -908,7 +909,7 @@ async def _compute_decade_preference(
     high_ratings = (await db.execute(
         select(Rating).where(
             Rating.user_id == user_id,
-            Rating.value >= 4,
+            Rating.value >= HIGH_RATING_THRESHOLD,
             Rating.entity_type.in_(("track", "album")),
         )
     )).scalars().all()
@@ -1019,7 +1020,7 @@ async def _compute_negative_preferences(
     low_ratings = (await db.execute(
         select(Rating).where(
             Rating.user_id == user_id,
-            Rating.value <= 2,
+            Rating.value <= LOW_RATING_THRESHOLD,
             Rating.entity_type.in_(("track", "album")),
         )
     )).scalars().all()
@@ -1869,8 +1870,8 @@ async def discover_me_state(
     rating_counts = {}
     for label, expr in [
         ("total_track_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "track")),
-        ("high_track_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "track") & (Rating.value >= 4.0)),
-        ("low_track_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "track") & (Rating.value <= 2.0)),
+        ("high_track_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "track") & (Rating.value >= HIGH_RATING_THRESHOLD)),
+        ("low_track_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "track") & (Rating.value <= LOW_RATING_THRESHOLD)),
         ("total_album_ratings", (Rating.user_id == user_id) & (Rating.entity_type == "album")),
     ]:
         rating_counts[label] = await db.scalar(select(func.count()).select_from(Rating).where(expr)) or 0
@@ -2667,7 +2668,7 @@ async def catalog_stats(db: AsyncSession = Depends(get_db)):
     high_track_ratings = await db.scalar(
         select(func.count()).select_from(Rating).where(
             Rating.entity_type == "track",
-            Rating.value >= 4.0,
+            Rating.value >= HIGH_RATING_THRESHOLD,
         )
     ) or 0
 

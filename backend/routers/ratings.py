@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, delete, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from constants import HIGH_RATING_THRESHOLD, LOW_RATING_THRESHOLD, MIN_RATING, MAX_RATING, RATING_STEP, VALID_RATING_VALUES
 from database import get_db, AsyncSessionLocal
 from models import AlbumCache, AppleMusicLink, Rating, Review, ReviewLike, ReviewVote, ReviewReply, ReviewReplyVote, TrackCache, User, UserTasteProfile
 from routers.auth import optional_user_id
@@ -41,8 +42,8 @@ class RatingIn(BaseModel):
     @field_validator("value")
     @classmethod
     def validate_value(cls, v):
-        if v not in {0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0}:
-            raise ValueError("Rating must be a multiple of 0.5 between 0.5 and 5.0")
+        if v not in VALID_RATING_VALUES:
+            raise ValueError(f"Rating must be a multiple of {RATING_STEP} between {MIN_RATING} and {MAX_RATING}")
         return v
 
 
@@ -63,8 +64,8 @@ class ReviewIn(BaseModel):
     @field_validator("value")
     @classmethod
     def validate_value(cls, v):
-        if v is not None and v not in {0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0}:
-            raise ValueError("Rating must be a multiple of 0.5 between 0.5 and 5.0")
+        if v is not None and v not in VALID_RATING_VALUES:
+            raise ValueError(f"Rating must be a multiple of {RATING_STEP} between {MIN_RATING} and {MAX_RATING}")
         return v
 
 
@@ -386,9 +387,9 @@ async def rate(
     # neutral and produces no taste signal beyond the per-track exclusion
     # already handled by Rating itself.
     if body.artist_id and entity_type == "track":
-        if body.value >= 4:
+        if body.value >= HIGH_RATING_THRESHOLD:
             asyncio.create_task(_update_taste_from_rating(user_id, body.artist_id))
-        elif body.value <= 2:
+        elif body.value <= LOW_RATING_THRESHOLD:
             asyncio.create_task(_down_weight_from_rating(user_id, body.artist_id))
 
     return {"ok": True, "value": body.value}

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from constants import MIN_RATING, MAX_RATING, RATING_STEP, VALID_RATING_VALUES
 from database import get_db
 from models import AlbumCache, BacklogItem, Rating, TrackCache
 from routers.auth import optional_user_id, require_user_id
@@ -235,8 +236,8 @@ async def promote_to_rating(
 
     rating_created = False
     if body.rating is not None:
-        if body.rating not in {0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0}:
-            raise HTTPException(status_code=400, detail="Rating must be a multiple of 0.5 between 0.5 and 5.0")
+        if body.rating not in VALID_RATING_VALUES:
+            raise HTTPException(status_code=400, detail=f"Rating must be a multiple of {RATING_STEP} between {MIN_RATING} and {MAX_RATING}")
         existing = (await db.execute(
             select(Rating).where(
                 Rating.user_id == user_id,

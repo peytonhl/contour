@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import json as _json
 
+from constants import HIGH_RATING_THRESHOLD
 from database import get_db
 from models import AlbumCache, AppleMusicLink, Rating, TrackCache, User, UserTasteProfile
 from routers.auth import require_user_id
@@ -528,7 +529,7 @@ async def inspect_my_feed(
         select(func.count()).select_from(Rating).where(
             Rating.user_id == user_id,
             Rating.entity_type == "track",
-            Rating.value >= 4.0,
+            Rating.value >= HIGH_RATING_THRESHOLD,
         )
     ) or 0
 
