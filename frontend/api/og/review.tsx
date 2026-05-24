@@ -234,34 +234,36 @@ export default async function handler(request) {
               didn't fit in 1080px — the quote was crashing through the
               rating row (see v16 bug repro on review 73, Life of the
               Party). 440 + 44px quote leaves clean spacing.
-              The inner img needs width/height *in style*, not just as
-              HTML attributes — Satori (the satori-based renderer under
-              @vercel/og 0.6.4) was rendering the bare <img width=…> at
-              0×0 inside this flex wrapper, leaving only the placeholder
-              bg visible. Explicit style sizing + display:block fixes it. */}
-          <div
-            style={{
-              width: 440,
-              height: 440,
-              borderRadius: 8,
-              overflow: 'hidden',
-              display: 'flex',
-              backgroundColor: '#1a1a1d',
-              alignSelf: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {coverUrl ? (
-              <img
-                src={coverUrl}
-                width={440}
-                height={440}
-                style={{ width: 440, height: 440, objectFit: 'cover', display: 'block' }}
-              />
-            ) : (
-              <div style={{ width: '100%', height: '100%', display: 'flex' }} />
-            )}
-          </div>
+              No wrapper — v16's `<div display:flex>` around the img
+              was preventing Satori from drawing the image content
+              (renders as the wrapper bg only, even when the cover is
+              a valid base64 data URL — verified via debug=1). Bare
+              <img> matches the author-avatar pattern below, which
+              has always worked. */}
+          {coverUrl ? (
+            <img
+              src={coverUrl}
+              width={440}
+              height={440}
+              style={{
+                borderRadius: 8,
+                objectFit: 'cover',
+                alignSelf: 'center',
+                flexShrink: 0,
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 440,
+                height: 440,
+                borderRadius: 8,
+                backgroundColor: '#1a1a1d',
+                alignSelf: 'center',
+                flexShrink: 0,
+              }}
+            />
+          )}
 
           {/* Subject — title centered above the quote, artist below.
               Caps-tracked for the editorial feel. */}
