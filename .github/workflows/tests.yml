@@ -1,0 +1,83 @@
+name: Tests
+
+# Runs on every push to master AND on PRs targeting master. Together those
+# cover both flows we use:
+#   - Active Claude session (commits go straight to master) → push trigger
+#   - Peyton's GitHub-mobile PR flow (per CLAUDE.md) → pull_request trigger
+# Either way the suite has a chance to fail loudly before a merge or after,
+# so a regression doesn't go a session unnoticed.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Cancel an in-flight run when a newer commit lands on the same ref. Saves
+# Actions minutes when several pushes happen back-to-back (which is how
+# active Claude sessions typically commit — push, ship, push again).
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          # Cache pip downloads keyed on requirements.txt — when deps don't
+          # change, subsequent runs install in ~5s instead of ~45s.
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest
+        working-directory: backend
+        # -q for compact output (full output is preserved in the workflow log
+        # if you click in). The suite is ~90s in this configuration; tune the
+        # job timeout above if that ever exceeds the 10 min ceiling.
+        run: python -m pytest -q
+
+  frontend-tests:
+    name: Frontend (Vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # Cache npm install based on package-lock.json — same
+          # speed-up pattern as the pip cache on the backend job.
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        # `npm ci` (clean install) is the CI-recommended path — it bails
+        # on a lockfile mismatch instead of silently updating, so a
+        # mistakenly-committed-without-lockfile-update PR fails loudly here.
+        run: npm ci
+
+      - name: Run Vitest
+        working-directory: frontend
+        # `npm test` is the `vitest run` (one-shot, not watch mode) script
+        # we wired into package.json.
+        run: npm test

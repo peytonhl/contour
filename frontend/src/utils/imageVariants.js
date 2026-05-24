@@ -22,12 +22,17 @@
 // scheme, the regex will no longer match and the original URL falls
 // through — degraded but never broken.
 
-// Match a Spotify image URL and capture (prefix-up-to-size-code, size-code,
-// rest-of-id). Path component is 40 hex chars total — 32 prefix + 8 size code.
-// We over-match the prefix length to be defensive against Spotify rotating
-// future ID lengths; capture group 2 is anchored to the LAST 8 hex chars
-// before the asset-hash tail.
-const SPOTIFY_IMAGE_RE = /^(https?:\/\/i\.scdn\.co\/image\/[a-f0-9]{4,})([a-f0-9]{8})([a-f0-9]{32})$/;
+// Match a Spotify image URL and capture (8-char-prefix, 8-char-size-code,
+// trailing-asset-hash). Real format is 8+8+N hex chars in the path: an 8-char
+// entity-type prefix (`ab67616d` for albums/tracks, `ab676161` for artists),
+// then an 8-char size code (`0000XXXX` where XXXX encodes the dimensions),
+// then the asset hash (24 chars on album/track, ~32 on artist — so we
+// match the tail as `+` not a fixed length).
+//
+// IMPORTANT: the original version of this regex required 32 trailing hex
+// chars, which never matched real album URLs (24 trailing chars). The
+// helper was a silent no-op — image-variant tests caught it 2026-05-24.
+const SPOTIFY_IMAGE_RE = /^(https?:\/\/i\.scdn\.co\/image\/[a-f0-9]{8})([a-f0-9]{8})([a-f0-9]+)$/;
 
 const SIZE_CODES = {
   small:  "00004851",   //  64×64 — avatars, dense list rows
