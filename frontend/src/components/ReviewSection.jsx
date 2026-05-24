@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
@@ -7,6 +7,7 @@ import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionInput, MentionBody } from "./Mentions.jsx";
 import { LoadMoreButton } from "./LoadMoreButton.jsx";
 import { ACCENT_A as ACCENT, GOLD, DANGER } from "../theme.js";
+import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function timeAgo(iso) {
@@ -219,7 +220,7 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
       <div style={{ display: "flex", gap: 10 }}>
         <Link to={`/user/${node.user.id}`} style={{ flexShrink: 0 }}>
           {node.user.image_url
-            ? <img src={node.user.image_url} alt="" loading="lazy" decoding="async" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
+            ? <img src={imageThumb(node.user.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
             : <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--surface2)" }} />
           }
         </Link>
@@ -531,7 +532,7 @@ function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Link to={`/user/${rev.user.id}`} style={{ flexShrink: 0 }}>
             {rev.user.image_url
-              ? <img src={rev.user.image_url} alt={rev.user.display_name} loading="lazy" decoding="async" style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
+              ? <img src={imageMedium(rev.user.image_url)} alt={rev.user.display_name} loading="lazy" decoding="async" style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
               : <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
             }
           </Link>
@@ -690,6 +691,40 @@ export function ReviewSection({ entityType, entityId, user }) {
       })
       .catch(() => {});
   }, [sort]);
+
+  // ── Shared-link anchor support ────────────────────────────────────────────
+  // A URL like /album/X#review-N pre-pagination would just smooth-scroll to
+  // the element if it existed. Post-pagination, review N might be on page 3
+  // and the anchor silently fails.
+  //
+  // Strategy: watch for `#review-N` in the hash, look for it in the loaded
+  // set, and auto-paginate until we find it (or run out of pages). One scroll
+  // per page-load — the ref prevents the user being yanked back to the
+  // anchor every time a vote re-renders the row.
+  const anchorScrolledRef = useRef(false);
+  useEffect(() => {
+    if (anchorScrolledRef.current) return;
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    const match = hash.match(/^#review-(\d+)$/);
+    if (!match) return;
+    const targetId = Number(match[1]);
+    if (reviews.some((r) => r.id === targetId)) {
+      // Found — scroll once. rAF gates the scroll on the next paint so the
+      // newly-added Load-more rows have committed to the DOM by the time
+      // we look up the element.
+      anchorScrolledRef.current = true;
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`review-${targetId}`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    } else if (hasMoreReviews && !loadingMoreReviews) {
+      // Not yet loaded — fetch next page. The effect re-runs on each `reviews`
+      // update and stops when either (a) we find the row OR (b) hasMoreReviews
+      // becomes false (review was deleted / doesn't exist — give up silently).
+      loadMoreReviews();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviews, hasMoreReviews]);
 
   async function loadMoreReviews() {
     if (loadingMoreReviews || !hasMoreReviews) return;

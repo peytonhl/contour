@@ -15,6 +15,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { CompareTastePicker } from "../components/CompareTastePicker.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
+import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
 // Eligibility probe — runs once on profile load. The button is only
 // rendered when the backend confirms a qualifying hot take exists; this
@@ -42,7 +43,7 @@ function ListCollage({ images }) {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 52, height: 52, borderRadius: "var(--radius-md)", overflow: "hidden", flexShrink: 0 }}>
       {slots.map((i) =>
         images[i]
-          ? <img key={i} src={images[i]} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ? <img key={i} src={imageThumb(images[i])} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           : <div key={i} style={{ background: "var(--surface2)" }} />
       )}
     </div>
@@ -115,7 +116,7 @@ function EntityRow({ item, right }) {
       padding: "13px 0", borderBottom: "1px solid var(--border)",
     }}>
       {item.entity_image_url
-        ? <img src={item.entity_image_url} alt={item.entity_name} loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+        ? <img src={imageMedium(item.entity_image_url)} alt={item.entity_name} loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
         : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
       }
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -831,7 +832,7 @@ export function ProfilePage() {
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     {r.entity_image_url
-                      ? <img src={r.entity_image_url} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                      ? <img src={imageMedium(r.entity_image_url)} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
                       : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                     }
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -990,7 +991,7 @@ export function ProfilePage() {
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}
               >
                 {u.image_url
-                  ? <img src={u.image_url} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                  ? <img src={imageMedium(u.image_url)} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                   : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
                 }
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{u.display_name}</span>
@@ -1013,7 +1014,7 @@ export function ProfilePage() {
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}
               >
                 {u.image_url
-                  ? <img src={u.image_url} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                  ? <img src={imageMedium(u.image_url)} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                   : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
                 }
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{u.display_name}</span>

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { ACCENT_A as ACCENT } from "../theme.js";
+import { imageMedium } from "../utils/imageVariants.js";
 
 export function BlocksPage() {
   const { user, loading: authLoading } = useAuth();
@@ -56,7 +57,7 @@ export function BlocksPage() {
             }}>
               <Link to={`/user/${b.user_id}`} style={{ flexShrink: 0 }}>
                 {b.image_url
-                  ? <img src={b.image_url} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
+                  ? <img src={imageMedium(b.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
                   : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)" }} />
                 }
               </Link>

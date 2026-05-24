@@ -31,7 +31,16 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 
 class AuthSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_file_encoding="utf-8")
+    # extra="ignore" — pydantic-settings 2.x defaults to "forbid" for unknown
+    # env vars, which trips up any test/dev machine with a populated .env that
+    # has SPOTIFY_CLIENT_ID / DATABASE_URL / LASTFM_API_KEY (= every dev .env
+    # and every Railway env). Without this, AuthSettings() raises ValidationError
+    # on extra inputs that are perfectly valid for OTHER subsystems' settings.
+    # Production has been implicitly relying on a forgiving load path; making
+    # it explicit so it can't regress when pydantic-settings updates again.
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE), env_file_encoding="utf-8", extra="ignore",
+    )
     google_client_id: str
     google_client_secret: str
     google_redirect_uri: str = "http://localhost:8000/auth/callback"

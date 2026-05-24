@@ -6,6 +6,7 @@ import { AlbumCard } from "./AlbumCard.jsx";
 import { ComparisonChart } from "./ComparisonChart.jsx";
 import { EditionPicker } from "./EditionPicker.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
+import { logSilentError } from "../utils/observability.js";
 import { ACCENT_A, ACCENT_B, ACCENT_C } from "../theme.js";
 const POLL_INTERVAL = 4000;
 
@@ -134,7 +135,9 @@ export function ComparisonWidget({
           setSelectionA({ ...metaA, _type: "album" });
           setEditionsA([metaA.id]);
         }
-      } catch { /* silently skip */ }
+      } catch (e) {
+        logSilentError("compare_preload_album_a", e, { album_id: preloadedAlbumAId });
+      }
 
       if (!preloadedAlbumBId) return;
 
@@ -144,7 +147,9 @@ export function ComparisonWidget({
           setSelectionB({ ...metaB, _type: "album" });
           setEditionsB([metaB.id]);
         }
-      } catch { /* silently skip */ }
+      } catch (e) {
+        logSilentError("compare_preload_album_b", e, { album_id: preloadedAlbumBId });
+      }
 
       if (!preloadedAlbumCId) return;
 
@@ -154,7 +159,9 @@ export function ComparisonWidget({
           setSelectionC({ ...metaC, _type: "album" });
           setEditionsC([metaC.id]);
         }
-      } catch { /* silently skip */ }
+      } catch (e) {
+        logSilentError("compare_preload_album_c", e, { album_id: preloadedAlbumCId });
+      }
     }
 
     loadPreloaded();

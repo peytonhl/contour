@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
+import { logSilentError } from "../utils/observability.js";
 
 // Tier source for analytics — backend tags deezer-sourced tracks with _source,
 // everything else came through Spotify (tier 1 related-artist or tier 2 genre).
@@ -265,7 +266,9 @@ async function syncOrphanedRatings({ resolveSpotifyId, api, setRatingCount }) {
         }).then((r) => r.ok ? r.json() : null);
         if (me?.rating_count !== undefined) setRatingCount(me.rating_count);
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      logSilentError("foryou_refresh_rating_count_after_sync", e);
+    }
   }
 
   return synced;
@@ -1579,7 +1582,9 @@ function ForYouFeed() {
           // eslint-disable-next-line no-console
           console.info(`[contour] Backfilled ${synced} orphaned rating${synced === 1 ? "" : "s"} to server.`);
         }
-      } catch { /* ignore — try next session */ }
+      } catch (e) {
+        logSilentError("foryou_orphan_rating_backfill", e);
+      }
     }, 3000);
     return () => { cancelled = true; clearTimeout(handle); };
   }, [user?.id]);
@@ -2579,7 +2584,9 @@ export function ForYouPage() {
         if (cancelled) return;
         const newest = reviews?.[0]?.created_at ? new Date(reviews[0].created_at).getTime() : 0;
         setHasNewCommunity(newest > readTs(LAST_VIEW_COMMUNITY));
-      } catch {}
+      } catch (e) {
+        logSilentError("foryou_community_freshness_probe", e);
+      }
     })();
     return () => { cancelled = true; };
   }, [user]);

@@ -8,6 +8,7 @@ import { ShareButton } from "./ShareButton.jsx";
 import { MentionBody } from "./Mentions.jsx";
 import { EmptyState } from "./EmptyState.jsx";
 import { ACCENT_A, GOLD } from "../theme.js";
+import { imageMedium } from "../utils/imageVariants.js";
 
 const ENTITY_COLOR = { album: ACCENT_A, track: "#6a90b5", artist: "#fb923c" };
 
@@ -125,7 +126,7 @@ function FollowingItem({ item }) {
     <div style={{ display: "flex", gap: 14, padding: "16px 0", borderBottom: "1px solid var(--border)" }}>
       <Link to={userPath} style={{ flexShrink: 0 }}>
         {item.user?.image_url
-          ? <img src={item.user.image_url} alt={item.user.display_name} loading="lazy" decoding="async" style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover" }} />
+          ? <img src={imageMedium(item.user.image_url)} alt={item.user.display_name} loading="lazy" decoding="async" style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover" }} />
           : <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--surface2)" }} />
         }
       </Link>
@@ -162,7 +163,7 @@ function FollowingItem({ item }) {
       </div>
       {item.entity_image_url && (
         <Link to={entityPath} style={{ flexShrink: 0 }}>
-          <img src={item.entity_image_url} alt={item.entity_name} loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover" }} />
+          <img src={imageMedium(item.entity_image_url)} alt={item.entity_name} loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover" }} />
         </Link>
       )}
     </div>
@@ -191,7 +192,7 @@ export function SuggestedUser({ u, onFollow }) {
     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
       <Link to={`/user/${u.id}`} style={{ flexShrink: 0 }}>
         {u.image_url
-          ? <img src={u.image_url} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover" }} />
+          ? <img src={imageMedium(u.image_url)} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover" }} />
           : <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--surface2)" }} />
         }
       </Link>

@@ -1,4 +1,5 @@
 import { AlertIcon } from "./Icons";
+import { imageMedium } from "../utils/imageVariants.js";
 
 const styles = {
   card: {
@@ -110,7 +111,7 @@ export function AlbumCard({ meta, accentColor, enriching, detailLink }) {
     <div style={{ ...styles.card, borderColor: accentColor + "44" }}>
       <div style={styles.header}>
         {meta.image_url ? (
-          <img src={meta.image_url} alt={meta.name} loading="lazy" decoding="async" style={styles.art} />
+          <img src={imageMedium(meta.image_url)} alt={meta.name} loading="lazy" decoding="async" style={styles.art} />
         ) : (
           <div style={styles.artPlaceholder} />
         )}

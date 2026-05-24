@@ -14,6 +14,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { MentionBody } from "../components/Mentions.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD, DANGER } from "../theme.js";
+import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
 function ListCollage({ images }) {
   const slots = [0, 1, 2, 3];
@@ -21,7 +22,7 @@ function ListCollage({ images }) {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", width: 52, height: 52, borderRadius: "var(--radius-md)", overflow: "hidden", flexShrink: 0 }}>
       {slots.map((i) =>
         images[i]
-          ? <img key={i} src={images[i]} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ? <img key={i} src={imageThumb(images[i])} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           : <div key={i} style={{ background: "var(--surface2)" }} />
       )}
     </div>
@@ -385,7 +386,7 @@ export function UserPage() {
             {(tabExpanded ? ratings : ratings.slice(0, TAB_VISIBLE_LIMIT)).map((r, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderBottom: "1px solid var(--border)" }}>
                 {r.entity_image_url
-                  ? <img src={r.entity_image_url} alt={r.entity_name} loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                  ? <img src={imageMedium(r.entity_image_url)} alt={r.entity_name} loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
                   : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                 }
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -453,7 +454,7 @@ export function UserPage() {
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     {r.entity_image_url
-                      ? <img src={r.entity_image_url} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                      ? <img src={imageMedium(r.entity_image_url)} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
                       : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                     }
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -656,7 +657,7 @@ function UserList({ users, emptyText, footer }) {
           onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
         >
           {u.image_url
-            ? <img src={u.image_url} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+            ? <img src={imageMedium(u.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
             : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
           }
           <div style={{ flex: 1, minWidth: 0 }}>

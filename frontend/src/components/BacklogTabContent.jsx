@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { EmptyState } from "./EmptyState.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B } from "../theme.js";
+import { imageMedium } from "../utils/imageVariants.js";
 
 function formatDate(iso) {
   if (!iso) return "";
@@ -133,7 +134,7 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
           >
             <Link to={linkPath} style={{ flexShrink: 0 }}>
               {entity.image_url
-                ? <img src={entity.image_url} alt={entity.name ?? ""} loading="lazy" decoding="async" style={{ width: 56, height: 56, borderRadius: isTrack ? 4 : 6, objectFit: "cover" }} />
+                ? <img src={imageMedium(entity.image_url)} alt={entity.name ?? ""} loading="lazy" decoding="async" style={{ width: 56, height: 56, borderRadius: isTrack ? 4 : 6, objectFit: "cover" }} />
                 : <div style={{ width: 56, height: 56, borderRadius: isTrack ? 4 : 6, background: "var(--surface2)" }} />
               }
             </Link>
@@ -202,7 +203,7 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
                 }}
               >
                 {s.image_url
-                  ? <img src={s.image_url} alt="" loading="lazy" decoding="async" style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />
+                  ? <img src={imageMedium(s.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />
                   : <div style={{ width: 40, height: 40, borderRadius: "var(--radius-sm)", background: "var(--surface2)" }} />
                 }
                 <div style={{ flex: 1, minWidth: 0 }}>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ACCENT_A as ACCENT } from "../theme.js";
+import { imageThumb } from "../utils/imageVariants.js";
 
 // Regex MUST match backend/services/mentions.py's _MENTION_RE — same prefix
 // boundary (start of string or non-name char), same token shape (starts
@@ -366,7 +367,7 @@ export function MentionInput({
               }}
             >
               {u.image_url
-                ? <img src={u.image_url} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
+                ? <img src={imageThumb(u.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
                 : <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--surface2)" }} />}
               <span style={{ fontSize: 13, fontWeight: 600 }}>{u.display_name}</span>
             </button>

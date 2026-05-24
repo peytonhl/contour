@@ -9,6 +9,7 @@ import { AlertIcon } from "../components/Icons.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { ACCENT_A } from "../theme.js";
+import { imageMedium } from "../utils/imageVariants.js";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 function formatStreams(n) {
@@ -71,7 +72,7 @@ function KnownForSection({ tracks }) {
             >
               {/* Square album art */}
               {track.image_url
-                ? <img src={track.image_url} alt={track.name} loading="lazy" decoding="async" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
+                ? <img src={imageMedium(track.image_url)} alt={track.name} loading="lazy" decoding="async" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
                 : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
                       <circle cx="12" cy="12" r="9" />
@@ -130,7 +131,7 @@ function TopTrackRow({ track, rank }) {
 
       {/* Art */}
       {track.image_url
-        ? <img src={track.image_url} alt={track.name} loading="lazy" decoding="async" style={{ width: 42, height: 42, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+        ? <img src={imageMedium(track.image_url)} alt={track.name} loading="lazy" decoding="async" style={{ width: 42, height: 42, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
         : <div style={{ width: 42, height: 42, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
       }
 
@@ -482,7 +483,7 @@ export function ArtistPage() {
                     onMouseLeave={(e) => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.transform = "none"; }}
                   >
                     {album.image_url
-                      ? <img src={album.image_url} alt={album.name} loading="lazy" decoding="async" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
+                      ? <img src={imageMedium(album.image_url)} alt={album.name} loading="lazy" decoding="async" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
                       : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)" }} />
                     }
                     <div style={{ padding: "10px 12px 12px" }}>

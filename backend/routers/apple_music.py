@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import AlbumCache, AppleMusicLink, TrackCache
 from services import apple_music, spotify
+from services.observability import log_silent_error
 
 logger = logging.getLogger(__name__)
 
@@ -380,10 +381,12 @@ async def _get_album_meta(spotify_album_id: str, db: AsyncSession) -> dict:
                 if first_id:
                     track = await spotify.get_track(first_id)
                     isrc = track.get("isrc")
-        except Exception:
-            pass
-    except Exception:
-        pass
+        except Exception as e:
+            log_silent_error("apple_music_album_meta_tracklist_fetch", e,
+                             spotify_album_id=spotify_album_id)
+    except Exception as e:
+        log_silent_error("apple_music_album_meta_album_fetch", e,
+                         spotify_album_id=spotify_album_id)
 
     return {
         "name": name,
@@ -414,8 +417,9 @@ async def _get_track_meta(spotify_track_id: str, db: AsyncSession) -> dict:
             if not artist:
                 artist = (track.get("artists") or [""])[0]
             isrc = track.get("isrc")
-    except Exception:
-        pass
+    except Exception as e:
+        log_silent_error("apple_music_track_meta_spotify_fetch", e,
+                         spotify_track_id=spotify_track_id)
 
     return {
         "name": name,

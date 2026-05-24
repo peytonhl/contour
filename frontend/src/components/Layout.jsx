@@ -5,6 +5,7 @@ import { api } from "../services/api.js";
 import { userAvatar } from "../utils/userAvatar.js";
 import { AppleSignInButton } from "./AppleSignInButton.jsx";
 import { BellIcon } from "./Icons.jsx";
+import { logSilentError } from "../utils/observability.js";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 import { ACCENT_A, ACCENT_B } from "../theme.js";
 
@@ -202,7 +203,12 @@ export function Layout() {
         if (cancelled) return;
         const newest = feed?.[0]?.created_at ? new Date(feed[0].created_at).getTime() : 0;
         setHasNewFriends(newest > readFriendsLastView());
-      } catch { /* network blip — leave the dot in its current state */ }
+      } catch (e) {
+        // Network blips on the 90s probe shouldn't disrupt the user, but a
+        // SUSTAINED failure would mean the freshness dot is silently broken.
+        // The log lets us tell those apart later via PostHog.
+        logSilentError("layout_friends_freshness_probe", e);
+      }
     };
     probe();
     const interval = setInterval(probe, 90_000);

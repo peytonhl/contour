@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { logSilentError } from "../utils/observability.js";
 import { ACCENT_A as ACCENT, ACCENT_B as GREEN, DANGER } from "../theme.js";
 
 const REASON_LABEL = {
@@ -37,7 +38,12 @@ export function AdminReportsPage() {
     try {
       await api.adminResolveReport(report.id, status, deleteContent);
       setReports((rs) => rs.filter((r) => r.id !== report.id));
-    } catch {}
+    } catch (e) {
+      // Admin actions failing silently is bad — they're moderation. Surface
+      // the failure to the admin AND log to analytics so we can see patterns.
+      logSilentError("admin_resolve_report", e, { report_id: report.id, status });
+      alert(`Failed to resolve report: ${e?.message ?? "Unknown error"}`);
+    }
     setWorking((w) => ({ ...w, [report.id]: false }));
   }
 

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { GENRE_OPTIONS_BASE, GENRE_OPTIONS_EXTENDED, GenreChip } from "./OnboardingModal.jsx";
 import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
+import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
 // Ghost action button paired with the "Music taste" section header. Lighter
 // than the tinted pills used elsewhere on the page so it reads as a sub-
@@ -292,7 +293,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                     borderRadius: "var(--radius-xl)", padding: "5px 10px 5px 6px",
                   }}>
                     {p.image_url && (
-                      <img src={p.image_url} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />
+                      <img src={imageThumb(p.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "var(--radius-sm)", objectFit: "cover" }} />
                     )}
                     <span style={{ fontSize: 12, fontWeight: 700, color: ACCENT_A, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                     <button onClick={() => toggle(p)} aria-label="Remove pinned album" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
@@ -367,7 +368,7 @@ function AlbumPickerModal({ selected, onSave, onClose }) {
                   }}
                 >
                   {album.image_url
-                    ? <img src={album.image_url} alt={album.name} loading="lazy" decoding="async" style={{ width: 60, height: 60, borderRadius: "var(--radius-md)", objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }} />
+                    ? <img src={imageMedium(album.image_url)} alt={album.name} loading="lazy" decoding="async" style={{ width: 60, height: 60, borderRadius: "var(--radius-md)", objectFit: "cover", flexShrink: 0, boxShadow: "0 2px 10px rgba(0,0,0,0.35)" }} />
                     : <div style={{ width: 60, height: 60, borderRadius: "var(--radius-md)", background: "var(--surface2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
                           <circle cx="12" cy="12" r="9" />
@@ -850,7 +851,7 @@ export function TasteSection({ userId, isOwner, ratings = [] }) {
                 >
                   {r.entity_image_url
                     ? <img
-                        src={r.entity_image_url}
+                        src={imageMedium(r.entity_image_url)}
                         alt=""
                         loading="lazy"
                         decoding="async"

@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
+import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
 function formatDuration(ms) {
   if (!ms) return null;
@@ -96,7 +97,7 @@ function AddItemSearch({ onAdd, existingIds }) {
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
                       {item.image_url
-                        ? <img src={item.image_url} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
+                        ? <img src={imageMedium(item.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", objectFit: "cover", flexShrink: 0 }} />
                         : <div style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", background: "var(--surface2)", flexShrink: 0 }} />
                       }
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -142,7 +143,7 @@ function ListItemRow({ item, index, isOwner, isRanked, onMoveUp, onMoveDown, onR
       {/* Thumbnail */}
       <Link to={entityPath} style={{ flexShrink: 0 }}>
         {item.entity_image_url
-          ? <img src={item.entity_image_url} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover" }} />
+          ? <img src={imageMedium(item.entity_image_url)} alt="" loading="lazy" decoding="async" style={{ width: 48, height: 48, borderRadius: item.entity_type === "artist" ? "50%" : 6, objectFit: "cover" }} />
           : <div style={{ width: 48, height: 48, borderRadius: "var(--radius-sm)", background: "var(--surface2)" }} />
         }
       </Link>
@@ -279,7 +280,7 @@ export function ListDetailPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <Link to={`/user/${list.owner?.id}`} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", alignSelf: "flex-start" }}>
           {list.owner?.image_url
-            ? <img src={list.owner.image_url} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
+            ? <img src={imageThumb(list.owner.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
             : <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--surface2)" }} />
           }
           <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>{list.owner?.display_name}</span>

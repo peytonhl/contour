@@ -5,6 +5,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { UsersIcon, ChatBubbleIcon, BellIcon } from "../components/Icons.jsx";
 import { EmptyState } from "../components/EmptyState.jsx";
 import { ACCENT_A } from "../theme.js";
+import { imageMedium } from "../utils/imageVariants.js";
 
 function timeAgo(iso) {
   // Backend serializes naive UTC; treat tz-less strings as UTC so non-UTC
@@ -100,7 +101,7 @@ export function NotificationsPage() {
               >
                 {/* Actor avatar */}
                 {n.actor?.image_url
-                  ? <img src={n.actor.image_url} alt={n.actor.display_name} loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                  ? <img src={imageMedium(n.actor.image_url)} alt={n.actor.display_name} loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                   : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <NotifIcon type={n.type} />
                     </div>
