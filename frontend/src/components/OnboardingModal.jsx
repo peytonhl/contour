@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
-import { ACCENT_A, ACCENT_B } from "../theme.js";
+import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD, DANGER } from "../theme.js";
 
 const STORAGE_KEY = "contour_onboarded_v2";
 
@@ -53,8 +53,15 @@ export const GENRE_OPTIONS_EXTENDED = [
   // Electronic family
   { label: "House",         slug: "house",         from: "#22d3ee", to: "#0ea5e9" },
   { label: "Techno",        slug: "techno",        from: "#94a3b8", to: "#475569" },
-  { label: "Drum & Bass",   slug: "drum-and-bass", from: "#34d399", to: "#0d9488" },
-  { label: "Dubstep",       slug: "dubstep",       from: "#a78bfa", to: "#6d28d9" },
+  // Drum & Bass: replaces forbidden Tailwind emerald (#34d399). Stays in
+  // the cool/electronic family — no theme.js export fits a cool-tone bass
+  // genre (the brand palette is warm), so a non-Tailwind teal is the
+  // smallest correct change.
+  { label: "Drum & Bass",   slug: "drum-and-bass", from: "#14b8a4", to: "#0d9488" },
+  // Dubstep: replaces forbidden Tailwind violet (#a78bfa). Uses ACCENT_C
+  // from theme.js (warm orange) against the existing deep-violet `to` —
+  // reads as a sunset gradient, bold but on-palette.
+  { label: "Dubstep",       slug: "dubstep",       from: ACCENT_C,  to: "#6d28d9" },
   { label: "Lo-Fi",         slug: "lo-fi",         from: "#fde68a", to: "#a16207" },
   { label: "Synthpop",      slug: "synthpop",      from: "#f472b6", to: "#7c3aed" },
   { label: "New Wave",      slug: "new-wave",      from: "#c084fc", to: "#4338ca" },
@@ -68,7 +75,11 @@ export const GENRE_OPTIONS_EXTENDED = [
   { label: "Post-Punk",     slug: "post-punk",     from: "#71717a", to: "#27272a" },
   { label: "Punk",          slug: "punk",          from: "#fb7185", to: "#7f1d1d" },
   { label: "Hardcore",      slug: "hardcore",      from: "#dc2626", to: "#450a0a" },
-  { label: "Emo",           slug: "emo",           from: "#a78bfa", to: "#3730a3" },
+  // Emo: replaces forbidden Tailwind violet (#a78bfa). Uses DANGER from
+  // theme.js (red) against the existing deep-indigo `to` — dramatic
+  // red→indigo transition. Distinct from neighboring Hardcore (red→dark
+  // red) by virtue of the indigo endpoint.
+  { label: "Emo",           slug: "emo",           from: DANGER,    to: "#3730a3" },
   { label: "Prog Rock",     slug: "prog-rock",     from: "#818cf8", to: "#312e81" },
   // Jazz / soul family
   { label: "Jazz Fusion",   slug: "jazz-fusion",   from: "#fcd34d", to: "#b45309" },
@@ -85,7 +96,11 @@ export const GENRE_OPTIONS_EXTENDED = [
   { label: "Dancehall",     slug: "dancehall",     from: "#4ade80", to: "#166534" },
   { label: "J-Pop",         slug: "j-pop",         from: "#fda4af", to: "#be123c" },
   // Other
-  { label: "Experimental",  slug: "experimental",  from: "#a78bfa", to: "#5b21b6" },
+  // Experimental: replaces forbidden Tailwind violet (#a78bfa). Uses
+  // GOLD from theme.js against the existing deep-violet `to` — gold→
+  // purple, distinct from all neighboring tiles (J-Pop pink, Soundtrack
+  // slate).
+  { label: "Experimental",  slug: "experimental",  from: GOLD,      to: "#5b21b6" },
   { label: "Soundtrack",    slug: "soundtrack",    from: "#94a3b8", to: "#1e293b" },
   { label: "World",         slug: "world",         from: "#fb923c", to: "#15803d" },
 ];

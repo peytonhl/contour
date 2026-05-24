@@ -58,8 +58,14 @@
 
          crossorigin is required on these so the browser uses the same
          credentials mode it will later use for the actual request. -->
-    <link rel="preconnect" href="https://contour-production.up.railway.app" crossorigin />
-    <link rel="dns-prefetch" href="https://contour-production.up.railway.app" />
+    <!-- Backend host comes from VITE_API_URL via Vite's %VITE_*% HTML
+         substitution. At `vite build` time, .env.production sets this to
+         the Railway URL; in dev the value is empty (Vite proxy handles
+         /api/*), which makes the preconnect a no-op — harmless. Keeping
+         this in sync with services/api.js's BASE without duplicating the
+         literal URL across files. -->
+    <link rel="preconnect" href="%VITE_API_URL%" crossorigin />
+    <link rel="dns-prefetch" href="%VITE_API_URL%" />
     <!-- Spotify image CDN — all album covers without an Apple Music match -->
     <link rel="preconnect" href="https://i.scdn.co" crossorigin />
     <link rel="dns-prefetch" href="https://i.scdn.co" />

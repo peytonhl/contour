@@ -31,7 +31,6 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "http://localhost:3000",
         "https://contour-rosy.vercel.app",
     ],
     # Vercel preview deploys land on URLs like
