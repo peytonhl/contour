@@ -494,6 +494,164 @@ async def get_user_taste(user_id: str, db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/{user_id}/taste/card-data")
+async def get_user_taste_card_data(user_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Single-call payload for the shareable Taste Card edge function
+    (/api/og/taste-card). Sister to /users/{id}/taste-match's card-data
+    contract — bundles everything the renderer needs into one no-auth GET
+    so the edge function's only round-trip to Railway is this call.
+
+    Returns:
+      - user: {id, display_name, image_url}
+      - total_ratings: int
+      - average_rating: float (preserves half-stars)
+      - rating_distribution: count per integer star level (1–5)
+      - top_genres: up to 5, derived from the user's >= HIGH_RATING_THRESHOLD
+        rated content
+      - top_artists: up to 4 [{id, name, image_url}], ranked by frequency in
+        >= HIGH_RATING_THRESHOLD ratings. Single most personality-defining
+        stat on the card — surfaces the artists this user actually loves.
+      - taste_label: optional two-word "music personality" string derived
+        from the top genre + the user's rating posture
+        (e.g. "Indie maximalist", "Hip-hop skeptic"). Pure cosmetic flair
+        that gives the card a shareable "what's my type" hook; None when
+        the user doesn't have enough ratings to assign a posture.
+
+    404 when the user doesn't exist. Edge function decides whether the
+    payload has enough signal to render (soft floor of 3 ratings, returns
+    its own 404 otherwise) — backend stays generic.
+    """
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # ── 1. Ratings, distribution, average ────────────────────────────────────
+    ratings = (await db.execute(
+        select(Rating).where(Rating.user_id == user_id)
+    )).scalars().all()
+
+    distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    rating_sum = 0.0
+    for r in ratings:
+        star = int(round(r.value))
+        if 1 <= star <= 5:
+            distribution[star] += 1
+        rating_sum += r.value
+    total = len(ratings)
+    average = (rating_sum / total) if total else 0.0
+
+    # ── 2. Top genres + top artists from highly-rated content ────────────────
+    # Cap at 30 highly-rated ratings — enough volume for a stable artist
+    # ranking while keeping Spotify/cache fan-out bounded. The /taste
+    # endpoint uses 12 (genres only); we go wider here because ranking
+    # by artist frequency needs more samples than picking 5 genres.
+    high_rated = sorted(
+        [r for r in ratings if r.value >= HIGH_RATING_THRESHOLD],
+        key=lambda r: r.value,
+        reverse=True,
+    )[:30]
+
+    async def get_entity_artist_ids(entity_type: str, entity_id: str) -> list[str]:
+        # Fast path for tracks: TrackCache has artist_ids serialized.
+        if entity_type == "track":
+            row = (await db.execute(
+                select(TrackCache).where(TrackCache.spotify_id == entity_id)
+            )).scalar_one_or_none()
+            if row and row.artist_ids_json:
+                try:
+                    ids = json.loads(row.artist_ids_json)
+                    if ids:
+                        return ids[:1]
+                except Exception:
+                    pass
+        try:
+            if entity_type == "track":
+                data = await spotify.get_track(entity_id)
+            elif entity_type == "album":
+                data = await spotify.get_album(entity_id)
+            else:
+                # Artist rating — entity_id IS the artist_id.
+                return [entity_id]
+            return data.get("artist_ids", [])[:1]  # primary artist only
+        except Exception:
+            return []
+
+    artist_id_lists = await asyncio.gather(
+        *[get_entity_artist_ids(r.entity_type, r.entity_id) for r in high_rated],
+        return_exceptions=True,
+    )
+
+    # Count occurrences per artist; this is the top_artists ranking signal.
+    artist_freq: dict[str, int] = {}
+    for res in artist_id_lists:
+        if isinstance(res, list):
+            for aid in res:
+                artist_freq[aid] = artist_freq.get(aid, 0) + 1
+
+    # Resolve top 4 artists by frequency. Skip any that fail to hydrate so
+    # the card never renders an artist tile with a missing name. Genres
+    # are derived from the same artist_cache.get_or_fetch_artist call so
+    # we don't double-fan-out.
+    top_artist_ids = sorted(artist_freq, key=lambda k: artist_freq[k], reverse=True)[:4]
+    artist_meta_results = await asyncio.gather(
+        *[artist_cache.get_or_fetch_artist(db, aid) for aid in top_artist_ids],
+        return_exceptions=True,
+    )
+    top_artists: list[dict] = []
+    genre_counts: dict[str, int] = {}
+    for meta in artist_meta_results:
+        if isinstance(meta, dict) and meta.get("name"):
+            top_artists.append({
+                "id": meta.get("id"),
+                "name": meta.get("name"),
+                "image_url": meta.get("image_url"),
+            })
+            for g in (meta.get("genres") or [])[:3]:
+                genre_counts[g] = genre_counts.get(g, 0) + 1
+
+    top_genres = sorted(genre_counts, key=lambda k: genre_counts[k], reverse=True)[:5]
+
+    # ── 3. Taste label — top genre + rating posture ──────────────────────────
+    # Two-word label, e.g. "Indie maximalist", "Pop skeptic". The genre
+    # half comes from top_genres[0] title-cased. The posture half is
+    # derived from the user's average rating: generous (>= 4.2)
+    # → "maximalist", tight (<= 3.4) → "skeptic", in between
+    # → "completionist". Returns None when too few ratings to assign
+    # a posture — the card falls back to showing the raw average instead.
+    def _posture(avg: float, total: int) -> Optional[str]:
+        if total < 5:
+            return None
+        if avg >= 4.2:
+            return "maximalist"
+        if avg <= 3.4:
+            return "skeptic"
+        return "completionist"
+
+    posture = _posture(average, total)
+    taste_label: Optional[str] = None
+    if top_genres and posture:
+        # Capitalize first letter only — "hip hop" → "Hip hop". All-caps
+        # ("Hip Hop Maximalist") read as tracking-y and don't match the
+        # editorial voice of the other cards.
+        genre_pretty = top_genres[0][:1].upper() + top_genres[0][1:].lower()
+        taste_label = f"{genre_pretty} {posture}"
+
+    return {
+        "user": {
+            "id": user.id,
+            "display_name": user.display_name,
+            "image_url": user.image_url,
+        },
+        "total_ratings": total,
+        "average_rating": round(average, 2),
+        "rating_distribution": distribution,
+        "top_genres": top_genres,
+        "top_artists": top_artists,
+        "taste_label": taste_label,
+    }
+
+
 @router.get("/{user_id}/taste-match")
 async def get_taste_match(
     user_id: str,
