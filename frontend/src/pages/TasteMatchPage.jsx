@@ -5,7 +5,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
-import { ROUTES, tasteMatchPath, userPath, albumPath, trackPath } from "../constants/routes.js";
+import { ROUTES, userPath, albumPath, trackPath } from "../constants/routes.js";
 
 function Avatar({ user, size = 88, ring }) {
   return (
