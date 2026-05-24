@@ -59,7 +59,15 @@ import { ACCENT_A as ACCENT } from "../theme.js";
 //                    cutting "So Easy (To Fall In Love)"), 50% font 140
 //                    →160, dropped marginTop:auto on the card row (was
 //                    creating a 300px void between stat and cards).
-const CARD_VERSION = "16";
+//  v17 (2026-05-24): review.tsx layout + cover fixes. Bare <img width=...
+//                    height=... /> in a flex wrapper was rendering at 0×0
+//                    in @vercel/og 0.6.4 → cover came out as a black box.
+//                    Moved sizing into style + display:block. Also the
+//                    560 cover + 56px quote (v14/16) overflowed 1080px
+//                    so the rating row sat on top of the quote's last
+//                    line — shrunk to cover 440 / quote 44 / lineHeight
+//                    1.2 so a max-truncate body cleanly fits four lines.
+const CARD_VERSION = "17";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

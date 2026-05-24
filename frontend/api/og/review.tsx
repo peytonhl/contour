@@ -165,13 +165,20 @@ export default async function handler(request) {
           padding: '24px 60px 48px',
           gap: 32,
         }}>
-          {/* Cover — centered horizontally, 560×560. Shrunk from 600 in
-              v14 to give the meta block (now title 42 / artist 28) more
-              breathing room without overflowing the canvas. */}
+          {/* Cover — centered horizontally, 440×440. Shrunk from 560 in
+              v17 because 560 + 4-line 56px quote + bottom row literally
+              didn't fit in 1080px — the quote was crashing through the
+              rating row (see v16 bug repro on review 73, Life of the
+              Party). 440 + 44px quote leaves clean spacing.
+              The inner img needs width/height *in style*, not just as
+              HTML attributes — Satori (the satori-based renderer under
+              @vercel/og 0.6.4) was rendering the bare <img width=…> at
+              0×0 inside this flex wrapper, leaving only the placeholder
+              bg visible. Explicit style sizing + display:block fixes it. */}
           <div
             style={{
-              width: 560,
-              height: 560,
+              width: 440,
+              height: 440,
               borderRadius: 8,
               overflow: 'hidden',
               display: 'flex',
@@ -181,7 +188,12 @@ export default async function handler(request) {
             }}
           >
             {coverUrl ? (
-              <img src={coverUrl} width={560} height={560} style={{ objectFit: 'cover' }} />
+              <img
+                src={coverUrl}
+                width={440}
+                height={440}
+                style={{ width: 440, height: 440, objectFit: 'cover', display: 'block' }}
+              />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex' }} />
             )}
@@ -217,14 +229,17 @@ export default async function handler(request) {
             )}
           </div>
 
-          {/* The quote — centered, big serif, full canvas width. With the
-              wider line it can drop back to a generous size and a short
-              review still reads as a single hero line. */}
+          {/* The quote — centered, big serif, full canvas width. Sized
+              to 44px so a max-length body (220 chars truncated) fits in
+              four lines without crashing through the rating row below.
+              At 56px (v16) a 178-char review wrapped to 4 lines = 258px,
+              which overflowed by ~50px and rendered the rating bar
+              on top of the last line. */}
           <p
             style={{
               fontFamily: 'Instrument Serif',
-              fontSize: 56,
-              lineHeight: 1.15,
+              fontSize: 44,
+              lineHeight: 1.2,
               margin: 0,
               color: TEXT,
               textAlign: 'center',
