@@ -36,7 +36,7 @@ import { MentionInput } from "../components/Mentions.jsx";
 // Friends icon → /friends) instead of two competing surfaces.
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { AlertIcon } from "../components/Icons.jsx";
-import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
+import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
 
 // ── LocalStorage keys ─────────────────────────────────────────────────────────
 const GENRES_KEY = "contour_genres_v1";
@@ -1176,7 +1176,7 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
                 style={{
                   width: "100%", padding: "12px 14px", fontSize: 15,
                   background: "rgba(255,255,255,0.07)",
-                  border: `1px solid ${reviewError ? "rgba(248,113,113,0.5)" : "rgba(255,255,255,0.15)"}`,
+                  border: `1px solid ${reviewError ? `${DANGER}80` : "rgba(255,255,255,0.15)"}`,
                   borderRadius: "var(--radius)", color: "#fff", resize: "none",
                   outline: "none", boxSizing: "border-box",
                   fontFamily: "inherit", lineHeight: 1.5,
@@ -2210,7 +2210,7 @@ function ForYouFeed() {
 
         {/* Spotify-level diagnosis */}
         {debugInfo && spotifyOk === false && (
-          <div style={{ padding: "10px 16px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: "var(--radius-md)", maxWidth: 300 }}>
+          <div style={{ padding: "10px 16px", background: `${DANGER}1a`, border: `1px solid ${DANGER}4d`, borderRadius: "var(--radius-md)", maxWidth: 300 }}>
             <p style={{ margin: 0, fontSize: 12, color: "var(--danger)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
               <AlertIcon size={12} /> Spotify API unreachable
             </p>

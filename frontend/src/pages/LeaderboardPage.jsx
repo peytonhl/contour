@@ -2,16 +2,24 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
-import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
+import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
 import { albumPath } from "../constants/routes.js";
 const SILVER = "#9ca3af";
 const BRONZE = "#b45309";
 
+// Classification badges. Per CLAUDE.md, brand-tier-2 colors (ACCENT_B
+// cobalt, ACCENT_C orange) are reserved for Compare's entity-pair
+// semantics — they shouldn't double as generic decorative palette on
+// unrelated surfaces. "Underrated" reads as a brand-accent positive
+// signal, so it uses ACCENT_A here (visible shift from cobalt → amber
+// in 2026-05). "Overrated" uses the brand danger color. "Acclaimed"
+// uses GOLD via the literal hex; left literal so it stays paired
+// visually with the #f59e0b RIAA / star convention.
 const CLASSIFICATION_STYLES = {
-  underrated: { label: "Underrated", bg: "#6a90b518", border: "#6a90b540", color: "#6a90b5" },
-  overrated:  { label: "Overrated",  bg: "#f8717118", border: "#f8717140", color: "#f87171" },
-  acclaimed:  { label: "Acclaimed",  bg: "#f59e0b18", border: "#f59e0b40", color: "#f59e0b" },
+  underrated: { label: "Underrated", bg: `${ACCENT_A}18`, border: `${ACCENT_A}40`, color: ACCENT_A },
+  overrated:  { label: "Overrated",  bg: `${DANGER}18`,   border: `${DANGER}40`,   color: DANGER },
+  acclaimed:  { label: "Acclaimed",  bg: `${GOLD}18`,     border: `${GOLD}40`,     color: GOLD },
 };
 
 // Only streaming-era decades are included — pre-2010 albums lack Kworb data

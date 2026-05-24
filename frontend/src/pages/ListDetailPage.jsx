@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
+import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD, DANGER } from "../theme.js";
 import { ROUTES, userPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
@@ -13,7 +13,9 @@ function formatDuration(ms) {
   return `${m}:${s}`;
 }
 
-const ENTITY_COLOR = { album: ACCENT_A, track: ACCENT_B, artist: "#fb923c" };
+// Entity-type tag colors used app-wide (Compare uses the same mapping):
+// album → ACCENT_A, track → ACCENT_B, artist → ACCENT_C.
+const ENTITY_COLOR = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C };
 
 // ── Unified item search (albums + tracks) ─────────────────────────────────────
 function AddItemSearch({ onAdd, existingIds }) {
@@ -321,7 +323,7 @@ export function ListDetailPage() {
             {list.is_owner && (
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                 <button onClick={() => setEditingTitle(true)} style={{ fontSize: 12, padding: "5px 12px", borderRadius: "var(--radius-sm)", background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}>Edit</button>
-                <button onClick={handleDelete} disabled={deleting} style={{ fontSize: 12, padding: "5px 12px", borderRadius: "var(--radius-sm)", background: "none", border: "1px solid rgba(248,113,113,0.4)", color: "var(--danger)", cursor: "pointer" }}>
+                <button onClick={handleDelete} disabled={deleting} style={{ fontSize: 12, padding: "5px 12px", borderRadius: "var(--radius-sm)", background: "none", border: `1px solid ${DANGER}66`, color: "var(--danger)", cursor: "pointer" }}>
                   {deleting ? "…" : "Delete"}
                 </button>
               </div>

@@ -14,7 +14,7 @@ import { EmptyState } from "../components/EmptyState.jsx";
 import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { CompareTastePicker } from "../components/CompareTastePicker.jsx";
-import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
+import { ACCENT_A as ACCENT, ACCENT_B, GOLD, DANGER } from "../theme.js";
 import { ROUTES, userPath, listPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
@@ -718,7 +718,7 @@ export function ProfilePage() {
                 placeholder="https://i.imgur.com/…"
                 style={{
                   padding: "10px 12px", background: "var(--surface2)",
-                  border: `1px solid ${photoError ? "#f87171" : "var(--border)"}`,
+                  border: `1px solid ${photoError ? DANGER : "var(--border)"}`,
                   borderRadius: "var(--radius-md)", color: "var(--text)", fontSize: 14, outline: "none",
                   fontFamily: "inherit",
                 }}

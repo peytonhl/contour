@@ -1,3 +1,5 @@
+import { ACCENT_A } from "../theme.js";
+
 /**
  * Shown on album/track pages when the release predates or predates widespread streaming.
  *
@@ -19,8 +21,8 @@ export function PreStreamingBanner({ releaseDate }) {
       alignItems: "flex-start",
       gap: 12,
       padding: "14px 18px",
-      background: "rgba(251, 146, 60, 0.08)",
-      border: "1px solid rgba(251, 146, 60, 0.3)",
+      background: `${ACCENT_A}14`,
+      border: `1px solid ${ACCENT_A}4d`,
       borderRadius: "var(--radius)",
     }}>
       <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>{isPreStreaming ? "📼" : "📡"}</span>

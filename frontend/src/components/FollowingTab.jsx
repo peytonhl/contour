@@ -7,11 +7,13 @@ import { ReplyThread } from "./ReviewSection.jsx";
 import { ShareButton } from "./ShareButton.jsx";
 import { MentionBody } from "./Mentions.jsx";
 import { EmptyState } from "./EmptyState.jsx";
-import { ACCENT_A, GOLD } from "../theme.js";
+import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
 import { userPath } from "../constants/routes.js";
 
-const ENTITY_COLOR = { album: ACCENT_A, track: "#6a90b5", artist: "#fb923c" };
+// Entity-type tag colors used app-wide (Compare uses the same mapping):
+// album → ACCENT_A, track → ACCENT_B, artist → ACCENT_C.
+const ENTITY_COLOR = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C };
 
 function timeAgo(iso) {
   // Backend serializes naive UTC; treat tz-less strings as UTC so non-UTC

@@ -7,7 +7,7 @@ import { ComparisonChart } from "./ComparisonChart.jsx";
 import { EditionPicker } from "./EditionPicker.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { logSilentError } from "../utils/observability.js";
-import { ACCENT_A, ACCENT_B, ACCENT_C } from "../theme.js";
+import { ACCENT_A, ACCENT_B, ACCENT_C, DANGER } from "../theme.js";
 import { albumPath, trackPath, savedComparePath } from "../constants/routes.js";
 const POLL_INTERVAL = 4000;
 
@@ -352,8 +352,8 @@ export function ComparisonWidget({
 
       {error && (
         <div style={{
-          padding: "14px 16px", background: "rgba(248,113,113,0.1)",
-          border: "1px solid rgba(248,113,113,0.3)", borderRadius: "var(--radius-md)",
+          padding: "14px 16px", background: `${DANGER}1a`,
+          border: `1px solid ${DANGER}4d`, borderRadius: "var(--radius-md)",
           color: "var(--danger)", fontSize: 13,
         }}>
           Error: {error}

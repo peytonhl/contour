@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { GENRE_OPTIONS_BASE, GENRE_OPTIONS_EXTENDED, GenreChip } from "./OnboardingModal.jsx";
-import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
+import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 import { albumPath } from "../constants/routes.js";
 
@@ -613,7 +613,7 @@ function RatingDistribution({ distribution, average }) {
                 background: star >= 4
                   ? `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`
                   : star === 3
-                  ? `linear-gradient(90deg, ${GOLD}, #fb923c)`
+                  ? `linear-gradient(90deg, ${GOLD}, ${ACCENT_C})`
                   : "var(--border)",
                 transition: "width 0.5s ease",
               }} />

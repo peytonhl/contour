@@ -1,5 +1,6 @@
 import { AlertIcon } from "./Icons";
 import { imageMedium } from "../utils/imageVariants.js";
+import { ACCENT_A } from "../theme.js";
 
 const styles = {
   card: {
@@ -152,7 +153,7 @@ export function AlbumCard({ meta, accentColor, enriching, detailLink }) {
           <span style={{ ...styles.statValue, display: "flex", alignItems: "center", gap: 6 }}>
             {formatStreams(meta.total_streams)}
             {showEnriching && (
-              <span style={{ fontSize: 10, color: "#6a90b5", fontWeight: 600, background: "rgba(106,144,181,0.12)", padding: "1px 6px", borderRadius: "var(--radius-sm)" }}>
+              <span style={{ fontSize: 10, color: ACCENT_A, fontWeight: 600, background: `${ACCENT_A}1f`, padding: "1px 6px", borderRadius: "var(--radius-sm)" }}>
                 enriching…
               </span>
             )}

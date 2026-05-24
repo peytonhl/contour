@@ -1,3 +1,5 @@
+import { ACCENT_A } from "../theme.js";
+
 const MAU_TABLE = [
   { year: 2015, mau: 75 },
   { year: 2016, mau: 100 },
@@ -72,9 +74,9 @@ function FeaturePill({ label }) {
       display: "inline-block",
       fontSize: 11, fontWeight: 700, padding: "2px 9px",
       borderRadius: "var(--radius-xl)",
-      background: "rgba(106, 144, 181, 0.1)",
-      border: "1px solid rgba(106, 144, 181, 0.3)",
-      color: "#6a90b5",
+      background: `${ACCENT_A}1a`,
+      border: `1px solid ${ACCENT_A}4d`,
+      color: ACCENT_A,
       marginRight: 6, marginBottom: 6,
     }}>
       {label}

@@ -9,10 +9,12 @@ import { MentionBody } from "./Mentions.jsx";
 import { EmptyState } from "./EmptyState.jsx";
 import { PenIcon } from "./Icons.jsx";
 import { userPath } from "../constants/routes.js";
-import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
+import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD, DANGER } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
-const ENTITY_COLOR = { album: ACCENT_A, track: ACCENT_B, artist: "#fb923c" };
+// Entity-type tag colors used app-wide (Compare uses the same mapping):
+// album → ACCENT_A, track → ACCENT_B, artist → ACCENT_C.
+const ENTITY_COLOR = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C };
 const SORT_LABELS = [
   { key: "recent", label: "Recent" },
   { key: "top", label: "Top" },
