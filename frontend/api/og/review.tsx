@@ -90,15 +90,15 @@ function truncate(text, max = 220) {
 // some Edge-runtime fetch quirk; either way doing the fetch ourselves
 // with a permissive UA and handing Satori a `data:` URL sidesteps it.
 //
-// Returns null on failure so the renderer falls through to the
-// placeholder div instead of erroring the whole card.
+// Returns { url: data-url-or-null, error: string-or-null } so callers
+// can surface what happened in debug mode without breaking the card.
 async function fetchAsDataUrl(url) {
-  if (!url) return null;
+  if (!url) return { url: null, error: 'no-url' };
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Contour/1.0)' },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { url: null, error: `http-${res.status}` };
     const buf = await res.arrayBuffer();
     const bytes = new Uint8Array(buf);
     let binary = '';
@@ -107,9 +107,9 @@ async function fetchAsDataUrl(url) {
     }
     const b64 = btoa(binary);
     const ct = res.headers.get('content-type') || 'image/jpeg';
-    return `data:${ct};base64,${b64}`;
-  } catch {
-    return null;
+    return { url: `data:${ct};base64,${b64}`, error: null };
+  } catch (e) {
+    return { url: null, error: `exception: ${(e && (e.message || e.name)) || 'unknown'}` };
   }
 }
 
@@ -137,25 +137,41 @@ export default async function handler(request) {
 
   // Pre-fetch fonts AND the cover/avatar in parallel. The author's
   // image is usually a `data:` URL already (Google profile pic baked
-  // in at signup) so fetchAsDataUrl returns it as-is via the `data:`
-  // check on the first line. The cover is the one that actually
-  // needs the inlining workaround.
-  const [fontRegular, fontItalic, coverDataUrl, authorDataUrl] = await Promise.all([
+  // in at signup) so fetchAsDataUrl is skipped via the `data:` check.
+  // The cover is the one that actually needs the inlining workaround.
+  const wrapAlreadyData = (u) => Promise.resolve({ url: u ?? null, error: u ? null : 'no-url' });
+  const [fontRegular, fontItalic, coverFetch, authorFetch] = await Promise.all([
     fontPromise,
     fontItalicPromise,
     data.entity.cover_url && !data.entity.cover_url.startsWith('data:')
       ? fetchAsDataUrl(data.entity.cover_url)
-      : Promise.resolve(data.entity.cover_url ?? null),
+      : wrapAlreadyData(data.entity.cover_url),
     data.author.image_url && !data.author.image_url.startsWith('data:')
       ? fetchAsDataUrl(data.author.image_url)
-      : Promise.resolve(data.author.image_url ?? null),
+      : wrapAlreadyData(data.author.image_url),
   ]);
+
+  // Debug surface: ?debug=1 returns a JSON dump instead of the PNG so
+  // we can confirm what the cover-fetch path actually did. Strips the
+  // base64 payload so the response stays readable.
+  if (url.searchParams.get('debug') === '1') {
+    return new Response(JSON.stringify({
+      original_cover_url: data.entity.cover_url,
+      original_author_image: data.author.image_url?.slice(0, 80) + (data.author.image_url?.length > 80 ? '…' : ''),
+      cover_fetch_error: coverFetch.error,
+      cover_fetch_ok: !!coverFetch.url,
+      cover_data_url_prefix: coverFetch.url?.slice(0, 60) ?? null,
+      author_fetch_error: authorFetch.error,
+      author_fetch_ok: !!authorFetch.url,
+    }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
   const fonts = [];
   if (fontRegular) fonts.push({ name: 'Instrument Serif', data: fontRegular, weight: 400, style: 'normal' });
   if (fontItalic)  fonts.push({ name: 'Instrument Serif', data: fontItalic,  weight: 400, style: 'italic'  });
 
-  const coverUrl = coverDataUrl;
-  const authorImage = authorDataUrl;
+  const coverUrl = coverFetch.url;
+  const authorImage = authorFetch.url;
 
   return new ImageResponse(
     (
