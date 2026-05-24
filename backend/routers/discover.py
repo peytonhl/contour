@@ -1980,7 +1980,6 @@ async def discover_me_state(
     }
 
 
-@router.get("/debug")
 @router.get("/probe-genre-match")
 async def discover_probe_genre_match(
     db: AsyncSession = Depends(get_db),
