@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { logSilentError } from "../utils/observability.js";
 import { ACCENT_A as ACCENT, ACCENT_B as GREEN, DANGER } from "../theme.js";
+import { userPath } from "../constants/routes.js";
 
 const REASON_LABEL = {
   spam: "Spam",
@@ -146,13 +147,13 @@ export function AdminReportsPage() {
                 <span>
                   Author:{" "}
                   {r.target_author
-                    ? <Link to={`/user/${r.target_author.id}`} style={{ color: ACCENT }}>{r.target_author.display_name}</Link>
+                    ? <Link to={userPath(r.target_author.id)} style={{ color: ACCENT }}>{r.target_author.display_name}</Link>
                     : <em>unknown</em>}
                 </span>
                 <span>
                   Reported by:{" "}
                   {r.reporter
-                    ? <Link to={`/user/${r.reporter.id}`} style={{ color: ACCENT }}>{r.reporter.display_name}</Link>
+                    ? <Link to={userPath(r.reporter.id)} style={{ color: ACCENT }}>{r.reporter.display_name}</Link>
                     : <em>unknown</em>}
                 </span>
               </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
+import { ROUTES } from "../constants/routes.js";
 
 // ── Page-level building blocks (mirror SettingsPage's primitives) ────────────
 function SectionLabel({ children }) {
@@ -168,7 +169,7 @@ export function TasteProfilePage() {
     // fresh-feed bypass. We also set a URL param so the ForYouPage's
     // fetchBatch can read it. Navigates to / and the page picks it up.
     try { localStorage.setItem("contour_fresh_feed_once", "1"); } catch {}
-    navigate("/");
+    navigate("/");  // home — intentionally not centralized; see routes.js
   }
 
   if (loading) {
@@ -200,7 +201,7 @@ export function TasteProfilePage() {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 20px 60px", display: "flex", flexDirection: "column", gap: 24 }}>
       <div>
-        <Link to="/settings" style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none" }}>← Settings</Link>
+        <Link to={ROUTES.SETTINGS} style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none" }}>← Settings</Link>
         <h1 style={{
           fontFamily: "var(--font-display)",
           fontSize: 32, fontWeight: 400,

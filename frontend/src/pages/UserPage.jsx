@@ -14,6 +14,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { MentionBody } from "../components/Mentions.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD, DANGER } from "../theme.js";
+import { ROUTES, userPath, listPath, tasteMatchPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
 function ListCollage({ images }) {
@@ -261,7 +262,7 @@ export function UserPage() {
       <button
         onClick={() => {
           if (window.history.length > 1) navigate(-1);
-          else navigate("/friends");
+          else navigate(ROUTES.FRIENDS);
         }}
         style={{
           display: "flex", alignItems: "center", gap: 6,
@@ -339,7 +340,7 @@ export function UserPage() {
               {profile.is_following ? "Following" : "Follow"}
             </button>
             <Link
-              to={`/taste-match/${id}`}
+              to={tasteMatchPath(id)}
               style={{
                 padding: "8px 18px",
                 borderRadius: "var(--radius-sm)",
@@ -563,7 +564,7 @@ export function UserPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {lists.length === 0 && <EmptyHint>No lists yet.</EmptyHint>}
             {(tabExpanded ? lists : lists.slice(0, TAB_VISIBLE_LIMIT)).map((lst) => (
-              <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
+              <Link key={lst.id} to={listPath(lst.id)} style={{ textDecoration: "none", color: "var(--text)" }}>
                 <div
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", transition: "border-color 0.15s" }}
                   onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT}
@@ -645,7 +646,7 @@ function UserList({ users, emptyText, footer }) {
       {users.map((u) => (
         <Link
           key={u.id}
-          to={`/user/${u.id}`}
+          to={userPath(u.id)}
           style={{
             display: "flex", alignItems: "center", gap: 12,
             padding: "10px 14px", background: "var(--surface)",

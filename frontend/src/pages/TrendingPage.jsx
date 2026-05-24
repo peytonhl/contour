@@ -6,6 +6,7 @@ import { EmptyHint } from "../components/Skeleton.jsx";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
 import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
+import { albumPath } from "../constants/routes.js";
 
 const WINDOW_OPTIONS = [
   { key: "24h", label: "24h" },
@@ -49,7 +50,7 @@ function HeroAlbumSpotlight({ item, eyebrow, surface }) {
   const handleClick = () => analytics.trendingModuleClicked(surface, "album", item.id);
   return (
     <Link
-      to={`/album/${item.id}`}
+      to={albumPath(item.id)}
       onClick={handleClick}
       style={{
         display: "block",
@@ -177,7 +178,7 @@ function RankedAlbumList({ items, startRank = 2, surface }) {
         return (
           <Link
             key={it.id}
-            to={`/album/${it.id}`}
+            to={albumPath(it.id)}
             onClick={() => analytics.trendingModuleClicked(surface, "album", it.id)}
             style={{
               display: "flex",
@@ -252,7 +253,7 @@ function HorizontalAlbumShelf({ items, surface }) {
       {items.map((it) => (
         <Link
           key={it.id}
-          to={`/album/${it.id}`}
+          to={albumPath(it.id)}
           onClick={() => analytics.trendingModuleClicked(surface, "album", it.id)}
           style={{
             width: 148,

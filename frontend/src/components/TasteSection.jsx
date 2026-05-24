@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { GENRE_OPTIONS_BASE, GENRE_OPTIONS_EXTENDED, GenreChip } from "./OnboardingModal.jsx";
 import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
+import { albumPath } from "../constants/routes.js";
 
 // Ghost action button paired with the "Music taste" section header. Lighter
 // than the tinted pills used elsewhere on the page so it reads as a sub-
@@ -114,7 +115,7 @@ function AlbumSlot({ album, isOwner, onClick, onRemove }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <Link to={`/album/${album.id}`}>
+      <Link to={albumPath(album.id)}>
         {album.image_url
           ? <img src={album.image_url} alt={album.name} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : <div style={{ width: "100%", height: "100%", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>

@@ -5,6 +5,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { userAvatar } from "../utils/userAvatar.js";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
+import { ROUTES, tasteMatchPath, userPath, albumPath, trackPath } from "../constants/routes.js";
 
 function Avatar({ user, size = 88, ring }) {
   return (
@@ -38,8 +39,8 @@ function EntityCard({ kind, item, viewerName, otherName }) {
   if (!item) return null;
   const link =
     item.entity_type === "album"
-      ? `/album/${item.entity_id}`
-      : `/track/${item.entity_id}`;
+      ? albumPath(item.entity_id)
+      : trackPath(item.entity_id);
 
   const isAgreement = kind === "agreement";
   const tint = isAgreement ? GOLD : ACCENT;
@@ -198,7 +199,7 @@ export function TasteMatchPage() {
   const pct = Math.round((agreement_pct || 0) * 100);
 
   const cardUrl = `/api/og/taste-match?viewer=${encodeURIComponent(viewer.id)}&other=${encodeURIComponent(other.id)}`;
-  const shareUrl = `${window.location.origin}/user/${encodeURIComponent(other.id)}`;
+  const shareUrl = `${window.location.origin}${userPath(other.id)}`;
   const shareText = `${viewer.display_name} & ${other.display_name} — ${pct}% taste match on Contour`;
   const fileName = `contour-taste-match-${viewer.id}-${other.id}.png`;
 
@@ -213,7 +214,7 @@ export function TasteMatchPage() {
       <button
         onClick={() => {
           if (window.history.length > 1) navigate(-1);
-          else navigate("/friends");
+          else navigate(ROUTES.FRIENDS);
         }}
         style={{
           display: "flex", alignItems: "center", gap: 6,
@@ -239,7 +240,7 @@ export function TasteMatchPage() {
           marginBottom: 28,
         }}
       >
-        <Link to="/profile" style={{ textDecoration: "none", color: "inherit", textAlign: "center" }}>
+        <Link to={ROUTES.PROFILE} style={{ textDecoration: "none", color: "inherit", textAlign: "center" }}>
           <Avatar user={viewer} ring={ACCENT} />
           <div style={{ marginTop: 8, fontSize: 14, fontWeight: 600 }}>
             {viewer.display_name}
@@ -255,7 +256,7 @@ export function TasteMatchPage() {
         >
           vs
         </div>
-        <Link to={`/user/${other.id}`} style={{ textDecoration: "none", color: "inherit", textAlign: "center" }}>
+        <Link to={userPath(other.id)} style={{ textDecoration: "none", color: "inherit", textAlign: "center" }}>
           <Avatar user={other} ring={ACCENT_B} />
           <div style={{ marginTop: 8, fontSize: 14, fontWeight: 600 }}>
             {other.display_name}

@@ -5,6 +5,7 @@ import { ComparisonChart } from "../components/ComparisonChart.jsx";
 import { AlbumCard } from "../components/AlbumCard.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { ACCENT_A, ACCENT_B, ACCENT_C } from "../theme.js";
+import { albumPath, trackPath, savedComparePath } from "../constants/routes.js";
 
 // "Share card" button — opens the CardPreviewModal which renders the
 // generated comparison PNG inline and dispatches share/save through
@@ -13,7 +14,7 @@ import { ACCENT_A, ACCENT_B, ACCENT_C } from "../theme.js";
 // to URL share on iOS Capacitor (canShare({ files }) false-negative).
 function ShareCardButton({ id, label }) {
   const [open, setOpen] = useState(false);
-  const reviewUrl = `${window.location.origin}/compare/${id}`;
+  const reviewUrl = `${window.location.origin}${savedComparePath(id)}`;
   const cardUrl   = `${window.location.origin}/api/og/comparison?id=${id}`;
   return (
     <>
@@ -100,12 +101,12 @@ export function SavedComparisonPage() {
 
       <div className={hasThreeWay ? "compare-grid-3" : "compare-grid"}>
         <AlbumCard meta={result.album_a} accentColor={ACCENT_A}
-          detailLink={result.album_a.entity_type === "track" ? `/track/${result.album_a.id}` : `/album/${result.album_a.id}`} />
+          detailLink={result.album_a.entity_type === "track" ? trackPath(result.album_a.id) : albumPath(result.album_a.id)} />
         <AlbumCard meta={result.album_b} accentColor={ACCENT_B}
-          detailLink={result.album_b.entity_type === "track" ? `/track/${result.album_b.id}` : `/album/${result.album_b.id}`} />
+          detailLink={result.album_b.entity_type === "track" ? trackPath(result.album_b.id) : albumPath(result.album_b.id)} />
         {result.album_c && (
           <AlbumCard meta={result.album_c} accentColor={ACCENT_C}
-            detailLink={result.album_c.entity_type === "track" ? `/track/${result.album_c.id}` : `/album/${result.album_c.id}`} />
+            detailLink={result.album_c.entity_type === "track" ? trackPath(result.album_c.id) : albumPath(result.album_c.id)} />
         )}
       </div>
     </div>

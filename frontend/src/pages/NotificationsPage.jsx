@@ -6,6 +6,7 @@ import { UsersIcon, ChatBubbleIcon, BellIcon } from "../components/Icons.jsx";
 import { EmptyState } from "../components/EmptyState.jsx";
 import { ACCENT_A } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
+import { userPath } from "../constants/routes.js";
 
 function timeAgo(iso) {
   // Backend serializes naive UTC; treat tz-less strings as UTC so non-UTC
@@ -46,7 +47,7 @@ function notifText(n) {
 }
 
 function notifLink(n) {
-  if (n.type === "follow") return `/user/${n.actor?.id}`;
+  if (n.type === "follow") return userPath(n.actor?.id);
   if (n.entity_type && n.entity_id) return `/${n.entity_type}/${n.entity_id}${n.review_id ? `#review-${n.review_id}` : ""}`;
   return null;
 }

@@ -8,6 +8,7 @@ import { MentionInput, MentionBody } from "./Mentions.jsx";
 import { LoadMoreButton } from "./LoadMoreButton.jsx";
 import { ACCENT_A as ACCENT, GOLD, DANGER } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
+import { userPath } from "../constants/routes.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function timeAgo(iso) {
@@ -218,7 +219,7 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
   return (
     <div style={{ marginTop: 10, paddingLeft: indent, borderLeft: depth > 0 ? "2px solid var(--border)" : "none" }}>
       <div style={{ display: "flex", gap: 10 }}>
-        <Link to={`/user/${node.user.id}`} style={{ flexShrink: 0 }}>
+        <Link to={userPath(node.user.id)} style={{ flexShrink: 0 }}>
           {node.user.image_url
             ? <img src={imageThumb(node.user.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
             : <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--surface2)" }} />
@@ -238,7 +239,7 @@ function ReplyNode({ node, depth, user, replyingTo, onSetReplyingTo, onSubmitRep
                 {isCollapsed ? "[+]" : "[−]"}
               </button>
             )}
-            <Link to={`/user/${node.user.id}`} style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textDecoration: "none" }}>
+            <Link to={userPath(node.user.id)} style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textDecoration: "none" }}>
               {node.user.display_name}
             </Link>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{timeAgo(node.created_at)}</span>
@@ -530,14 +531,14 @@ function ReviewCard({ rev, onVote, onDelete, user, entityType, entityId }) {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Link to={`/user/${rev.user.id}`} style={{ flexShrink: 0 }}>
+          <Link to={userPath(rev.user.id)} style={{ flexShrink: 0 }}>
             {rev.user.image_url
               ? <img src={imageMedium(rev.user.image_url)} alt={rev.user.display_name} loading="lazy" decoding="async" style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
               : <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--surface2)", flexShrink: 0 }} />
             }
           </Link>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Link to={`/user/${rev.user.id}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>
+            <Link to={userPath(rev.user.id)} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>
               {rev.user.display_name}
             </Link>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

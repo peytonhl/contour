@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { ACCENT_A as ACCENT } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
+import { userPath } from "../constants/routes.js";
 
 export function BlocksPage() {
   const { user, loading: authLoading } = useAuth();
@@ -55,14 +56,14 @@ export function BlocksPage() {
               padding: "10px 14px",
               background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
             }}>
-              <Link to={`/user/${b.user_id}`} style={{ flexShrink: 0 }}>
+              <Link to={userPath(b.user_id)} style={{ flexShrink: 0 }}>
                 {b.image_url
                   ? <img src={imageMedium(b.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
                   : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)" }} />
                 }
               </Link>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <Link to={`/user/${b.user_id}`} style={{
+                <Link to={userPath(b.user_id)} style={{
                   fontSize: 14, fontWeight: 600, color: "var(--text)", textDecoration: "none",
                 }}>
                   {b.display_name || "Unknown user"}

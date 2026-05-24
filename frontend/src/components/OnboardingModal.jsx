@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD, DANGER } from "../theme.js";
+import { ROUTES, profileTabPath } from "../constants/routes.js";
 
 const STORAGE_KEY = "contour_onboarded_v2";
 
@@ -294,7 +295,7 @@ export function OnboardingModal() {
       // re-trigger next launch.
       localStorage.setItem(STORAGE_KEY, "1");
       setVisible(false);
-      navigate("/profile?tab=backlog");
+      navigate(profileTabPath("backlog"));
     } else {
       // Advance to the friends step instead of dismissing — the
       // third pillar (social / connecting with friends) needs the
@@ -309,7 +310,7 @@ export function OnboardingModal() {
     if (deepLink) {
       localStorage.setItem(STORAGE_KEY, "1");
       setVisible(false);
-      navigate("/friends");
+      navigate(ROUTES.FRIENDS);
     } else {
       dismiss();
     }

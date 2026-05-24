@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
 import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
+import { albumPath } from "../constants/routes.js";
 const SILVER = "#9ca3af";
 const BRONZE = "#b45309";
 
@@ -113,7 +114,7 @@ function LeaderboardChampionHero({ entry, sort, onCompare }) {
 
       {/* Album credit row */}
       <Link
-        to={`/album/${entry.spotify_id}`}
+        to={albumPath(entry.spotify_id)}
         style={{
           display: "flex", alignItems: "center", gap: 14,
           padding: "12px 0 0",
@@ -176,7 +177,7 @@ function LeaderboardRow({ entry, sort, onCompare }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <Link to={`/album/${entry.spotify_id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
+      <Link to={albumPath(entry.spotify_id)} style={{ textDecoration: "none", color: "var(--text)" }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 14,
           padding: "10px 16px",

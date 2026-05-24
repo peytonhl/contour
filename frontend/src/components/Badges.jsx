@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { PenIcon, TrendingUpIcon, UsersIcon } from "./Icons";
 import { imageThumb } from "../utils/imageVariants.js";
+import { userPath } from "../constants/routes.js";
 
 // ── Badge definitions ─────────────────────────────────────────────────────────
 // `Icon` is consumed by BadgeLeaderboard (the Community Top 5 card). On
@@ -99,7 +100,7 @@ export function BadgeLeaderboard({ badges }) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {list.map((u, i) => (
-                  <Link key={u.id} to={`/user/${u.id}`} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
+                  <Link key={u.id} to={userPath(u.id)} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
                     <span style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--text-muted)", width: 14, flexShrink: 0 }}>#{i + 1}</span>
                     {u.image_url
                       ? <img src={imageThumb(u.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />

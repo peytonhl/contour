@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
 import { ACCENT_A } from "../theme.js";
+import { ROUTES } from "../constants/routes.js";
 
 // ── Reusable row primitives ──────────────────────────────────────────────────
 // Two flavors of row: a Link row (for navigating to another page) and a
@@ -314,7 +315,7 @@ export function SettingsPage() {
     // Same event the old profile-page settings popover dispatched. Listened
     // for inside OnboardingModal — opens at step 0 without a reload.
     window.dispatchEvent(new CustomEvent("contour:replay-onboarding"));
-    navigate("/");
+    navigate("/");  // home — intentionally not centralized; see routes.js
   }
 
   // Signed-out users get a bare-bones About-only view so deep-linked
@@ -333,9 +334,9 @@ export function SettingsPage() {
           Sign in to manage your account preferences.
         </p>
         <Section label="About">
-          <RowLink to="/methodology" title="How it works" description="Era-adjusted streaming, charts methodology, and more" />
-          <RowLink to="/privacy" title="Privacy policy" />
-          <RowLink to="/terms" title="Terms of service" isLast />
+          <RowLink to={ROUTES.METHODOLOGY} title="How it works" description="Era-adjusted streaming, charts methodology, and more" />
+          <RowLink to={ROUTES.PRIVACY} title="Privacy policy" />
+          <RowLink to={ROUTES.TERMS} title="Terms of service" isLast />
         </Section>
       </div>
     );
@@ -417,9 +418,9 @@ export function SettingsPage() {
       )}
 
       <Section label="Content">
-        <RowLink to="/import" title="Import ratings" description="Bring your ratings over from RYM" />
-        <RowLink to="/disliked-artists" title="Disliked artists" description="Artists hidden from your For You feed" />
-        <RowLink to="/blocks" title="Blocked users" description="Users whose content is hidden from you" isLast />
+        <RowLink to={ROUTES.IMPORT} title="Import ratings" description="Bring your ratings over from RYM" />
+        <RowLink to={ROUTES.DISLIKED_ARTISTS} title="Disliked artists" description="Artists hidden from your For You feed" />
+        <RowLink to={ROUTES.BLOCKS} title="Blocked users" description="Users whose content is hidden from you" isLast />
       </Section>
 
       <Section label="Algorithm">
@@ -432,9 +433,9 @@ export function SettingsPage() {
       </Section>
 
       <Section label="About">
-        <RowLink to="/methodology" title="How it works" description="Era-adjusted streaming, charts methodology, and more" />
-        <RowLink to="/privacy" title="Privacy policy" />
-        <RowLink to="/terms" title="Terms of service" isLast />
+        <RowLink to={ROUTES.METHODOLOGY} title="How it works" description="Era-adjusted streaming, charts methodology, and more" />
+        <RowLink to={ROUTES.PRIVACY} title="Privacy policy" />
+        <RowLink to={ROUTES.TERMS} title="Terms of service" isLast />
       </Section>
 
     </div>

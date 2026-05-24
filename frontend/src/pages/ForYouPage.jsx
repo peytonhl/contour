@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { logSilentError } from "../utils/observability.js";
+import { trackPath, artistPath, albumPath } from "../constants/routes.js";
 
 // Tier source for analytics — backend tags deezer-sourced tracks with _source,
 // everything else came through Spotify (tier 1 related-artist or tier 2 genre).
@@ -307,7 +308,7 @@ function recordDislike(artistId) {
 
 // ── Share helper ──────────────────────────────────────────────────────────────
 async function shareTrack(track) {
-  const url = `${window.location.origin}/track/${track.id}`;
+  const url = `${window.location.origin}${trackPath(track.id)}`;
   const title = `${track.name} · ${track.artists?.[0]}`;
   const text = `Listen to "${track.name}" by ${track.artists?.[0]} on Contour`;
 
@@ -898,7 +899,7 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
                   click and navigates to the internal track page. Falls back
                   to opening Deezer only if no Spotify equivalent exists. */}
               <a
-                href={track._source === "deezer" ? track.external_url : `/track/${track.id}`}
+                href={track._source === "deezer" ? track.external_url : trackPath(track.id)}
                 onClick={(e) => { e.preventDefault(); onEntityClick?.(track, "track"); }}
                 style={{ color: "#fff", textDecoration: "none", cursor: "pointer" }}
               >
@@ -911,14 +912,14 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
           </div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             <a
-              href={track._source === "deezer" ? "#" : `/artist/${track.artist_ids?.[0]}`}
+              href={track._source === "deezer" ? "#" : artistPath(track.artist_ids?.[0])}
               onClick={(e) => { e.preventDefault(); onEntityClick?.(track, "artist"); }}
               style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, textDecoration: "none", cursor: "pointer" }}
             >
               {track.artists?.[0]}
             </a>
             {track.album_name && (track._source !== "deezer") && track.album_id && (
-              <> · <Link to={`/album/${track.album_id}`} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none" }}>{track.album_name}</Link></>
+              <> · <Link to={albumPath(track.album_id)} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none" }}>{track.album_name}</Link></>
             )}
             {track.album_name && (track._source === "deezer" || !track.album_id) && ` · ${track.album_name}`}
             {year && ` · ${year}`}
@@ -1252,7 +1253,7 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
           open={shareCardOpen}
           onClose={() => setShareCardOpen(false)}
           cardUrl={`${window.location.origin}/api/og/review?id=${submittedReview.reviewId}`}
-          shareUrl={`${window.location.origin}/track/${submittedReview.spotifyId}#review-${submittedReview.reviewId}`}
+          shareUrl={`${window.location.origin}${trackPath(submittedReview.spotifyId)}#review-${submittedReview.reviewId}`}
           shareText={`${user?.display_name ?? "A Contour user"}'s review on Contour`}
           fileName={`contour-review-${submittedReview.reviewId}.png`}
         />

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ACCENT_A as ACCENT } from "../theme.js";
 import { imageThumb } from "../utils/imageVariants.js";
+import { userPath } from "../constants/routes.js";
 
 // Regex MUST match backend/services/mentions.py's _MENTION_RE — same prefix
 // boundary (start of string or non-name char), same token shape (starts
@@ -115,7 +116,7 @@ export function MentionBody({ body, mentions }) {
       out.push(
         <Link
           key={`m${key++}`}
-          to={`/user/${r.mention.id}`}
+          to={userPath(r.mention.id)}
           // Stop click bubbling so the parent row's onClick (used by
           // ProfilePage / UserPage review rows) doesn't fight the
           // mention's own navigation.

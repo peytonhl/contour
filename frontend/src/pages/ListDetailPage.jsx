@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
+import { ROUTES, userPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
 function formatDuration(ms) {
@@ -264,7 +265,7 @@ export function ListDetailPage() {
     setDeleting(true);
     try {
       await api.deleteList(id);
-      navigate("/profile");
+      navigate(ROUTES.PROFILE);
     } finally { setDeleting(false); }
   }
 
@@ -278,7 +279,7 @@ export function ListDetailPage() {
 
       {/* Header */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <Link to={`/user/${list.owner?.id}`} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", alignSelf: "flex-start" }}>
+        <Link to={userPath(list.owner?.id)} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", alignSelf: "flex-start" }}>
           {list.owner?.image_url
             ? <img src={imageThumb(list.owner.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
             : <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--surface2)" }} />

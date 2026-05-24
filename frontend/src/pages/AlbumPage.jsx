@@ -13,6 +13,7 @@ import { NoChartData } from "../components/NoChartData.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { ACCENT_A as ACCENT } from "../theme.js";
+import { trackPath, artistPath } from "../constants/routes.js";
 
 const DISCLAIMER = "Stream trajectory is a modeled approximation calibrated to the known total stream count. Exact day-by-day data requires Luminate licensing.";
 
@@ -181,7 +182,7 @@ export function AlbumPage() {
                 <span key={i}>
                   {i > 0 && ", "}
                   {album.artist_ids?.[i]
-                    ? <Link to={`/artist/${album.artist_ids[i]}`} style={{ color: "var(--text)" }}>{artist}</Link>
+                    ? <Link to={artistPath(album.artist_ids[i])} style={{ color: "var(--text)" }}>{artist}</Link>
                     : <span style={{ color: "var(--text)" }}>{artist}</span>}
                 </span>
               ))}
@@ -361,7 +362,7 @@ export function AlbumPage() {
             {tracklist.map((track, i) => (
               <Link
                 key={track.id}
-                to={`/track/${track.id}`}
+                to={trackPath(track.id)}
                 style={{
                   display: "flex", alignItems: "center", gap: "var(--space-4)",
                   padding: "var(--space-3) var(--space-5)",

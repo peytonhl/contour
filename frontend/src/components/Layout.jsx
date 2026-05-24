@@ -8,6 +8,7 @@ import { BellIcon } from "./Icons.jsx";
 import { logSilentError } from "../utils/observability.js";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 import { ACCENT_A, ACCENT_B } from "../theme.js";
+import { ROUTES } from "../constants/routes.js";
 
 // ── Google "G" logo (official multicolor) ────────────────────────────────────
 function GoogleIcon({ size = 18 }) {
@@ -321,7 +322,7 @@ export function Layout() {
         {/* Desktop auth */}
         <div className="hide-mobile" style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 12 }}>
           {user && (
-            <Link to="/notifications" onClick={() => setUnread(0)} style={{ position: "relative", display: "flex", alignItems: "center", padding: "8px 10px", color: "var(--text-muted)", textDecoration: "none" }}>
+            <Link to={ROUTES.NOTIFICATIONS} onClick={() => setUnread(0)} style={{ position: "relative", display: "flex", alignItems: "center", padding: "8px 10px", color: "var(--text-muted)", textDecoration: "none" }}>
               <BellIcon size={20} />
               {unread > 0 && (
                 <span style={{
@@ -338,7 +339,7 @@ export function Layout() {
             </Link>
           )}
           {loading ? null : user ? (
-            <Link to="/profile" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
+            <Link to={ROUTES.PROFILE} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
               <img src={userAvatar(user, 56)} alt={user.display_name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
               <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{user.display_name}</span>
             </Link>
@@ -361,7 +362,7 @@ export function Layout() {
         {/* Mobile: avatar only (navigation is in the bottom bar) */}
         <div className="show-mobile" style={{ display: "none", alignItems: "center", gap: 4, marginLeft: "auto" }}>
           {!loading && user && (
-            <Link to="/notifications" onClick={() => setUnread(0)} style={{ position: "relative", display: "flex", alignItems: "center", padding: "12px 8px", color: "var(--text-muted)", textDecoration: "none" }}>
+            <Link to={ROUTES.NOTIFICATIONS} onClick={() => setUnread(0)} style={{ position: "relative", display: "flex", alignItems: "center", padding: "12px 8px", color: "var(--text-muted)", textDecoration: "none" }}>
               <BellIcon size={20} />
               {unread > 0 && (
                 <span style={{
@@ -410,9 +411,9 @@ export function Layout() {
       }}>
         <span>© {new Date().getFullYear()} Contour</span>
         <span>Made by Peyton Lindogan</span>
-        <Link to="/privacy" style={{ color: "var(--text-muted)" }}>Privacy Policy</Link>
-        <Link to="/terms" style={{ color: "var(--text-muted)" }}>Terms of Service</Link>
-        <Link to="/methodology" style={{ color: "var(--text-muted)" }}>How It Works</Link>
+        <Link to={ROUTES.PRIVACY} style={{ color: "var(--text-muted)" }}>Privacy Policy</Link>
+        <Link to={ROUTES.TERMS} style={{ color: "var(--text-muted)" }}>Terms of Service</Link>
+        <Link to={ROUTES.METHODOLOGY} style={{ color: "var(--text-muted)" }}>How It Works</Link>
       </footer>
 
       {/* ── Mobile bottom tab bar ── */}
@@ -432,12 +433,12 @@ export function Layout() {
               chrome stays uncrowded on small phones. /compare still works
               as a direct URL. */}
           <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
-          <BottomTab to="/friends" label="Friends" icon={<CommunityIcon />} dot={hasNewFriends} />
-          <BottomTab to="/search" label="Search" icon={<SearchIcon />} />
+          <BottomTab to={ROUTES.FRIENDS} label="Friends" icon={<CommunityIcon />} dot={hasNewFriends} />
+          <BottomTab to={ROUTES.SEARCH} label="Search" icon={<SearchIcon />} />
 
           {user ? (
             <NavLink
-              to="/profile"
+              to={ROUTES.PROFILE}
               style={({ isActive }) => ({
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center",

@@ -12,6 +12,7 @@ import { EntityHeroSkeleton } from "../components/Skeleton.jsx";
 import { NoChartData } from "../components/NoChartData.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
+import { albumPath, artistPath } from "../constants/routes.js";
 
 const DISCLAIMER = "Stream trajectory is a modeled approximation calibrated to the known total stream count. Exact day-by-day data requires Luminate licensing.";
 
@@ -334,7 +335,7 @@ export function TrackPage() {
                 <span key={i}>
                   {i > 0 && ", "}
                   {track.artist_ids?.[i]
-                    ? <Link to={`/artist/${track.artist_ids[i]}`} style={{ color: "var(--text)" }}>{artist}</Link>
+                    ? <Link to={artistPath(track.artist_ids[i])} style={{ color: "var(--text)" }}>{artist}</Link>
                     : <span style={{ color: "var(--text)" }}>{artist}</span>}
                 </span>
               ))}
@@ -349,7 +350,7 @@ export function TrackPage() {
               {track.album_name && (
                 <>
                   {track.album_id
-                    ? <Link to={`/album/${track.album_id}`} style={{ color: "var(--text-muted)" }}>{track.album_name}</Link>
+                    ? <Link to={albumPath(track.album_id)} style={{ color: "var(--text-muted)" }}>{track.album_name}</Link>
                     : <span>{track.album_name}</span>}
                   <span style={{ opacity: 0.4 }}>·</span>
                 </>

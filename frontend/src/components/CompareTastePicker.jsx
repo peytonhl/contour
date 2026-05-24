@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { userAvatar } from "../utils/userAvatar.js";
 import { ACCENT_A as ACCENT } from "../theme.js";
+import { tasteMatchPath } from "../constants/routes.js";
 
 /**
  * Modal user-search for the "Compare taste with…" entry point on the
@@ -141,7 +142,7 @@ export function CompareTastePicker({ open, onClose }) {
               key={u.id}
               onClick={() => {
                 onClose?.();
-                navigate(`/taste-match/${u.id}`);
+                navigate(tasteMatchPath(u.id));
               }}
               style={{
                 width: "100%",

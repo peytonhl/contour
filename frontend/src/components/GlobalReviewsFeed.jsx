@@ -8,6 +8,7 @@ import { ShareButton } from "./ShareButton.jsx";
 import { MentionBody } from "./Mentions.jsx";
 import { EmptyState } from "./EmptyState.jsx";
 import { PenIcon } from "./Icons.jsx";
+import { userPath } from "../constants/routes.js";
 import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
@@ -109,7 +110,7 @@ function ReviewCardItem({ item, user, onVote, badges }) {
       </Link>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Link to={`/user/${item.user?.id}`} style={{ flexShrink: 0 }}>
+        <Link to={userPath(item.user?.id)} style={{ flexShrink: 0 }}>
           {item.user?.image_url
             ? <img src={imageThumb(item.user.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover" }} />
             : <div style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--surface2)" }} />
@@ -117,7 +118,7 @@ function ReviewCardItem({ item, user, onVote, badges }) {
         </Link>
         <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <Link to={`/user/${item.user?.id}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>
+            <Link to={userPath(item.user?.id)} style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", textDecoration: "none" }}>
               {item.user?.display_name}
             </Link>
             {/* BadgeMark (the "Community Top 5" gold star next to a user's

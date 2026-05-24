@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { EmptyState } from "./EmptyState.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B } from "../theme.js";
+import { albumPath } from "../constants/routes.js";
 import { imageMedium } from "../utils/imageVariants.js";
 
 function formatDate(iso) {
@@ -193,7 +194,7 @@ export function BacklogTabContent({ userId, isOwner, showSuggestions }) {
             {suggestions.map((s) => (
               <Link
                 key={s.id}
-                to={`/album/${s.id}`}
+                to={albumPath(s.id)}
                 onClick={() => analytics.trendingModuleClicked("profile_backlog", "album", s.id)}
                 style={{
                   display: "flex", alignItems: "center", gap: 12,

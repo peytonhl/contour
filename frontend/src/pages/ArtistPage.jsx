@@ -10,6 +10,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { ACCENT_A } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
+import { trackPath, albumPath } from "../constants/routes.js";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 function formatStreams(n) {
@@ -50,7 +51,7 @@ function KnownForSection({ tracks }) {
         {picks.map((track) => (
           <Link
             key={track.id}
-            to={`/track/${track.id}`}
+            to={trackPath(track.id)}
             style={{ textDecoration: "none", color: "var(--text)" }}
           >
             <div
@@ -113,7 +114,7 @@ function KnownForSection({ tracks }) {
 function TopTrackRow({ track, rank }) {
   return (
     <Link
-      to={`/track/${track.id}`}
+      to={trackPath(track.id)}
       style={{
         display: "flex", alignItems: "center", gap: 14,
         padding: "10px 16px",
@@ -473,7 +474,7 @@ export function ArtistPage() {
           <>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "var(--space-3)" }}>
               {(showAllAlbums ? sorted : sorted.slice(0, 5)).map((album) => (
-                <Link key={album.id} to={`/album/${album.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
+                <Link key={album.id} to={albumPath(album.id)} style={{ textDecoration: "none", color: "var(--text)" }}>
                   <div style={{
                     background: "var(--surface)", borderRadius: "var(--radius)",
                     overflow: "hidden",

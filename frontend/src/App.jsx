@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout.jsx";
 import { OnboardingModal } from "./components/OnboardingModal.jsx";
 import { SigninGate } from "./components/SigninGate.jsx";
 import { isNativePlatform } from "./utils/native.js";
+import { ROUTES } from "./constants/routes.js";
 // ForYouPage is the landing route — keep it eager so the cold-start path
 // has no async chunk fetch. Everything else lazy-loads on first navigation.
 // Before this change, the initial bundle included Recharts (~150KB gzip
@@ -71,7 +72,7 @@ function NativeDeepLinkHandler() {
           // Either contour://auth or contour:auth — accept both shapes.
           const host = u.hostname || u.pathname.replace(/^\/*/, "").split("/")[0] || "";
           if (host === "auth") {
-            navigate(`/auth/success${u.search || ""}`);
+            navigate(`${ROUTES.AUTH_SUCCESS}${u.search || ""}`);
           }
         } catch {
           // Malformed deep link — ignore. Better than crashing the WebView.

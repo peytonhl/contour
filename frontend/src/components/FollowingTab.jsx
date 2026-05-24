@@ -9,6 +9,7 @@ import { MentionBody } from "./Mentions.jsx";
 import { EmptyState } from "./EmptyState.jsx";
 import { ACCENT_A, GOLD } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
+import { userPath } from "../constants/routes.js";
 
 const ENTITY_COLOR = { album: ACCENT_A, track: "#6a90b5", artist: "#fb923c" };
 
@@ -118,13 +119,18 @@ function ReviewActionRow({ item, viewer }) {
 
 function FollowingItem({ item }) {
   const { user: viewer } = useAuth();
+  // entityPath is runtime-typed (entity_type varies) so it stays as a
+  // template literal — the centralized builders are per-type and don't
+  // cover the "any-type" case the feed needs here.
   const entityPath = `/${item.entity_type}/${item.entity_id}`;
-  const userPath = `/user/${item.user?.id}`;
+  // Renamed local from `userPath` to `userHref` to avoid colliding with
+  // the imported userPath() builder used inside the same module.
+  const userHref = userPath(item.user?.id);
   const isReview = item.type === "review";
 
   return (
     <div style={{ display: "flex", gap: 14, padding: "16px 0", borderBottom: "1px solid var(--border)" }}>
-      <Link to={userPath} style={{ flexShrink: 0 }}>
+      <Link to={userHref} style={{ flexShrink: 0 }}>
         {item.user?.image_url
           ? <img src={imageMedium(item.user.image_url)} alt={item.user.display_name} loading="lazy" decoding="async" style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover" }} />
           : <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--surface2)" }} />
@@ -132,7 +138,7 @@ function FollowingItem({ item }) {
       </Link>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-          <Link to={userPath} style={{ color: "var(--text)", fontWeight: 700, textDecoration: "none" }}>{item.user?.display_name}</Link>
+          <Link to={userHref} style={{ color: "var(--text)", fontWeight: 700, textDecoration: "none" }}>{item.user?.display_name}</Link>
           <span style={{ color: "var(--text-muted)" }}>{isReview ? " reviewed " : " rated "}</span>
           <Link to={entityPath} style={{ color: ENTITY_COLOR[item.entity_type] ?? "var(--text)", fontWeight: 600, textDecoration: "none" }}>
             {item.entity_name ?? `Unknown ${item.entity_type ?? "item"}`}
@@ -190,7 +196,7 @@ export function SuggestedUser({ u, onFollow }) {
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <Link to={`/user/${u.id}`} style={{ flexShrink: 0 }}>
+      <Link to={userPath(u.id)} style={{ flexShrink: 0 }}>
         {u.image_url
           ? <img src={imageMedium(u.image_url)} alt={u.display_name} loading="lazy" decoding="async" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover" }} />
           : <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--surface2)" }} />
@@ -198,7 +204,7 @@ export function SuggestedUser({ u, onFollow }) {
       </Link>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Link to={`/user/${u.id}`} style={{ color: "var(--text)", fontWeight: 600, fontSize: 14, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <Link to={userPath(u.id)} style={{ color: "var(--text)", fontWeight: 600, fontSize: 14, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {u.display_name}
           </Link>
           {/* "Similar taste" / "Active reviewer" badge — backend's ranking

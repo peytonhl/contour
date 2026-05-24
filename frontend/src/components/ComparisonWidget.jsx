@@ -8,6 +8,7 @@ import { EditionPicker } from "./EditionPicker.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { logSilentError } from "../utils/observability.js";
 import { ACCENT_A, ACCENT_B, ACCENT_C } from "../theme.js";
+import { albumPath, trackPath, savedComparePath } from "../constants/routes.js";
 const POLL_INTERVAL = 4000;
 
 // Tag an existing album object (from props) with _type so it fits the unified selection shape
@@ -82,7 +83,7 @@ function ShareCardButton({ comparison, disabled }) {
           open={open}
           onClose={() => setOpen(false)}
           cardUrl={`${window.location.origin}/api/og/comparison?id=${savedId}`}
-          shareUrl={`${window.location.origin}/compare/${savedId}`}
+          shareUrl={`${window.location.origin}${savedComparePath(savedId)}`}
           shareText={label}
           fileName={`contour-comparison-${savedId}.png`}
         />
@@ -379,20 +380,20 @@ export function ComparisonWidget({
               meta={comparison.album_a}
               accentColor={ACCENT_A}
               enriching={enriching}
-              detailLink={comparison.album_a.entity_type === "track" ? `/track/${comparison.album_a.id}` : `/album/${comparison.album_a.id}`}
+              detailLink={comparison.album_a.entity_type === "track" ? trackPath(comparison.album_a.id) : albumPath(comparison.album_a.id)}
             />
             <AlbumCard
               meta={comparison.album_b}
               accentColor={ACCENT_B}
               enriching={enriching}
-              detailLink={comparison.album_b.entity_type === "track" ? `/track/${comparison.album_b.id}` : `/album/${comparison.album_b.id}`}
+              detailLink={comparison.album_b.entity_type === "track" ? trackPath(comparison.album_b.id) : albumPath(comparison.album_b.id)}
             />
             {comparison.album_c && (
               <AlbumCard
                 meta={comparison.album_c}
                 accentColor={ACCENT_C}
                 enriching={enriching}
-                detailLink={comparison.album_c.entity_type === "track" ? `/track/${comparison.album_c.id}` : `/album/${comparison.album_c.id}`}
+                detailLink={comparison.album_c.entity_type === "track" ? trackPath(comparison.album_c.id) : albumPath(comparison.album_c.id)}
               />
             )}
           </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { ROUTES } from "../constants/routes.js";
 
 const APPLE_JS_LIB = "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";
 
@@ -78,7 +79,7 @@ export function AppleSignInButton({ size = "default", onSuccess }) {
       window.AppleID.auth.init({
         clientId: APPLE_CLIENT_ID,
         scope: "name email",
-        redirectURI: `${window.location.origin}/auth/success`,
+        redirectURI: `${window.location.origin}${ROUTES.AUTH_SUCCESS}`,
         usePopup: true,
         nonce,
       });

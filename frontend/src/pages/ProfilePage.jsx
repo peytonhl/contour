@@ -15,6 +15,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { CompareTastePicker } from "../components/CompareTastePicker.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
+import { ROUTES, userPath, listPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
 // Eligibility probe — runs once on profile load. The button is only
@@ -365,7 +366,7 @@ export function ProfilePage() {
     try {
       const created = await api.createList(newListTitle.trim(), newListDesc.trim() || null, newListRanked);
       analytics.listCreated();
-      navigate(`/list/${created.id}`);
+      navigate(listPath(created.id));
     } finally {
       setCreatingList(false);
     }
@@ -457,7 +458,7 @@ export function ProfilePage() {
                     preference / content / about live in one consolidated
                     surface rather than a 5-item dropdown. */}
                 <Link
-                  to="/settings"
+                  to={ROUTES.SETTINGS}
                   aria-label="Settings"
                   title="Settings"
                   style={{
@@ -560,7 +561,7 @@ export function ProfilePage() {
                 open={hotTakeModalOpen}
                 onClose={() => setHotTakeModalOpen(false)}
                 cardUrl={`${window.location.origin}/api/og/hot-take?user_id=${encodeURIComponent(user.id)}`}
-                shareUrl={`${window.location.origin}/user/${user.id}`}
+                shareUrl={`${window.location.origin}${userPath(user.id)}`}
                 shareText={`${user.display_name}'s hot take on Contour`}
                 fileName={`contour-hot-take-${user.id}.png`}
               />
@@ -943,7 +944,7 @@ export function ProfilePage() {
             {lists.length === 0 && <EmptyHint dense>No lists yet.</EmptyHint>}
 
             {(tabExpanded ? lists : lists.slice(0, TAB_VISIBLE_LIMIT)).map((lst) => (
-              <Link key={lst.id} to={`/list/${lst.id}`} style={{ textDecoration: "none", color: "var(--text)" }}>
+              <Link key={lst.id} to={listPath(lst.id)} style={{ textDecoration: "none", color: "var(--text)" }}>
                 <div
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", transition: "border-color 0.15s" }}
                   onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT}
@@ -981,13 +982,13 @@ export function ProfilePage() {
               <EmptyState
                 description="Not following anyone yet."
                 ctaLabel="Find people to follow"
-                ctaTo="/friends"
+                ctaTo={ROUTES.FRIENDS}
               />
             )}
             {(tabExpanded ? following : following.slice(0, TAB_VISIBLE_LIMIT)).map((u) => (
               <Link
                 key={u.id}
-                to={`/user/${u.id}`}
+                to={userPath(u.id)}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}
               >
                 {u.image_url
@@ -1010,7 +1011,7 @@ export function ProfilePage() {
             {(tabExpanded ? followers : followers.slice(0, TAB_VISIBLE_LIMIT)).map((u) => (
               <Link
                 key={u.id}
-                to={`/user/${u.id}`}
+                to={userPath(u.id)}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}
               >
                 {u.image_url

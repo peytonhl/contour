@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { ACCENT_A, ACCENT_B } from "../theme.js";
+import { ROUTES } from "../constants/routes.js";
 
 /**
  * RYM CSV import page.
@@ -149,7 +150,7 @@ export function ImportPage() {
 
           <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
             <Link
-              to="/profile"
+              to={ROUTES.PROFILE}
               style={{
                 padding: "10px 18px", borderRadius: "var(--radius-md)",
                 border: "1px solid var(--border)", color: "var(--text-muted)",
@@ -223,7 +224,7 @@ export function ImportPage() {
               Import another file
             </button>
             <button
-              onClick={() => navigate("/profile")}
+              onClick={() => navigate(ROUTES.PROFILE)}
               style={{
                 padding: "10px 22px", borderRadius: "var(--radius-md)",
                 background: ACCENT_A,

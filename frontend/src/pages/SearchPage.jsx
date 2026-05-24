@@ -7,6 +7,7 @@ import { AppleSignInButton } from "../components/AppleSignInButton.jsx";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
 import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD } from "../theme.js";
+import { ROUTES, albumPath, trackPath, artistPath, userPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
 // withNativeAuthFlag appends ?from=native inside the Capacitor shell so the
@@ -111,7 +112,7 @@ function GoogleIcon({ size = 16 }) {
 
 function FeaturedCard({ item, type }) {
   const navigate = useNavigate();
-  const path = type === "album" ? `/album/${item.id}` : `/track/${item.id}`;
+  const path = type === "album" ? albumPath(item.id) : trackPath(item.id);
   return (
     <button
       onClick={() => navigate(path)}
@@ -204,10 +205,10 @@ export function SearchPage() {
     saveRecent({ id: item.id, name: item.name, image_url: item.image_url, _type: item._type,
       sub: Array.isArray(item.artists) ? item.artists.join(", ") : (item.artists ?? "") });
     setRecent(loadRecent());
-    if (item._type === "album") navigate(`/album/${item.id}`);
-    else if (item._type === "track") navigate(`/track/${item.id}`);
-    else if (item._type === "user") navigate(`/user/${item.id}`);
-    else navigate(`/artist/${item.id}`);
+    if (item._type === "album") navigate(albumPath(item.id));
+    else if (item._type === "track") navigate(trackPath(item.id));
+    else if (item._type === "user") navigate(userPath(item.id));
+    else navigate(artistPath(item.id));
   }
 
   function clearRecent() {
@@ -383,10 +384,10 @@ export function SearchPage() {
               <button
                 key={item.id}
                 onClick={() => navigate(
-                  item._type === "album" ? `/album/${item.id}`
-                  : item._type === "track" ? `/track/${item.id}`
-                  : item._type === "user" ? `/user/${item.id}`
-                  : `/artist/${item.id}`
+                  item._type === "album" ? albumPath(item.id)
+                  : item._type === "track" ? trackPath(item.id)
+                  : item._type === "user" ? userPath(item.id)
+                  : artistPath(item.id)
                 )}
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
@@ -487,7 +488,7 @@ export function SearchPage() {
               {popular.label}
             </h2>
             <Link
-              to="/trending"
+              to={ROUTES.TRENDING}
               onClick={() => analytics.trendingModuleClicked("search_empty", "see_all", null)}
               style={{ fontSize: 12, color: ACCENT_A, textDecoration: "none", fontWeight: 600 }}
             >

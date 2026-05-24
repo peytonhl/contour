@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ACCENT_A as ACCENT } from "../theme.js";
+import { ROUTES } from "../constants/routes.js";
 
 function fmt(n) {
   if (!n && n !== 0) return "—";
@@ -120,7 +121,7 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
                   ({eraContext.multiplier}× scale).
                 </div>
                 <Link
-                  to="/methodology"
+                  to={ROUTES.METHODOLOGY}
                   style={{ color: ACCENT, fontWeight: 600, fontSize: "var(--text-sm)", textDecoration: "none" }}
                   onClick={() => setOpen(false)}
                 >
@@ -187,7 +188,7 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
                 ({eraContext.multiplier}× scale).
               </div>
               <Link
-                to="/methodology"
+                to={ROUTES.METHODOLOGY}
                 style={{ color: ACCENT, fontWeight: 600, fontSize: 12, textDecoration: "none" }}
                 onClick={() => setOpen(false)}
               >

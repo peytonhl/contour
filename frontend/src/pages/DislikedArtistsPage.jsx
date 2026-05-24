@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { ACCENT_A as ACCENT } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
+import { artistPath } from "../constants/routes.js";
 
 // Mirrors the localStorage key used by ForYouPage so that removing/adding
 // here also keeps the per-device cache in sync (matters for logged-out
@@ -191,14 +192,14 @@ export function DislikedArtistsPage() {
                 padding: "10px 14px",
                 background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
               }}>
-                <Link to={`/artist/${a.id}`} style={{ flexShrink: 0 }}>
+                <Link to={artistPath(a.id)} style={{ flexShrink: 0 }}>
                   {a.image_url
                     ? <img src={imageMedium(a.image_url)} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
                     : <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)" }} />
                   }
                 </Link>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <Link to={`/artist/${a.id}`} style={{
+                  <Link to={artistPath(a.id)} style={{
                     fontSize: 14, fontWeight: 600, color: "var(--text)", textDecoration: "none",
                   }}>
                     {a.name}
