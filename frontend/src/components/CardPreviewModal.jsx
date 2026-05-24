@@ -59,15 +59,20 @@ import { ACCENT_A as ACCENT } from "../theme.js";
 //                    cutting "So Easy (To Fall In Love)"), 50% font 140
 //                    →160, dropped marginTop:auto on the card row (was
 //                    creating a 300px void between stat and cards).
-//  v17 (2026-05-24): review.tsx layout + cover fixes. Bare <img width=...
-//                    height=... /> in a flex wrapper was rendering at 0×0
-//                    in @vercel/og 0.6.4 → cover came out as a black box.
-//                    Moved sizing into style + display:block. Also the
-//                    560 cover + 56px quote (v14/16) overflowed 1080px
-//                    so the rating row sat on top of the quote's last
-//                    line — shrunk to cover 440 / quote 44 / lineHeight
-//                    1.2 so a max-truncate body cleanly fits four lines.
-const CARD_VERSION = "17";
+//  v17 (2026-05-24): review.tsx layout fix. 560 cover + 56px quote
+//                    (v14/16) overflowed 1080px so the rating row sat
+//                    on top of the quote's last line — shrunk to cover
+//                    440 / quote 44 / lineHeight 1.2 so a max-truncate
+//                    body cleanly fits four lines.
+//  v18 (2026-05-24): review.tsx — black cover fix. Satori in
+//                    @vercel/og 0.6.4 was failing to fetch i.scdn.co
+//                    images at render time (wrapper rendered at 440×440
+//                    but img content came back transparent). Pre-fetch
+//                    the cover + author image in the handler with a
+//                    permissive UA and pass them to Satori as base64
+//                    `data:` URLs, sidestepping Satori's internal
+//                    fetcher entirely.
+const CARD_VERSION = "18";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).

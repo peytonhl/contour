@@ -80,6 +80,39 @@ function truncate(text, max = 220) {
   return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 }
 
+// Pre-fetch a remote image and inline it as a base64 data URL.
+//
+// Why: @vercel/og 0.6.4's internal image fetcher couldn't pull from
+// i.scdn.co (Spotify's cover CDN) — the wrapper rendered at the
+// correct size but the img content came back transparent, leaving
+// only the dark placeholder bg visible (repro: review 73, v16/v17).
+// Satori either issued the fetch with a UA the CDN rejects or hit
+// some Edge-runtime fetch quirk; either way doing the fetch ourselves
+// with a permissive UA and handing Satori a `data:` URL sidesteps it.
+//
+// Returns null on failure so the renderer falls through to the
+// placeholder div instead of erroring the whole card.
+async function fetchAsDataUrl(url) {
+  if (!url) return null;
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Contour/1.0)' },
+    });
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const b64 = btoa(binary);
+    const ct = res.headers.get('content-type') || 'image/jpeg';
+    return `data:${ct};base64,${b64}`;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(request) {
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
@@ -96,18 +129,33 @@ export default async function handler(request) {
     return new Response('Failed to load review', { status: 502 });
   }
 
-  const [fontRegular, fontItalic] = await Promise.all([fontPromise, fontItalicPromise]);
-  const fonts = [];
-  if (fontRegular) fonts.push({ name: 'Instrument Serif', data: fontRegular, weight: 400, style: 'normal' });
-  if (fontItalic)  fonts.push({ name: 'Instrument Serif', data: fontItalic,  weight: 400, style: 'italic'  });
-
   const reviewBody = truncate(data.review.body, 220);
   const rating = data.review.rating;  // raw number; rendered with inline SVG star below
   const entityName = data.entity.name ?? 'Unknown';
   const entityArtist = data.entity.artist ?? '';
-  const coverUrl = data.entity.cover_url;
   const authorName = data.author.display_name;
-  const authorImage = data.author.image_url;
+
+  // Pre-fetch fonts AND the cover/avatar in parallel. The author's
+  // image is usually a `data:` URL already (Google profile pic baked
+  // in at signup) so fetchAsDataUrl returns it as-is via the `data:`
+  // check on the first line. The cover is the one that actually
+  // needs the inlining workaround.
+  const [fontRegular, fontItalic, coverDataUrl, authorDataUrl] = await Promise.all([
+    fontPromise,
+    fontItalicPromise,
+    data.entity.cover_url && !data.entity.cover_url.startsWith('data:')
+      ? fetchAsDataUrl(data.entity.cover_url)
+      : Promise.resolve(data.entity.cover_url ?? null),
+    data.author.image_url && !data.author.image_url.startsWith('data:')
+      ? fetchAsDataUrl(data.author.image_url)
+      : Promise.resolve(data.author.image_url ?? null),
+  ]);
+  const fonts = [];
+  if (fontRegular) fonts.push({ name: 'Instrument Serif', data: fontRegular, weight: 400, style: 'normal' });
+  if (fontItalic)  fonts.push({ name: 'Instrument Serif', data: fontItalic,  weight: 400, style: 'italic'  });
+
+  const coverUrl = coverDataUrl;
+  const authorImage = authorDataUrl;
 
   return new ImageResponse(
     (
