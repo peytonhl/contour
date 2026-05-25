@@ -39,6 +39,43 @@ import { AlertIcon } from "../components/Icons.jsx";
 import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
 import { consumeInitialFeed } from "../services/feedPrefetch.js";
 
+// ── Swipe physics ────────────────────────────────────────────────────────────
+// Helpers used by the touchmove/touchend handlers in ForYouFeed to make the
+// deck feel less mechanical:
+//
+//   - snapDurationFromVelocity: short animations for hard flicks, longer for
+//     slow drags. Replaces the fixed 240ms commit duration that previously
+//     made hard flicks feel sluggish (the commit waited for the same 240ms
+//     regardless of how hard the user threw the card).
+//
+//   - rubberBand: Apple's classic UIScrollView damping formula. At the deck
+//     boundaries (first/last card), drag distance was previously hard-clamped
+//     to zero — felt like hitting a wall. With rubber-band, the deck gives a
+//     bit and then resists, exactly as iOS native scroll views do.
+//
+// Pure functions; standalone-tested in /tmp/swipe-physics-test.mjs before
+// being imported into the deck. Don't tune these without re-running the
+// test — the cubic-bezier in the wrapper transition is matched to the
+// duration range below.
+function snapDurationFromVelocity(absVelocityPxPerMs) {
+  // Linear map over [0, 1.5] px/ms → [280, 160] ms.
+  //   v=0    (slow drag past threshold) → 280ms gentle ease
+  //   v=0.35 (flick threshold)          → 252ms
+  //   v=1.0  (hard flick)               → 200ms
+  //   v=1.5+ (very hard)                → 160ms snappy commit
+  const v = Math.min(Math.max(absVelocityPxPerMs, 0), 1.5);
+  return Math.round(280 - v * 80);
+}
+
+function rubberBand(distance, maxStretch) {
+  // f(x) = (x * c * d) / (d + c * x), c = 0.55 (Apple's UIScrollView constant).
+  // Asymptotically approaches `maxStretch` as `distance` grows; monotonic;
+  // f(0) = 0. The curve passes through (~maxStretch, maxStretch * 0.355).
+  const c = 0.55;
+  return (distance * c * maxStretch) / (maxStretch + c * distance);
+}
+
+
 // ── LocalStorage keys ─────────────────────────────────────────────────────────
 const GENRES_KEY = "contour_genres_v1";
 const HISTORY_KEY = "contour_history_v1";
@@ -1699,6 +1736,12 @@ function ForYouFeed() {
   // Latched true while the snap animation is running so new touchstarts
   // don't interrupt mid-flight.
   const [transitioning, setTransitioning] = useState(false);
+  // Snap animation duration in ms — variable so hard flicks resolve faster
+  // than slow drags past threshold. Set by touchend / advance based on the
+  // gesture's exit velocity (see snapDurationFromVelocity). Default 240 is
+  // the mid-range value the previous fixed-duration version used so the
+  // first ever render (before any touch) feels familiar.
+  const [snapDuration, setSnapDuration] = useState(240);
   // The deck container's current pixel height. We render all transforms in
   // pixels (not calc(N * 100%)) because iOS WebView occasionally rounds %
   // transforms differently from JS-measured clientHeight — that fractional
@@ -1760,19 +1803,27 @@ function ForYouFeed() {
     const start = touchStartRef.current;
     if (!start) return;
     let dy = e.touches[0].clientY - start.y;
-    // Hard clamp at the deck boundaries — letting dragOffset go positive
-    // at the first card would reveal page-bg above the first card (the
-    // "extended header black bar" the user reported); same at the end.
-    // Tinder behaves the same: at the end of the stack, drag does nothing.
-    if (activeIdx === 0 && dy > 0) dy = 0;
-    if (activeIdx >= tracks.length - 1 && dy < 0) dy = 0;
+    const h = cardHeightRef.current || containerRef.current?.clientHeight || 800;
+    // Rubber-band at the deck boundaries (was a hard clamp to 0). At the
+    // first / last card, the user can pull a bit in the over-scroll
+    // direction and feel resistance — same UIScrollView curve iOS uses
+    // everywhere. Max stretch is 30% of card height, which feels
+    // generous-enough to be felt but tight-enough that the deck can't be
+    // dragged dramatically off-center. Without this, the deck stopped dead
+    // when you tried to swipe back from card 0 — read as "broken" rather
+    // than "end of list."
+    const maxStretch = h * 0.3;
+    if (activeIdx === 0 && dy > 0) {
+      dy = rubberBand(dy, maxStretch);
+    } else if (activeIdx >= tracks.length - 1 && dy < 0) {
+      dy = -rubberBand(-dy, maxStretch);
+    }
     // Convert finger-px to %-of-cardHeight at touchmove time so the wrapper
     // transform can be pure %. Mixing % and px in the calc() expression
     // caused a subpixel mismatch: `100%` resolves to the wrapper's rendered
     // (potentially fractional) height, while JS-measured cardHeight is the
     // integer clientHeight. The 0.5px gap was the "snaps too low / auto-
     // adjusts higher" overshoot at the commit moment.
-    const h = cardHeightRef.current || containerRef.current?.clientHeight || 800;
     dragOffsetRef.current = (dy / h) * 100;
     // Direct DOM write — bypasses React reconciliation entirely so we keep
     // 60–120 fps on iOS even with heavy DiscoverCard children mounted.
@@ -1803,15 +1854,24 @@ function ForYouFeed() {
     const FLICK_VEL = 0.35;
 
     if (dy < -SWIPE_PX || (dy < 0 && velocity >= FLICK_VEL)) {
+      // Set the velocity-responsive snap duration BEFORE calling advance.
+      // Both setState calls (this one + the setTransitioning/setDragging
+      // inside advance) batch into one render so the JSX picks up the
+      // new duration before the CSS transition begins.
+      setSnapDuration(snapDurationFromVelocity(velocity));
       advance(1);
     } else if (dy > SWIPE_PX || (dy > 0 && velocity >= FLICK_VEL)) {
+      setSnapDuration(snapDurationFromVelocity(velocity));
       advance(-1);
     } else {
       // Sub-threshold — animate back to 0. dragOffsetRef goes to 0 BEFORE
       // toggling dragging so the useLayoutEffect (which runs after the
       // re-render) writes the resting transform. With dragging=false the
       // CSS transition is enabled, so the browser animates from the current
-      // drag-offset position to 0.
+      // drag-offset position to 0. Slightly longer snap-back duration
+      // (220ms) because the gesture didn't commit — gives an unhurried
+      // "settle" feel rather than a jerk back.
+      setSnapDuration(220);
       dragOffsetRef.current = 0;
       setDragging(false);
     }
@@ -1911,12 +1971,18 @@ function ForYouFeed() {
       };
       wrapper.addEventListener("transitionend", onEnd);
       // Safety fallback in case transitionend never fires (transition got
-      // cancelled by an intervening style change, etc.). 400ms is comfortably
-      // longer than the 240ms transition so it only kicks in on edge cases.
+      // cancelled by an intervening style change, etc.). Computed off
+      // snapDuration with a 200ms margin so it ALWAYS exceeds the longest
+      // possible commit animation (max ~280ms + 200ms = 480ms). Previously
+      // hardcoded 400ms, which was fine when duration was fixed at 240ms;
+      // now that duration is velocity-responsive, the fallback needs to
+      // scale with it. The +200ms cushion absorbs frame-timing jitter on
+      // older devices without making the recovery sluggish on real
+      // transitionend failures.
       setTimeout(() => {
         wrapper.removeEventListener("transitionend", onEnd);
         commit();
-      }, 400);
+      }, snapDuration + 200);
     } else {
       // Fallback for the very first render before the ref is wired up.
       setTimeout(commit, 300);
@@ -2579,12 +2645,16 @@ function ForYouFeed() {
             // Stored unit is %-of-cardHeight — same units the wrapper uses
             // (no px↔% mix, so the commit boundary stays subpixel-stable).
             //
-            // Snappier ease-out curve (cubic-bezier-iOS-style) + shorter
-            // duration so the snap feels closer to Tinder / TikTok's native
-            // animation. The previous (0.2, 0, 0, 1) was a linear-snappy
-            // curve that lingered slightly at the end; this one decelerates
-            // hard from peak velocity for a clean "lock-in" feel.
-            transition: dragging ? "none" : "transform 240ms cubic-bezier(0.16, 1, 0.3, 1)",
+            // Snappier ease-out curve (cubic-bezier-iOS-style). Hard flicks
+            // resolve faster (160ms) than slow drags past threshold (280ms)
+            // via the velocity-responsive snapDuration state — touchend
+            // writes the appropriate value before flipping dragging=false,
+            // so the CSS transition picks it up in the next render.
+            // The cubic-bezier stays constant; only the duration varies.
+            // The previous fixed 240ms felt mechanical because the
+            // animation ignored gesture intent — same time whether you
+            // gently nudged past threshold or flicked hard.
+            transition: dragging ? "none" : `transform ${snapDuration}ms cubic-bezier(0.16, 1, 0.3, 1)`,
             willChange: "transform",
             // `contain: layout paint` was REMOVED here — it was clipping
             // descendants to the wrapper's un-transformed border box, per
