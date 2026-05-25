@@ -183,6 +183,10 @@ export function ProfilePage() {
   // straight to the modal without a per-tap roundtrip.
   const [hasHotTake, setHasHotTake] = useState(null);
   const [hotTakeModalOpen, setHotTakeModalOpen] = useState(false);
+  // Taste-card share — same modal + endpoint as the Friends tab banner.
+  // Exposed on Profile so users can find the share affordance from
+  // their own profile too, not just by navigating to Friends.
+  const [tasteCardModalOpen, setTasteCardModalOpen] = useState(false);
   const [comparePickerOpen, setComparePickerOpen] = useState(false);
   // Which of the user's own reviews is open in the card-share modal.
   // null = closed. Looked up against profile.reviews to build the modal props.
@@ -539,6 +543,22 @@ export function ProfilePage() {
                   </button>
                 )}
                 <button
+                  onClick={() => setTasteCardModalOpen(true)}
+                  title="Top artists, genres, and rating stats in one image"
+                  style={{
+                    padding: "8px 16px",
+                    background: "transparent",
+                    border: `1px solid ${ACCENT}66`,
+                    borderRadius: "var(--radius-sm)",
+                    color: ACCENT,
+                    fontSize: 13, fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Share my taste card
+                </button>
+                <button
                   onClick={() => setComparePickerOpen(true)}
                   title="Compare your taste with another user"
                   style={{
@@ -564,6 +584,16 @@ export function ProfilePage() {
                 shareUrl={`${window.location.origin}${userPath(user.id)}`}
                 shareText={`${user.display_name}'s hot take on Contour`}
                 fileName={`contour-hot-take-${user.id}.png`}
+              />
+            )}
+            {user && (
+              <CardPreviewModal
+                open={tasteCardModalOpen}
+                onClose={() => setTasteCardModalOpen(false)}
+                cardUrl={`/api/og/taste-card?user_id=${encodeURIComponent(user.id)}`}
+                shareUrl={`${window.location.origin}${userPath(user.id)}`}
+                shareText={`${user.display_name}'s music taste on Contour`}
+                fileName={`contour-taste-card-${user.id}.png`}
               />
             )}
             <CompareTastePicker

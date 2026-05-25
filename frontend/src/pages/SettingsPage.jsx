@@ -438,6 +438,125 @@ export function SettingsPage() {
         <RowLink to={ROUTES.TERMS} title="Terms of service" isLast />
       </Section>
 
+      <FeedbackSection defaultEmail={user.email ?? ""} />
+
     </div>
+  );
+}
+
+// ── Feedback ──────────────────────────────────────────────────────────────────
+// Direct line to the operator. Optional email field (defaults to the
+// signed-in user's email when present — Reply-To plumbing on the
+// server uses it so the operator can respond from their inbox). The
+// message itself is required. Server rate-limits 5/min per IP; we
+// still disable the submit button while in-flight to avoid UI confusion.
+function FeedbackSection({ defaultEmail }) {
+  const [email, setEmail] = useState(defaultEmail);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  // "" = idle, "sent" = submitted ok, "error" = submit failed.
+  const [status, setStatus] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!message.trim() || sending) return;
+    setSending(true);
+    setStatus("");
+    setErrorMessage("");
+    try {
+      await api.submitFeedback({ email: email.trim(), message: message.trim() });
+      setStatus("sent");
+      setMessage("");
+    } catch (err) {
+      setStatus("error");
+      setErrorMessage(err?.message || "Couldn't send. Try again in a minute.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Section label="Feedback">
+      <form
+        onSubmit={handleSubmit}
+        style={{ ...rowStyle(true), flexDirection: "column", alignItems: "stretch", gap: 10, cursor: "default" }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Send us a note</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            Bugs, requests, or anything else. Goes straight to the operator's inbox.
+          </span>
+        </div>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Your email (optional — for us to reply)"
+          autoComplete="email"
+          maxLength={200}
+          style={{
+            fontSize: 14, padding: "8px 10px",
+            background: "var(--surface2)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-md)",
+            color: "var(--text)",
+            width: "100%", boxSizing: "border-box",
+            outline: "none",
+          }}
+        />
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value.slice(0, 2000))}
+          placeholder="What's on your mind?"
+          rows={4}
+          required
+          style={{
+            fontSize: 14, padding: "8px 10px",
+            background: "var(--surface2)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-md)",
+            color: "var(--text)",
+            width: "100%", boxSizing: "border-box",
+            outline: "none",
+            resize: "vertical",
+            minHeight: 90,
+            fontFamily: "inherit",
+            lineHeight: 1.5,
+          }}
+        />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            {message.length}/2000
+          </span>
+          <button
+            type="submit"
+            disabled={sending || !message.trim()}
+            style={{
+              padding: "8px 16px",
+              background: ACCENT_A,
+              border: "none",
+              borderRadius: "var(--radius-sm)",
+              color: "#000",
+              fontSize: 13, fontWeight: 700,
+              cursor: sending || !message.trim() ? "default" : "pointer",
+              opacity: sending || !message.trim() ? 0.6 : 1,
+            }}
+          >
+            {sending ? "Sending…" : "Send"}
+          </button>
+        </div>
+        {status === "sent" && (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            Thanks — got it. You'll hear back if you left an email.
+          </span>
+        )}
+        {status === "error" && (
+          <span style={{ fontSize: 12, color: "var(--danger)" }}>
+            {errorMessage}
+          </span>
+        )}
+      </form>
+    </Section>
   );
 }

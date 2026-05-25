@@ -4,7 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
-import { ShareButton } from "./ShareButton.jsx";
+import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionBody } from "./Mentions.jsx";
 import { EmptyState } from "./EmptyState.jsx";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD } from "../theme.js";
@@ -40,6 +40,11 @@ function ReviewActionRow({ item, viewer }) {
   const [downvotes, setDownvotes] = useState(item.downvotes ?? 0);
   const [userVote, setUserVote] = useState(item.user_vote ?? null);
   const [voting, setVoting] = useState(false);
+  // Card-share modal — opens the same preview-then-share flow the
+  // album-page review row, profile page, and post-deck-review share
+  // already use, scoped to this specific review. Generates a "quote"
+  // card PNG via /api/og/review?id=<review_id>.
+  const [cardOpen, setCardOpen] = useState(false);
 
   async function handleVote(value) {
     if (!viewer || voting) return;
@@ -57,22 +62,7 @@ function ReviewActionRow({ item, viewer }) {
     }
   }
 
-  // Build a share payload that captures the three pieces the user asked for:
-  // who reviewed (display_name), what they reviewed (entity + artists), and
-  // what they said (snippet of the body). The URL deep-links to the entity
-  // page where the full review thread lives.
   const userName = item.user?.display_name ?? "Someone";
-  const entityName = item.entity_name ?? `this ${item.entity_type}`;
-  const artists = item.entity_artists?.slice(0, 2).join(", ");
-  const bodyExcerpt = item.body && item.body.length > 200
-    ? `${item.body.slice(0, 200)}…`
-    : item.body;
-  const shareTitle = `${userName}'s review on Contour`;
-  const shareText = [
-    `${userName} reviewed ${entityName}${artists ? ` by ${artists}` : ""}`,
-    bodyExcerpt && `"${bodyExcerpt}"`,
-  ].filter(Boolean).join("\n");
-  const shareUrl = `${window.location.origin}/${item.entity_type}/${item.entity_id}`;
 
   function voteBtn(value, label, count) {
     const active = userVote === value;
@@ -100,20 +90,44 @@ function ReviewActionRow({ item, viewer }) {
     );
   }
 
+  // Anchor share URL to the entity page with a #review-<id> hash so the
+  // share recipient lands directly on this review (the entity page's
+  // ReviewSection scrolls to the anchor and paginates if needed).
+  const cardShareUrl = `${window.location.origin}/${item.entity_type}/${item.entity_id}#review-${item.id}`;
+  const cardShareText = `${userName}'s review on Contour`;
+
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
         {voteBtn(1, "▲", upvotes)}
         {voteBtn(-1, "▼", downvotes)}
-        <ShareButton
-          surface="review"
-          title={shareTitle}
-          text={shareText}
-          url={shareUrl}
-          style={{ padding: "4px 10px", fontSize: 12 }}
-        />
+        <button
+          onClick={() => {
+            setCardOpen(true);
+            analytics.shareClicked?.("review");
+          }}
+          title="Share this review as a card"
+          style={{
+            background: "none",
+            border: "none",
+            padding: "4px 10px",
+            fontSize: 12,
+            color: "var(--text-muted)",
+            cursor: "pointer",
+          }}
+        >
+          Share
+        </button>
       </div>
       <ReplyThread reviewId={item.id} user={viewer} initialCount={item.replies_count ?? 0} />
+      <CardPreviewModal
+        open={cardOpen}
+        onClose={() => setCardOpen(false)}
+        cardUrl={`${window.location.origin}/api/og/review?id=${item.id}`}
+        shareUrl={cardShareUrl}
+        shareText={cardShareText}
+        fileName={`contour-review-${item.id}.png`}
+      />
     </>
   );
 }
