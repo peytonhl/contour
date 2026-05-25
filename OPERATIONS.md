@@ -133,11 +133,33 @@ so if it's still there one of the vars is wrong.
 
 ### iOS rebuild (Codemagic)
 
-`@capacitor/push-notifications` is a new Capacitor plugin — the web JS
-ships instantly via Vercel, but the native iOS shell needs to be rebuilt
-so the plugin is compiled into the IPA. **Until that rebuild lands on
-TestFlight, no iOS device can register a push token** (the JS-side
-`PushNotifications.register()` will throw "plugin not implemented").
+`@capacitor/push-notifications` is a Capacitor plugin — the web JS ships
+instantly via Vercel, but the native iOS shell needs to be rebuilt so
+the plugin is compiled into the IPA. **Until that rebuild lands on
+TestFlight, no iOS device can register a push token.**
+
+Two things must be true in the IPA for push to work, both handled
+automatically by Codemagic on every `ios-v*` tag build:
+
+1. **The plugin binary itself** — `npx cap sync ios` (already in the
+   workflow) bundles the native code.
+2. **The `aps-environment` entitlement** — `App.entitlements` with
+   `aps-environment=development` is written and wired into the xcodeproj
+   by the **Enable Push Notifications capability** step in
+   `codemagic.yaml`. Without this, `cap sync` ships the plugin but iOS
+   rejects `PushNotifications.register()` with `registrationError` and
+   no token is ever issued. **This was the silent gap that broke
+   `ios-v202605202345`** — plugin was in the build but the entitlement
+   wasn't, so the JS-side error handler logged "push setup skipped" and
+   no device ever registered.
+
+**Prerequisite (one-time)**: the App ID at developer.apple.com must
+have Push Notifications capability checked. The codemagic
+`fetch-signing-files --create` step will otherwise generate a
+provisioning profile that doesn't include push, and the build will fail
+signing with "Provisioning profile doesn't include the aps-environment
+entitlement." Already confirmed enabled in step 5 of "One-time setup"
+above; if signing ever starts failing with that exact error, re-check.
 
 To trigger the rebuild:
 
@@ -154,7 +176,9 @@ no build appears within ~30s, kick it off manually from the dashboard.
 
 After TestFlight processing finishes (~5–15 min), the new build will be
 available to your testers; first-launch on it will prompt for push
-permission.
+permission. Confirm a device successfully registered by checking the
+Railway logs for a `POST /notifications/register-token 200` — that's
+the iOS app reporting its APNs token to the backend.
 
 ### Sandbox vs production APNs
 
