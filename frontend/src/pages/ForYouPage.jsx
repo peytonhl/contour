@@ -58,13 +58,20 @@ import { consumeInitialFeed } from "../services/feedPrefetch.js";
 // test — the cubic-bezier in the wrapper transition is matched to the
 // duration range below.
 function snapDurationFromVelocity(absVelocityPxPerMs) {
-  // Linear map over [0, 1.5] px/ms → [280, 160] ms.
-  //   v=0    (slow drag past threshold) → 280ms gentle ease
-  //   v=0.35 (flick threshold)          → 252ms
-  //   v=1.0  (hard flick)               → 200ms
-  //   v=1.5+ (very hard)                → 160ms snappy commit
+  // Linear map over [0, 1.5] px/ms → [340, 175] ms.
+  //   v=0    (slow drag past threshold) → 340ms relaxed settle
+  //   v=0.25 (flick threshold)          → 312ms
+  //   v=1.0  (hard flick)               → 230ms
+  //   v=1.5+ (very hard)                → 175ms snappy commit
+  //
+  // Widened from the previous [280, 160] range because slow drags
+  // at 280ms still felt rigid — neither punchy nor leisurely. The
+  // longer slow-end (340ms) lets a gentle drag-past-threshold
+  // commit with a real settle motion that reads as physical
+  // rather than mechanical. Hard flicks barely changed (was 160,
+  // now 175) so the snap still has bite when you mean it.
   const v = Math.min(Math.max(absVelocityPxPerMs, 0), 1.5);
-  return Math.round(280 - v * 80);
+  return Math.round(340 - v * 110);
 }
 
 function rubberBand(distance, maxStretch) {
@@ -1963,8 +1970,15 @@ function ForYouFeed() {
     const dt = Math.max(1, Date.now() - start.t);
     const velocity = Math.abs(dy / dt);
 
-    const SWIPE_PX = 50;
-    const FLICK_VEL = 0.35;
+    // Looser commit thresholds (was 50px / 0.35 px/ms). At 50px users
+    // had to drag a deliberate ~6-7% of the card before the swipe
+    // would commit, which felt like the deck "resisted" the gesture —
+    // a textbook mechanical-feeling characteristic. 40px is small
+    // enough to commit on a confident-but-not-aggressive drag, and
+    // a 0.25 flick velocity means a quick wrist motion is enough
+    // even when the finger barely moves.
+    const SWIPE_PX = 40;
+    const FLICK_VEL = 0.25;
 
     if (dy < -SWIPE_PX || (dy < 0 && velocity >= FLICK_VEL)) {
       // Set the velocity-responsive snap duration BEFORE calling advance.
@@ -2758,16 +2772,17 @@ function ForYouFeed() {
             // Stored unit is %-of-cardHeight — same units the wrapper uses
             // (no px↔% mix, so the commit boundary stays subpixel-stable).
             //
-            // Snappier ease-out curve (cubic-bezier-iOS-style). Hard flicks
-            // resolve faster (160ms) than slow drags past threshold (280ms)
-            // via the velocity-responsive snapDuration state — touchend
-            // writes the appropriate value before flipping dragging=false,
-            // so the CSS transition picks it up in the next render.
-            // The cubic-bezier stays constant; only the duration varies.
-            // The previous fixed 240ms felt mechanical because the
-            // animation ignored gesture intent — same time whether you
-            // gently nudged past threshold or flicked hard.
-            transition: dragging ? "none" : `transform ${snapDuration}ms cubic-bezier(0.16, 1, 0.3, 1)`,
+            // Softer ease-out curve (was cubic-bezier(0.16, 1, 0.3, 1)
+            // — an aggressive easeOutQuint that "slammed" the landing
+            // and made every transition feel like the deck snapped
+            // into a detent). easeOutQuart `(0.25, 1, 0.5, 1)` is
+            // gentler at the end — the wrapper decelerates more
+            // gradually as it approaches the target, so the eye reads
+            // the motion as "settling" rather than "stopping". Bigger
+            // perceptual impact than tuning the duration. Pairs with
+            // the wider velocity-to-duration range below (snap
+            // duration 175-340ms depending on flick speed).
+            transition: dragging ? "none" : `transform ${snapDuration}ms cubic-bezier(0.25, 1, 0.5, 1)`,
             willChange: "transform",
             // `contain: layout paint` was REMOVED here — it was clipping
             // descendants to the wrapper's un-transformed border box, per
