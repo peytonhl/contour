@@ -11,7 +11,8 @@
   "ios": {
     "contentInset": "never",
     "scrollEnabled": true,
-    "limitsNavigationsToAppBoundDomains": false
+    "limitsNavigationsToAppBoundDomains": false,
+    "backgroundColor": "#08080a"
   },
   "android": {
     "allowMixedContent": false

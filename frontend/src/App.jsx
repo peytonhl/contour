@@ -254,6 +254,33 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
+  // Prefetch the JS chunks for the most-likely-next routes. On cold
+  // cellular, the lazy-import chunk download is often the dominant
+  // cost when a user first navigates away from the deck (200-800ms
+  // per chunk). Firing import() here triggers the browser fetch +
+  // parse; the chunk lands in module cache and the lazy() in Routes
+  // resolves synchronously when the user later navigates.
+  //
+  // Order = approximate frequency of "next destination after the
+  // deck." Profile first because every signed-in user goes there
+  // to check ratings; Search second; then Friends/Trending. The
+  // 1s delay puts these well past first paint so they don't
+  // compete with deck rendering.
+  //
+  // Returned promises are intentionally discarded — Vite caches the
+  // module by chunk hash so the lazy() call later picks it up
+  // instantly. Failures (chunk 404, network drop) are swallowed;
+  // the lazy() retry on actual navigation handles those.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      import("./pages/ProfilePage.jsx").catch(() => {});
+      import("./pages/SearchPage.jsx").catch(() => {});
+      import("./pages/FriendsPage.jsx").catch(() => {});
+      import("./pages/TrendingPage.jsx").catch(() => {});
+    }, 1000);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <>
     {/* SigninGate paints on top of everything for signed-out, non-guest
