@@ -260,6 +260,20 @@ export function SuggestedUser({ u, onFollow }) {
   );
 }
 
+// Module-level cache for the Friends feed + the suggested-users list.
+// Survives FollowingTab mount/unmount so a user who tabs away to
+// Profile and back doesn't pay the api.getFeed() round-trip again.
+// SWR semantics: on remount, show cached data immediately; if older
+// than CACHE_FRESH_MS, kick off a background revalidate. Cleared on
+// logout via the cache-bust effect below (different user.id → empty
+// cache so we don't leak A's feed to B). Reported 2026-05-25: tab
+// switch Friends → Profile → Friends took 5+ seconds the second
+// time around; this is almost all of that latency gone.
+const CACHE_FRESH_MS = 60_000;  // fresh: trust cache, no revalidate
+const CACHE_TTL_MS = 5 * 60_000; // stale beyond 5min: drop entirely
+let _feedCache = null;       // { userId, data, fetchedAt }
+let _suggestedCache = null;  // { data, fetchedAt }
+
 /**
  * "Friends" tab content — chronological feed of ratings and reviews from
  * users you follow. Falls back to a suggested-people list when you follow
@@ -267,19 +281,70 @@ export function SuggestedUser({ u, onFollow }) {
  */
 export function FollowingTab() {
   const { user } = useAuth();
-  const [following, setFollowing] = useState([]);
-  const [suggested, setSuggested] = useState([]);
-  const [loadingFollowing, setLoadingFollowing] = useState(false);
+  // Seed state from cache so the first render after remount is
+  // instant — no "Loading…" flash for the back-to-Friends case.
+  const initialFollowing = (() => {
+    if (!_feedCache || _feedCache.userId !== user?.id) return [];
+    if (Date.now() - _feedCache.fetchedAt > CACHE_TTL_MS) return [];
+    return _feedCache.data;
+  })();
+  const initialSuggested = (() => {
+    if (!_suggestedCache) return [];
+    if (Date.now() - _suggestedCache.fetchedAt > CACHE_TTL_MS) return [];
+    return _suggestedCache.data;
+  })();
+  const [following, setFollowing] = useState(initialFollowing);
+  const [suggested, setSuggested] = useState(initialSuggested);
+  // Only show "Loading…" when we have no cached data to show. The
+  // SWR path (cache present, revalidating in background) renders
+  // the stale data and silently swaps to fresh — no spinner.
+  const [loadingFollowing, setLoadingFollowing] = useState(
+    !!user && initialFollowing.length === 0
+  );
 
   useEffect(() => {
-    api.getSuggestedUsers().then(setSuggested).catch(() => {});
+    // Suggested users — refresh in background if stale; cheap call,
+    // no spinner regardless. Don't fire if cache is fresh.
+    const suggestedFresh = _suggestedCache
+      && Date.now() - _suggestedCache.fetchedAt < CACHE_FRESH_MS;
+    if (!suggestedFresh) {
+      api.getSuggestedUsers()
+        .then((data) => {
+          setSuggested(data);
+          _suggestedCache = { data, fetchedAt: Date.now() };
+        })
+        .catch(() => {});
+    }
+
     if (!user) return;
-    setLoadingFollowing(true);
+
+    // If we have a fresh same-user feed cache, skip the network
+    // entirely — the seeded state IS the answer for this tick.
+    const feedFresh = _feedCache
+      && _feedCache.userId === user.id
+      && Date.now() - _feedCache.fetchedAt < CACHE_FRESH_MS;
+    if (feedFresh) {
+      setLoadingFollowing(false);
+      return;
+    }
+
+    // Cache miss or stale → revalidate. Show "Loading…" only when
+    // we have nothing to render; otherwise swap silently.
+    if (initialFollowing.length === 0) setLoadingFollowing(true);
     api.getFeed()
-      .then(setFollowing)
-      .catch(() => setFollowing([]))
+      .then((data) => {
+        setFollowing(data);
+        _feedCache = { userId: user.id, data, fetchedAt: Date.now() };
+      })
+      .catch(() => {
+        // Don't clobber existing cached data on a transient backend
+        // error — the user keeps the last-known-good feed. Only
+        // set [] when we had nothing to begin with.
+        if (initialFollowing.length === 0) setFollowing([]);
+      })
       .finally(() => setLoadingFollowing(false));
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   return (
     <div style={{ maxWidth: 600, margin: "0 auto", padding: "0 20px", overflowY: "auto", height: "100%" }}>
