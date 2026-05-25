@@ -536,7 +536,7 @@ class CardErrorBoundary extends Component {
 }
 
 // ── Individual discover card ──────────────────────────────────────────────────
-function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemoveRating, onEntityClick, userRating, cardIndex, totalCards }) {
+function DiscoverCardBase({ track, isActive, swiping, onRate, onReview, onDislike, onRemoveRating, onEntityClick, userRating, cardIndex, totalCards }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   // Some Spotify/Deezer responses ship a track without album.images populated
@@ -901,6 +901,15 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
             don't show one — swipe just flows). */}
         <div ref={actionsRef} style={{
           position: "absolute", top: 14, right: 14, zIndex: 6,
+          // Fade with the info-region during the swipe — this is chrome
+          // (overflow menu), not part of the card's visual identity, so
+          // letting it ride the swipe alongside the cover image was
+          // adding "another moving thing" to the transition. With it
+          // faded, the only thing actually traveling across the viewport
+          // is the cover image + backdrop — clean and unified.
+          opacity: swiping ? 0 : 1,
+          transition: "opacity 140ms ease-out",
+          pointerEvents: swiping ? "none" : "auto",
         }}>
           <button
             onClick={() => setShowActions(o => !o)}
@@ -1022,13 +1031,31 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           here. That's what makes the cover area and info area read
           as one continuous card surface instead of two stacked
           panels. Don't add a `background:` property here unless you
-          ALSO want the visible seam back. */}
+          ALSO want the visible seam back.
+
+          OPACITY FADE DURING SWIPE — addresses the "cards feel like
+          two separate pieces" perception. In the strip-scroll model,
+          mid-swipe the user sees card N's info-region (text) at the
+          top of the viewport AND card N+1's cover-region (image) at
+          the bottom. Two visually-distinct elements from two
+          different songs visible simultaneously = the user reads
+          them as overlapping cards. By fading the info content to
+          0 during drag/transitioning, only the unified backdrop +
+          cover image flow across the viewport — feels like one
+          continuous card sliding, not "details + cover" side by
+          side. Fade is fast (140ms) so the info reappears
+          immediately when the user lands on a card, and the
+          backdrop/cover are unaffected so the swipe still has
+          strong visual identity from each track. */}
       <div style={{
         position: "absolute", top: "65%", left: 0, right: 0, bottom: 0,
         display: "flex", flexDirection: "column",
         padding: "14px 24px 12px",
         gap: 10, overflowY: "auto",
         zIndex: 2,
+        opacity: swiping ? 0 : 1,
+        transition: "opacity 140ms ease-out",
+        pointerEvents: swiping ? "none" : "auto",
       }}>
 
         {/* Track info */}
@@ -1420,6 +1447,7 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
 const DiscoverCard = memo(DiscoverCardBase, (prev, next) => (
   prev.track === next.track &&
   prev.isActive === next.isActive &&
+  prev.swiping === next.swiping &&
   prev.userRating === next.userRating &&
   prev.cardIndex === next.cardIndex &&
   prev.totalCards === next.totalCards
@@ -2756,6 +2784,7 @@ function ForYouFeed() {
                   <DiscoverCard
                     track={track}
                     isActive={i === activeIdx && !transitioning}
+                    swiping={dragging || transitioning}
                     onRate={stableOnRate}
                     onReview={stableOnReview}
                     onDislike={stableOnDislike}
