@@ -196,6 +196,73 @@ workflows:
           echo ">>> Info.plist values now set:"
           plutil -p "$INFO_PLIST" | grep -E 'ITSAppUsesNonExemptEncryption|CFBundleURLTypes|CFBundleURLSchemes|NSPhotoLibraryAddUsageDescription' || true
 
+      - name: Enable Push Notifications capability
+        script: |
+          set -ex
+          # Why this step exists:
+          #   `@capacitor/push-notifications` is in package.json so the
+          #   plugin binary IS in the IPA after `npx cap sync ios`. But
+          #   the plugin's docs explicitly say: "you must add the Push
+          #   Notifications capability to your app in Xcode." Capacitor's
+          #   sync step does NOT do this for you. Without the
+          #   `aps-environment` entitlement, iOS rejects
+          #   PushNotifications.register() with registrationError and no
+          #   device token is ever issued — pushes silently never work.
+          #
+          # What this step does:
+          #   1. Writes App.entitlements with aps-environment=development.
+          #      "development" is the right value for TestFlight per
+          #      Apple's docs (TestFlight uses APNs sandbox until App
+          #      Store release). When we move to App Store production,
+          #      change this to "production" AND flip APNS_USE_SANDBOX
+          #      to false on Railway in lockstep — the entitlement and
+          #      the server's APNs endpoint must match or every push 400s.
+          #   2. Wires CODE_SIGN_ENTITLEMENTS into App.xcodeproj for both
+          #      Debug + Release build configs so the entitlement file
+          #      actually gets baked into the signed binary.
+          #
+          # Prerequisite (one-time, manual):
+          #   The App ID at developer.apple.com must have Push
+          #   Notifications capability enabled. If not, the next step
+          #   (fetch-signing-files) will succeed but the provisioning
+          #   profile won't include push, so the build will fail with
+          #   "Provisioning profile doesn't include the aps-environment
+          #   entitlement." Enable at:
+          #   https://developer.apple.com/account/resources/identifiers/list
+          #   → tap the bundle ID → Capabilities → check "Push
+          #   Notifications" → Save.
+
+          ENTITLEMENTS="frontend/ios/App/App/App.entitlements"
+          cat > "$ENTITLEMENTS" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>aps-environment</key>
+            <string>development</string>
+          </dict>
+          </plist>
+          PLIST
+          echo ">>> Wrote $ENTITLEMENTS:"
+          cat "$ENTITLEMENTS"
+
+          # Patch the xcodeproj to point at the entitlements file. Using
+          # the `xcodeproj` Ruby gem is the canonical way to edit pbxproj
+          # safely — sed against pbxproj works until it doesn't (UUID
+          # collisions, multi-line settings, future format changes).
+          gem install xcodeproj --no-document --silent
+          ruby <<'RUBY'
+          require 'xcodeproj'
+          project = Xcodeproj::Project.open('frontend/ios/App/App.xcodeproj')
+          target = project.targets.find { |t| t.name == 'App' }
+          raise "FATAL: 'App' target not found in xcodeproj" if target.nil?
+          target.build_configurations.each do |config|
+            config.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'App/App.entitlements'
+            puts ">>> Set CODE_SIGN_ENTITLEMENTS for config '#{config.name}' to App/App.entitlements"
+          end
+          project.save
+          RUBY
+
       - name: Set the build number
         script: |
           set -ex
