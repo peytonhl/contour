@@ -113,6 +113,10 @@ async def add_dislike(
         )
         db.add(profile)
     await db.commit()
+    # Bust the cached /feed state so the dislike takes effect on the
+    # next swipe batch instead of waiting up to 30s for the TTL.
+    from routers.discover import _bust_discover_state_cache
+    asyncio.create_task(_bust_discover_state_cache(user_id))
     return {"ok": True}
 
 
@@ -131,6 +135,8 @@ async def remove_dislike(
         profile.disliked_artist_ids = json.dumps([a for a in existing if a != artist_id])
         profile.updated_at = datetime.utcnow()
         await db.commit()
+        from routers.discover import _bust_discover_state_cache
+        asyncio.create_task(_bust_discover_state_cache(user_id))
     return {"ok": True}
 
 
@@ -146,6 +152,8 @@ async def clear_dislikes(
     profile.disliked_artist_ids = json.dumps([])
     profile.updated_at = datetime.utcnow()
     await db.commit()
+    from routers.discover import _bust_discover_state_cache
+    asyncio.create_task(_bust_discover_state_cache(user_id))
     return {"ok": True}
 
 
@@ -208,6 +216,8 @@ async def reset_taste_profile(
     if reset_fields:
         profile.updated_at = datetime.utcnow()
         await db.commit()
+        from routers.discover import _bust_discover_state_cache
+        asyncio.create_task(_bust_discover_state_cache(user_id))
     return {"ok": True, "reset": reset_fields}
 
 
@@ -293,4 +303,6 @@ async def upsert_taste_profile(
         db.add(profile)
 
     await db.commit()
+    from routers.discover import _bust_discover_state_cache
+    asyncio.create_task(_bust_discover_state_cache(user_id))
     return {"ok": True}

@@ -484,6 +484,13 @@ async def rate(
         elif body.value <= LOW_RATING_THRESHOLD:
             asyncio.create_task(_down_weight_from_rating(user_id, body.artist_id))
 
+    # Invalidate the cached /discover/feed state so the next swipe
+    # batch reflects this new rating (popularity avg / decade pref /
+    # genre signal all shift). Otherwise the 30s TTL would let the
+    # old bundle serve a couple more requests before catching up.
+    from routers.discover import _bust_discover_state_cache
+    asyncio.create_task(_bust_discover_state_cache(user_id))
+
     return {"ok": True, "value": body.value}
 
 
@@ -1028,6 +1035,14 @@ async def delete_rating(
         asyncio.create_task(_retract_artist_from_taste(
             user_id, primary_artist_id, deleted_rating_value,
         ))
+
+    # Invalidate the cached /discover/feed state — the user's avg
+    # popularity, decade pref, etc. all just shifted by losing this
+    # rating. Otherwise the next swipe batch could serve up tracks
+    # by the just-unrated artist for up to 30s.
+    if rating_deleted:
+        from routers.discover import _bust_discover_state_cache
+        asyncio.create_task(_bust_discover_state_cache(user_id))
 
     return {
         "ok": True,

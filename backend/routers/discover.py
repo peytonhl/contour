@@ -195,9 +195,220 @@ from routers.auth import optional_user_id, require_user_id
 from services import spotify
 from services import deezer as deezer_svc
 from services import lastfm
+from services import redis_cache
 from services.limiter import limiter
 
 router = APIRouter(prefix="/discover", tags=["discover"])
+
+
+# ── Per-user feed-state cache (Redis, 30s TTL) ────────────────────────────────
+# Each /feed request needs to know the user's target_popularity,
+# decade preferences (positive + negative), genre signal, and inferred
+# subgenre tags. Computing those involves 4-5 separate SQL queries
+# joining Rating against TrackCache/AlbumCache plus a Python loop over
+# ArtistCache for the per-genre weighted matcher. ~80-120ms total per
+# request even at small catalog size.
+#
+# These values change slowly:
+#   - target_popularity averages the user's 4-5★ track ratings. One
+#     new high rating barely moves the avg.
+#   - decade_pref / negative_decade_pref same.
+#   - genre_signal updates as the user rates more artists in a genre.
+#   - subgenre_tags surface from accumulated high-rated artist tags.
+#
+# 30s TTL strikes the balance: a swiping user firing /feed every 2-5
+# seconds gets cache hits 90%+ of the time and saves the recompute on
+# each. New ratings invalidate the cache via _bust_discover_state_cache
+# so the "rate then immediately see effect" docstring promise still
+# holds for the rating-then-swipe interaction.
+#
+# Cache key includes a version digit so a shape change to the bundle
+# invalidates old entries without us having to flush keys manually.
+_USER_STATE_CACHE_VERSION = 1
+
+
+def _user_state_cache_key(user_id: str) -> str:
+    return f"discover:user_state:v{_USER_STATE_CACHE_VERSION}:{user_id}"
+
+
+async def _bust_discover_state_cache(user_id: Optional[str]) -> None:
+    """Invalidate a user's cached feed-state bundle. Called from
+    ratings + taste profile mutation handlers so the next /feed
+    request reflects the change immediately (within Redis round-trip)
+    instead of waiting up to 30s. No-op when Redis isn't configured.
+
+    Fire-and-forget — failure to invalidate just means stale data
+    for the remaining TTL window, which is acceptable degradation.
+    """
+    if not user_id:
+        return
+    try:
+        await redis_cache.delete(_user_state_cache_key(user_id))
+    except Exception:
+        pass
+
+
+async def _get_or_compute_user_feed_state(
+    db: AsyncSession,
+    user_id: str,
+) -> dict:
+    """Compute (or read from cache) the bundle of derived signals that
+    /feed needs to pick + rank candidates for this user.
+
+    Bundle contents:
+      profile          — genres (post-exclusion), excluded_genres,
+                         liked_artist_ids, disliked_artist_ids,
+                         down_weighted_artist_ids
+      target_popularity_raw   — float or None; user's avg 4-5★ track
+                                popularity before discovery calibration
+      target_popularity       — float; calibrated value actually used
+                                by search_tracks_by_genre's Laplace curve
+      decade_pref             — dict or None; release-decade distribution
+                                of high ratings
+      negative_decade_pref    — dict or None; same for 1-2★ ratings
+      negative_genre_pref     — dict or None; genre distribution of
+                                down-weighted artists' tags
+      eligible_genres         — list; profile.genres minus excluded
+                                AND minus negative-genre-filtered slugs
+      year_range              — "1980-1989" style string or None;
+                                triggers vintage tier when set
+      genre_signal            — {slug: [rating_count, avg_popularity]}
+      subgenre_tags           — list of inferred subgenre slugs
+
+    Cache: Redis 30s TTL. Mutations (rate / unrate / dislike / taste
+    reset) bust the cache via _bust_discover_state_cache so the next
+    /feed reflects the change without waiting for TTL.
+    """
+    cache_key = _user_state_cache_key(user_id)
+    cached = await redis_cache.get(cache_key)
+    if cached and isinstance(cached, dict):
+        # JSON serializes tuples as lists. genre_signal originally has
+        # tuple values (count, avg_pop) — coerce back so callers don't
+        # have to worry about which path produced the bundle.
+        gs = cached.get("genre_signal")
+        if isinstance(gs, dict):
+            cached["genre_signal"] = {k: tuple(v) for k, v in gs.items()}
+        return cached
+
+    # ── Profile read (cheap, single row) ─────────────────────────────
+    genre_list: list[str] = []
+    excluded_genre_set: set[str] = set()
+    liked_artist_ids: list[str] = []
+    disliked_set: list[str] = []
+    down_weighted_set: list[str] = []
+    try:
+        profile = await db.get(UserTasteProfile, user_id)
+        if profile:
+            genre_list = json.loads(profile.genres or "[]")
+            excluded_genre_set = set(
+                json.loads(getattr(profile, "excluded_genres", None) or "[]")
+            )
+            liked_artist_ids = json.loads(profile.liked_artist_ids or "[]")
+            disliked_set = list(json.loads(profile.disliked_artist_ids or "[]"))
+            down_weighted_set = list(json.loads(profile.down_weighted_artist_ids or "[]"))
+    except Exception:
+        pass
+    if excluded_genre_set:
+        genre_list = [g for g in genre_list if g not in excluded_genre_set]
+
+    # ── Expensive computations — parallelize the independent ones ───
+    target_task = asyncio.create_task(_compute_target_popularity(db, user_id))
+    decade_task = asyncio.create_task(_compute_decade_preference(db, user_id))
+    neg_task = asyncio.create_task(_compute_negative_preferences(db, user_id))
+
+    target_popularity_raw: Optional[float] = None
+    decade_pref: Optional[dict[str, float]] = None
+    negative_decade_pref: Optional[dict[str, float]] = None
+    negative_genre_pref: Optional[dict[str, float]] = None
+    try:
+        target_popularity_raw = await target_task
+    except Exception:
+        target_popularity_raw = None
+    try:
+        decade_pref = await decade_task
+    except Exception:
+        decade_pref = None
+    try:
+        negative_decade_pref, negative_genre_pref = await neg_task
+    except Exception:
+        negative_decade_pref, negative_genre_pref = None, None
+
+    # Discovery calibration applied INSIDE the bundle so /feed reads
+    # the value that actually gets passed to search_tracks_by_genre.
+    # See the long-form comment in /feed for the rationale on the
+    # two-step calibration (cold-start default + mainstream offset).
+    if target_popularity_raw is None:
+        target_popularity = 50.0
+    elif target_popularity_raw >= 60.0:
+        target_popularity = max(0.0, target_popularity_raw - 10.0)
+    else:
+        target_popularity = float(target_popularity_raw)
+
+    # year_range trigger (≥ 60% concentration in a single decade)
+    year_range: Optional[str] = None
+    if decade_pref:
+        top_decade, top_share = max(decade_pref.items(), key=lambda kv: kv[1])
+        if top_share >= 0.60 - 0.0001:
+            try:
+                start = int(top_decade[:-1])
+                year_range = f"{start}-{start + 9}"
+            except Exception:
+                year_range = None
+
+    # eligible_genres = picker genres minus heavily-down-rated ones
+    eligible_genres = genre_list
+    if negative_genre_pref and len(genre_list) >= 2:
+        filtered = [g for g in genre_list if negative_genre_pref.get(g, 0.0) < 0.30]
+        if len(filtered) >= 2:
+            eligible_genres = filtered
+
+    # genre_signal — requires eligible_genres as input
+    genre_signal_dict: dict[str, tuple[int, Optional[float]]] = {}
+    if eligible_genres:
+        try:
+            genre_signal_dict = await _compute_user_genre_signal(db, user_id, eligible_genres)
+        except Exception as exc:
+            logger.warning("user_state: _compute_user_genre_signal failed: %s", exc)
+
+    # subgenre_tags — also depends on eligible_genres for filtering
+    subgenre_tags: list[dict] = []
+    try:
+        subgenre_tags = await _compute_user_subgenre_tags(
+            db, user_id, eligible_genres, top_k=3,
+        )
+    except Exception as exc:
+        logger.warning("user_state: _compute_user_subgenre_tags failed: %s", exc)
+
+    bundle = {
+        "profile": {
+            "genres": genre_list,
+            "excluded_genres": sorted(excluded_genre_set),
+            "liked_artist_ids": liked_artist_ids,
+            "disliked_artist_ids": disliked_set,
+            "down_weighted_artist_ids": down_weighted_set,
+        },
+        "target_popularity_raw": target_popularity_raw,
+        "target_popularity": target_popularity,
+        "decade_pref": decade_pref,
+        "negative_decade_pref": negative_decade_pref,
+        "negative_genre_pref": negative_genre_pref,
+        "eligible_genres": eligible_genres,
+        "year_range": year_range,
+        # Stored as {slug: [count, avg_or_null]} for JSON compatibility.
+        # _get_or_compute_user_feed_state coerces back to tuples on cache hit.
+        "genre_signal": {k: list(v) for k, v in genre_signal_dict.items()},
+        "subgenre_tags": subgenre_tags,
+    }
+
+    try:
+        await redis_cache.set(cache_key, bundle, ttl=30)
+    except Exception:
+        pass
+
+    # Return with genre_signal as tuples so the in-process callers don't
+    # have to special-case the cache-miss vs cache-hit shapes.
+    bundle["genre_signal"] = {k: tuple(v) for k, v in bundle["genre_signal"].items()}
+    return bundle
 
 
 # ── Low-quality-cover detection ────────────────────────────────────────────────
@@ -1609,29 +1820,52 @@ async def get_discover_feed(
     if exclude:
         exclude_ids.update(e.strip() for e in exclude.split(",") if e.strip())
 
-    # ── Resolve preferences from server profile or client fallback ───────────
+    # ── Resolve user state (Redis-cached, 30s TTL) ────────────────────────────
+    # Bundles every derived signal /feed needs into one cached blob:
+    # profile fields, target_popularity (raw + calibrated), decade
+    # prefs, negative prefs, year_range, eligible_genres, genre_signal,
+    # subgenre_tags. ~80-120ms of recompute per request collapsed to
+    # one Redis round-trip on cache hits. Mutations bust via
+    # _bust_discover_state_cache. See _get_or_compute_user_feed_state
+    # for the full spec.
     genre_list: list[str] = []
     excluded_genre_set: set[str] = set()
     liked_artist_ids: list[str] = []
     disliked_set: set[str] = set()
     down_weighted_set: set[str] = set()
+    user_state: Optional[dict] = None
 
     if effective_user_id:
         try:
-            profile = await db.get(UserTasteProfile, effective_user_id)
-            if profile:
-                genre_list = json.loads(profile.genres or "[]")
-                # getattr — excluded_genres column was added in migration
-                # x4y5z6a7b8c9; on prod rows pre-deploy it's missing.
-                excluded_genre_set = set(
-                    json.loads(getattr(profile, "excluded_genres", None) or "[]")
-                )
-                liked_artist_ids = json.loads(profile.liked_artist_ids or "[]")
-                disliked_set = set(json.loads(profile.disliked_artist_ids or "[]"))
-                down_weighted_set = set(json.loads(profile.down_weighted_artist_ids or "[]"))
-        except Exception:
-            # Table or new columns may not exist yet on first deploy
-            pass
+            user_state = await _get_or_compute_user_feed_state(db, effective_user_id)
+        except Exception as exc:
+            logger.warning("discover: user-state bundle failed: %s", exc)
+            user_state = None
+
+        if user_state:
+            prof = user_state.get("profile") or {}
+            genre_list = list(prof.get("genres") or [])
+            excluded_genre_set = set(prof.get("excluded_genres") or [])
+            liked_artist_ids = list(prof.get("liked_artist_ids") or [])
+            disliked_set = set(prof.get("disliked_artist_ids") or [])
+            down_weighted_set = set(prof.get("down_weighted_artist_ids") or [])
+        else:
+            # Bundle compute failed entirely (e.g. DB outage). Read the
+            # profile inline as a degraded fallback so the user at
+            # least gets the cold-start ladder; the rest of /feed runs
+            # with computed-signal defaults.
+            try:
+                profile = await db.get(UserTasteProfile, effective_user_id)
+                if profile:
+                    genre_list = json.loads(profile.genres or "[]")
+                    excluded_genre_set = set(
+                        json.loads(getattr(profile, "excluded_genres", None) or "[]")
+                    )
+                    liked_artist_ids = json.loads(profile.liked_artist_ids or "[]")
+                    disliked_set = set(json.loads(profile.disliked_artist_ids or "[]"))
+                    down_weighted_set = set(json.loads(profile.down_weighted_artist_ids or "[]"))
+            except Exception:
+                pass
 
     # Hard-filter the candidate genre list with the user's exclusions BEFORE
     # tier 1 sees them. Tier 1's weighted sample never picks an excluded
@@ -1694,73 +1928,24 @@ async def get_discover_feed(
     # banning artists the user partly loved.
     soft_excluded = disliked_set | pure_down_weighted
 
-    # Per-user popularity target. A user whose 4–5★ track ratings average
-    # to popularity=25 has signaled niche-leaning taste; the Laplace curve
-    # inside search_tracks_by_genre will peak there. None → cold-start
-    # default (target=70, mild mainstream lean). Only relevant for tier 1
-    # — tiers 2–4 are mainstream chart baselines by definition.
-    target_popularity: float | None = None
-    if effective_user_id:
-        try:
-            target_popularity = await _compute_target_popularity(db, effective_user_id)
-        except Exception:
-            # If TrackCache hasn't been populated for any of this user's
-            # rated tracks yet (e.g. fresh DB on a new deploy), fall back
-            # silently to the cold-start default.
-            target_popularity = None
-
-    # ── Discovery calibration ────────────────────────────────────────────
-    # Two tweaks to the per-user popularity target so niche listeners
-    # don't get steered back to mainstream within their picked genre.
-    # Without these, the Laplace curve in search_tracks_by_genre was
-    # peaking exactly on the user's revealed average, which meant
-    # heavy raters of mainstream genres (e.g. avg pop 85) saw chart
-    # hits sampled at 100% weight and the deep-cut "tag:hipster"
-    # tracks at ~22% — the feed was *reinforcing* taste, not
-    # broadening it. Per-user complaint: "niche genres aren't
-    # coming through."
-    #
-    #   1) Cold-start default: when a user has picked genres but
-    #      hasn't rated yet, target_popularity is None → spotify.py
-    #      falls back to 70 (mild mainstream lean). For "warming up"
-    #      users that's too high — they've signaled interest in
-    #      genre X but not "top-40 in X". Bump the default down to
-    #      50 (neutral peak: equal weight at chart-100 and niche-0).
-    #
-    #   2) Discovery offset for mainstream raters: when the user's
-    #      revealed target is HIGH (≥60, broadly mainstream taste),
-    #      shave 10 points off so the curve peaks slightly below
-    #      their average. Asymmetric — niche listeners (<60) are
-    #      left alone because they're already in the deep-cut range
-    #      and pushing them further would surface noise rather than
-    #      discovery. Conservative: 10 points changes a peak-85
-    #      user's pop-30 weight from 0.33 → 0.45 (more variety) but
-    #      keeps pop-100 weight at 0.61 (mainstream still dominates).
-    if target_popularity is None:
+    # ── Read computed signals from the user-state bundle ─────────────────
+    # All of target_popularity / decade_pref / negative_*_pref live
+    # inside the bundle we resolved above. See
+    # _get_or_compute_user_feed_state for the calibration logic
+    # (cold-start default 50, discovery offset of -10 for mainstream
+    # raters). user_state is None when the bundle compute failed —
+    # fall back to defaults so /feed degrades to cold-start ladder
+    # rather than crashing.
+    if user_state:
+        target_popularity = float(user_state.get("target_popularity") or 50.0)
+        decade_pref = user_state.get("decade_pref")
+        negative_decade_pref = user_state.get("negative_decade_pref")
+        negative_genre_pref = user_state.get("negative_genre_pref")
+    else:
         target_popularity = 50.0
-    elif target_popularity >= 60.0:
-        target_popularity = max(0.0, target_popularity - 10.0)
-
-    # Decade-preference signal. Computed from the user's 4–5★ ratings —
-    # if they consistently rate 80s tracks high, the feed should favor
-    # 80s candidates within each tier. Cold-start users (< 5 high ratings)
-    # get None back and the ranker is a no-op. See _decade_score().
-    decade_pref: Optional[dict[str, float]] = None
-    # Negative signals from 1–2★ ratings — what the user actively dislikes.
-    # Negative decade dampens decade_score for low-rated eras; negative
-    # genre is used below to filter out heavily-down-rated genres from
-    # tier 1's seed pool.
-    negative_decade_pref: Optional[dict[str, float]] = None
-    negative_genre_pref: Optional[dict[str, float]] = None
-    if effective_user_id:
-        try:
-            decade_pref = await _compute_decade_preference(db, effective_user_id)
-        except Exception:
-            decade_pref = None
-        try:
-            negative_decade_pref, negative_genre_pref = await _compute_negative_preferences(db, effective_user_id)
-        except Exception:
-            negative_decade_pref, negative_genre_pref = None, None
+        decade_pref = None
+        negative_decade_pref = None
+        negative_genre_pref = None
 
     # When the positive decade preference is concentrated (≥ 60% in one
     # decade), pin Spotify search to that year range so we don't waste a
@@ -1768,18 +1953,8 @@ async def get_discover_feed(
     # Mixed-taste users (no single decade dominant) still get the
     # unfiltered search — they get within-tier re-ranking but full
     # year breadth in the candidate pool. The +0.0001 epsilon avoids
-    # rounding-tie cases.
-    year_range: Optional[str] = None
-    if decade_pref:
-        top_decade, top_share = max(decade_pref.items(), key=lambda kv: kv[1])
-        if top_share >= 0.60 - 0.0001:
-            # decade key is "1980s" — strip the trailing "s" and turn into
-            # a Spotify year-range filter like "1980-1989".
-            try:
-                start = int(top_decade[:-1])
-                year_range = f"{start}-{start + 9}"
-            except Exception:
-                year_range = None
+    # rounding-tie cases. Pre-computed inside the user-state bundle.
+    year_range = user_state.get("year_range") if user_state else None
 
     tracks: list[dict] = []
     seen: set[str] = set()
@@ -1990,22 +2165,23 @@ async def get_discover_feed(
     #     genre list before sampling. Fallback: if the filter would leave
     #     fewer than 2 genres, ignore it — better stale picks than empty.
     tier1_added_before = len(tracks)
-    eligible_genres = genre_list
-    if negative_genre_pref and len(genre_list) >= 2:
-        filtered = [g for g in genre_list if negative_genre_pref.get(g, 0.0) < 0.30]
-        if len(filtered) >= 2:
-            eligible_genres = filtered
-
-    # Per-genre rating-affinity + popularity signal — drives weighted
-    # sampling AND per-genre target popularity in tier 1 below.
-    # Only computed for logged-in users with eligible_genres; cold-start
-    # users get position-only sampling and the global target_popularity.
-    genre_signal: dict[str, tuple[int, Optional[float]]] = {}
-    if effective_user_id and eligible_genres:
-        try:
-            genre_signal = await _compute_user_genre_signal(db, effective_user_id, eligible_genres)
-        except Exception as exc:
-            logger.warning("discover: _compute_user_genre_signal failed: %s", exc)
+    # eligible_genres + genre_signal both come from the cached
+    # user-state bundle. The bundler applies the same negative-genre
+    # filter that used to live here (drop slugs where ≥30% of the
+    # user's down-weighted artists belong); fall back to the raw
+    # genre_list when the bundle isn't available.
+    if user_state:
+        eligible_genres = list(user_state.get("eligible_genres") or [])
+        genre_signal: dict[str, tuple[int, Optional[float]]] = (
+            user_state.get("genre_signal") or {}
+        )
+    else:
+        eligible_genres = genre_list
+        if negative_genre_pref and len(genre_list) >= 2:
+            filtered = [g for g in genre_list if negative_genre_pref.get(g, 0.0) < 0.30]
+            if len(filtered) >= 2:
+                eligible_genres = filtered
+        genre_signal = {}
 
     # Tier 1 — weighted-genre pivot, Spotify deep pool.
     # Sampling weight per genre:
@@ -2067,20 +2243,12 @@ async def get_discover_feed(
         # ── Tier 0b: subgenre tags inferred from rated artists ───────────
         # Picker genres are broad ("rock", "hip-hop"); a user who 5★'s
         # only shoegaze artists can't tell the feed that explicitly.
-        # _compute_user_subgenre_tags walks their high-rated artists'
-        # Last.fm tags and returns the strongest sub-tags that AREN'T
-        # already covered by the picker's alias families.
-        # Catalog-only — no Spotify cost. If this layer is hot, the
-        # catalog grows organically into the sub-scene over time via
-        # the artist_reconciler worker + tier 1's persist-on-search.
+        # _compute_user_subgenre_tags (run inside the cached bundle)
+        # walks their high-rated artists' Last.fm tags and returns the
+        # strongest sub-tags that AREN'T already covered by the picker's
+        # alias families. Catalog-only at fetch time — no Spotify cost.
         if effective_user_id and len(tracks) < limit:
-            try:
-                subgenre_tags = await _compute_user_subgenre_tags(
-                    db, effective_user_id, eligible_genres, top_k=3,
-                )
-            except Exception as exc:
-                logger.warning("discover: _compute_user_subgenre_tags failed: %s", exc)
-                subgenre_tags = []
+            subgenre_tags = (user_state or {}).get("subgenre_tags") or []
             if subgenre_tags:
                 subgenre_added_before = len(tracks)
                 subgenre_results = await asyncio.gather(*[

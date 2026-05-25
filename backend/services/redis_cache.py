@@ -67,3 +67,18 @@ async def set(key: str, value: Any, ttl: int = TTL_24H) -> None:
         await r.setex(key, ttl, json.dumps(value, default=str))
     except Exception:
         pass
+
+
+async def delete(key: str) -> None:
+    """Drop a cached entry. Used by mutation handlers that need to
+    invalidate state before its TTL expires (rating create/delete,
+    taste-profile updates). Silent on failure or when Redis is
+    disabled — the cache will just serve stale data for up to its
+    remaining TTL, which is acceptable degradation."""
+    try:
+        r = await _client()
+        if r is None:
+            return
+        await r.delete(key)
+    except Exception:
+        pass
