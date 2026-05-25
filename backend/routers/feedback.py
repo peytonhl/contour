@@ -32,8 +32,6 @@ backend run to require credentials, while still letting the frontend
 form validate against a live endpoint.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import os
