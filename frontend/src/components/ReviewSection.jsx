@@ -785,6 +785,30 @@ export function ReviewSection({ entityType, entityId, user }) {
     }
   }
 
+  // Misclick recovery — wipe both stars AND review for this entity in
+  // one shot. Distinct from handleDelete above, which only removes the
+  // review body and intentionally preserves the rating.
+  async function handleRemoveRating() {
+    if (!user) return;
+    const ok = window.confirm(
+      summary?.user_review
+        ? "Remove your rating AND your written review for this? This can't be undone."
+        : "Remove your rating for this? You can rate again afterwards."
+    );
+    if (!ok) return;
+    try {
+      await api.deleteRating(entityType, entityId);
+      // Local clear so the UI updates immediately even before the
+      // summary reload below settles.
+      setSelectedRating(null);
+      setReviewText("");
+      setShowForm(false);
+      await load(sort);
+    } catch (err) {
+      setError(err?.message || "Couldn't remove. Try again.");
+    }
+  }
+
   async function handleVote(reviewId, value) {
     if (!user) return;
     // Optimistic: derive what the new totals look like from the current row
@@ -862,6 +886,13 @@ export function ReviewSection({ entityType, entityId, user }) {
                 <button onClick={() => setShowForm((f) => !f)}
                   style={{ fontSize: 12, color: ACCENT, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
                   {summary?.user_review ? "Edit review" : "Write a review"}
+                </button>
+              )}
+              {selectedRating && !hover && (
+                <button onClick={handleRemoveRating}
+                  title="Remove your rating (misclick recovery)"
+                  style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                  Remove
                 </button>
               )}
             </div>

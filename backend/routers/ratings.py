@@ -325,6 +325,98 @@ async def _down_weight_from_rating(user_id: str, artist_id: str) -> None:
         await db.commit()
 
 
+async def _retract_artist_from_taste(
+    user_id: str, artist_id: str, deleted_value: float,
+) -> None:
+    """Reverse a single rating's contribution to the taste seed lists.
+
+    Called from delete_rating's background task. Inverse of
+    _update_taste_from_rating / _down_weight_from_rating, but ONLY
+    pulls the artist out of the seed list when the deleted rating was
+    the LAST of its sign for that artist. A user with three 5★ Drake
+    tracks who unrates one still has Drake in liked_artist_ids — only
+    the third (final) high-rating unrate removes him.
+
+    Why this matters: without retraction, the misclick recovery is
+    incomplete — the user sees the stars disappear but the algorithm
+    still treats the artist as a positive seed, so the feed keeps
+    pushing more of that artist. The user's whole point in asking for
+    "completely unrate" was to undo the misclick everywhere.
+
+    Note on profile.genres: NOT touched here. The genres pool is a
+    multi-source aggregate (onboarding picks + per-rating accretions
+    from many artists), so we can't cleanly attribute a single
+    rating's contribution. Users who want to scrub genre signal can
+    use /settings/taste-profile → "Clear genre picks". Same rationale
+    documented in delete_rating's docstring.
+
+    Sign rules:
+      • deleted_value ≥ HIGH_RATING_THRESHOLD → check liked_artist_ids
+      • deleted_value ≤ LOW_RATING_THRESHOLD  → check down_weighted_artist_ids
+      • In-between (neutral)                   → no-op
+    """
+    is_high = deleted_value >= HIGH_RATING_THRESHOLD
+    is_low = deleted_value <= LOW_RATING_THRESHOLD
+    if not (is_high or is_low):
+        return  # neutral rating contributed no seed signal — nothing to retract
+
+    async with AsyncSessionLocal() as db:
+        # Walk the user's remaining same-sign track ratings and check
+        # whether any other track-by-this-artist is still rated in the
+        # same band. SQL can't easily express "primary artist of the
+        # rated track equals X" since artist_ids is JSON, so pull and
+        # check in Python. Bounded by user's rating count — fast in
+        # practice (active raters cap at low hundreds).
+        threshold_clause = (
+            Rating.value >= HIGH_RATING_THRESHOLD if is_high
+            else Rating.value <= LOW_RATING_THRESHOLD
+        )
+        remaining_rows = (await db.execute(
+            select(TrackCache.artist_ids_json)
+            .select_from(Rating)
+            .join(TrackCache, Rating.entity_id == TrackCache.spotify_id)
+            .where(
+                Rating.user_id == user_id,
+                Rating.entity_type == "track",
+                threshold_clause,
+            )
+        )).scalars().all()
+
+        still_present = False
+        for aids_json in remaining_rows:
+            try:
+                ids = json.loads(aids_json or "[]")
+            except Exception:
+                continue
+            if ids and ids[0] == artist_id:
+                still_present = True
+                break
+        if still_present:
+            return  # other ratings still support this artist's seed status
+
+        profile = await db.get(UserTasteProfile, user_id)
+        if not profile:
+            return
+        if is_high and profile.liked_artist_ids:
+            try:
+                liked = json.loads(profile.liked_artist_ids or "[]")
+            except Exception:
+                liked = []
+            if artist_id in liked:
+                profile.liked_artist_ids = json.dumps([a for a in liked if a != artist_id])
+                profile.updated_at = datetime.utcnow()
+                await db.commit()
+        elif is_low and profile.down_weighted_artist_ids:
+            try:
+                down = json.loads(profile.down_weighted_artist_ids or "[]")
+            except Exception:
+                down = []
+            if artist_id in down:
+                profile.down_weighted_artist_ids = json.dumps([a for a in down if a != artist_id])
+                profile.updated_at = datetime.utcnow()
+                await db.commit()
+
+
 async def _record_dislike(user_id: str, artist_id: str) -> None:
     """
     Append artist_id to disliked_artist_ids — explicit "Not interested" click.
@@ -818,6 +910,130 @@ async def delete_review(
     await db.execute(delete(Review).where(Review.id == review_id))
     await db.commit()
     return {"ok": True}
+
+
+@router.delete("/{entity_type}/{entity_id}")
+async def delete_rating(
+    entity_type: str, entity_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(optional_user_id),
+):
+    """Misclick recovery — completely remove the caller's rating AND any
+    associated review for this entity.
+
+    Distinct from DELETE /reviews/{review_id}, which intentionally
+    preserves the rating (the "keep stars, drop body" semantics). This
+    endpoint is for the user-stated case of "I tapped the wrong thing
+    and want to fully undo," so we don't leave half-state behind.
+
+    Taste-profile retraction (since 2026-05-25): the deleted rating's
+    contribution to liked_artist_ids / down_weighted_artist_ids is
+    ALSO retracted when the deleted rating was the LAST of its sign
+    (high/low) for that artist. So unrating a misclick fully undoes
+    the misclick's effect on the feed — not just the visible stars.
+    User with three 5★ Drake tracks who unrates one still keeps Drake
+    in liked_artist_ids; only the final unrate removes the seed.
+    Background task — the response returns before the retraction
+    commits, but the next /feed request will see updated state.
+
+    NOT cleaned up by this endpoint:
+      • profile.genres — multi-source aggregate (onboarding picks +
+        per-rating accretions from many artists). Can't cleanly
+        attribute. Users who want to scrub genre signal go to
+        /settings/taste-profile → "Clear genre picks".
+      • Notifications already delivered for the review (best-effort —
+        the review row is gone so the notification's deep-link will
+        404, which is fine).
+
+    Returns 404 only when neither a Rating nor a Review exists for this
+    user+entity (genuinely nothing to delete). Partial state (only one
+    of the two existed) returns 200 with the per-row flags.
+    """
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in to unrate")
+    _validate_entity(entity_type, entity_id)
+
+    # Capture the rating's value + the primary artist BEFORE deleting,
+    # so the taste-retraction background task has the inputs it needs.
+    # Only matters for track ratings — albums don't contribute to
+    # artist-level seeds (the per-rating taste updaters early-out on
+    # non-track entity_type).
+    deleted_rating_value: Optional[float] = None
+    primary_artist_id: Optional[str] = None
+    if entity_type == "track":
+        prior_rating = (await db.execute(
+            select(Rating.value).where(
+                Rating.user_id == user_id,
+                Rating.entity_type == entity_type,
+                Rating.entity_id == entity_id,
+            )
+        )).scalar_one_or_none()
+        if prior_rating is not None:
+            deleted_rating_value = float(prior_rating)
+            artist_ids_json = (await db.execute(
+                select(TrackCache.artist_ids_json).where(TrackCache.spotify_id == entity_id)
+            )).scalar_one_or_none()
+            if artist_ids_json:
+                try:
+                    ids = json.loads(artist_ids_json or "[]")
+                    if ids:
+                        primary_artist_id = ids[0]
+                except Exception:
+                    primary_artist_id = None
+
+    rating_result = await db.execute(
+        delete(Rating).where(
+            Rating.user_id == user_id,
+            Rating.entity_type == entity_type,
+            Rating.entity_id == entity_id,
+        )
+    )
+    rating_deleted = (rating_result.rowcount or 0) > 0
+
+    # Cascade-delete any review on the same entity. Mirror the cascade
+    # ordering from delete_review() above — reply-votes before replies,
+    # otherwise the subquery loses its target IDs.
+    review = (await db.execute(
+        select(Review).where(
+            Review.user_id == user_id,
+            Review.entity_type == entity_type,
+            Review.entity_id == entity_id,
+        )
+    )).scalar_one_or_none()
+    review_deleted = False
+    if review:
+        review_id = review.id
+        reply_ids = [r[0] for r in (await db.execute(
+            select(ReviewReply.id).where(ReviewReply.review_id == review_id)
+        )).all()]
+        if reply_ids:
+            await db.execute(delete(ReviewReplyVote).where(ReviewReplyVote.reply_id.in_(reply_ids)))
+        await db.execute(delete(ReviewVote).where(ReviewVote.review_id == review_id))
+        await db.execute(delete(ReviewLike).where(ReviewLike.review_id == review_id))
+        await db.execute(delete(ReviewReply).where(ReviewReply.review_id == review_id))
+        await db.execute(delete(Review).where(Review.id == review_id))
+        review_deleted = True
+
+    await db.commit()
+
+    if not rating_deleted and not review_deleted:
+        raise HTTPException(status_code=404, detail="Nothing to delete")
+
+    # Background-retract the artist from taste seeds when this was the
+    # user's last high/low rating for that artist. See
+    # _retract_artist_from_taste for the sign rules + the "still rated
+    # by other tracks?" guard. Fire-and-forget — the response returns
+    # immediately, the next /feed reflects the updated state.
+    if rating_deleted and deleted_rating_value is not None and primary_artist_id:
+        asyncio.create_task(_retract_artist_from_taste(
+            user_id, primary_artist_id, deleted_rating_value,
+        ))
+
+    return {
+        "ok": True,
+        "rating_deleted": rating_deleted,
+        "review_deleted": review_deleted,
+    }
 
 
 @router.get("/{entity_type}/{entity_id}/reviews")

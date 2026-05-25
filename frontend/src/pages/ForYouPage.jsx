@@ -174,6 +174,18 @@ function markRatingSynced(trackId, syncedId = null) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(prev));
 }
 
+/** Drop a rating from local history — companion to recordRating, called
+ *  when the user explicitly unrates a track (misclick recovery). Without
+ *  this, syncOrphanedRatings would re-submit the deleted rating on the
+ *  next session and undo the user's unrate. */
+function forgetRating(trackId) {
+  const prev = loadHistory();
+  const next = prev.filter((h) => h.trackId !== trackId);
+  if (next.length !== prev.length) {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  }
+}
+
 const SPOTIFY_ID_RE = /^[A-Za-z0-9]{22}$/;
 
 /**
@@ -486,7 +498,7 @@ class CardErrorBoundary extends Component {
 }
 
 // ── Individual discover card ──────────────────────────────────────────────────
-function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEntityClick, userRating, cardIndex, totalCards }) {
+function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemoveRating, onEntityClick, userRating, cardIndex, totalCards }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   // Some Spotify/Deezer responses ship a track without album.images populated
@@ -637,6 +649,24 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
     setRatingStatus("saving");
     const ok = await onRate(track, value);
     setRatingStatus(ok ? "saved" : "failed");
+  }
+
+  // Misclick recovery on the deck. Clears the local stars + status
+  // immediately, then defers to the parent's onRemoveRating which
+  // handles the userRatings map, local-history forget, ratingCount
+  // decrement, and the backend DELETE call. We don't show a confirm
+  // here — the deck card surface is already throwaway (next swipe
+  // forgets it) and a confirm would feel heavy for "I tapped 4 by
+  // accident."
+  async function handleRemoveRatingLocal() {
+    setRatedValue(null);
+    setRatingStatus("idle");
+    setReviewOpen(false);
+    setSubmittedReview(null);
+    setShowActions(false);
+    if (onRemoveRating) {
+      try { await onRemoveRating(track); } catch {}
+    }
   }
 
   async function handleSubmitReview() {
@@ -867,6 +897,28 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onEnti
                 <YouTubeIcon size={16} />
                 <span>Search on YouTube</span>
               </a>
+              {/* Remove rating — only shown after the user has rated this
+                  card. Misclick recovery for the swipe-and-tap-by-mistake
+                  case (the rate gesture is one tap on a star, easy to
+                  trigger by accident on a small screen). Hidden when
+                  there's no rating to remove so the menu doesn't show
+                  dead options. */}
+              {ratedValue != null && (
+                <button
+                  onClick={() => { handleRemoveRatingLocal(); }}
+                  style={{ ...actionRowStyle, color: "var(--danger)" }}
+                  role="menuitem"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                  </svg>
+                  <span>Remove rating</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -2042,6 +2094,52 @@ function ForYouFeed() {
     }
   }
 
+  /**
+   * Misclick recovery — remove the user's rating (and any review) for
+   * this track. Inverse of handleRate.
+   *
+   *   1. Local map: drop track.id from userRatings so DiscoverCard
+   *      re-renders without a "Saved" badge.
+   *   2. Local history (recordRating's localStorage cache): drop the
+   *      entry via forgetRating so syncOrphanedRatings doesn't
+   *      re-submit it next session.
+   *   3. Cold-start counter: decrement ratingCount + sessionRatings so
+   *      the "rate X more" UX reflects the new total honestly.
+   *   4. Server: DELETE /ratings/{type}/{id}. Backend cascades the
+   *      taste-profile retraction (removes the artist from
+   *      liked/down_weighted seeds when this was the last same-sign
+   *      rating for that artist).
+   *
+   * Returns true on backend success, false otherwise. Local state is
+   * cleared optimistically and stays cleared even on backend failure —
+   * the user wanted to undo and we shouldn't fight them; the next
+   * session's orphan-sync won't try to recreate the rating because
+   * we've forgotten it locally.
+   */
+  async function handleRemoveRating(track) {
+    if (!track || !track.id) return false;
+    const hadRating = userRatings[track.id] != null;
+    setUserRatings((prev) => {
+      const next = { ...prev };
+      delete next[track.id];
+      return next;
+    });
+    forgetRating(track.id);
+    if (hadRating) {
+      setRatingCount((prev) => Math.max(0, prev - 1));
+      sessionRatingsRef.current = Math.max(0, sessionRatingsRef.current - 1);
+    }
+    analytics.forYouRatingRemoved?.(tierSourceOf(track));
+    try {
+      const spotifyId = await _resolveSpotifyId(track);
+      if (!spotifyId) return false;
+      await api.deleteRating("track", spotifyId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function handleReview(track, body, ratingValue, mentionUserIds) {
     try {
       const spotifyId = await _resolveSpotifyId(track);
@@ -2148,6 +2246,7 @@ function ForYouFeed() {
   const stableOnRate = useEvent(handleRate);
   const stableOnReview = useEvent(handleReview);
   const stableOnDislike = useEvent(handleDislike);
+  const stableOnRemoveRating = useEvent(handleRemoveRating);
   const stableOnEntityClick = useEvent(handleEntityClick);
 
   if (loading) {
@@ -2503,6 +2602,7 @@ function ForYouFeed() {
                     onRate={stableOnRate}
                     onReview={stableOnReview}
                     onDislike={stableOnDislike}
+                    onRemoveRating={stableOnRemoveRating}
                     onEntityClick={stableOnEntityClick}
                     userRating={userRatings[track.id] ?? null}
                     cardIndex={i}
@@ -2571,11 +2671,16 @@ export function ForYouPage() {
     try { localStorage.setItem(TABS_HINT_SEEN, "1"); } catch {}
   }
 
-  // Probe Community feed for newer-than-last-viewed activity. Pulls the
-  // top entry and compares its created_at to the stored "last opened
-  // this tab" timestamp. (The Friends probe was retired with the
-  // sub-tab itself; the same signal would belong on the bottom-nav
-  // /friends route now — a follow-up if we want a dot there.)
+  // Probe Community feed for newer-than-last-viewed activity. Pulls
+  // recent reviews and picks the newest one that ISN'T authored by the
+  // viewer — posting your own review shouldn't trigger your own badge
+  // (reported as confusing because the dot lit up the instant you
+  // submitted). The feed itself still shows your reviews mixed in
+  // chronologically; only the freshness signal excludes self.
+  //
+  // (The Friends probe was retired with the sub-tab itself; the same
+  // signal would belong on the bottom-nav /friends route now — a
+  // follow-up if we want a dot there.)
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -2583,7 +2688,12 @@ export function ForYouPage() {
       try {
         const reviews = await api.getGlobalReviews?.("recent", "all");
         if (cancelled) return;
-        const newest = reviews?.[0]?.created_at ? new Date(reviews[0].created_at).getTime() : 0;
+        const newestForeign = Array.isArray(reviews)
+          ? reviews.find((r) => r?.user?.id && r.user.id !== user.id)
+          : null;
+        const newest = newestForeign?.created_at
+          ? new Date(newestForeign.created_at).getTime()
+          : 0;
         setHasNewCommunity(newest > readTs(LAST_VIEW_COMMUNITY));
       } catch (e) {
         logSilentError("foryou_community_freshness_probe", e);

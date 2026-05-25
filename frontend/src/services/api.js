@@ -113,6 +113,10 @@ export const api = {
         ? { body, value, mention_user_ids: mentionUserIds }
         : { body, value }),
   deleteReview: (reviewId) => del(`/ratings/reviews/${reviewId}`),
+  // Misclick recovery — wipes both the star rating AND any review the user
+  // posted on this entity, in one round-trip. Distinct from deleteReview,
+  // which intentionally preserves the rating ("keep stars, drop body").
+  deleteRating: (entityType, entityId) => del(`/ratings/${entityType}/${entityId}`),
   // Reviews are paginated: response shape is { items, has_more, total }.
   // Default page size on the server is 20 (max 100). Sort runs over the
   // full pool before slicing so ranks stay stable across pages.
@@ -200,6 +204,11 @@ export const api = {
     post(`/notifications/unregister-token`, { token }),
   getNotificationPrefs: () => request(`/notifications/preferences`),
   updateNotificationPrefs: (prefs) => put(`/notifications/preferences`, prefs),
+
+  // Feedback — emails the operator. {email?, message}. Rate-limited
+  // 5/min server-side; UI should still debounce the submit button.
+  submitFeedback: ({ email = "", message }) =>
+    post(`/feedback`, { email, message }),
 
   // Profile update
   updateProfile: (bio) => patch(`/auth/profile`, { bio }),
