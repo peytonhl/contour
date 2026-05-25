@@ -1034,26 +1034,46 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
         </div>
       </div>
 
-      {/* Info + controls — bottom 35% of the card. Absolutely
-          positioned to match the cover region above (top:0..65%);
-          together they fully cover the card with no flex
-          computation. overflowY:auto inside lets long tracklist /
-          review content scroll within the section without affecting
-          the cover region's size.
+      {/* Info + controls — overlaps the bottom of the cover region by
+          ~7% so the track title visually sits ON the cover image
+          (magazine-caption / TikTok-style). Was top:65% (flush with
+          the cover's bottom edge); now top:58%, so the title h2 lands
+          at roughly card-height 60%, which is within the cover image's
+          painted area (image fills card 15-65% on a phone-shape card,
+          anchored to the bottom of the cover region).
+
+          Why this kills the "title moves under the cover during a
+          swipe" perception: previously, during a forward swipe, the
+          title and the NEXT card's rising cover were geometrically
+          adjacent but VISUALLY distinct objects — the cover (heavy
+          opaque image) felt "in front" and the title (lighter text)
+          felt "behind", so the user read the title as ducking
+          under the cover. With the title overlaid ON the cover of
+          its OWN card, title-and-cover become one composite element
+          that moves as a unit. There's nothing for the title to
+          "duck under" because it's already on top of its cover, and
+          the next card's title is similarly on top of ITS cover —
+          there's no cross-card layering perception during the
+          transition.
+
+          The bottom-darken gradient at card-root (top:45% → bottom:0)
+          already darkens this area, providing legibility for the
+          white text on top of the album art. The title also picks
+          up an explicit text-shadow below for extra contrast.
+
+          overflowY:auto inside lets long tracklist / review content
+          scroll within the section without affecting the cover
+          region's size.
 
           IMPORTANT: this section deliberately has NO own background.
           The card-root unified blurred backdrop + bottom-darken
-          gradient (above the cover region in the JSX) show through
-          here. That's what makes the cover area and info area read
-          as one continuous card surface instead of two stacked
-          panels. Don't add a `background:` property here unless you
-          ALSO want the visible seam back. */}
+          gradient show through here. */}
       <div style={{
-        position: "absolute", top: "65%", left: 0, right: 0, bottom: 0,
+        position: "absolute", top: "58%", left: 0, right: 0, bottom: 0,
         display: "flex", flexDirection: "column",
         padding: "14px 24px 12px",
         gap: 10, overflowY: "auto",
-        zIndex: 2,
+        zIndex: 3,
       }}>
 
         {/* Track info */}
@@ -1064,6 +1084,12 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
               color: "#fff", lineHeight: 1.2, flex: 1,
               overflow: "hidden", display: "-webkit-box",
               WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+              // Text shadow gives the title a clean lift over the
+              // album art it now sits on top of. The bottom-darken
+              // gradient handles the bulk of the contrast work, but
+              // on cards with very light album art the shadow makes
+              // the difference between "readable" and "ghosted".
+              textShadow: "0 2px 8px rgba(0, 0, 0, 0.55)",
             }}>
               {/* Always stay in-app: resolves Deezer tracks to Spotify on
                   click and navigates to the internal track page. Falls back
@@ -1080,7 +1106,14 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
               <span style={{ fontSize: 9, background: "rgba(255,255,255,0.15)", borderRadius: "var(--radius-sm)", padding: "2px 5px", color: "rgba(255,255,255,0.5)", fontWeight: 700, flexShrink: 0, marginTop: 2 }}>E</span>
             )}
           </div>
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{
+            fontSize: 13, color: "rgba(255,255,255,0.6)",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            // Same text-shadow logic as the title h2 — subtitle now
+            // sits on or just below the album art so it needs the
+            // same legibility boost on light covers.
+            textShadow: "0 1px 4px rgba(0, 0, 0, 0.5)",
+          }}>
             <a
               href={track._source === "deezer" ? "#" : artistPath(track.artist_ids?.[0])}
               onClick={(e) => { e.preventDefault(); onEntityClick?.(track, "artist"); }}
