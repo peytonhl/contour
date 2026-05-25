@@ -185,12 +185,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Request
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from constants import HIGH_RATING_THRESHOLD, LOW_RATING_THRESHOLD
 from database import get_db
-from models import AlbumCache, ArtistCache, Rating, TrackCache, UserTasteProfile
+from models import AlbumCache, ArtistCache, ArtistGenre, Rating, TrackCache, UserTasteProfile
 from routers.auth import optional_user_id, require_user_id
 from services import spotify
 from services import deezer as deezer_svc
@@ -915,6 +915,59 @@ async def _compute_target_popularity(db: AsyncSession, user_id: str) -> float | 
     return float(avg) if avg is not None else None
 
 
+async def _matching_artists_by_family_sql(
+    db: AsyncSession,
+    family_terms: list[str],
+) -> set[str]:
+    """Indexed-SQL replacement for the old "scan every ArtistCache row,
+    parse the genres JSON, run a Python substring loop" pattern.
+
+    For each family term (e.g. ["hip-hop", "hip hop", "rap", "trap"]
+    for the hip-hop slug), find artists in artist_genres whose
+    tag_name CONTAINS that term as a substring. SUM(tag_weight)
+    per artist; only return those whose summed weight clears the
+    weighted-confidence threshold (default 0.25, same as the
+    Python matcher).
+
+    The tag_name LIKE '%term%' clause is unsargable so it can't use
+    a BTree index for the substring match itself — but the per-row
+    payload is tiny (one tag, one weight) and we're scanning a
+    bounded table (~15 rows per artist), so even a full
+    artist_genres scan at 100k artists / 1.5M rows beats the
+    previous full ArtistCache scan + JSON parse + alias loop
+    handily. If perf-critical at very large scale, pre-explode
+    alias terms at write time or add pg_trgm.
+
+    Returns the set of artist_ids that pass.
+    """
+    if not family_terms:
+        return set()
+
+    from services.spotify import _GENRE_MATCH_CONFIDENCE_THRESHOLD
+
+    like_clauses = []
+    for term in family_terms:
+        t = (term or "").strip().lower()
+        if not t:
+            continue
+        # Escape LIKE meta-chars in the family term. The terms come
+        # from the static alias table so injection isn't possible,
+        # but defensive escape ensures "r&b" / "_funk" / "100%" don't
+        # match unintended patterns.
+        safe = t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like_clauses.append(ArtistGenre.tag_name.like(f"%{safe}%", escape="\\"))
+    if not like_clauses:
+        return set()
+
+    rows = (await db.execute(
+        select(ArtistGenre.artist_id)
+        .where(or_(*like_clauses))
+        .group_by(ArtistGenre.artist_id)
+        .having(func.sum(ArtistGenre.tag_weight) >= _GENRE_MATCH_CONFIDENCE_THRESHOLD)
+    )).all()
+    return {r.artist_id for r in rows}
+
+
 async def _compute_user_genre_signal(
     db: AsyncSession, user_id: str, eligible_genres: list[str],
 ) -> dict[str, tuple[int, Optional[float]]]:
@@ -942,83 +995,66 @@ async def _compute_user_genre_signal(
          search toward popularity 80" effect that left users seeing only
          mainstream when they had cross-genre tastes.
 
-    Implementation: one Rating × TrackCache join for the popularity +
-    primary-artist-id, then one ArtistCache lookup for the artist-genre
-    map. Total: 2 queries regardless of rating count. Uses the same
-    `_genre_match_terms` from spotify.py so genre matching is consistent
-    with the existing artist-genre verification filter.
+    Implementation: pull the user's 4-5★ track ratings as
+    (popularity, primary_artist_id) once, then per-genre run an
+    indexed lookup against artist_genres to find the matching artist
+    set and bucket the user's ratings. With N eligible genres this
+    is 1 + N indexed queries — at 5-10 slugs the total is
+    <50ms even at large catalog sizes.
     """
     if not eligible_genres:
         return {}
 
-    # One row per 4-5★ rated track: (popularity, primary_artist_id)
+    # One row per 4-5★ rated track: (popularity, primary_artist_id).
+    # primary_artist_id is the new indexed column (a7b8c9d0e1f2);
+    # no JSON parse required.
     rows = (await db.execute(
-        select(TrackCache.popularity, TrackCache.artist_ids_json)
+        select(TrackCache.popularity, TrackCache.primary_artist_id)
         .select_from(Rating)
         .join(TrackCache, Rating.entity_id == TrackCache.spotify_id)
         .where(
             Rating.user_id == user_id,
             Rating.entity_type == "track",
             Rating.value >= HIGH_RATING_THRESHOLD,
+            TrackCache.primary_artist_id.is_not(None),
         )
     )).all()
     if not rows:
         return {}
 
-    # Bucket popularity values by primary artist ID. Same artist rated
+    # Bucket popularity values by primary artist id. Same artist rated
     # multiple times contributes its rating count to its genre buckets
     # multiple times.
     artist_pops: dict[str, list[Optional[int]]] = {}
-    for pop, aids_json in rows:
-        try:
-            ids = json.loads(aids_json or "[]")
-            if ids:
-                artist_pops.setdefault(ids[0], []).append(pop)
-        except Exception:
-            continue
+    for pop, aid in rows:
+        if aid:
+            artist_pops.setdefault(aid, []).append(pop)
     if not artist_pops:
         return {}
 
-    artist_rows = (await db.execute(
-        select(ArtistCache.spotify_id, ArtistCache.genres)
-        .where(ArtistCache.spotify_id.in_(artist_pops.keys()))
-    )).all()
-    # Map each artist to their normalized (tag, weight) list. Handles
-    # both the new [{name, count}] storage format and the legacy
-    # string-list format via _normalize_genres_data.
-    from services.spotify import (
-        _genre_match_terms,
-        _normalize_genres_data,
-        _artist_matches_genre_family,
-    )
-    artist_genre_map: dict[str, list[tuple[str, float]]] = {}
-    for sid, gj in artist_rows:
-        if gj:
-            artist_genre_map[sid] = _normalize_genres_data(gj)
+    from services.spotify import _genre_match_terms
 
-    match_terms = {g: _genre_match_terms(g) for g in eligible_genres}
-
-    counts: dict[str, int] = {g: 0 for g in eligible_genres}
-    pop_buckets: dict[str, list[int]] = {g: [] for g in eligible_genres}
-    for aid, pops in artist_pops.items():
-        genres_data = artist_genre_map.get(aid)
-        if not genres_data:
-            continue
-        # Use the SAME weighted matcher as artist-genre verification —
-        # an artist only contributes to a genre's affinity if their
-        # tag-confidence in that family clears the threshold. So a
-        # Bieber prank tag at 24% in metal doesn't add Bieber's pop
-        # ratings to the user's metal affinity.
-        for slug, terms in match_terms.items():
-            if _artist_matches_genre_family(genres_data, terms):
-                counts[slug] += len(pops)
-                pop_buckets[slug].extend(p for p in pops if p is not None)
-
+    # Per-genre indexed artist lookup. Each call hits artist_genres
+    # via the indexed tag_name LIKE chain + tag-weight HAVING clause
+    # — server-side weighted matcher, no Python loop, no JSON parse.
     out: dict[str, tuple[int, Optional[float]]] = {}
-    for g in eligible_genres:
-        bucket = pop_buckets[g]
-        avg = sum(bucket) / len(bucket) if bucket else None
-        out[g] = (counts[g], avg)
+    for slug in eligible_genres:
+        terms = _genre_match_terms(slug)
+        matching_artists = await _matching_artists_by_family_sql(db, terms)
+        # Intersect with the user's rated-artist set so we only count
+        # ratings of artists the user has actually engaged with.
+        relevant = matching_artists & artist_pops.keys()
+        count = 0
+        pop_sum = 0
+        pop_n = 0
+        for aid in relevant:
+            for p in artist_pops[aid]:
+                count += 1
+                if p is not None:
+                    pop_sum += p
+                    pop_n += 1
+        avg = (pop_sum / pop_n) if pop_n else None
+        out[slug] = (count, avg)
     return out
 
 
@@ -1055,74 +1091,67 @@ async def _compute_user_subgenre_tags(
     Returns a list of {tag, weight, artist_count}, sorted by aggregate
     weight desc, capped at top_k.
     """
-    # Step 1: walk high ratings → primary artist IDs
-    rows = (await db.execute(
-        select(TrackCache.artist_ids_json)
+    # Step 1: high-rated primary artists, via the indexed
+    # primary_artist_id column (no JSON parse).
+    artist_ids_rows = (await db.execute(
+        select(TrackCache.primary_artist_id)
         .select_from(Rating)
         .join(TrackCache, Rating.entity_id == TrackCache.spotify_id)
         .where(
             Rating.user_id == user_id,
             Rating.entity_type == "track",
             Rating.value >= HIGH_RATING_THRESHOLD,
+            TrackCache.primary_artist_id.is_not(None),
         )
+        .distinct()
     )).scalars().all()
-    artist_ids: set[str] = set()
-    for aids_json in rows:
-        try:
-            ids = json.loads(aids_json or "[]")
-            if ids:
-                artist_ids.add(ids[0])
-        except Exception:
-            continue
+    artist_ids: set[str] = {aid for aid in artist_ids_rows if aid}
     if not artist_ids:
         return []
 
-    # Step 2: pull those artists' Last.fm tag weights
-    artist_rows = (await db.execute(
-        select(ArtistCache.spotify_id, ArtistCache.genres)
-        .where(ArtistCache.spotify_id.in_(artist_ids))
+    # Step 2: aggregate tag weights across those artists via the
+    # indexed artist_genres table. SUM(weight) + COUNT(DISTINCT
+    # artist) per tag, all server-side. ORDER BY total_weight DESC
+    # so the threshold + dedup loop below only walks the most
+    # relevant tags.
+    tag_rows = (await db.execute(
+        select(
+            ArtistGenre.tag_name,
+            func.sum(ArtistGenre.tag_weight).label("total_weight"),
+            func.count(func.distinct(ArtistGenre.artist_id)).label("artist_count"),
+        )
+        .where(ArtistGenre.artist_id.in_(artist_ids))
+        .group_by(ArtistGenre.tag_name)
+        .having(func.count(func.distinct(ArtistGenre.artist_id)) >= min_artists)
+        .order_by(func.sum(ArtistGenre.tag_weight).desc())
+        .limit(top_k * 4)  # over-fetch so the picker-alias filter
+                            # below has slack before falling under top_k
     )).all()
 
-    from services.spotify import _normalize_genres_data, _genre_match_terms
-
-    # Step 3: covered-term set from picker genres. Exact-match check —
-    # we only filter out tags that PRECISELY equal an alias term, not
-    # tags that contain one as a substring. "underground hip hop"
-    # should still surface as a subgenre even though "hip hop" is in
-    # the alias family — the picker-genre tier matches it incidentally
-    # but doesn't bias the catalog toward it the way an explicit
-    # underground-hip-hop query would.
+    # Picker-alias filter (Python-side because the substring check
+    # against the static alias table doesn't translate cleanly to
+    # SQL). Exact-match against the lower-cased term list — see the
+    # original comment for the "underground hip hop should surface
+    # even when hip-hop is picked" rationale.
+    from services.spotify import _genre_match_terms
     covered_terms: set[str] = set()
     for slug in eligible_genres:
         for term in _genre_match_terms(slug):
             covered_terms.add((term or "").lower().strip())
 
-    # Step 4: aggregate by tag
-    tag_weight: dict[str, float] = {}
-    tag_artists: dict[str, set[str]] = {}
-    for sid, gj in artist_rows:
-        if not gj:
-            continue
-        for tag, weight in _normalize_genres_data(gj):
-            tl = (tag or "").strip().lower()
-            if not tl or tl in covered_terms:
-                continue
-            tag_weight[tl] = tag_weight.get(tl, 0.0) + weight
-            tag_artists.setdefault(tl, set()).add(sid)
-
-    # Step 5: threshold and rank
     out: list[dict] = []
-    for tag, w in tag_weight.items():
-        n_artists = len(tag_artists[tag])
-        if n_artists < min_artists:
+    for row in tag_rows:
+        tag = (row.tag_name or "").strip().lower()
+        if not tag or tag in covered_terms:
             continue
         out.append({
             "tag": tag,
-            "weight": round(w, 4),
-            "artist_count": n_artists,
+            "weight": round(float(row.total_weight or 0.0), 4),
+            "artist_count": int(row.artist_count or 0),
         })
-    out.sort(key=lambda x: x["weight"], reverse=True)
-    return out[:top_k]
+        if len(out) >= top_k:
+            break
+    return out
 
 
 async def _fetch_genre_tracks_from_catalog(
@@ -1158,62 +1187,51 @@ async def _fetch_genre_tracks_from_catalog(
         for this genre family). Caller falls through to Spotify tier.
       - All matching tracks are in exclude_track_ids. Same fallback.
     """
-    from services.spotify import (
-        _genre_match_terms,
-        _normalize_genres_data,
-        _artist_matches_genre_family,
-    )
+    from services.spotify import _genre_match_terms
 
     match_terms = _genre_match_terms(genre)
 
-    # Step 1: artists tagged with the genre family, gated by weighted
-    # confidence (default ≥20% of their Last.fm tag-count mass matches
-    # the family). Drops the Bieber-style prank-tag cross-contamination
-    # — same threshold logic as _filter_pool_by_artist_genre uses on
-    # Spotify-sourced pools, so tier 0 (catalog) and tier 1 (Spotify)
-    # converge on the same answer for whether an artist is "in" a genre.
-    artist_rows = (await db.execute(
-        select(ArtistCache.spotify_id, ArtistCache.genres)
-        .where(ArtistCache.genres.is_not(None))
-    )).all()
-
-    matching_artist_ids: set[str] = set()
-    for sid, gj in artist_rows:
-        genres_data = _normalize_genres_data(gj)
-        if _artist_matches_genre_family(genres_data, match_terms):
-            matching_artist_ids.add(sid)
-
-    # Remove excluded artists upfront
+    # Step 1: artists tagged with the genre family — indexed lookup
+    # via artist_genres (migration a7b8c9d0e1f2). Server-side
+    # SUM(tag_weight) HAVING threshold replaces the Python loop +
+    # JSON parse + alias substring check the previous version ran.
+    # Same weighted-confidence semantics; the threshold lives in
+    # services.spotify._GENRE_MATCH_CONFIDENCE_THRESHOLD.
+    matching_artist_ids = await _matching_artists_by_family_sql(db, match_terms)
     matching_artist_ids -= excluded_artist_ids
     if not matching_artist_ids:
         return []
 
-    # Step 2: tracks whose primary artist is in the matching set. Same
-    # portability constraint — can't filter `artist_ids_json[0] IN ...`
-    # in DB-agnostic SQL, so pull and filter in Python. Cap the pull
-    # generously: with 909 tracks total, scanning all is cheap.
-    track_rows = (await db.execute(
-        select(TrackCache).where(
-            TrackCache.artist_ids_json.is_not(None),
-            TrackCache.image_url.is_not(None),  # need album art for the deck
+    # Step 2: tracks whose primary artist is in the matching set.
+    # Indexed lookup via track_cache.primary_artist_id (also
+    # migration a7b8c9d0e1f2). No more full-table scan + JSON parse.
+    track_query = (
+        select(TrackCache)
+        .where(
+            TrackCache.primary_artist_id.in_(matching_artist_ids),
+            TrackCache.image_url.is_not(None),  # need album art
         )
+    )
+    if exclude_track_ids:
+        # In-clause on the rated/exclude set — bounded to a few
+        # hundred entries in practice (per-session shown list +
+        # rated tracks), well within Postgres's parameter limit.
+        track_query = track_query.where(
+            TrackCache.spotify_id.notin_(exclude_track_ids)
+        )
+    track_rows = (await db.execute(
+        track_query.limit(500)  # generous cap for shuffle-and-slice
     )).scalars().all()
 
     candidates: list[dict] = []
     for t in track_rows:
-        if t.spotify_id in exclude_track_ids:
-            continue
+        # artist_ids_json still parsed for the response shape (callers
+        # expect the full list, not just the primary). Failed parses
+        # surface the primary id alone — bounded shape, no crash.
         try:
             ids = json.loads(t.artist_ids_json or "[]")
-            if not ids:
-                continue
-            primary = ids[0]
-            if primary not in matching_artist_ids:
-                continue
         except Exception:
-            continue
-        # Parse into the same dict shape that spotify.search_tracks_by_genre
-        # returns, so the downstream pipeline doesn't care about the source.
+            ids = [t.primary_artist_id] if t.primary_artist_id else []
         candidates.append({
             "id": t.spotify_id,
             "name": t.name,
@@ -1407,34 +1425,37 @@ async def _fetch_similar_artist_tracks(
     debug["catalog_matched_artists"] = len(matched_id_to_name_key)
 
     catalog_tracks: list[dict] = []
+    per_artist: dict[str, list[dict]] = {}
     if matched_id_to_name_key:
-        # Step 4: pull tracks by primary artist from TrackCache. Same
-        # portability constraint as the genre-catalog tier — first-elem of
-        # the JSON list can't be filtered in DB-agnostic SQL, so we pull
-        # candidate tracks and filter in Python. Pulling only rows that
-        # have BOTH a primary-artist JSON and an image_url keeps the
-        # candidate set small.
-        track_rows = (await db.execute(
-            select(TrackCache).where(
-                TrackCache.artist_ids_json.is_not(None),
+        # Step 4: tracks by primary_artist_id via the indexed
+        # track_cache.primary_artist_id column (migration
+        # a7b8c9d0e1f2). Single SELECT scoped to the matched-artist
+        # IDs — no full-table scan, no JSON parse for the filter
+        # decision.
+        track_query = (
+            select(TrackCache)
+            .where(
+                TrackCache.primary_artist_id.in_(matched_id_to_name_key.keys()),
                 TrackCache.image_url.is_not(None),
             )
-        )).scalars().all()
-        per_artist: dict[str, list[dict]] = {sid: [] for sid in matched_id_to_name_key}
+        )
+        if exclude_track_ids:
+            track_query = track_query.where(
+                TrackCache.spotify_id.notin_(exclude_track_ids)
+            )
+        track_rows = (await db.execute(track_query)).scalars().all()
+
+        per_artist = {sid: [] for sid in matched_id_to_name_key}
         for t in track_rows:
-            if t.spotify_id in exclude_track_ids:
-                continue
-            try:
-                ids = json.loads(t.artist_ids_json or "[]")
-                if not ids:
-                    continue
-                primary = ids[0]
-            except Exception:
-                continue
-            if primary not in per_artist:
+            primary = t.primary_artist_id
+            if not primary or primary not in per_artist:
                 continue
             if len(per_artist[primary]) >= per_artist_cap:
                 continue
+            try:
+                ids = json.loads(t.artist_ids_json or "[]")
+            except Exception:
+                ids = [primary]
             per_artist[primary].append({
                 "id": t.spotify_id,
                 "name": t.name,
@@ -1452,8 +1473,8 @@ async def _fetch_similar_artist_tracks(
                 "_source": "catalog_neighbor",
                 "_match_score": agg_match.get(matched_id_to_name_key[primary], 0.0),
             })
-        # Flatten; per-artist shuffled to avoid one artist's whole top-3
-        # always appearing in the same order across batches.
+        # Flatten; per-artist shuffled so one artist's top-3 don't
+        # always appear in the same order across batches.
         for sid, ts in per_artist.items():
             random.shuffle(ts)
             catalog_tracks.extend(ts)

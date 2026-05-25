@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, DateTime, Float, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -274,6 +274,15 @@ class TrackCache(Base):
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     external_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     artist_ids_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
+    # Denormalized first element of artist_ids_json — the track's
+    # primary artist. Indexed so "find all tracks where primary artist
+    # is X" is a single B-tree lookup instead of a full TrackCache
+    # scan + Python JSON parse. Same data as artist_ids_json[0]; the
+    # JSON column stays as the canonical store (preserves featured-
+    # artist ordering), the column here is purely a queryable index.
+    # Populated by services.spotify._persist_track_to_db on every
+    # upsert + backfilled by migration a7b8c9d0e1f2.
+    primary_artist_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
 
 
 class AlbumCache(Base):
@@ -324,6 +333,57 @@ class ArtistCache(Base):
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     popularity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     meta_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class ArtistGenre(Base):
+    """Many-to-many join: artist → Last.fm tags with weights.
+
+    Derived from ArtistCache.genres (JSON), which remains the
+    canonical store. This table exists purely as a queryable index —
+    "find every artist tagged 'hip-hop'" goes from a full ArtistCache
+    scan + Python JSON parse + per-tag substring loop to a single
+    indexed SQL query.
+
+    Sync rules:
+      - On every successful ArtistCache.genres write (via
+        services.spotify._fetch_and_persist_artist_genres), the
+        artist's existing rows here are deleted and replaced with
+        the new tag set. Stale rows can't outlive a successful
+        re-fetch.
+      - The JSON column stays the source of truth for downstream
+        consumers (/me-state debug, probes, the legacy
+        _normalize_genres_data shim) — this table is derived. If
+        the two disagree, the JSON wins; re-run the artist's
+        reconciler to repair.
+
+    Each row stores tag_weight = the tag's share of the artist's
+    total tag-count mass on Last.fm (so a sum across an artist's
+    rows = 1.0, modulo equal-weighting for legacy untyped tags).
+    The weighted-confidence matcher (threshold 0.25) is now a
+    SQL HAVING SUM(tag_weight) >= 0.25, no Python loop.
+    """
+    __tablename__ = "artist_genres"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    artist_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Lowercased tag name (matches _normalize_genres_data output).
+    # 128 chars is generous — most tags are short (rock, hip-hop)
+    # but Last.fm allows long compound tags ("seen them live" etc.
+    # which we ignore at the filter layer but still store).
+    tag_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    tag_weight: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        # Hot path: "find artists matching family X" → SELECT artist_id
+        # WHERE tag_name LIKE '%X%' or tag_name IN (...). Index on
+        # tag_name speeds the equality form (most common path after
+        # alias expansion); LIKE '%X%' is unsargable but still
+        # benefits from the smaller per-row payload vs ArtistCache.
+        Index("ix_artist_genres_tag_name", "tag_name"),
+        # Hot path: "what tags does artist Y have" + dedupe write
+        # constraint. Unique because each (artist, tag) is one row.
+        Index("ix_artist_genres_artist_tag", "artist_id", "tag_name", unique=True),
+    )
 
 
 class UserBlock(Base):

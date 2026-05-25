@@ -114,8 +114,15 @@ async def _persist_track_to_db(meta: dict) -> None:
             existing = (await session.execute(
                 select(TrackCache).where(TrackCache.spotify_id == meta["id"])
             )).scalar_one_or_none()
-            artist_ids_json = json.dumps(meta.get("artist_ids", []))
+            artist_ids = meta.get("artist_ids", []) or []
+            artist_ids_json = json.dumps(artist_ids)
             artist_str = ", ".join(meta.get("artists", []))
+            # Denormalized index column — same value as artist_ids[0]
+            # but stored as a real column so genre/similar-artist
+            # catalog queries can use the (indexed) primary_artist_id
+            # instead of full-table scans + JSON parsing. None when
+            # the track has no credited artist IDs (rare).
+            primary_artist_id = artist_ids[0] if artist_ids else None
             if existing:
                 existing.name = meta.get("name") or existing.name
                 existing.artist = artist_str or existing.artist
@@ -136,6 +143,8 @@ async def _persist_track_to_db(meta: dict) -> None:
                 existing.image_url = meta.get("image_url") or existing.image_url
                 existing.external_url = meta.get("external_url") or existing.external_url
                 existing.artist_ids_json = artist_ids_json
+                if primary_artist_id:
+                    existing.primary_artist_id = primary_artist_id
                 outcome = "updated"
                 delta = {"updated_total": 1}
             else:
@@ -152,6 +161,7 @@ async def _persist_track_to_db(meta: dict) -> None:
                     image_url=meta.get("image_url"),
                     external_url=meta.get("external_url"),
                     artist_ids_json=artist_ids_json,
+                    primary_artist_id=primary_artist_id,
                 ))
                 outcome = "inserted"
                 delta = {"inserted_total": 1}
@@ -1045,6 +1055,33 @@ async def _bulk_upsert_artists_to_cache(records: list[dict]) -> None:
                     popularity=r.get("popularity"),
                     meta_fetched_at=now,
                 ))
+
+            # Sync the derived artist_genres join table. The JSON
+            # column above stays the source of truth; this table
+            # is the indexed view for "find artists matching tag X"
+            # queries. Delete + reinsert per artist so stale tags
+            # (e.g. an artist that previously had "metal" tagged in
+            # error and the canonical now lists pop/rock) don't
+            # outlive a successful re-fetch.
+            from models import ArtistGenre
+            from sqlalchemy import delete as sa_delete
+            await session.execute(
+                sa_delete(ArtistGenre).where(ArtistGenre.artist_id.in_(ids))
+            )
+            for aid in ids:
+                r = records_by_id[aid]
+                seen_tags: set[str] = set()
+                for tag_weight_pair in _normalize_genres_data(_json.dumps(r["genres"])):
+                    tag, weight = tag_weight_pair
+                    t = (tag or "").strip().lower()
+                    if not t or t in seen_tags:
+                        continue
+                    seen_tags.add(t)
+                    session.add(ArtistGenre(
+                        artist_id=aid,
+                        tag_name=t,
+                        tag_weight=float(weight),
+                    ))
 
             await session.commit()
             _log.info(
