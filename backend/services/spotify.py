@@ -1605,9 +1605,16 @@ async def get_global_top_tracks(limit: int = 10) -> list[dict]:
         for q in queries:
             if len(all_tracks) >= limit * 3:
                 break
+            # limit=10 is the cap for our app tier. /v1/search rejects
+            # anything above 10 with a disguised 400 "Invalid limit"
+            # (see memory feedback_spotify_invalid_limit). Until 2026-05-25
+            # this was limit=20 → every query returned 400 → /featured's
+            # top_tracks half was permanently empty. CLAUDE.md's "limit=20
+            # is safe" rule applies to /artists/{id}/albums only, NOT to
+            # /v1/search.
             resp = await _spotify_get(
                 client, "https://api.spotify.com/v1/search", token,
-                params={"q": q, "type": "track", "limit": 20, "market": "US"},
+                params={"q": q, "type": "track", "limit": 10, "market": "US"},
             )
             if resp.status_code != 200:
                 continue
