@@ -11,6 +11,7 @@ import { PenIcon } from "./Icons.jsx";
 import { userPath } from "../constants/routes.js";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD, DANGER } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
+import { useCachedFetch } from "../utils/useCachedFetch.js";
 
 // Entity-type tag colors used app-wide (Compare uses the same mapping):
 // album → ACCENT_A, track → ACCENT_B, artist → ACCENT_C.
@@ -190,30 +191,38 @@ function ReviewCardItem({ item, user, onVote, badges }) {
 export function GlobalReviewsFeed() {
   const { user } = useAuth();
   const [sort, setSort] = useState("recent");
-  const [reviews, setReviews] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [badges, setBadges] = useState(null);
 
-  useEffect(() => {
-    api.getBadges().then(setBadges).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    setLoading(true);
-    api.getGlobalReviews(sort)
-      .then(setReviews)
-      .catch(() => setReviews([]))
-      .finally(() => setLoading(false));
-  }, [sort]);
+  // Cache per (surface, sort) — switching Recent ↔ Top ↔ Controversial
+  // and back is instant the second time around. Vote mutations update
+  // the cache in-place via `mutate` so the next tab return shows the
+  // updated counts without a refetch.
+  const {
+    data: reviews,
+    loading,
+    mutate: mutateReviews,
+  } = useCachedFetch(
+    `community:reviews:${sort}`,
+    () => api.getGlobalReviews(sort),
+  );
+  const { data: badges } = useCachedFetch(
+    "community:badges",
+    () => api.getBadges(),
+    { freshMs: 5 * 60_000 }, // badges drift slowly; 5min fresh window
+  );
 
   function handleVote(reviewId, value) {
-    if (!user) return;
+    if (!user || !reviews) return;
     api.voteReview(reviewId, value).then((res) => {
-      setReviews((prev) => prev.map((r) =>
-        r.id === reviewId ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote } : r
-      ));
+      const next = reviews.map((r) =>
+        r.id === reviewId
+          ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote }
+          : r
+      );
+      mutateReviews(next);
     });
   }
+
+  const reviewsList = reviews ?? [];
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 20px" }}>
@@ -250,13 +259,13 @@ export function GlobalReviewsFeed() {
       {loading && (
         <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>
       )}
-      {!loading && reviews.length === 0 && (
+      {!loading && reviewsList.length === 0 && (
         <EmptyState
           icon={<PenIcon size={28} />}
           description="No reviews yet. Be the first to write one."
         />
       )}
-      {!loading && reviews.map((item) => (
+      {!loading && reviewsList.map((item) => (
         <ReviewCardItem key={item.id} item={item} user={user} onVote={handleVote} badges={badges} />
       ))}
     </div>

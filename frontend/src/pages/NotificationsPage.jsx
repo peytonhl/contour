@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -7,6 +7,7 @@ import { EmptyState } from "../components/EmptyState.jsx";
 import { ACCENT_A } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
 import { userPath } from "../constants/routes.js";
+import { useCachedFetch } from "../utils/useCachedFetch.js";
 
 function timeAgo(iso) {
   // Backend serializes naive UTC; treat tz-less strings as UTC so non-UTC
@@ -55,18 +56,26 @@ function notifLink(n) {
 export function NotificationsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [notifs, setNotifs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Cache the list so opening Notifications and re-opening it later
+  // doesn't re-fetch on every mount. SWR semantics — see
+  // utils/useCachedFetch.js for the full contract.
+  const { data: notifs, loading } = useCachedFetch(
+    user ? `notifications:${user.id}` : null,
+    () => api.getNotifications(),
+    { enabled: !!user },
+  );
 
+  // Mark-as-read is a side-effect of *visiting* the page, not of the
+  // data fetch. Fire it on every mount independent of cache freshness
+  // — viewing the page is what dismisses the badge, even if we don't
+  // re-fetch the list itself.
   useEffect(() => {
     if (!user) { navigate("/"); return; }
-    api.getNotifications()
-      .then((data) => { setNotifs(data); api.markNotificationsRead(); })
-      .catch(() => setNotifs([]))
-      .finally(() => setLoading(false));
-  }, [user]);
+    api.markNotificationsRead().catch(() => {});
+  }, [user, navigate]);
 
   if (!user) return null;
+  const notifsList = notifs ?? [];
 
   return (
     <div style={{ maxWidth: 600, margin: "0 auto", padding: "32px 20px 60px", display: "flex", flexDirection: "column", gap: 20 }}>
@@ -75,7 +84,7 @@ export function NotificationsPage() {
 
       {loading && <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>Loading…</div>}
 
-      {!loading && notifs.length === 0 && (
+      {!loading && notifsList.length === 0 && (
         <EmptyState
           icon={<BellIcon size={32} />}
           title="Nothing yet"
@@ -83,16 +92,16 @@ export function NotificationsPage() {
         />
       )}
 
-      {!loading && notifs.length > 0 && (
+      {!loading && notifsList.length > 0 && (
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-          {notifs.map((n, i) => {
+          {notifsList.map((n, i) => {
             const link = notifLink(n);
             const content = (
               <div
                 style={{
                   display: "flex", alignItems: "center", gap: 14,
                   padding: "14px 16px",
-                  borderBottom: i < notifs.length - 1 ? "1px solid var(--border)" : "none",
+                  borderBottom: i < notifsList.length - 1 ? "1px solid var(--border)" : "none",
                   background: n.read ? "transparent" : `${ACCENT_A}08`,
                   transition: "background 0.1s",
                   cursor: link ? "pointer" : "default",

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { api } from "../services/api.js";
 import { analytics, identify, reset } from "../services/analytics.js";
 import { usePushNotifications, unregisterCurrentDevice } from "../services/pushNotifications.js";
+import { clearAllCaches } from "../utils/useCachedFetch.js";
 
 const AuthContext = createContext(null);
 
@@ -84,6 +85,10 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("contour_token");
     setUser(null);
     reset();
+    // Drop every module-level fetch cache so the next sign-in (or the
+    // sign-in gate the user lands on right now) doesn't render the
+    // previous account's data.
+    clearAllCaches();
   }
 
   // Hook into the push-notification lifecycle. No-ops on web; on native

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useCachedFetch } from "../utils/useCachedFetch.js";
 import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
@@ -363,30 +364,33 @@ function SearchChips({ items, surface }) {
 
 export function TrendingPage() {
   const [window, setWindow] = useState("7d");
-  const [albums, setAlbums] = useState(null);
-  const [reviews, setReviews] = useState(null);
-  const [backlogged, setBacklogged] = useState(null);
-  const [searched, setSearched] = useState(null);
 
   useEffect(() => {
     analytics.trendingPageViewed();
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    // Reset to skeleton state on window change.
-    setAlbums(null); setReviews(null); setBacklogged(null); setSearched(null);
-    Promise.all([
-      api.getTrendingAlbums(window, 20).catch(() => ({ items: [], label: "Trending" })),
-      api.getTrendingReviews(window, 10).catch(() => ({ items: [], label: "Trending" })),
-      api.getTrendingBacklogged(window, 20).catch(() => ({ items: [], label: "Trending" })),
-      api.getTrendingSearched(window, 12).catch(() => ({ items: [], label: "Trending" })),
-    ]).then(([a, r, b, s]) => {
-      if (cancelled) return;
-      setAlbums(a); setReviews(r); setBacklogged(b); setSearched(s);
-    });
-    return () => { cancelled = true; };
-  }, [window]);
+  // Cached fetch per window. Different `window` value → different cache
+  // key → switching back to a previously-viewed window is instant.
+  // Each of the four trending lists has its own cache slot so a slow
+  // backlog fetch doesn't block the albums hero from rendering. The
+  // explicit .catch wraps preserve the "page never errors out on a
+  // single trending endpoint failure" behavior of the previous code.
+  const { data: albums } = useCachedFetch(
+    `trending:albums:${window}`,
+    () => api.getTrendingAlbums(window, 20).catch(() => ({ items: [], label: "Trending" })),
+  );
+  const { data: reviews } = useCachedFetch(
+    `trending:reviews:${window}`,
+    () => api.getTrendingReviews(window, 10).catch(() => ({ items: [], label: "Trending" })),
+  );
+  const { data: backlogged } = useCachedFetch(
+    `trending:backlogged:${window}`,
+    () => api.getTrendingBacklogged(window, 20).catch(() => ({ items: [], label: "Trending" })),
+  );
+  const { data: searched } = useCachedFetch(
+    `trending:searched:${window}`,
+    () => api.getTrendingSearched(window, 12).catch(() => ({ items: [], label: "Trending" })),
+  );
 
   const heroAlbum = albums?.items?.[0];
   const restAlbums = albums?.items?.slice(1, 8) ?? [];

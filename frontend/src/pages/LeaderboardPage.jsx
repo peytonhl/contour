@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useCachedFetch } from "../utils/useCachedFetch.js";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
@@ -267,25 +268,25 @@ function LeaderboardRow({ entry, sort, onCompare }) {
 }
 
 export function LeaderboardPage() {
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("era");
   const [decade, setDecade] = useState("all");
   const navigate = useNavigate();
 
-  useEffect(() => {
-    setLoading(true);
-    api.getLeaderboard(sort, decade)
-      .then(setEntries)
-      .catch(() => setEntries([]))
-      .finally(() => setLoading(false));
-  }, [sort, decade]);
+  // Cache per (sort, decade). Charts data updates on a slow cadence
+  // (era-adjusted streaming is recomputed periodically server-side),
+  // so the 60s fresh window is generous; bump if telemetry shows
+  // unnecessary refetches.
+  const { data: entries, loading } = useCachedFetch(
+    `leaderboard:${sort}:${decade}`,
+    () => api.getLeaderboard(sort, decade),
+  );
+  const entriesList = entries ?? [];
 
   function handleCompare(entry) {
     navigate(`/compare?album_a_id=${entry.spotify_id}`);
   }
 
-  const hasClassifications = entries.some(e => e.classification);
+  const hasClassifications = entriesList.some(e => e.classification);
 
   return (
     <div style={{ maxWidth: 780, margin: "0 auto", padding: "32px 20px 60px", display: "flex", flexDirection: "column", gap: 24 }}>
@@ -366,7 +367,7 @@ export function LeaderboardPage() {
       {/* List */}
       {loading ? (
         <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>Counting plays…</div>
-      ) : entries.length === 0 ? (
+      ) : entriesList.length === 0 ? (
         <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
           {decade === "all" ? "No data yet." : `No albums found from the ${decade}.`}
         </div>
@@ -376,7 +377,7 @@ export function LeaderboardPage() {
               treatment so the page reads as different from /trending. The
               row also appears in the list below at rank 1, dropped to avoid
               showing the same album twice. */}
-          <LeaderboardChampionHero entry={entries[0]} sort={sort} onCompare={handleCompare} />
+          <LeaderboardChampionHero entry={entriesList[0]} sort={sort} onCompare={handleCompare} />
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
             <div style={{
@@ -393,7 +394,7 @@ export function LeaderboardPage() {
                 {sort === "era" ? "Era score" : "Plays"}
               </span>
             </div>
-            {entries.slice(1).map((entry) => (
+            {entriesList.slice(1).map((entry) => (
               <LeaderboardRow key={entry.spotify_id} entry={entry} sort={sort} onCompare={handleCompare} />
             ))}
           </div>
