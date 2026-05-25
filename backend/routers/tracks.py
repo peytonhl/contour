@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -276,6 +277,62 @@ async def get_track_trajectory(
 _inflight_track_enrichments: set[asyncio.Task] = set()
 
 
+# Suffix decorations Spotify routinely appends to track titles that
+# Last.fm catalogs without. Stripping them before a Last.fm lookup
+# rescues stream counts on tracks where the raw-name match misses —
+# the most common 2025-release failure mode (Kworb hasn't indexed
+# the track yet, and Last.fm has it under the bare canonical name).
+#
+# Two pattern families:
+#   1. Parenthesized/bracketed segments containing a known keyword.
+#      Catches "FE!N (feat. Playboi Carti)", "I Had Some Help (with
+#      Morgan Wallen)", "Anti-Hero (Remix)", "good 4 u (Acoustic)".
+#   2. Dash-separated suffix segments starting with a known keyword.
+#      Catches "Anti-Hero - Sped Up", "Like That - From 'Movie'",
+#      "Vampire - Acoustic Version".
+#
+# Conservative on keywords: only strip when the segment EXPLICITLY
+# matches one of the version/credit markers. "Born in the U.S.A.
+# (Live at the Garden 1985)" → "Live" is on the list so it drops,
+# which is what we want; the canonical Last.fm entry is the studio
+# original. Edge case: a legit song title containing one of these
+# words in parens would be over-stripped (e.g. a song literally
+# named "(Live)") — judged worth the trade for the volume of
+# correct cleanups.
+_LASTFM_SUFFIX_KEYWORDS = (
+    "feat", "featuring", "with", "ft", "prod",
+    "sped\\s*up", "slowed", "reverb", "remix", "edit",
+    "acoustic", "live", "unplugged",
+    "version", "edition", "remaster(?:ed)?", "anniversary",
+    "extended", "radio(?:\\s*edit)?", "instrumental",
+    "demo", "alternate", "original", "deluxe", "explicit",
+    "from", "bonus", "single",
+)
+_LASTFM_PAREN_RE = re.compile(
+    r"\s*[\(\[][^()\[\]]*(?:" + "|".join(_LASTFM_SUFFIX_KEYWORDS) + r")[^()\[\]]*[\)\]]",
+    re.IGNORECASE,
+)
+_LASTFM_DASH_RE = re.compile(
+    r"\s+-\s+(?:" + "|".join(_LASTFM_SUFFIX_KEYWORDS) + r")\b.*$",
+    re.IGNORECASE,
+)
+
+
+def _clean_track_title_for_lastfm(name: str) -> str:
+    """Strip Spotify-style title decorations for a Last.fm-friendly variant.
+
+    Returns the cleaned name, or "" if nothing meaningful is left
+    (e.g. "(feat. X)" alone) — caller should skip the fallback in
+    that case.
+    """
+    if not name:
+        return ""
+    s = _LASTFM_PAREN_RE.sub("", name)
+    s = _LASTFM_DASH_RE.sub("", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def spawn_track_enrichment(track_id: str, meta: dict) -> asyncio.Task:
     """Schedule background enrichment for a track. Fire-and-forget — the task
     is held alive in a module-level set until done."""
@@ -350,6 +407,31 @@ async def _enrich_track(track_id: str, meta: dict) -> None:
                     name, artist, f"{streams:,}",
                 )
                 break
+
+    # 3. Last.fm with title cleaned of Spotify suffixes (feat/version/
+    # remix/etc.). Recovers tracks where Spotify's title diverges from
+    # Last.fm's canonical entry — the dominant 2025-release failure
+    # mode. Only fires when the raw-name pass missed AND cleaning
+    # actually changes the title (skip the redundant retry otherwise).
+    if streams is None and artists:
+        cleaned_name = _clean_track_title_for_lastfm(name)
+        if cleaned_name and cleaned_name.lower() != name.lower():
+            for artist in artists[:3]:
+                try:
+                    streams = await lastfm.get_track_playcount(artist, cleaned_name)
+                except Exception as exc:
+                    logger.warning(
+                        "track enrichment: lastfm (cleaned) threw for %s/%s — %s",
+                        artist, cleaned_name, exc,
+                    )
+                    streams = None
+                if streams:
+                    source = "lastfm_cleaned"
+                    logger.info(
+                        "track enrichment: lastfm (cleaned) %r→%r (via %s) — %s plays",
+                        name, cleaned_name, artist, f"{streams:,}",
+                    )
+                    break
 
     if streams is None:
         logger.warning(
