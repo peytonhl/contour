@@ -5,12 +5,53 @@ function getToken() {
   return localStorage.getItem("contour_token");
 }
 
+// Default request timeout (ms). Without this, a Capacitor app resuming
+// onto a flaky cellular connection can have /auth/me hang indefinitely,
+// keeping AuthContext.loading=true forever and leaving the user staring
+// at the splash + recovery overlay 12s later. 12s here matches the
+// inline recovery-overlay timeout in index.html, so the worst-case
+// "request hangs the whole boot" is bounded by either the API timeout
+// or the inline watchdog — whichever fires first.
+const DEFAULT_TIMEOUT_MS = 12_000;
+
+function _withTimeout(timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    try { controller.abort(); } catch {}
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    cancel: () => clearTimeout(timer),
+  };
+}
+
+async function _safeFetch(input, init, timeoutMs) {
+  // Wraps fetch with an AbortController-driven timeout. The native
+  // `signal: AbortSignal.timeout(ms)` works on iOS Safari ≥ 17 but
+  // the manual pattern works everywhere including the older WebViews
+  // we still see in the Capacitor app build.
+  const { signal, cancel } = _withTimeout(timeoutMs);
+  try {
+    return await fetch(input, { ...(init || {}), signal });
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      const e = new Error(`Request timed out after ${timeoutMs}ms`);
+      e.status = 0;
+      e.timeout = true;
+      throw e;
+    }
+    throw err;
+  } finally {
+    cancel();
+  }
+}
+
 async function request(path, options = {}) {
   const token = getToken();
   const headers = { ...options.headers };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(BASE + path, { ...options, headers });
+  const res = await _safeFetch(BASE + path, { ...options, headers }, DEFAULT_TIMEOUT_MS);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `HTTP ${res.status}`);
@@ -23,7 +64,7 @@ async function post(path, body) {
   const headers = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(BASE + path, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await _safeFetch(BASE + path, { method: "POST", headers, body: JSON.stringify(body) }, DEFAULT_TIMEOUT_MS);
   if (!res.ok) {
     const b = await res.json().catch(() => ({}));
     throw new Error(b.detail ?? `HTTP ${res.status}`);
@@ -35,7 +76,7 @@ async function patch(path, body) {
   const token = getToken();
   const headers = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(BASE + path, { method: "PATCH", headers, body: JSON.stringify(body) });
+  const res = await _safeFetch(BASE + path, { method: "PATCH", headers, body: JSON.stringify(body) }, DEFAULT_TIMEOUT_MS);
   if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail ?? `HTTP ${res.status}`); }
   return res.json();
 }
@@ -44,7 +85,7 @@ async function put(path, body) {
   const token = getToken();
   const headers = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(BASE + path, { method: "PUT", headers, body: JSON.stringify(body) });
+  const res = await _safeFetch(BASE + path, { method: "PUT", headers, body: JSON.stringify(body) }, DEFAULT_TIMEOUT_MS);
   if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail ?? `HTTP ${res.status}`); }
   return res.json();
 }
@@ -53,7 +94,7 @@ async function del(path) {
   const token = getToken();
   const headers = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(BASE + path, { method: "DELETE", headers });
+  const res = await _safeFetch(BASE + path, { method: "DELETE", headers }, DEFAULT_TIMEOUT_MS);
   if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.detail ?? `HTTP ${res.status}`); }
   return res.json();
 }
@@ -311,9 +352,11 @@ export const api = {
   // distinction to avoid silently signing users out during a Railway
   // deploy window. See AuthContext.jsx for the failure-mode write-up.
   getMe: (token) => {
-    return fetch(`${BASE}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then((r) => {
+    return _safeFetch(
+      `${BASE}/auth/me`,
+      { headers: { Authorization: `Bearer ${token}` } },
+      DEFAULT_TIMEOUT_MS,
+    ).then((r) => {
       if (!r.ok) {
         const err = new Error(r.status === 401 ? "Not authenticated" : `HTTP ${r.status}`);
         err.status = r.status;

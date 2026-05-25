@@ -9,6 +9,7 @@ import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD } from "../theme.js";
 import { ROUTES, albumPath, trackPath, artistPath, userPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
+import { useCachedFetch } from "../utils/useCachedFetch.js";
 
 // withNativeAuthFlag appends ?from=native inside the Capacitor shell so the
 // backend OAuth callback redirects via the contour:// URL scheme. No-op on web.
@@ -152,27 +153,32 @@ export function SearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [featured, setFeatured] = useState(null);
   const [recent, setRecent] = useState(loadRecent);
-  const [trendingSearches, setTrendingSearches] = useState([]);
-  // Contour's own community-ranked trending. The backend returns a `label`
-  // that downshifts ("Trending this week" → "Popular on Contour") when the
-  // requested window is too sparse, so we render whatever it gives us.
-  const [popular, setPopular] = useState(null);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const debounceRef = useRef(null);
 
-  useEffect(() => {
-    api.getFeatured().then(setFeatured).catch(() => {});
-    // Trending search queries — only shown when the search box is empty.
-    api.getTrendingSearched("7d", 10)
-      .then((r) => setTrendingSearches(r.items ?? []))
-      .catch(() => {});
-    api.getTrendingAlbums("7d", 10)
-      .then((r) => setPopular(r))
-      .catch(() => {});
-  }, []);
+  // All three featured/trending fetches go through the SWR cache.
+  // Apple Music charts + our own trending lists are slow-moving
+  // (hourly-ish), so the default 60s fresh window + 5min hard TTL
+  // strikes the right balance. Navigating to /search a second time
+  // within a minute = instant render, no spinner.
+  const { data: featured } = useCachedFetch(
+    "search:featured",
+    () => api.getFeatured(),
+  );
+  const { data: trendingSearchesData } = useCachedFetch(
+    "search:trending-searched:7d",
+    () => api.getTrendingSearched("7d", 10),
+  );
+  const trendingSearches = trendingSearchesData?.items ?? [];
+  // Contour's own community-ranked trending. The backend returns a `label`
+  // that downshifts ("Trending this week" → "Popular on Contour") when the
+  // requested window is too sparse, so we render whatever it gives us.
+  const { data: popular } = useCachedFetch(
+    "search:trending-albums:7d",
+    () => api.getTrendingAlbums("7d", 10),
+  );
 
   function handleInput(e) {
     const q = e.target.value;

@@ -5,6 +5,8 @@ import { OnboardingModal } from "./components/OnboardingModal.jsx";
 import { SigninGate } from "./components/SigninGate.jsx";
 import { isNativePlatform } from "./utils/native.js";
 import { ROUTES } from "./constants/routes.js";
+import { api } from "./services/api.js";
+import { prefetchIntoCache } from "./utils/useCachedFetch.js";
 // ForYouPage is the landing route — keep it eager so the cold-start path
 // has no async chunk fetch. Everything else lazy-loads on first navigation.
 // Before this change, the initial bundle included Recharts (~150KB gzip
@@ -201,6 +203,57 @@ function NativeDeepLinkHandler() {
 }
 
 export default function App() {
+  // Hide the inline boot-splash once React is actually mounted AND
+  // fonts are ready. Both conditions matter:
+  //   - React mounted = the app is on screen, not a black body bg
+  //   - Fonts ready = the header wordmark won't font-swap from
+  //     the system serif fallback (Iowan Old Style on iOS) to
+  //     Instrument Serif a few hundred ms later
+  // Pre-2026-05-25, main.jsx hid the splash on fontReady alone,
+  // which meant on slow cold cellular boots the splash dropped
+  // BEFORE React mounted → black screen visible. This effect
+  // moves the trigger to React's actual paint commit. The
+  // inline-HTML 12s watchdog in index.html stays as the truly-
+  // stuck recovery story.
+  useEffect(() => {
+    let hidden = false;
+    function hideSplashIfReady() {
+      if (hidden) return;
+      if (!window.__contour_fonts_ready) return;
+      const splash = document.getElementById("boot-splash");
+      if (splash) splash.style.display = "none";
+      hidden = true;
+    }
+    // First attempt — fonts may already be ready by the time this
+    // effect runs (if main.jsx's fontReady promise resolved fast).
+    hideSplashIfReady();
+    // Otherwise wait for the event main.jsx dispatches.
+    window.addEventListener("contour:fonts-ready", hideSplashIfReady);
+    return () => window.removeEventListener("contour:fonts-ready", hideSplashIfReady);
+  }, []);
+
+  // Prefetch likely-next-tab data so navigation to those surfaces is
+  // instant. Fires in the background after a 400ms idle delay so it
+  // doesn't compete with the cold-start path's bundle + first-paint
+  // work. By the time the user has read the deck card and tapped Search
+  // or Friends, the data's already in the SWR cache and the page snaps
+  // open with no spinner. Failures are silent — the consuming component's
+  // own useCachedFetch retries on mount.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      // Public endpoints, safe pre-auth. Anything that depends on the
+      // signed-in user (feed personalization, profile) is NOT prefetched
+      // here — those caches live in useCachedFetch keyed by user.id
+      // and need the auth provider settled first.
+      prefetchIntoCache("search:featured", () => api.getFeatured());
+      prefetchIntoCache("search:trending-albums:7d", () => api.getTrendingAlbums("7d", 10));
+      prefetchIntoCache("trending:albums:7d", () =>
+        api.getTrendingAlbums("7d", 20).catch(() => ({ items: [], label: "Trending" }))
+      );
+    }, 400);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <>
     {/* SigninGate paints on top of everything for signed-out, non-guest

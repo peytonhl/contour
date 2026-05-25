@@ -149,6 +149,34 @@ export function useCachedFetch(key, fetcher, opts = {}) {
 }
 
 /**
+ * Fire a fetcher and write its result into the shared cache. Use from
+ * non-component contexts (e.g. app boot) to warm caches that a user is
+ * likely to consume soon. If the cache already has a fresh entry, skip
+ * the fetch entirely.
+ *
+ *   prefetchIntoCache("search:featured", () => api.getFeatured())
+ *
+ * Returns nothing (fire-and-forget). Failures are swallowed silently —
+ * the consumer's own useCachedFetch will retry when the user actually
+ * arrives at the surface. Worst case the prefetch is wasted; best case
+ * the user navigates to /search and the data is already there.
+ */
+export function prefetchIntoCache(key, fetcher, opts = {}) {
+  const { freshMs = DEFAULT_FRESH_MS } = opts;
+  const cached = _caches.get(key);
+  if (cached && Date.now() - cached.fetchedAt < freshMs) return;
+  Promise.resolve()
+    .then(fetcher)
+    .then((data) => {
+      _caches.set(key, { data, fetchedAt: Date.now() });
+    })
+    .catch(() => {
+      // Silent — the consuming component will retry on mount.
+    });
+}
+
+
+/**
  * Drop every cached entry whose key starts with the given prefix.
  * Useful in mutation handlers — e.g. after follow/unfollow:
  *   invalidateCachePrefix(`user:${otherId}:`);  // their counts changed

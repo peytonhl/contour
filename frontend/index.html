@@ -153,6 +153,29 @@
            ?debug=splash is in the URL. -->
       <div id="splash-debug" style="position:absolute; bottom:80px; left:0; right:0; text-align:center; font-family:'SF Mono',Menlo,monospace; font-size:11px; line-height:1.4; color:#888; white-space:pre; display:none;">starting…</div>
     </div>
+
+    <!-- ── Boot recovery overlay ──
+         Inline HTML+CSS so it works even if the JS bundle never
+         loaded. After 12 seconds, the inline-JS watchdog further
+         down checks whether the React root has children. If not,
+         this overlay is shown — gives the user a tappable Reload
+         button regardless of whether main.jsx parsed, whether a
+         lazy chunk hung, or whether something errored before the
+         React ErrorBoundary could mount.
+         pointer-events:auto needed so the button is tappable; the
+         boot-splash above is pointer-events:none so tapping it
+         doesn't matter. -->
+    <div id="boot-recovery" aria-hidden="true"
+         style="display:none; position:fixed; inset:0; background:#08080a; z-index:10000; padding:32px 24px; box-sizing:border-box; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:#fafafa; text-align:center; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+      <div style="font-family:Georgia,'Times New Roman',Times,serif; font-size:32px; font-weight:400;">Trouble loading</div>
+      <div style="font-size:14px; color:rgba(255,255,255,0.7); max-width:320px; line-height:1.55;">
+        Something's blocking the app from starting. Your ratings and reviews are safe on the server.
+      </div>
+      <button id="boot-recovery-reload"
+              style="margin-top:8px; padding:11px 22px; background:#d97a3b; border:none; border-radius:8px; color:#000; font-size:14px; font-weight:700; cursor:pointer;">
+        Reload
+      </button>
+    </div>
     <!-- env() probe elements — used by the gated diagnostic to read the
          actual env(safe-area-inset-*) values at each tick. Kept in tree
          (tiny zero-size divs) so the diagnostic doesn't need to inject
@@ -247,6 +270,49 @@
           if (performance.now() - start < 5000) requestAnimationFrame(tick);
         }
         requestAnimationFrame(tick);
+      })();
+
+      // ── Boot recovery watchdog ──
+      // Pure-HTML escape hatch. Runs entirely from inline JS so it
+      // doesn't depend on main.jsx parsing, the JS bundle loading,
+      // or any React state. If after 12 seconds the React root
+      // still has no children, the user is stuck — show the
+      // recovery overlay with a tappable Reload button.
+      //
+      // Why 12s: covers slow cellular cold starts (HTML splash
+      // visible ~600-2500ms on bundle download + parse + React
+      // mount + Suspense fallback resolving for the lazy
+      // ForYouPage chunk) with headroom. Real "stuck" cases
+      // (bundle download died, lazy import hung, React threw
+      // before the ErrorBoundary could mount) blow past 12s by
+      // orders of magnitude.
+      //
+      // The button calls location.reload() — discards bfcache and
+      // resets the SW connection. That's enough to recover from
+      // every stuck-state we've observed so far: WKWebView eviction,
+      // stale SW serving an HTML version pointing at chunks that
+      // 404, a mid-bundle network failure, etc.
+      (function () {
+        var btn = document.getElementById('boot-recovery-reload');
+        if (btn) {
+          btn.addEventListener('click', function () {
+            try { window.location.reload(); } catch (e) {
+              window.location.href = window.location.pathname;
+            }
+          });
+        }
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && root.children && root.children.length > 0) return;
+          var splash = document.getElementById('boot-splash');
+          if (splash) splash.style.display = 'none';
+          var rec = document.getElementById('boot-recovery');
+          if (rec) {
+            rec.style.display = 'flex';
+            rec.setAttribute('aria-hidden', 'false');
+          }
+          try { console.error('[boot] recovery overlay shown — React did not mount within 12s'); } catch (_) {}
+        }, 12000);
       })();
     </script>
     <div id="root"></div>

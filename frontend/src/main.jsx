@@ -138,27 +138,27 @@ requestAnimationFrame(() => {
   ]);
 
   fontReady.then(() => {
+    // Mark fonts as loaded. App.jsx's top-level useEffect (which
+    // fires once React has actually mounted and committed) reads
+    // this flag and hides the splash. Gating on BOTH React-mounted
+    // AND fontReady together is the right correctness condition:
+    // hiding earlier risks a header font-swap flash; hiding later
+    // is fine because the inline-HTML recovery overlay in
+    // index.html is the safety net if React never mounts at all.
+    window.__contour_fonts_ready = true;
+    window.dispatchEvent(new CustomEvent("contour:fonts-ready"));
+    // eslint-disable-next-line no-unused-vars
     const elapsed = performance.now() - start;
-    const remaining = Math.max(0, MIN_HOLD_MS - elapsed);
-    setTimeout(() => {
-      const splash = document.getElementById("boot-splash");
-      if (splash) splash.style.display = "none";
-    }, remaining);
   });
-
-  // Watchdog: hard-hide the splash 3.5s after main.jsx parsed
-  // regardless of font/timer state. If anything in the chain above
-  // throws or stalls (document.fonts API rejecting, the rAF callback
-  // never firing, etc), the user wouldn't otherwise escape the
-  // splash. 3.5s is comfortably past the 600ms ceiling + any
-  // reasonable React first-paint budget but still feels like a
-  // bug-recovery, not a normal path.
-  setTimeout(() => {
-    const splash = document.getElementById("boot-splash");
-    if (splash && splash.style.display !== "none") {
-      splash.style.display = "none";
-      // eslint-disable-next-line no-console
-      console.warn("[main] boot-splash watchdog fired — fontReady/timer chain stalled");
-    }
-  }, 3500);
+  // The "hide splash 3.5s after main.jsx parsed" watchdog that
+  // used to live here was removed because it could fire before
+  // React actually rendered on slow cellular boots, leaving the
+  // user staring at a black <body> for several seconds (the
+  // resume-then-black-screen bug, reported 2026-05-25). The
+  // recovery story now has two layers:
+  //   1. Happy path: App.jsx hides splash on its first useEffect
+  //      AND fontReady has fired. Both signals = ready to reveal.
+  //   2. Stuck path: index.html's inline 12s watchdog shows a
+  //      tappable "Reload" overlay if #root is still empty. That
+  //      works even if main.jsx never parsed at all.
 });
