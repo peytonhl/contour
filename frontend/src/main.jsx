@@ -7,10 +7,29 @@ import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { initAnalytics } from "./services/analytics.js";
 import { registerServiceWorker } from "./sw-register.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
+import { prefetchInitialFeed } from "./services/feedPrefetch.js";
 import App from "./App.jsx";
 import "./index.css";
 
 initAnalytics();
+
+// Fire the first /discover/feed request RIGHT NOW, before React even
+// mounts. The network round-trip overlaps with the rest of the boot
+// (createRoot, AuthProvider, Suspense, ForYouFeed mount). By the time
+// ForYouFeed's useEffect runs, the response is already in flight or
+// done — fetchBatch consumes the in-flight promise via
+// consumeInitialFeed() instead of starting a fresh round-trip.
+//
+// Net effect: visible "Tuning your feed" duration drops from the
+// ~1-2s waterfall (mount → effect → fetch) to whatever raw network
+// time remains after the boot work overlaps. On warm Redis cache
+// hits the user sees the deck land in <300ms; on cold misses it's
+// roughly the same as before but the spinner shows less because
+// React mounted later.
+//
+// Idempotent — safe even if some path later imports + calls this
+// again. See services/feedPrefetch.js for the full contract.
+prefetchInitialFeed();
 
 // Cache JS/CSS bundles for instant repeat-launch. Skipped in dev to avoid
 // fighting Vite HMR. First launch is unaffected; second-and-beyond cold

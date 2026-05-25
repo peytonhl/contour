@@ -37,6 +37,7 @@ import { MentionInput } from "../components/Mentions.jsx";
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { AlertIcon } from "../components/Icons.jsx";
 import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
+import { consumeInitialFeed } from "../services/feedPrefetch.js";
 
 // ── LocalStorage keys ─────────────────────────────────────────────────────────
 const GENRES_KEY = "contour_genres_v1";
@@ -1441,6 +1442,37 @@ function ForYouFeed() {
     const setter = append ? setLoadingMore : setLoading;
     setter(true);
     setFetchError(false);
+
+    // First-batch shortcut: main.jsx kicks off the initial
+    // /discover/feed request before React mounts (see
+    // services/feedPrefetch.js). By the time this useEffect-driven
+    // fetchBatch fires, the response is either in flight or already
+    // resolved — consume it instead of running a redundant fetch.
+    // Only applies to the very first call (not append, not retry).
+    // If the prefetch errored or returned empty, fall through to
+    // the normal fetch path below.
+    if (!append && attempt === 0) {
+      const prefetched = consumeInitialFeed();
+      if (prefetched) {
+        try {
+          const batch = await prefetched;
+          if (Array.isArray(batch) && batch.length > 0) {
+            setTracks(batch);
+            setActiveIdx(0);
+            setLoading(false);
+            return;
+          }
+          // Empty batch — let the normal fetch path retry without
+          // the disliked filter (attempt=1).
+          setter(false);
+          await new Promise((r) => setTimeout(r, 1500));
+          return fetchBatch(false, 1);
+        } catch {
+          // Prefetch failed — fall through to a fresh fetch.
+        }
+      }
+    }
+
     try {
       // Soft ramp: send everything we have, from rating #1. The backend
       // already handles the empty-signal case by falling through to baseline
