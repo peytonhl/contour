@@ -826,15 +826,35 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           swipe animations. Explicit dimensions = no flex
           recomputation = no drift.
 
-          paddingTop reserves a clean band at the top for floating
-          chrome (gear button on the page container, "···" overflow
-          on the card). decoding="async" + fetchpriority="high" hint
-          the browser to commit GPU resources to this image early. */}
+          EDGE-TO-EDGE COVER (2026-05-25, third pass) — the image is
+          now full-width with NO border-radius, NO box-shadow, and
+          NO horizontal margins. Anchored to the BOTTOM of the
+          cover region (alignItems: flex-end) so the image's bottom
+          edge sits exactly at the boundary between the cover
+          region and the info region — no visible gap between
+          the album art and the metadata below.
+
+          Why this matters for the swipe perception: previously the
+          image was a centered square (94% × 94%) with a drop
+          shadow and rounded corners, which read as a "polaroid
+          photo floating on a colored backdrop." That framed-photo
+          feel made the cover look like a separate UI element from
+          the info section, and during a swipe the user perceived
+          card N's info + card N+1's cover as two distinct moving
+          objects. With the image edge-to-edge and touching the
+          info area, the card reads as one continuous vertical
+          band: chrome + backdrop at top, album art in the middle,
+          metadata on the same backdrop at the bottom. Adjacent
+          cards in a swipe transition look like the same kind of
+          vertical band flowing past.
+
+          The empty backdrop area now lives ABOVE the image (where
+          the "···" overflow button floats), not around all four
+          sides of it. */}
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0, height: "65%",
         overflow: "hidden",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        paddingTop: 48,
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
         zIndex: 2,
       }}>
         {coverImage
@@ -845,34 +865,24 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
                 decoding="async"
                 fetchpriority="high"
                 style={{
-                  // CSS aspect-ratio only computes a definite size if AT LEAST
-                  // ONE dimension is constrained. With width:auto + height:auto
-                  // the box defaults to intrinsic 0×0 until image bytes arrive
-                  // (then re-flows to natural-image size, capped by max-*).
-                  // That re-flow was the "image enlarges visibly when it
-                  // loads" bug — the IMG was a 0×0 dot at first paint.
-                  //
-                  // Pin height to 94% so the layout box is definite from
-                  // first paint; aspect-ratio computes width=height, and the
-                  // maxWidth: 94% safety-caps it on the rare card where the
-                  // section is narrower than tall (very wide aspect-ratio
-                  // viewport).
-                  height: "94%",
+                  // Full-width edge-to-edge. aspect-ratio computes the
+                  // height from the width (cardWidth × cardWidth square).
+                  // maxHeight: 100% safety-caps on landscape viewports
+                  // where cardWidth would otherwise exceed the cover
+                  // region's height.
+                  width: "100%",
                   aspectRatio: "1 / 1",
-                  maxWidth: "94%",
-                  borderRadius: "var(--radius-lg)",
-                  // Light drop shadow only. The full `--shadow-hero`
-                  // (0 24px 80px rgba(0,0,0,0.55)) made the cover
-                  // image read as a polaroid floating above the
-                  // surface — your eye sees a 3D object hovering,
-                  // which is exactly the "two separate pieces" feel
-                  // the user reported. With a subtler shadow the
-                  // cover lives ON the surface, not above it, so
-                  // the cover + metadata feel like a single
-                  // continuous card during the swipe. Tuned by eye
-                  // to keep just enough lift for the cover to read
-                  // as a discrete frame, not a floating object.
-                  boxShadow: "0 6px 22px rgba(0, 0, 0, 0.35)",
+                  maxHeight: "100%",
+                  // No borderRadius — edge-to-edge means the image
+                  // shares its sides + bottom with the card boundary
+                  // and the info region. Rounded corners would
+                  // reintroduce the "framed photo" perception we just
+                  // removed.
+                  // No boxShadow — the shadow was the polaroid-floating
+                  // feel that made the cover look like a separate UI
+                  // element from the info region. Without it, the
+                  // cover image lives ON the same surface as everything
+                  // else.
                   objectFit: "cover",
                   position: "relative", zIndex: 1,
                   // Sharper upscale on Safari. Spotify's source images cap at
@@ -880,6 +890,21 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
                   // ~1200px target, which means the browser is upsampling.
                   // optimize-contrast nudges Safari toward a sharper filter.
                   imageRendering: "-webkit-optimize-contrast",
+                  // Soft mask at the bottom 5% of the image — fades the
+                  // album art into the darkened backdrop below where the
+                  // info region starts. Without this, the image's bottom
+                  // edge is a hard horizontal line where album-art-color
+                  // meets backdrop-color, which reads as a "seam" between
+                  // the cover and the metadata. With the fade, the eye
+                  // can't pinpoint exactly where the cover ends and the
+                  // info area begins — the card flows continuously top
+                  // to bottom. 5% (~20px on a 400px-wide phone) is small
+                  // enough that the visible album art barely loses any
+                  // content while killing the seam. The two mask
+                  // properties are kept in sync — Safari/iOS WebKit
+                  // needs the -webkit- prefix.
+                  maskImage: "linear-gradient(to bottom, black 0%, black 95%, transparent 100%)",
+                  WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 95%, transparent 100%)",
                 }}
               />
               {/* The per-cover bottom vignette that used to live here
