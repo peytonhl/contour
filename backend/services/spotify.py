@@ -714,7 +714,18 @@ async def get_album(album_id: str) -> dict:
 async def get_playlist_tracks(playlist_id: str, limit: int = 20) -> list[dict]:
     """
     Fetch tracks from any public Spotify playlist by ID.
-    Use this instead of the deprecated /browse/new-releases endpoint.
+
+    Spotify gated /v1/playlists/{id}/tracks behind Extended Access for
+    new client-credentials apps in late 2024 — the endpoint returns
+    403 for our credential tier. This was the root cause of /featured
+    returning 500 (pre-existing before 2026-05-25): the editorial
+    playlist call here raised, the new-releases pipeline didn't catch
+    it, and the unhandled exception bubbled up.
+
+    Treat 403/404 as "no data" and return []. Same shape as
+    get_related_artists handles its own Extended-Access 403. Callers
+    that depend on a fallback (e.g. get_new_releases) gracefully see
+    an empty list instead of a thrown exception.
     """
     cache_key = f"spotify:playlist:{playlist_id}:{limit}"
     cached = await redis_cache.get(cache_key)
@@ -727,6 +738,18 @@ async def get_playlist_tracks(playlist_id: str, limit: int = 20) -> list[dict]:
             client, f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks", token,
             params={"limit": limit, "market": "US"},
         )
+        if resp.status_code in (403, 404):
+            _log.warning(
+                "[spotify.get_playlist_tracks] %d for playlist %s — endpoint is "
+                "deprecated for non-Extended-Access apps; returning [] so callers "
+                "can fall back to other sources.",
+                resp.status_code, playlist_id,
+            )
+            # Brief negative-cache to avoid hammering Spotify for every
+            # /featured request during the cool-down. Use the same 1h TTL
+            # as positive results — playlists update slowly anyway.
+            await redis_cache.set(cache_key, [], ttl=_TTL_1H)
+            return []
         resp.raise_for_status()
         items = resp.json().get("items", [])
 
@@ -747,12 +770,24 @@ async def get_playlist_tracks(playlist_id: str, limit: int = 20) -> list[dict]:
 async def get_new_releases(limit: int = 10) -> list[dict]:
     """
     Fetch newly released albums.
-    NOTE: Spotify deprecated /browse/new-releases in March 2025.
-    Falls back to the "New Music Friday" editorial playlist.
+    NOTE: Spotify deprecated /browse/new-releases in March 2025 AND
+    /v1/playlists/{id}/tracks is now gated behind Extended Access
+    for our credential tier (returns 403). get_playlist_tracks now
+    swallows the 403 and returns []; this function in turn returns
+    [] gracefully rather than throwing — /featured stays a 200 with
+    just the global-top-tracks half populated.
+
+    Long-term replacement candidate: scrape Spotify's web frontend
+    for the New Music Friday card list, or pivot to Apple Music's
+    "New Music Daily" via the Apple Music API. Out of scope here.
     """
     # New Music Friday US playlist — reliable editorial, updated weekly
     NEW_MUSIC_FRIDAY = "37i9dQZF1DX4JAvHpjipBk"
-    tracks = await get_playlist_tracks(NEW_MUSIC_FRIDAY, limit=limit * 2)
+    try:
+        tracks = await get_playlist_tracks(NEW_MUSIC_FRIDAY, limit=limit * 2)
+    except Exception as exc:
+        _log.warning("[spotify.get_new_releases] playlist fetch threw — %s", exc)
+        tracks = []
     # Return unique album stubs so callers can do album_tracks lookups
     seen_albums: set[str] = set()
     albums = []

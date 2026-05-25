@@ -2805,6 +2805,113 @@ async def discover_probe_genre_match(
     return out
 
 
+@router.get("/probe-artist-genres-coverage")
+async def discover_probe_artist_genres_coverage(
+    db: AsyncSession = Depends(get_db),
+    sample_limit: int = Query(15, ge=0, le=100),
+    top_tags_limit: int = Query(20, ge=0, le=100),
+):
+    """Read-only diagnostic for the artist_genres many-to-many table
+    (introduced in migration b0c1d2e3f4g5). Reports:
+
+      - Total row count in artist_genres
+      - Distinct artist count in artist_genres
+      - ArtistCache totals: rows, rows with non-empty genres JSON
+      - Coverage ratio: distinct_artists / artists_with_genres_json
+        (1.0 = every artist that has JSON genres has been synced)
+      - Top N tags by row frequency (which families dominate the
+        catalog right now)
+      - Sample rows (artist_id, tag_name, tag_weight, artist_name)
+
+    Use cases:
+      1. Verify the b0c1d2e3f4g5 migration's backfill ran cleanly
+         (coverage should be ~1.0 immediately after deploy).
+      2. Monitor sync health between ArtistCache.genres JSON (canonical)
+         and artist_genres (derived index). A coverage that drifts
+         below 1.0 suggests writes are landing in the JSON column
+         but not propagating to artist_genres — likely a code path
+         that bypasses _fetch_and_persist_artist_genres.
+      3. See what genre families the catalog actually has data for —
+         informs which picker slugs will get strong tier-0 yield.
+
+    No external calls; pure DB reads. Costs <50ms even at large
+    catalog sizes since both lookups use indexed scans / counts.
+    """
+    total_rows = await db.scalar(select(func.count()).select_from(ArtistGenre)) or 0
+    distinct_artists = await db.scalar(
+        select(func.count(func.distinct(ArtistGenre.artist_id)))
+    ) or 0
+
+    artist_cache_total = await db.scalar(select(func.count()).select_from(ArtistCache)) or 0
+    artists_with_genres = await db.scalar(
+        select(func.count()).select_from(ArtistCache)
+        .where(ArtistCache.genres.is_not(None))
+        .where(ArtistCache.genres != "[]")
+        .where(ArtistCache.genres != "")
+    ) or 0
+    # Coverage = how many of the "should have rows" artists actually
+    # do. 1.0 means every artist with non-empty genres JSON has been
+    # synced. Below that = drift between the two stores.
+    coverage = (
+        round(distinct_artists / artists_with_genres, 3)
+        if artists_with_genres else None
+    )
+
+    # Top tags by row frequency. Quick way to see whether the catalog
+    # leans hip-hop / pop / rock or has long-tail diversity.
+    top_tags_rows = []
+    if top_tags_limit > 0 and total_rows > 0:
+        top_tags_rows = (await db.execute(
+            select(
+                ArtistGenre.tag_name,
+                func.count().label("artist_count"),
+                func.sum(ArtistGenre.tag_weight).label("total_weight"),
+            )
+            .group_by(ArtistGenre.tag_name)
+            .order_by(func.count().desc())
+            .limit(top_tags_limit)
+        )).all()
+
+    # Sample rows joined to ArtistCache for the human-readable name.
+    sample_rows = []
+    if sample_limit > 0 and total_rows > 0:
+        sample_rows = (await db.execute(
+            select(
+                ArtistGenre.artist_id,
+                ArtistGenre.tag_name,
+                ArtistGenre.tag_weight,
+                ArtistCache.name,
+            )
+            .join(ArtistCache, ArtistGenre.artist_id == ArtistCache.spotify_id, isouter=True)
+            .limit(sample_limit)
+        )).all()
+
+    return {
+        "artist_genres_rows": total_rows,
+        "distinct_artists_in_table": distinct_artists,
+        "artist_cache_total": artist_cache_total,
+        "artists_with_nonempty_genres_json": artists_with_genres,
+        "coverage_ratio": coverage,
+        "top_tags": [
+            {
+                "tag": r.tag_name,
+                "artist_count": int(r.artist_count),
+                "total_weight": round(float(r.total_weight or 0.0), 3),
+            }
+            for r in top_tags_rows
+        ],
+        "sample_rows": [
+            {
+                "artist_id": r.artist_id,
+                "artist_name": r.name,
+                "tag_name": r.tag_name,
+                "tag_weight": round(float(r.tag_weight), 4),
+            }
+            for r in sample_rows
+        ],
+    }
+
+
 @router.get("/probe-artist-cache-sample")
 async def discover_probe_artist_cache_sample(
     db: AsyncSession = Depends(get_db),
