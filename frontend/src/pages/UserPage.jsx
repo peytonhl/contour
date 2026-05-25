@@ -12,6 +12,7 @@ import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
+import { useCachedFetch } from "../utils/useCachedFetch.js";
 import { MentionBody } from "../components/Mentions.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD, DANGER } from "../theme.js";
 import { ROUTES, userPath, listPath, tasteMatchPath } from "../constants/routes.js";
@@ -123,35 +124,52 @@ export function UserPage() {
   const [tabExpanded, setTabExpanded] = useState(false);
   useEffect(() => { setTabExpanded(false); }, [tab]);
 
-  useEffect(() => {
-    api.getBadges().then(setBadges).catch(() => {});
-  }, []);
+  // Badges are slow-changing — independent cache, 5min fresh window.
+  const { data: badgesData } = useCachedFetch(
+    "userpage:badges",
+    () => api.getBadges(),
+    { freshMs: 5 * 60_000 },
+  );
+  useEffect(() => { if (badgesData) setBadges(badgesData); }, [badgesData]);
+
+  // Main bundle keyed by route-param userId. Visiting different
+  // users gets independent cache entries; revisiting the same
+  // user within the fresh window is instant. Pagination state
+  // (Load More) mutates LOCAL state only — on remount the user
+  // sees the cached page-1 data, not their pre-navigation
+  // expansion. Trade-off accepted for the user-reported "5s
+  // wait on every tab switch" symptom.
+  const { data: bundle, loading: bundleLoading } = useCachedFetch(
+    id ? `user-page:${id}` : null,
+    async () => {
+      const emptyPage = { items: [], has_more: false, total: 0 };
+      const [p, rev, userLists, userRatings, followingList, followersList] = await Promise.all([
+        api.getUser(id),
+        api.getUserReviews(id).catch(() => emptyPage),
+        api.getUserLists(id).catch(() => emptyPage),
+        api.getUserRatings(id).catch(() => emptyPage),
+        api.getFollowing(id).catch(() => []),
+        api.getFollowers(id).catch(() => []),
+      ]);
+      return { p, rev, userLists, userRatings, followingList, followersList };
+    },
+    { enabled: !!id },
+  );
 
   useEffect(() => {
-    setLoading(true);
-    const emptyPage = { items: [], has_more: false, total: 0 };
-    Promise.all([
-      api.getUser(id),
-      api.getUserReviews(id).catch(() => emptyPage),
-      api.getUserLists(id).catch(() => emptyPage),
-      api.getUserRatings(id).catch(() => emptyPage),
-      api.getFollowing(id).catch(() => []),
-      api.getFollowers(id).catch(() => []),
-    ])
-      .then(([p, rev, userLists, userRatings, followingList, followersList]) => {
-        setProfile(p);
-        setReviews(rev.items ?? []);
-        setReviewsHasMore(!!rev.has_more);
-        setLists(userLists.items ?? []);
-        setListsHasMore(!!userLists.has_more);
-        setRatings(userRatings.items ?? []);
-        setRatingsHasMore(!!userRatings.has_more);
-        setFollowing(followingList);
-        setFollowers(followersList);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [id]);
+    setLoading(bundleLoading);
+    if (!bundle) return;
+    const { p, rev, userLists, userRatings, followingList, followersList } = bundle;
+    setProfile(p);
+    setReviews(rev.items ?? []);
+    setReviewsHasMore(!!rev.has_more);
+    setLists(userLists.items ?? []);
+    setListsHasMore(!!userLists.has_more);
+    setRatings(userRatings.items ?? []);
+    setRatingsHasMore(!!userRatings.has_more);
+    setFollowing(followingList);
+    setFollowers(followersList);
+  }, [bundle, bundleLoading]);
 
   // "Load more" handlers per tab. Each appends the next server page to the
   // existing array and updates the has_more flag. De-dupe by id (defensive

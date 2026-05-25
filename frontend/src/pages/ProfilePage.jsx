@@ -14,6 +14,7 @@ import { EmptyState } from "../components/EmptyState.jsx";
 import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { CompareTastePicker } from "../components/CompareTastePicker.jsx";
+import { useCachedFetch } from "../utils/useCachedFetch.js";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD, DANGER } from "../theme.js";
 import { ROUTES, userPath, listPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
@@ -219,41 +220,65 @@ export function ProfilePage() {
   const [newListRanked, setNewListRanked] = useState(true);
   const [creatingList, setCreatingList] = useState(false);
 
-  useEffect(() => {
-    api.getBadges().then(setBadges).catch(() => {});
-  }, []);
+  // Badges are slow-changing — 5min fresh window. Cached separately
+  // from the main bundle so a badge fetch failure doesn't block the
+  // rest of the page.
+  const { data: badgesData } = useCachedFetch(
+    user ? `profile:badges:${user.id}` : null,
+    () => api.getBadges(),
+    { freshMs: 5 * 60_000, enabled: !!user },
+  );
+  useEffect(() => { if (badgesData) setBadges(badgesData); }, [badgesData]);
+
+  // Main bundle: profile + follow lists + user lists. Cached by user
+  // id. Mirror into the existing state slots so the rest of the
+  // page reads the same structure it always has. Pagination
+  // mutations (loadMoreRatings/Reviews/Lists) update LOCAL state
+  // only and aren't reflected in the cache — on a fresh remount
+  // the user loses "Load more" expansion state but the page itself
+  // renders instantly from the cached page-1 data.
+  const { data: bundle, loading: bundleLoading } = useCachedFetch(
+    user ? `profile:bundle:${user.id}` : null,
+    async () => {
+      const emptyPage = { items: [], has_more: false, total: 0 };
+      const [p, fwing, fwers, userLists] = await Promise.all([
+        api.getProfile(),
+        api.getFollowing(user.id).catch(() => []),
+        api.getFollowers(user.id).catch(() => []),
+        api.getUserLists(user.id).catch(() => emptyPage),
+      ]);
+      return { p, fwing, fwers, userLists };
+    },
+    { enabled: !!user },
+  );
 
   useEffect(() => {
     if (!user) { navigate("/"); return; }
-    const emptyPage = { items: [], has_more: false, total: 0 };
-    Promise.all([
-      api.getProfile(),
-      api.getFollowing(user.id).catch(() => []),
-      api.getFollowers(user.id).catch(() => []),
-      api.getUserLists(user.id).catch(() => emptyPage),
-    ])
-      .then(([p, fwing, fwers, userLists]) => {
-        // /auth/profile returns user fields nested under a `user` key:
-        //   {user: {id, display_name, image_url, bio}, ratings, reviews,
-        //    ratings_has_more, reviews_has_more, ratings_total, reviews_total}
-        // But the rest of this page reads (and the bio/photo edit handlers
-        // patch) those fields at the top level (`profile.image_url`,
-        // `profile.bio`). Spreading `p.user` over `p` lifts them so both
-        // the initial render AND the in-place patches converge on the same
-        // structure. Without this, userAvatar(profile) fell back to the
-        // "?" placeholder until the user re-uploaded their photo
-        // (which top-level-patched image_url back into place).
-        setProfile({ ...p, ...p.user });
-        setFollowing(fwing);
-        setFollowers(fwers);
-        setLists(userLists.items ?? []);
-        setListsHasMore(!!userLists.has_more);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-    // Probe hot-take eligibility in parallel. Independent of the main
-    // profile load so a slow / failing hot-take check doesn't block the
-    // page render. Button only renders when this resolves to true.
+    // Mirror the hook's loading state into the existing `loading`
+    // local so consumers further down the file don't need to change.
+    // On fetch failure the hook sets loading:false with data still
+    // null — we propagate that so the page doesn't stay spinning.
+    setLoading(bundleLoading);
+    if (!bundle) return;
+    // /auth/profile returns user fields nested under a `user` key.
+    // The rest of this page reads (and the bio/photo edit handlers
+    // patch) those fields at the top level (`profile.image_url`,
+    // `profile.bio`). Spreading `p.user` over `p` lifts them so both
+    // the initial render AND the in-place patches converge on the
+    // same structure.
+    const { p, fwing, fwers, userLists } = bundle;
+    setProfile({ ...p, ...p.user });
+    setFollowing(fwing);
+    setFollowers(fwers);
+    setLists(userLists.items ?? []);
+    setListsHasMore(!!userLists.has_more);
+  }, [bundle, bundleLoading, user, navigate]);
+
+  // Probe hot-take eligibility in parallel. Independent of the main
+  // profile load so a slow / failing hot-take check doesn't block the
+  // page render. Button only renders when this resolves to true.
+  useEffect(() => {
+    if (!user) return;
     probeHotTakeEligibility(user.id).then(setHasHotTake);
   }, [user]);
 
