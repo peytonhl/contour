@@ -304,11 +304,21 @@ export const api = {
   deleteList: (id) => del(`/lists/${id}`),
   updateListItems: (id, items) => put(`/lists/${id}/items`, { items }),
 
+  // Attaches the HTTP status as `err.status` on the thrown error so the
+  // caller can distinguish a *real* auth failure (401 — token invalid,
+  // drop it) from a transient backend outage (5xx, network error —
+  // keep the token, retry later). The auth context relies on that
+  // distinction to avoid silently signing users out during a Railway
+  // deploy window. See AuthContext.jsx for the failure-mode write-up.
   getMe: (token) => {
     return fetch(`${BASE}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then((r) => {
-      if (!r.ok) throw new Error("Not authenticated");
+      if (!r.ok) {
+        const err = new Error(r.status === 401 ? "Not authenticated" : `HTTP ${r.status}`);
+        err.status = r.status;
+        throw err;
+      }
       return r.json();
     });
   },

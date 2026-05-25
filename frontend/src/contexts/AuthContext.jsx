@@ -32,7 +32,28 @@ export function AuthProvider({ children }) {
         setUser(u);
         identify(u.id, { email: u.email });
       })
-      .catch(() => localStorage.removeItem("contour_token"))
+      .catch((err) => {
+        // ONLY drop the token on a genuine 401 (Unauthorized — token
+        // is actually invalid / expired). For ANY other failure (5xx
+        // from a crashed backend, network timeout, CORS error
+        // during a deploy window, etc.) preserve the token and just
+        // leave the user signed-out-this-session. Next launch will
+        // retry.
+        //
+        // Without this guard, a 30-second Railway outage signed every
+        // active user out, silently — and since the photo + display
+        // name UI render against the in-memory user object, they
+        // saw their profile photo "vanish" too. The DB rows were
+        // intact; just the client-side session was nuked. Reported
+        // 2026-05-25 after the FastAPI-import-bug deploy window.
+        //
+        // err.status comes from api.getMe (status attached on throw).
+        // Network errors / fetch failures have no status and fall
+        // through to "preserve" by default — exactly what we want.
+        if (err && err.status === 401) {
+          localStorage.removeItem("contour_token");
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
