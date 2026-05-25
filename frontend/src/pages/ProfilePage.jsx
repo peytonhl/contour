@@ -548,7 +548,7 @@ export function ProfilePage() {
                 Style matches the SavedComparison "Share card" CTA:
                 solid accent, --radius-sm, black text. */}
             {!editingBio && (
-              <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
                 {hasHotTake === true && (
                   <button
                     onClick={() => setHotTakeModalOpen(true)}
@@ -562,43 +562,58 @@ export function ProfilePage() {
                       fontSize: 13, fontWeight: 700,
                       cursor: "pointer",
                       whiteSpace: "nowrap",
+                      alignSelf: "flex-start",
                     }}
                   >
                     Share my hot take
                   </button>
                 )}
-                <button
-                  onClick={() => setTasteCardModalOpen(true)}
-                  title="Top artists, genres, and rating stats in one image"
-                  style={{
-                    padding: "8px 16px",
-                    background: "transparent",
-                    border: `1px solid ${ACCENT}66`,
-                    borderRadius: "var(--radius-sm)",
-                    color: ACCENT,
-                    fontSize: 13, fontWeight: 700,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Share my taste card
-                </button>
-                <button
-                  onClick={() => setComparePickerOpen(true)}
-                  title="Compare your taste with another user"
-                  style={{
-                    padding: "8px 16px",
-                    background: "transparent",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-sm)",
-                    color: "var(--text)",
-                    fontSize: 13, fontWeight: 700,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Compare with a friend
-                </button>
+                {/* Share-taste + Compare-with-friend sit on the same row to
+                    reclaim vertical real estate on the profile. flex:1 on
+                    each splits the available width 50/50 so neither
+                    dominates and both stay reachable as touch targets on
+                    mobile. Text drops the whiteSpace:nowrap so longer
+                    labels can wrap inside the button on narrow viewports
+                    rather than overflowing — the alternative (shortening
+                    "Compare with a friend") would change the CTA copy. */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => setTasteCardModalOpen(true)}
+                    title="Top artists, genres, and rating stats in one image"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      padding: "8px 12px",
+                      background: "transparent",
+                      border: `1px solid ${ACCENT}66`,
+                      borderRadius: "var(--radius-sm)",
+                      color: ACCENT,
+                      fontSize: 13, fontWeight: 700,
+                      cursor: "pointer",
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    Share my taste card
+                  </button>
+                  <button
+                    onClick={() => setComparePickerOpen(true)}
+                    title="Compare your taste with another user"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      padding: "8px 12px",
+                      background: "transparent",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-sm)",
+                      color: "var(--text)",
+                      fontSize: 13, fontWeight: 700,
+                      cursor: "pointer",
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    Compare with a friend
+                  </button>
+                </div>
               </div>
             )}
             {user && (

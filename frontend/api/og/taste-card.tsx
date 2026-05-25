@@ -217,20 +217,23 @@ export default async function handler(request: Request) {
         </div>
 
         {/* Most-loved artists. Section-header eyebrow + horizontal row of
-            circular tiles. Bumped 180→210 tile + 24→28 name so this row
-            carries the visual weight it deserves (it's the most
-            personality-defining stat on the card). Empty-state copy
-            preserves the editorial voice when the user hasn't rated
-            enough to populate. */}
+            circular tiles.
+
+            2026-05-25 rebalance: 210px tiles were dominating the card and
+            making every other piece of data feel like a footnote. Brought
+            tile down to 160px (~24% smaller) so the row carries weight
+            without crowding out the headers. Eyebrow bumped 16→26 so it
+            reads as a section label rather than a tiny caption. Artist
+            name bumped 28→32 to keep names legible despite smaller tiles. */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div
             style={{
               display: 'flex',
-              fontSize: 16,
+              fontSize: 26,
               color: MUTED,
               letterSpacing: '0.10em',
               textTransform: 'uppercase',
-              marginBottom: 18,
+              marginBottom: 22,
               fontWeight: 700,
             }}
           >
@@ -250,7 +253,7 @@ export default async function handler(request: Request) {
               Still figuring it out…
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: 18 }}>
+            <div style={{ display: 'flex', gap: 22 }}>
               {topArtists.map((a, i) => (
                 <div
                   key={a.id || a.name || i}
@@ -265,8 +268,8 @@ export default async function handler(request: Request) {
                   <div
                     style={{
                       display: 'flex',
-                      width: 210,
-                      height: 210,
+                      width: 160,
+                      height: 160,
                       borderRadius: '50%',
                       overflow: 'hidden',
                       background: SURFACE,
@@ -274,14 +277,14 @@ export default async function handler(request: Request) {
                     }}
                   >
                     {a.image_url && (
-                      <img src={a.image_url} width={210} height={210} style={{ objectFit: 'cover' }} />
+                      <img src={a.image_url} width={160} height={160} style={{ objectFit: 'cover' }} />
                     )}
                   </div>
                   <div
                     style={{
                       display: 'flex',
                       fontFamily: 'Instrument Serif',
-                      fontSize: 28,
+                      fontSize: 32,
                       color: TEXT,
                       textAlign: 'center',
                       lineHeight: 1.15,
@@ -300,17 +303,18 @@ export default async function handler(request: Request) {
             Hidden entirely when there are none so we don't render an
             empty eyebrow. Dedup happens server-side (case + punctuation
             insensitive) so "hip-hop" / "hip hop" / "Hip Hop" never all
-            show up as separate pills on the same card. */}
+            show up as separate pills on the same card. Eyebrow bumped
+            16→26 to match the other sections. */}
         {topGenres.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div
               style={{
                 display: 'flex',
-                fontSize: 16,
+                fontSize: 26,
                 color: MUTED,
                 letterSpacing: '0.10em',
                 textTransform: 'uppercase',
-                marginBottom: 14,
+                marginBottom: 18,
                 fontWeight: 700,
               }}
             >
@@ -323,9 +327,9 @@ export default async function handler(request: Request) {
                   style={{
                     display: 'flex',
                     fontFamily: 'Instrument Serif',
-                    fontSize: 28,
+                    fontSize: 30,
                     color: TEXT,
-                    padding: '8px 24px',
+                    padding: '10px 26px',
                     borderRadius: 999,
                     background: SUBTLE,
                   }}
@@ -337,60 +341,80 @@ export default async function handler(request: Request) {
           </div>
         )}
 
-        {/* Rating breakdown — promoted to its own full-width section so
-            the bars actually read at share-image scale. The eyebrow
-            doubles as the stat strip — "49 RATINGS · 3.8 ★ AVG" — which
-            kills the previous design's stranded "big 49" stat block AND
-            the awkward empty vertical gap before the footer. Bars are
-            18px tall (vs the old 12px) so they're legible in a feed
-            thumbnail crop, not just at full size. */}
+        {/* Rating breakdown — signature stat block + horizontal bars.
+            The previous design had the entire stat ("N RATINGS · X.X★
+            AVG") crammed into a 16px uppercase eyebrow, which made the
+            most important number on the card (the user's avg) read as
+            a footnote. Now the avg rating gets the signature-stat
+            treatment — Instrument Serif, ~64px, gold star inline —
+            matching the brand's "Era Score as hero stat" pattern.
+            Total ratings sits below as a muted italic subtitle.
+
+            Bars below stay similar but bumped 18→22 tall and the
+            star/count labels bumped up for legibility. */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              marginBottom: 14,
-              fontSize: 16,
-              color: MUTED,
-              letterSpacing: '0.10em',
-              textTransform: 'uppercase',
-              fontWeight: 700,
+              gap: 14,
+              marginBottom: 22,
             }}
           >
-            <div style={{ display: 'flex', fontVariantNumeric: 'tabular-nums' }}>
-              {data.total_ratings.toLocaleString()} ratings · {data.average_rating.toFixed(1)}
+            <div
+              style={{
+                display: 'flex',
+                fontFamily: 'Instrument Serif',
+                fontSize: 64,
+                color: TEXT,
+                lineHeight: 1,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {data.average_rating.toFixed(1)}
             </div>
-            <StarIcon size={14} color={MUTED} />
-            <div style={{ display: 'flex' }}>avg</div>
+            <StarIcon size={44} color={GOLD} />
+            <div
+              style={{
+                display: 'flex',
+                fontFamily: 'Instrument Serif',
+                fontStyle: 'italic',
+                fontSize: 32,
+                color: MUTED,
+                marginLeft: 4,
+                marginBottom: -4,
+              }}
+            >
+              avg · {data.total_ratings.toLocaleString()} ratings
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[5, 4, 3, 2, 1].map((star) => {
               const count = Number(distribution[star] || 0);
               const widthPct = (count / distMax) * 100;
               return (
-                <div key={star} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div key={star} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 4,
-                      width: 48,
-                      fontSize: 18,
+                      width: 56,
+                      fontSize: 22,
                       color: MUTED,
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
                     <div style={{ display: 'flex' }}>{star}</div>
-                    <StarIcon size={14} color={MUTED} />
+                    <StarIcon size={18} color={MUTED} />
                   </div>
                   <div
                     style={{
                       display: 'flex',
                       flex: 1,
-                      height: 18,
+                      height: 22,
                       background: SUBTLE,
-                      borderRadius: 4,
+                      borderRadius: 5,
                       overflow: 'hidden',
                     }}
                   >
@@ -407,8 +431,8 @@ export default async function handler(request: Request) {
                     style={{
                       display: 'flex',
                       justifyContent: 'flex-end',
-                      width: 56,
-                      fontSize: 16,
+                      width: 64,
+                      fontSize: 20,
                       color: MUTED,
                       fontVariantNumeric: 'tabular-nums',
                     }}

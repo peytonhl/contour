@@ -238,27 +238,21 @@ export function Layout() {
   // when the user reaches /friends via the desktop top-nav link, a
   // browser-back navigation, or a direct URL load.
   //
-  // Also stamps the Community last-view timestamp. The Friends feed is
-  // a subset of the Community feed (Friends = followed users, Community
-  // = all users), so any item that triggered the Friends dot also
-  // appears in Community. Without this, after viewing /friends the
-  // Community sub-tab still shows the dot for the exact item the user
-  // just read — reported as "viewing a notification in Friends
-  // shouldn't also show as unread in Community." This is intentionally
-  // unconditional on hasNewFriends because /friends visits "catch the
-  // user up" on follow-graph activity regardless of whether the dot
-  // was specifically lit — and if there was non-friends Community
-  // activity since this moment, the next freshness probe will re-light
-  // the Community dot correctly (it compares newest-item-ts to
-  // last-view-ts; only items strictly newer than now-time-of-visit
-  // will trigger).
+  // Also stamps the Community last-view timestamp BUT ONLY when there
+  // was actually a Friends notification visible at the moment the user
+  // arrived. The Friends feed is a subset of the Community feed
+  // (Friends = followed users, Community = all users), so when a
+  // followed user's activity triggered the Friends dot, that same
+  // activity is also driving the Community dot — clearing one without
+  // the other would leave the user staring at a Community dot for an
+  // item they just read. But if /friends had no new activity, leaving
+  // Community alone is correct: any Community dot was triggered by
+  // non-friends activity the user genuinely hasn't seen.
   useEffect(() => {
-    if (location.pathname === "/friends") {
-      if (hasNewFriends) {
-        writeFriendsLastView();
-        setHasNewFriends(false);
-      }
+    if (location.pathname === "/friends" && hasNewFriends) {
+      writeFriendsLastView();
       writeCommunityLastView();
+      setHasNewFriends(false);
     }
   }, [location.pathname, hasNewFriends]);
 
