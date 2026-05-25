@@ -767,40 +767,71 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
       position: "relative", overflow: "hidden",
       background: "#0a0a0a",
     }}>
-      {/* Album art — top 65% of the card.
-          Previously this whole card was a flex column with the cover
-          region as `flex: 0 0 65%` and the info section as `flex: 1`.
-          After many swipes on iOS WKWebView, the cover region would
-          collapse to ~8% of the card and the info section would absorb
-          the rest, leaving the cover as a thin strip with empty space
-          below (reported 2026-05-17). Couldn't reliably reproduce on
-          desktop; likely class of WebKit flex-recomputation drift with
-          many transform animations stacked into the same compositor.
-          Switched to explicit absolute positioning for the two regions
-          — there's no flex layout to drift, the cover is always
-          height:65% top:0 and the info section always top:65% bottom:0.
+      {/* Unified card backdrop — spans the ENTIRE card so the cover
+          area and metadata area share a single continuous surface.
+          Pre-2026-05-25 this lived inside the cover-region div only,
+          producing a visible seam at the 65% boundary: above the seam
+          the backdrop had the album's blurred color/texture; below it
+          the info region's flat #0a0a0a gradient. Even though both
+          met at the same color at the line, the visual transition
+          read as "two stacked panels" — exactly the dating-app
+          comparison the user made ("they don't move together, like
+          two separate pieces"). Now the blurred backdrop fills the
+          whole card and the info region's bg is removed; everything
+          inside is just elements floating on the same atmospheric
+          surface. */}
+      {coverImage && (
+        <div aria-hidden style={{
+          position: "absolute", inset: "-20px",
+          backgroundImage: `url(${coverImage})`,
+          backgroundSize: "cover", backgroundPosition: "center",
+          // Slightly darker brightness (0.40 vs the old 0.45) because
+          // the backdrop now sits behind text too, not just behind the
+          // floating cover image. Saturation kept at 1.5 for the
+          // "vinyl-jacket bloom" feel.
+          filter: "blur(40px) saturate(1.5) brightness(0.40)",
+          transform: "scale(1.1)",
+          zIndex: 0,
+        }} />
+      )}
 
-          paddingTop reserves a clean band at the top of the art region
-          for the floating chrome (gear button on the page container,
-          "···" overflow on the card). Backdrop and bottom vignette stay
-          absolute inside this region and don't participate in centering.
-          decoding="async" + fetchpriority="high" hint the browser to
-          commit GPU resources to this image early. */}
+      {/* Bottom darken — strong-enough gradient over the lower half so
+          the track name / artist / stars stay readable against whatever
+          color the blurred backdrop happens to be doing. Starts soft
+          near the cover image's bottom edge and ramps to ~0.78 opacity
+          at the card's bottom. Single linear, no hard line. Replaces
+          the old "fade cover region into #0a0a0a" vignette AND the
+          flat info-region bg — both did parts of this job separately
+          and the boundary between them was the seam. */}
+      <div aria-hidden style={{
+        position: "absolute", left: 0, right: 0, top: "45%", bottom: 0,
+        background: "linear-gradient(to bottom, rgba(10,10,10,0) 0%, rgba(10,10,10,0.55) 45%, rgba(10,10,10,0.85) 100%)",
+        pointerEvents: "none",
+        zIndex: 1,
+      }} />
+
+      {/* Album art — top 65% of the card. Now overlaid on the unified
+          backdrop above (zIndex:2). The previous separate
+          per-cover-region backdrop + bottom vignette have moved out
+          (see above). The 65% absolute positioning is preserved to
+          avoid the WKWebView flex-collapse bug (reported 2026-05-17)
+          where the cover region would shrink to ~8% under repeated
+          swipe animations. Explicit dimensions = no flex
+          recomputation = no drift.
+
+          paddingTop reserves a clean band at the top for floating
+          chrome (gear button on the page container, "···" overflow
+          on the card). decoding="async" + fetchpriority="high" hint
+          the browser to commit GPU resources to this image early. */}
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0, height: "65%",
         overflow: "hidden",
         display: "flex", alignItems: "center", justifyContent: "center",
         paddingTop: 48,
+        zIndex: 2,
       }}>
         {coverImage
           ? <>
-              <div aria-hidden style={{
-                position: "absolute", inset: "-20px",
-                backgroundImage: `url(${coverImage})`,
-                backgroundSize: "cover", backgroundPosition: "center",
-                filter: "blur(40px) saturate(1.5) brightness(0.45)",
-                transform: "scale(1.1)",
-              }} />
               <img
                 src={coverImage}
                 alt={track.album_name}
@@ -833,15 +864,13 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
                   imageRendering: "-webkit-optimize-contrast",
                 }}
               />
-              {/* Bottom vignette — fades the art into the metadata strip
-                  so the section seam disappears. */}
-              <div aria-hidden style={{
-                position: "absolute", left: 0, right: 0, bottom: 0,
-                height: 80,
-                background: "linear-gradient(to bottom, transparent 0%, #0a0a0a 100%)",
-                pointerEvents: "none",
-                zIndex: 2,
-              }} />
+              {/* The per-cover bottom vignette that used to live here
+                  has moved out to the card-root unified darken (above
+                  the cover region in the JSX). With one continuous
+                  backdrop spanning the whole card, the seam it was
+                  patching no longer exists — the gradient at card-
+                  root handles legibility for both the cover-region
+                  base AND the info section beneath. */}
             </>
           : <div style={{ width: "100%", height: "100%", background: "var(--surface2)" }} />
         }
@@ -962,18 +991,26 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
         </div>
       </div>
 
-      {/* Info + controls — bottom 35% of the card.
-          Absolutely positioned to match the cover region above
-          (top:0..65%); together they fully cover the card with no
-          flex computation. overflowY:auto inside lets long
-          tracklist/review content scroll within the section without
-          affecting the cover region's size. */}
+      {/* Info + controls — bottom 35% of the card. Absolutely
+          positioned to match the cover region above (top:0..65%);
+          together they fully cover the card with no flex
+          computation. overflowY:auto inside lets long tracklist /
+          review content scroll within the section without affecting
+          the cover region's size.
+
+          IMPORTANT: this section deliberately has NO own background.
+          The card-root unified blurred backdrop + bottom-darken
+          gradient (above the cover region in the JSX) show through
+          here. That's what makes the cover area and info area read
+          as one continuous card surface instead of two stacked
+          panels. Don't add a `background:` property here unless you
+          ALSO want the visible seam back. */}
       <div style={{
         position: "absolute", top: "65%", left: 0, right: 0, bottom: 0,
         display: "flex", flexDirection: "column",
         padding: "14px 24px 12px",
-        background: "linear-gradient(to bottom, #0a0a0a, #111)",
         gap: 10, overflowY: "auto",
+        zIndex: 2,
       }}>
 
         {/* Track info */}
