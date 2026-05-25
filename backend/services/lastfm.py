@@ -115,6 +115,78 @@ async def get_artist_tags(artist_name: str, limit: int = 15) -> list[dict]:
     return tags_out
 
 
+async def get_similar_artists(artist_name: str, limit: int = 20) -> list[dict]:
+    """Return Last.fm's similar artists for the given artist as
+    [{name, match}, ...] sorted by match score desc.
+
+    `match` is Last.fm's 0–1 similarity score (string in the raw response,
+    coerced to float here). Drives the "if you liked X you'll like Y"
+    neighbor expansion in the For You feed's tier 0 — independent of
+    genre tagging, so it catches scene affinity (slowcore → Codeine,
+    Duster, Bedhead) that genre slugs alone can't model.
+
+    Cached 30d on hit (similarity barely drifts — Last.fm's graph
+    updates monthly at most), 6h on miss so a newly-indexed niche
+    artist gets picked up reasonably fast.
+    """
+    if not _API_KEY:
+        return []
+    if not artist_name or not artist_name.strip():
+        return []
+
+    cache_key = f"lastfm:similar_v1:{artist_name.lower().strip()}:{limit}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        if isinstance(cached, list):
+            return [
+                s for s in cached
+                if isinstance(s, dict) and s.get("name")
+            ]
+        return []
+
+    params = {
+        "method": "artist.getSimilar",
+        "api_key": _API_KEY,
+        "artist": artist_name,
+        "limit": limit,
+        "format": "json",
+        "autocorrect": "1",
+    }
+    similars: list[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(LASTFM_BASE, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "error" not in data:
+                    block = data.get("similarartists") or {}
+                    raw = block.get("artist") if isinstance(block, dict) else None
+                    if isinstance(raw, list):
+                        for a in raw[:limit]:
+                            if not isinstance(a, dict):
+                                continue
+                            name = a.get("name")
+                            if not isinstance(name, str) or not name.strip():
+                                continue
+                            try:
+                                match = float(a.get("match") or 0.0)
+                            except (TypeError, ValueError):
+                                match = 0.0
+                            similars.append({
+                                "name": name.strip(),
+                                "match": match,
+                            })
+    except Exception as exc:
+        logger.warning("lastfm: get_similar_artists(%s) failed — %s", artist_name, exc)
+
+    similars.sort(key=lambda s: s["match"], reverse=True)
+    await redis_cache.set(
+        cache_key, similars,
+        ttl=_TTL_HIT * 30 if similars else _TTL_MISS,
+    )
+    return similars
+
+
 async def get_album_playcount(artist: str, album: str) -> Optional[int]:
     """
     Return the total Last.fm scrobble count for an album.

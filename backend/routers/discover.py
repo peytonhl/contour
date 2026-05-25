@@ -41,6 +41,28 @@ Simplified to two paths since 2026-05-18 — tier 1's deep Spotify pool
 makes the older "genre-locked unsampled / Deezer keyword fallback"
 tiers redundant for users with prefs.
 
+  • Tier neighbor (always, when seed_artist_ids is non-empty)
+      Last.fm artist-similarity pivot. For each of the user's top-6
+      most-recent pure-positive seeds, fetch similar artists via
+      Last.fm artist.getSimilar, aggregate dedup'd by max match score.
+      Resolution is catalog-first (ArtistCache name match → TrackCache),
+      with a Spotify fallback (`search_tracks(artist:"<name>")`, capped
+      at 3 calls/batch) for high-match similars not yet in the DB.
+      Captures *scene affinity* — the slowcore / shoegaze / footwork
+      subscenes that genre slugs alone collapse together. Fires
+      independent of eligible_genres so it works for users who never
+      picked genres in onboarding. Runs BEFORE tier 1 so neighbor
+      tracks surface above genre-broad ones in the batch.
+
+  • Tier 0b (after tier 0, when the user has high-ratings)
+      Subgenre-tag catalog pivot. _compute_user_subgenre_tags walks
+      the user's 4-5★ artists' Last.fm tags and surfaces the top
+      sub-tags NOT already covered by their picker genres' alias
+      families. So a user who picked "rock" but consistently rates
+      shoegaze-tagged artists 5★ gets a catalog query for "shoegaze"
+      specifically — closes the picker-granularity gap without
+      requiring a more elaborate UI. Catalog-only (no Spotify cost).
+
   • Tier 1 (always, when eligible_genres is non-empty)
       Weighted-genre pivot. Sample k=6 genres from profile.genres
       weighted by position (decay 0.90^i). For each sampled genre,
@@ -48,6 +70,18 @@ tiers redundant for users with prefs.
       of the v7 pool. Pool depth comes from offset-based variants
       inside services/spotify.py — same query at offsets 0/10/20 plus
       tag:hipster and year:2023-2026 variants.
+
+      Popularity calibration (applied at the /feed level, before tier 1
+      and the vintage baseline see target_popularity):
+        - Cold-start default: when the user has picked genres but
+          has no high-rated tracks yet, target=50 (neutral) instead
+          of the legacy 70 (mild mainstream lean). "I picked indie"
+          ≠ "I want top-40 indie."
+        - Discovery offset: when the user's revealed target ≥ 60
+          (broadly mainstream), shave 10 points so the curve peaks
+          slightly off-center toward less-known. Asymmetric — niche
+          listeners (<60) are left alone so they don't get pushed
+          into noise.
 
   • Tier 2 (vintage only — user has ≥60% decade preference)
       Spotify year-locked baselines across pop/rock/hip-hop. Tier 1
@@ -145,6 +179,7 @@ import json
 import logging
 import random
 import re
+import unicodedata
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -159,6 +194,7 @@ from models import AlbumCache, ArtistCache, Rating, TrackCache, UserTasteProfile
 from routers.auth import optional_user_id, require_user_id
 from services import spotify
 from services import deezer as deezer_svc
+from services import lastfm
 from services.limiter import limiter
 
 router = APIRouter(prefix="/discover", tags=["discover"])
@@ -775,6 +811,109 @@ async def _compute_user_genre_signal(
     return out
 
 
+async def _compute_user_subgenre_tags(
+    db: AsyncSession,
+    user_id: str,
+    eligible_genres: list[str],
+    top_k: int = 5,
+    min_artists: int = 2,
+) -> list[dict]:
+    """Derive subgenre signals from the user's high-rated artists' Last.fm
+    tags — independent of their explicit picker choices.
+
+    The picker exposes ~12 broad genre families. A user who consistently
+    rates shoegaze-tagged artists 5★ but picked "rock" in onboarding
+    can't tell the feed they want shoegaze specifically. This function
+    inspects the user's actual rating history (high-rated tracks →
+    primary artists → ArtistCache.genres → Last.fm tag weights) and
+    surfaces the top inferred subgenre tags. Caller feeds them into the
+    catalog-pivot tier as additional genre-slug queries — so the user
+    gets shoegaze catalog hits even though "shoegaze" isn't in the
+    picker.
+
+    A tag qualifies as a subgenre when:
+      • It does NOT exactly equal any alias term of the user's picker
+        genres. So "hip hop" / "rap" / "trap" are skipped for a
+        hip-hop-picker user (they're already covered by tier 0's
+        picker-genre query via _genre_match_terms aliases).
+      • It's supported by ≥ min_artists distinct high-rated artists.
+        Single-artist noise (one Last.fm submitter applied a weird tag
+        to one artist) doesn't promote the tag.
+      • It has positive aggregate tag-mass across the user's history.
+
+    Returns a list of {tag, weight, artist_count}, sorted by aggregate
+    weight desc, capped at top_k.
+    """
+    # Step 1: walk high ratings → primary artist IDs
+    rows = (await db.execute(
+        select(TrackCache.artist_ids_json)
+        .select_from(Rating)
+        .join(TrackCache, Rating.entity_id == TrackCache.spotify_id)
+        .where(
+            Rating.user_id == user_id,
+            Rating.entity_type == "track",
+            Rating.value >= HIGH_RATING_THRESHOLD,
+        )
+    )).scalars().all()
+    artist_ids: set[str] = set()
+    for aids_json in rows:
+        try:
+            ids = json.loads(aids_json or "[]")
+            if ids:
+                artist_ids.add(ids[0])
+        except Exception:
+            continue
+    if not artist_ids:
+        return []
+
+    # Step 2: pull those artists' Last.fm tag weights
+    artist_rows = (await db.execute(
+        select(ArtistCache.spotify_id, ArtistCache.genres)
+        .where(ArtistCache.spotify_id.in_(artist_ids))
+    )).all()
+
+    from services.spotify import _normalize_genres_data, _genre_match_terms
+
+    # Step 3: covered-term set from picker genres. Exact-match check —
+    # we only filter out tags that PRECISELY equal an alias term, not
+    # tags that contain one as a substring. "underground hip hop"
+    # should still surface as a subgenre even though "hip hop" is in
+    # the alias family — the picker-genre tier matches it incidentally
+    # but doesn't bias the catalog toward it the way an explicit
+    # underground-hip-hop query would.
+    covered_terms: set[str] = set()
+    for slug in eligible_genres:
+        for term in _genre_match_terms(slug):
+            covered_terms.add((term or "").lower().strip())
+
+    # Step 4: aggregate by tag
+    tag_weight: dict[str, float] = {}
+    tag_artists: dict[str, set[str]] = {}
+    for sid, gj in artist_rows:
+        if not gj:
+            continue
+        for tag, weight in _normalize_genres_data(gj):
+            tl = (tag or "").strip().lower()
+            if not tl or tl in covered_terms:
+                continue
+            tag_weight[tl] = tag_weight.get(tl, 0.0) + weight
+            tag_artists.setdefault(tl, set()).add(sid)
+
+    # Step 5: threshold and rank
+    out: list[dict] = []
+    for tag, w in tag_weight.items():
+        n_artists = len(tag_artists[tag])
+        if n_artists < min_artists:
+            continue
+        out.append({
+            "tag": tag,
+            "weight": round(w, 4),
+            "artist_count": n_artists,
+        })
+    out.sort(key=lambda x: x["weight"], reverse=True)
+    return out[:top_k]
+
+
 async def _fetch_genre_tracks_from_catalog(
     db: AsyncSession,
     genre: str,
@@ -883,6 +1022,316 @@ async def _fetch_genre_tracks_from_catalog(
 
     random.shuffle(candidates)
     return candidates[:limit]
+
+
+# Punctuation that we strip during artist-name normalization. Apostrophes
+# and ampersands account for "Guns N' Roses" / "AC/DC" / "Tyler, The
+# Creator" style variation between Last.fm's display name and what's in
+# ArtistCache. Slashes/dashes preserved as spaces so "AC/DC" → "ac dc"
+# matches "AC-DC" → "ac dc".
+_NAME_PUNCT_STRIP = re.compile(r"[.,'\"!?()\[\]&]")
+_NAME_PUNCT_TO_SPACE = re.compile(r"[/\-_:]")
+_NAME_WHITESPACE = re.compile(r"\s+")
+
+
+def _normalize_artist_name_for_match(name: Optional[str]) -> str:
+    """Loose-match key for artist names across data sources.
+
+    Last.fm's display name and Spotify's display name diverge in
+    superficial ways that exact (even lowered) match misses:
+      - Diacritics: "Beyoncé" vs "Beyonce", "Sigur Rós" vs "Sigur Ros"
+      - Punctuation: "Tyler, The Creator" vs "Tyler the Creator",
+        "Guns N' Roses" vs "Guns N Roses"
+      - Slash/dash variants: "AC/DC" vs "AC-DC", "JAY-Z" vs "JAY Z"
+      - Trailing whitespace, doubled spaces
+    Returns a stripped, ASCII-folded, punctuation-normalized lowercase
+    string. Applied to BOTH sides of the comparison so equivalents
+    collapse to the same key.
+
+    Things this DOESN'T solve (deliberately — would need fuzzy match
+    or explicit mappings):
+      - Abbreviations: "Mt. Eerie" vs "Mount Eerie"
+      - Featured-artist suffixes: "Drake (feat. Future)" vs "Drake"
+      - Name changes: "Kanye West" vs "Ye"
+    """
+    if not name:
+        return ""
+    # NFKD splits combined characters (é = e + combining-acute) so the
+    # ASCII encode drops the diacritic and keeps the base letter.
+    decomp = unicodedata.normalize("NFKD", name)
+    ascii_only = decomp.encode("ascii", "ignore").decode("ascii")
+    s = _NAME_PUNCT_STRIP.sub("", ascii_only)
+    s = _NAME_PUNCT_TO_SPACE.sub(" ", s)
+    s = _NAME_WHITESPACE.sub(" ", s).strip().lower()
+    return s
+
+
+async def _fetch_similar_artist_tracks(
+    db: AsyncSession,
+    seed_artist_ids: list[str],
+    exclude_track_ids: set[str],
+    excluded_artist_ids: set[str],
+    market: str = "US",
+    max_seeds: int = 6,
+    similars_per_seed: int = 20,
+    spotify_fallback_budget: int = 3,
+    per_artist_cap: int = 3,
+    total_cap: int = 30,
+) -> tuple[list[dict], dict]:
+    """Artist-similarity neighbor pivot.
+
+    For each of the user's top-N most-recent positively-rated artists,
+    fetch Last.fm's similar-artist list and surface tracks by those
+    neighbors. This is the only tier that models *scene affinity* —
+    the slowcore / shoegaze / footwork / vaporwave subgraphs that
+    Spotify's broad genre slugs collapse into one "rock" or "electronic"
+    bucket. Last.fm's similarity graph is community-curated and free.
+
+    Two-stage candidate sourcing:
+      1. CATALOG (cheap, always tried). Resolve each similar-artist name
+         to a row in ArtistCache via case-insensitive name match, then
+         pull that artist's tracks from TrackCache. Zero Spotify calls.
+      2. SPOTIFY FALLBACK (capped). For the highest-match similar
+         artists NOT in our catalog, fire `search_tracks(artist:"<name>")`
+         to pull a small slice. Budget defaults to 3 calls per batch so
+         this can't trip the rate-limit circuit. As a side-effect,
+         search_tracks persists each hit to TrackCache — so over time
+         the catalog grows to cover the niche scenes the catalog tier
+         alone can't reach.
+
+    Returns (tracks, debug_stats). `debug_stats` is a small dict with
+    counts (seeds_used, similars_aggregated, catalog_matched_artists,
+    fallback_searches, catalog_track_count, fallback_track_count) so
+    callers can log a compact summary.
+    """
+    debug: dict = {
+        "seeds_used": 0,
+        "similars_aggregated": 0,
+        "catalog_matched_artists": 0,
+        "fallback_searches": 0,
+        "catalog_track_count": 0,
+        "fallback_track_count": 0,
+    }
+    if not seed_artist_ids:
+        return [], debug
+
+    seeds = seed_artist_ids[:max_seeds]
+
+    # Step 1: resolve seed Spotify IDs to names so we can call Last.fm.
+    # Skip seeds we can't name (e.g. liked_artist_ids row that pre-dates
+    # ArtistCache population for that artist — the artist_reconciler
+    # worker fills these in over time).
+    seed_rows = (await db.execute(
+        select(ArtistCache.spotify_id, ArtistCache.name)
+        .where(ArtistCache.spotify_id.in_(seeds))
+    )).all()
+    seed_id_to_name = {sid: name for sid, name in seed_rows if name}
+    seed_names = [seed_id_to_name[sid] for sid in seeds if sid in seed_id_to_name]
+    if not seed_names:
+        return [], debug
+    debug["seeds_used"] = len(seed_names)
+
+    # Step 2: fetch similar artists for each seed in parallel.
+    similar_results = await asyncio.gather(*[
+        lastfm.get_similar_artists(name, limit=similars_per_seed)
+        for name in seed_names
+    ], return_exceptions=True)
+
+    # Aggregate: normalized-name → max match score across all seeds. Same
+    # neighbor being similar to TWO seeds is a stronger signal than one,
+    # but max-rather-than-sum keeps the score in [0, 1] for legibility.
+    # Keys are the loose-match normalization (diacritic-stripped,
+    # punctuation-normalized, lowercased) so Beyoncé vs Beyonce, Tyler,
+    # The Creator vs Tyler the Creator, etc. collapse to the same key
+    # for the catalog lookup.
+    seed_name_keys = {_normalize_artist_name_for_match(n) for n in seed_names}
+    agg_match: dict[str, float] = {}
+    name_orig_case: dict[str, str] = {}  # preserve the display casing
+    for res in similar_results:
+        if not isinstance(res, list):
+            continue
+        for sim in res:
+            n = sim.get("name") if isinstance(sim, dict) else None
+            if not n:
+                continue
+            key = _normalize_artist_name_for_match(n)
+            if not key:
+                continue
+            # Don't recommend a seed back as a neighbor — defensive;
+            # Last.fm usually excludes self-matches.
+            if key in seed_name_keys:
+                continue
+            m = float(sim.get("match") or 0.0)
+            if m > agg_match.get(key, -1.0):
+                agg_match[key] = m
+                name_orig_case[key] = n
+    debug["similars_aggregated"] = len(agg_match)
+    if not agg_match:
+        return [], debug
+
+    # Step 3: catalog resolution. We can't push the Python-side
+    # _normalize_artist_name_for_match into a portable WHERE clause
+    # (it does Unicode normalization and regex-stripped punctuation
+    # — both beyond SQL's portable surface). Mirror the pattern that
+    # _fetch_genre_tracks_from_catalog already uses: pull all
+    # ArtistCache rows (bounded — low-thousands, indexed primary key
+    # scan) and match in Python with the same normalizer that the
+    # Last.fm side used. So "Beyoncé" in ArtistCache and "Beyonce"
+    # from Last.fm both reduce to "beyonce" and link up.
+    all_artist_rows = (await db.execute(
+        select(ArtistCache.spotify_id, ArtistCache.name)
+        .where(ArtistCache.name.is_not(None))
+    )).all()
+    matched_id_to_name_key: dict[str, str] = {}
+    for sid, name in all_artist_rows:
+        if not name or sid in excluded_artist_ids:
+            continue
+        key = _normalize_artist_name_for_match(name)
+        if key in agg_match:
+            # If a normalized name resolves to multiple ArtistCache rows
+            # (cover-artist collisions, or two artists with diacritic-
+            # variant names), keep the first — the others' tracks still
+            # surface via per-artist track lookup below.
+            matched_id_to_name_key.setdefault(sid, key)
+    debug["catalog_matched_artists"] = len(matched_id_to_name_key)
+
+    catalog_tracks: list[dict] = []
+    if matched_id_to_name_key:
+        # Step 4: pull tracks by primary artist from TrackCache. Same
+        # portability constraint as the genre-catalog tier — first-elem of
+        # the JSON list can't be filtered in DB-agnostic SQL, so we pull
+        # candidate tracks and filter in Python. Pulling only rows that
+        # have BOTH a primary-artist JSON and an image_url keeps the
+        # candidate set small.
+        track_rows = (await db.execute(
+            select(TrackCache).where(
+                TrackCache.artist_ids_json.is_not(None),
+                TrackCache.image_url.is_not(None),
+            )
+        )).scalars().all()
+        per_artist: dict[str, list[dict]] = {sid: [] for sid in matched_id_to_name_key}
+        for t in track_rows:
+            if t.spotify_id in exclude_track_ids:
+                continue
+            try:
+                ids = json.loads(t.artist_ids_json or "[]")
+                if not ids:
+                    continue
+                primary = ids[0]
+            except Exception:
+                continue
+            if primary not in per_artist:
+                continue
+            if len(per_artist[primary]) >= per_artist_cap:
+                continue
+            per_artist[primary].append({
+                "id": t.spotify_id,
+                "name": t.name,
+                "artists": [t.artist] if t.artist else [],
+                "artist_ids": ids,
+                "album_id": t.album_id,
+                "album_name": t.album_name,
+                "release_date": t.release_date,
+                "duration_ms": t.duration_ms,
+                "popularity": t.popularity,
+                "explicit": bool(t.explicit),
+                "image_url": t.image_url,
+                "external_url": t.external_url,
+                "preview_url": None,
+                "_source": "catalog_neighbor",
+                "_match_score": agg_match.get(matched_id_to_name_key[primary], 0.0),
+            })
+        # Flatten; per-artist shuffled to avoid one artist's whole top-3
+        # always appearing in the same order across batches.
+        for sid, ts in per_artist.items():
+            random.shuffle(ts)
+            catalog_tracks.extend(ts)
+        debug["catalog_track_count"] = len(catalog_tracks)
+
+    # Step 5: Spotify fallback. Pick the highest-match similar artists
+    # that the catalog couldn't satisfy (no name match OR catalog returned
+    # zero tracks for them after exclusions). Cap to budget; one Spotify
+    # search_tracks call per fallback artist.
+    fallback_tracks: list[dict] = []
+    if spotify_fallback_budget > 0 and len(catalog_tracks) < total_cap:
+        # An artist counts as "satisfied" only when they ACTUALLY contributed
+        # ≥1 track to catalog_tracks this batch — not merely when they had
+        # an ArtistCache row. An ArtistCache row with zero TrackCache tracks
+        # (artist_reconciler created the row, but the artist's catalog
+        # hasn't been touched yet by any user) should still be eligible
+        # for the Spotify fallback so the user gets coverage.
+        satisfied_keys: set[str] = set()
+        if matched_id_to_name_key:
+            for sid, key in matched_id_to_name_key.items():
+                if per_artist.get(sid):
+                    satisfied_keys.add(key)
+        unmatched_sorted = sorted(
+            (
+                (key, score) for key, score in agg_match.items()
+                if key not in satisfied_keys
+            ),
+            key=lambda kv: kv[1],
+            reverse=True,
+        )
+        fallback_picks = unmatched_sorted[:spotify_fallback_budget]
+
+        async def _spotify_artist_search(name_key: str, score: float) -> list[dict]:
+            name = name_orig_case.get(name_key) or name_key
+            # field-scoped search keeps Spotify focused on this exact
+            # artist — much cleaner than a bare-name search which
+            # surfaces every track with the name as a substring.
+            try:
+                results = await spotify.search_tracks(
+                    f'artist:"{name}"', limit=5,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "discover: similar-artist Spotify fallback failed for %r: %s",
+                    name, exc,
+                )
+                return []
+            out: list[dict] = []
+            count_for_artist = 0
+            for t in results:
+                if count_for_artist >= per_artist_cap:
+                    break
+                if not isinstance(t, dict):
+                    continue
+                tid = t.get("id")
+                if not tid or tid in exclude_track_ids:
+                    continue
+                # Spotify's field-scoped search can still return tracks
+                # by other artists when the query word is a feature
+                # credit. Require the primary artist name to match via
+                # the same loose normalizer used for the catalog
+                # lookup — otherwise "Beyoncé" from Spotify vs
+                # "Beyonce" from Last.fm would silently drop every hit.
+                primary_name = (t.get("artists") or [""])[0]
+                if _normalize_artist_name_for_match(primary_name) != _normalize_artist_name_for_match(name):
+                    continue
+                aid = (t.get("artist_ids") or [None])[0]
+                if aid and aid in excluded_artist_ids:
+                    continue
+                t = dict(t)
+                t["_source"] = "spotify_neighbor"
+                t["_match_score"] = score
+                out.append(t)
+                count_for_artist += 1
+            return out
+
+        if fallback_picks:
+            fallback_results = await asyncio.gather(*[
+                _spotify_artist_search(k, s) for k, s in fallback_picks
+            ], return_exceptions=True)
+            debug["fallback_searches"] = len(fallback_picks)
+            for res in fallback_results:
+                if isinstance(res, list):
+                    fallback_tracks.extend(res)
+            debug["fallback_track_count"] = len(fallback_tracks)
+
+    combined = catalog_tracks + fallback_tracks
+    random.shuffle(combined)
+    return combined[:total_cap], debug
 
 
 async def _compute_decade_preference(
@@ -1260,6 +1709,38 @@ async def get_discover_feed(
             # silently to the cold-start default.
             target_popularity = None
 
+    # ── Discovery calibration ────────────────────────────────────────────
+    # Two tweaks to the per-user popularity target so niche listeners
+    # don't get steered back to mainstream within their picked genre.
+    # Without these, the Laplace curve in search_tracks_by_genre was
+    # peaking exactly on the user's revealed average, which meant
+    # heavy raters of mainstream genres (e.g. avg pop 85) saw chart
+    # hits sampled at 100% weight and the deep-cut "tag:hipster"
+    # tracks at ~22% — the feed was *reinforcing* taste, not
+    # broadening it. Per-user complaint: "niche genres aren't
+    # coming through."
+    #
+    #   1) Cold-start default: when a user has picked genres but
+    #      hasn't rated yet, target_popularity is None → spotify.py
+    #      falls back to 70 (mild mainstream lean). For "warming up"
+    #      users that's too high — they've signaled interest in
+    #      genre X but not "top-40 in X". Bump the default down to
+    #      50 (neutral peak: equal weight at chart-100 and niche-0).
+    #
+    #   2) Discovery offset for mainstream raters: when the user's
+    #      revealed target is HIGH (≥60, broadly mainstream taste),
+    #      shave 10 points off so the curve peaks slightly below
+    #      their average. Asymmetric — niche listeners (<60) are
+    #      left alone because they're already in the deep-cut range
+    #      and pushing them further would surface noise rather than
+    #      discovery. Conservative: 10 points changes a peak-85
+    #      user's pop-30 weight from 0.33 → 0.45 (more variety) but
+    #      keeps pop-100 weight at 0.61 (mainstream still dominates).
+    if target_popularity is None:
+        target_popularity = 50.0
+    elif target_popularity >= 60.0:
+        target_popularity = max(0.0, target_popularity - 10.0)
+
     # Decade-preference signal. Computed from the user's 4–5★ ratings —
     # if they consistently rate 80s tracks high, the feed should favor
     # 80s candidates within each tier. Cold-start users (< 5 high ratings)
@@ -1429,6 +1910,44 @@ async def get_discover_feed(
     # wipes liked + down-weighted artist lists.
     add_baseline = _make_adder(soft_excluded)
 
+    # ── Tier neighbor: artist-similarity pivot (Last.fm) ─────────────────────
+    # Surface tracks by similar artists to the user's positively-rated
+    # seeds, *before* the genre-based tiers. Scene affinity (slowcore →
+    # Codeine / Duster / Bedhead, footwork → Jlin / DJ Rashad) lives in
+    # the similarity graph, not the genre tag — so this is the only tier
+    # that helps niche-listening users escape the "everything snaps back
+    # to mainstream within my picked genre" failure mode.
+    #
+    # Catalog-first; Spotify fallback (capped) for similar artists not yet
+    # in our DB so users get immediate niche coverage instead of waiting
+    # for the catalog to fill organically. Fires only when the user has a
+    # pure-positive seed (no eligible_genres dependency — works even for
+    # users who never picked genres in onboarding).
+    if seed_artist_ids and len(tracks) < limit:
+        try:
+            neighbor_tracks, neighbor_debug = await _fetch_similar_artist_tracks(
+                db,
+                seed_artist_ids=seed_artist_ids,
+                exclude_track_ids=exclude_ids,
+                excluded_artist_ids=soft_excluded,
+                market=spotify_market,
+            )
+            _flatten_shuffle_add([neighbor_tracks], add_personalized)
+            logger.info(
+                "discover: tier_neighbor (lastfm similar-artist) → %d tracks "
+                "(seeds_used=%d, similars=%d, catalog_artists=%d, "
+                "fallback_searches=%d, catalog_tracks=%d, fallback_tracks=%d)",
+                len(neighbor_tracks),
+                neighbor_debug["seeds_used"],
+                neighbor_debug["similars_aggregated"],
+                neighbor_debug["catalog_matched_artists"],
+                neighbor_debug["fallback_searches"],
+                neighbor_debug["catalog_track_count"],
+                neighbor_debug["fallback_track_count"],
+            )
+        except Exception as exc:
+            logger.warning("discover: tier_neighbor failed: %s", exc)
+
     # ── Tier 1: Weighted-genre pivot ─────────────────────────────────────────
     # Sample 3 genres from profile.genres weighted by position. Position 0
     # is the most-recent prepend; the list is dedup'd on every 4–5★ rating
@@ -1544,6 +2063,41 @@ async def get_discover_feed(
             "discover: tier0 (catalog) → %d tracks (sampled=%s)",
             catalog_yield, sampled_genres,
         )
+
+        # ── Tier 0b: subgenre tags inferred from rated artists ───────────
+        # Picker genres are broad ("rock", "hip-hop"); a user who 5★'s
+        # only shoegaze artists can't tell the feed that explicitly.
+        # _compute_user_subgenre_tags walks their high-rated artists'
+        # Last.fm tags and returns the strongest sub-tags that AREN'T
+        # already covered by the picker's alias families.
+        # Catalog-only — no Spotify cost. If this layer is hot, the
+        # catalog grows organically into the sub-scene over time via
+        # the artist_reconciler worker + tier 1's persist-on-search.
+        if effective_user_id and len(tracks) < limit:
+            try:
+                subgenre_tags = await _compute_user_subgenre_tags(
+                    db, effective_user_id, eligible_genres, top_k=3,
+                )
+            except Exception as exc:
+                logger.warning("discover: _compute_user_subgenre_tags failed: %s", exc)
+                subgenre_tags = []
+            if subgenre_tags:
+                subgenre_added_before = len(tracks)
+                subgenre_results = await asyncio.gather(*[
+                    _fetch_genre_tracks_from_catalog(
+                        db, st["tag"],
+                        exclude_track_ids=exclude_ids,
+                        excluded_artist_ids=soft_excluded,
+                        limit=10,
+                    )
+                    for st in subgenre_tags
+                ], return_exceptions=True)
+                _flatten_shuffle_add(subgenre_results, add_personalized)
+                logger.info(
+                    "discover: tier0b (catalog by subgenre) → %d tracks (tags=%s)",
+                    len(tracks) - subgenre_added_before,
+                    [f'{t["tag"]}({t["artist_count"]})' for t in subgenre_tags],
+                )
 
         # ── Tier 1: Spotify search (fall-through) ────────────────────────
         # Fires when the catalog couldn't fill the batch on its own. The
@@ -1936,6 +2490,14 @@ async def discover_me_state(
                 "final_weight": round(pos * max(count, 1), 2),
             })
 
+    # Subgenre tags inferred from rated artists (independent of picker)
+    try:
+        subgenre_tags = await _compute_user_subgenre_tags(
+            db, user_id, eligible_genres, top_k=5,
+        )
+    except Exception as exc:
+        subgenre_tags = [{"_error": str(exc)}]
+
     # Inferred mode
     if year_range:
         mode = f"vintage (year_range={year_range})"
@@ -1959,7 +2521,15 @@ async def discover_me_state(
         "ratings": rating_counts,
         "exclude_ids_count": exclude_ids_count,
         "signals": {
-            "target_popularity": round(target_popularity, 1) if target_popularity is not None else None,
+            "target_popularity_raw": round(target_popularity, 1) if target_popularity is not None else None,
+            "target_popularity": (
+                # Mirror the discovery-calibration applied in /feed so the
+                # transparency view shows the curve peak that's actually
+                # used during sampling.
+                round(max(0.0, target_popularity - 10.0), 1)
+                if target_popularity is not None and target_popularity >= 60.0
+                else (round(target_popularity, 1) if target_popularity is not None else 50.0)
+            ),
             "decade_pref": decade_pref,
             "negative_decade_pref": negative_decade_pref,
             "negative_genre_pref": negative_genre_pref,
@@ -1976,6 +2546,7 @@ async def discover_me_state(
         "predicted_tier1_sampling": sorted(
             sampling_weights, key=lambda w: w["final_weight"], reverse=True
         ),
+        "subgenre_tags_inferred": subgenre_tags,
         "inferred_mode": mode,
     }
 
@@ -2249,6 +2820,87 @@ async def discover_probe_artists(ids: str = Query(..., description="Comma-separa
         }
     except Exception as exc:
         return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+@router.get("/probe-similar-artists")
+async def discover_probe_similar_artists(
+    db: AsyncSession = Depends(get_db),
+    seed_id: Optional[str] = Query(None, description="Single Spotify artist ID to seed from. If omitted, seed_name is required."),
+    seed_name: Optional[str] = Query(None, description="Artist name to seed from (used directly with Last.fm; bypasses the ArtistCache name lookup). Useful when you want to test the tier without having the seed in our DB."),
+    fallback_budget: int = Query(3, ge=0, le=10, description="How many high-match similar artists to chase into Spotify when the catalog has no row for them."),
+):
+    """Probe the artist-similarity neighbor tier for one seed. Returns
+    the resolved seed name, the Last.fm similar-artist list with match
+    scores, which similars resolved to ArtistCache rows, and the final
+    track candidates (catalog + Spotify fallback). Useful for verifying
+    e.g. "if I seed from <my own Spotify ID>, do we actually get
+    catalog matches for the artists Last.fm thinks I'd like?".
+    """
+    # Resolve seed → name
+    resolved_name: Optional[str] = None
+    resolved_id: Optional[str] = seed_id
+    if seed_id:
+        row = (await db.execute(
+            select(ArtistCache.name).where(ArtistCache.spotify_id == seed_id)
+        )).scalar_one_or_none()
+        if row:
+            resolved_name = row
+    if seed_name and not resolved_name:
+        resolved_name = seed_name
+    if not resolved_name:
+        return {"error": "seed not resolvable — pass seed_id pointing to an ArtistCache row, or pass seed_name directly"}
+
+    similars = await lastfm.get_similar_artists(resolved_name, limit=20)
+    similars_preview = [
+        {"name": s["name"], "match": round(s["match"], 3)}
+        for s in similars[:20]
+    ]
+
+    # Reuse the production helper so the probe reflects the real path,
+    # including dedup, exclusion handling, fallback budgeting.
+    fake_seed_ids = [resolved_id] if resolved_id else []
+    # If we only have a name (no Spotify ID), inject a synthetic ID
+    # mapping so the helper's name-lookup step finds the seed. We
+    # bypass the ArtistCache lookup by passing the seed through a
+    # one-row temp dict... but actually the helper queries ArtistCache
+    # directly, so name-only probing needs a different path. For
+    # name-only, just show what the helper WOULD see by calling its
+    # internals manually below.
+    if not resolved_id:
+        return {
+            "seed_name": resolved_name,
+            "seed_id": None,
+            "similars_count": len(similars),
+            "similars_top20": similars_preview,
+            "note": "name-only probe — pass a real seed_id to exercise the catalog/fallback resolution path",
+        }
+
+    tracks, debug = await _fetch_similar_artist_tracks(
+        db,
+        seed_artist_ids=fake_seed_ids,
+        exclude_track_ids=set(),
+        excluded_artist_ids=set(),
+        spotify_fallback_budget=fallback_budget,
+    )
+    return {
+        "seed_id": resolved_id,
+        "seed_name": resolved_name,
+        "similars_count": len(similars),
+        "similars_top20": similars_preview,
+        "debug": debug,
+        "track_count": len(tracks),
+        "tracks_preview": [
+            {
+                "id": t.get("id"),
+                "name": t.get("name"),
+                "artist": (t.get("artists") or [None])[0],
+                "source": t.get("_source"),
+                "match_score": round(t.get("_match_score") or 0.0, 3),
+                "popularity": t.get("popularity"),
+            }
+            for t in tracks[:15]
+        ],
+    }
 
 
 @router.post("/backfill-artists")
