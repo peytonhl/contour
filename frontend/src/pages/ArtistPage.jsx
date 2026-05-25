@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ReviewSection } from "../components/ReviewSection.jsx";
 import { ShareButton } from "../components/ShareButton.jsx";
-import { SpotifyIcon } from "../components/PlatformIcons.jsx";
+import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { EntityHeroSkeleton, RowSkeleton } from "../components/Skeleton.jsx";
 import { AlertIcon } from "../components/Icons.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -13,6 +13,24 @@ import { imageMedium } from "../utils/imageVariants.js";
 import { trackPath, albumPath } from "../constants/routes.js";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
+// Shared style for the three platform deep-link pills (Spotify / Apple
+// Music / YouTube) in the hero-action row. Inlined as a module const
+// rather than three duplicate style blocks so the three pills render
+// at identical sizes — earlier versions had drift when one was edited
+// without the others.
+const platformLinkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "var(--space-1)",
+  padding: "var(--space-3) var(--space-4)",
+  background: "var(--surface3)",
+  border: "none",
+  borderRadius: "var(--radius-pill)",
+  color: "var(--text-muted)",
+  fontSize: "var(--text-sm)",
+  textDecoration: "none",
+};
+
 function formatStreams(n) {
   if (!n && n !== 0) return "—";
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
@@ -342,17 +360,34 @@ export function ArtistPage() {
           {artist.external_url && (
             <a href={artist.external_url} target="_blank" rel="noreferrer"
               onClick={() => analytics.spotifyLinkClicked("artist")}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: "var(--space-1)",
-                padding: "var(--space-3) var(--space-4)",
-                background: "var(--surface3)", border: "none",
-                borderRadius: "var(--radius-pill)",
-                color: "var(--text-muted)", fontSize: "var(--text-sm)",
-                textDecoration: "none",
-              }}>
-              <SpotifyIcon size={14} /> Open in Spotify
+              style={platformLinkStyle}>
+              <SpotifyIcon size={14} /> Spotify
             </a>
           )}
+          {/* Apple Music + YouTube use search URLs rather than deep
+              links — /apple-music/match doesn't support entity_type
+              "artist" and Spotify artist IDs don't map cleanly to
+              Apple Music artist IDs without backend extension. The
+              search URL drops the user into the platform's search
+              results pre-filtered to the artist name; comparable UX
+              to the YouTube link the discover card already uses. */}
+          <a
+            href={`https://music.apple.com/us/search?term=${encodeURIComponent(artist.name)}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => analytics.appleMusicLinkClicked("artist")}
+            style={platformLinkStyle}
+          >
+            <AppleMusicIcon size={14} /> Apple Music
+          </a>
+          <a
+            href={`https://www.youtube.com/results?search_query=${encodeURIComponent(artist.name)}`}
+            target="_blank"
+            rel="noreferrer"
+            style={platformLinkStyle}
+          >
+            <YouTubeIcon size={14} /> YouTube
+          </a>
         </div>
       </div>
 
