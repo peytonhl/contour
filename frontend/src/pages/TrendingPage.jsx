@@ -265,7 +265,7 @@ function HorizontalAlbumShelf({ items, surface }) {
           }}
         >
           {it.image_url
-            ? <img src={imageMedium(it.image_url)} alt={it.name ?? ""} loading="lazy" decoding="async" style={{ width: 148, height: 148, borderRadius: "var(--radius-md)", objectFit: "cover" }} />
+            ? <img src={it.image_url} alt={it.name ?? ""} loading="lazy" decoding="async" style={{ width: 148, height: 148, borderRadius: "var(--radius-md)", objectFit: "cover" }} />
             : <div style={{ width: 148, height: 148, borderRadius: "var(--radius-md)", background: "var(--surface2)" }} />
           }
           <div style={{

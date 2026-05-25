@@ -133,7 +133,7 @@ function FeaturedCard({ item, type }) {
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; }}
     >
       {item.image_url
-        ? <img src={imageMedium(item.image_url)} alt={item.name} loading="lazy" decoding="async" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
+        ? <img src={item.image_url} alt={item.name} loading="lazy" decoding="async" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
         : <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface2)" }} />
       }
       <div style={{ padding: "10px 12px", flex: 1 }}>
