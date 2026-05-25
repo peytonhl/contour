@@ -158,8 +158,8 @@ export default async function handler(request: Request) {
           flexDirection: 'column',
           backgroundColor: BG,
           color: TEXT,
-          padding: '52px 56px 44px',
-          gap: 28,
+          padding: '56px 56px 48px',
+          gap: 26,
         }}
       >
         {/* Hero — avatar + display name + taste label. The taste label
@@ -205,7 +205,7 @@ export default async function handler(request: Request) {
                 display: 'flex',
                 fontFamily: 'Instrument Serif',
                 fontStyle: 'italic',
-                fontSize: 40,
+                fontSize: 42,
                 color: ACCENT,
                 marginTop: 6,
                 lineHeight: 1.1,
@@ -217,8 +217,11 @@ export default async function handler(request: Request) {
         </div>
 
         {/* Most-loved artists. Section-header eyebrow + horizontal row of
-            circular tiles. Empty-state copy preserves the editorial
-            voice even when the user hasn't rated enough to populate. */}
+            circular tiles. Bumped 180→210 tile + 24→28 name so this row
+            carries the visual weight it deserves (it's the most
+            personality-defining stat on the card). Empty-state copy
+            preserves the editorial voice when the user hasn't rated
+            enough to populate. */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div
             style={{
@@ -227,7 +230,7 @@ export default async function handler(request: Request) {
               color: MUTED,
               letterSpacing: '0.10em',
               textTransform: 'uppercase',
-              marginBottom: 16,
+              marginBottom: 18,
               fontWeight: 700,
             }}
           >
@@ -256,14 +259,14 @@ export default async function handler(request: Request) {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: 12,
+                    gap: 14,
                   }}
                 >
                   <div
                     style={{
                       display: 'flex',
-                      width: 180,
-                      height: 180,
+                      width: 210,
+                      height: 210,
                       borderRadius: '50%',
                       overflow: 'hidden',
                       background: SURFACE,
@@ -271,21 +274,21 @@ export default async function handler(request: Request) {
                     }}
                   >
                     {a.image_url && (
-                      <img src={a.image_url} width={180} height={180} style={{ objectFit: 'cover' }} />
+                      <img src={a.image_url} width={210} height={210} style={{ objectFit: 'cover' }} />
                     )}
                   </div>
                   <div
                     style={{
                       display: 'flex',
                       fontFamily: 'Instrument Serif',
-                      fontSize: 24,
+                      fontSize: 28,
                       color: TEXT,
                       textAlign: 'center',
                       lineHeight: 1.15,
                       padding: '0 4px',
                     }}
                   >
-                    {truncate(a.name, 16)}
+                    {truncate(a.name, 14)}
                   </div>
                 </div>
               ))}
@@ -295,7 +298,9 @@ export default async function handler(request: Request) {
 
         {/* Genres — muted pills. Secondary signal under the artist row.
             Hidden entirely when there are none so we don't render an
-            empty eyebrow. */}
+            empty eyebrow. Dedup happens server-side (case + punctuation
+            insensitive) so "hip-hop" / "hip hop" / "Hip Hop" never all
+            show up as separate pills on the same card. */}
         {topGenres.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div
@@ -318,9 +323,9 @@ export default async function handler(request: Request) {
                   style={{
                     display: 'flex',
                     fontFamily: 'Instrument Serif',
-                    fontSize: 26,
+                    fontSize: 28,
                     color: TEXT,
-                    padding: '8px 22px',
+                    padding: '8px 24px',
                     borderRadius: 999,
                     background: SUBTLE,
                   }}
@@ -332,165 +337,128 @@ export default async function handler(request: Request) {
           </div>
         )}
 
-        {/* Footer — hero stat (total + avg) on the left, mini bar chart
-            on the right, Contour wordmark below. mt:auto keeps it
-            bottom-anchored so the body can grow without pushing the
-            wordmark off-canvas. */}
+        {/* Rating breakdown — promoted to its own full-width section so
+            the bars actually read at share-image scale. The eyebrow
+            doubles as the stat strip — "49 RATINGS · 3.8 ★ AVG" — which
+            kills the previous design's stranded "big 49" stat block AND
+            the awkward empty vertical gap before the footer. Bars are
+            18px tall (vs the old 12px) so they're legible in a feed
+            thumbnail crop, not just at full size. */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 14,
+              fontSize: 16,
+              color: MUTED,
+              letterSpacing: '0.10em',
+              textTransform: 'uppercase',
+              fontWeight: 700,
+            }}
+          >
+            <div style={{ display: 'flex', fontVariantNumeric: 'tabular-nums' }}>
+              {data.total_ratings.toLocaleString()} ratings · {data.average_rating.toFixed(1)}
+            </div>
+            <StarIcon size={14} color={MUTED} />
+            <div style={{ display: 'flex' }}>avg</div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[5, 4, 3, 2, 1].map((star) => {
+              const count = Number(distribution[star] || 0);
+              const widthPct = (count / distMax) * 100;
+              return (
+                <div key={star} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      width: 48,
+                      fontSize: 18,
+                      color: MUTED,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    <div style={{ display: 'flex' }}>{star}</div>
+                    <StarIcon size={14} color={MUTED} />
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flex: 1,
+                      height: 18,
+                      background: SUBTLE,
+                      borderRadius: 4,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        width: `${widthPct}%`,
+                        height: '100%',
+                        background: GOLD,
+                      }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      width: 56,
+                      fontSize: 16,
+                      color: MUTED,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {count}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer — Contour wordmark + URL on a single baseline-aligned
+            row. No marginTop:auto on this anymore: the previous design
+            anchored the footer to the bottom and left a 150px void
+            between the genres and this row when the body didn't fill
+            the canvas. Letting the row flow naturally below the rating
+            breakdown gives the card the dense magazine-stat feel it
+            should have, without the stretched-to-fit vibe. */}
         <div
           style={{
             display: 'flex',
-            flexDirection: 'column',
-            marginTop: 'auto',
+            alignItems: 'baseline',
+            justifyContent: 'space-between',
+            paddingTop: 14,
+            borderTop: `1px solid ${BORDER}`,
           }}
         >
           <div
             style={{
               display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'space-between',
-              gap: 28,
-              paddingBottom: 18,
-              borderBottom: `1px solid ${BORDER}`,
+              fontFamily: 'Instrument Serif',
+              fontSize: 44,
+              color: TEXT,
+              lineHeight: 1,
+              letterSpacing: '-0.02em',
             }}
           >
-            {/* Stat block — total ratings as the magazine-style hero stat
-                with the average underneath. tabular-nums keeps the digits
-                aligned visually with the bar-chart counts on the right. */}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  fontFamily: 'Instrument Serif',
-                  fontSize: 88,
-                  color: TEXT,
-                  lineHeight: 1,
-                  fontVariantNumeric: 'tabular-nums',
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                {data.total_ratings.toLocaleString()}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginTop: 6,
-                  fontSize: 18,
-                  color: MUTED,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  fontWeight: 700,
-                }}
-              >
-                <div style={{ display: 'flex' }}>ratings · {data.average_rating.toFixed(1)}</div>
-                <StarIcon size={18} color={MUTED} />
-                <div style={{ display: 'flex' }}>avg</div>
-              </div>
-            </div>
-
-            {/* Mini bar chart — five rows, 5★ at top descending. Bars
-                normalize against distMax so the shape stays readable
-                even when one star bucket dominates. Width-constrained
-                (~360px) so the stat block keeps visual priority. */}
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 4,
-                width: 360,
-              }}
-            >
-              {[5, 4, 3, 2, 1].map((star) => {
-                const count = Number(distribution[star] || 0);
-                const widthPct = (count / distMax) * 100;
-                return (
-                  <div key={star} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        width: 40,
-                        fontSize: 16,
-                        color: MUTED,
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      <div style={{ display: 'flex' }}>{star}</div>
-                      <StarIcon size={12} color={MUTED} />
-                    </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        flex: 1,
-                        height: 12,
-                        background: SUBTLE,
-                        borderRadius: 4,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          width: `${widthPct}%`,
-                          height: '100%',
-                          background: GOLD,
-                        }}
-                      />
-                    </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        width: 44,
-                        fontSize: 14,
-                        color: MUTED,
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      {count}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            Contour
           </div>
-
-          {/* Wordmark + url. Same shape as taste-match's footer wordmark
-              but with the URL beside it so a share recipient knows where
-              the artifact came from. */}
           <div
             style={{
               display: 'flex',
-              alignItems: 'baseline',
-              justifyContent: 'space-between',
-              marginTop: 14,
+              fontFamily: 'Instrument Serif',
+              fontStyle: 'italic',
+              fontSize: 22,
+              color: MUTED,
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                fontFamily: 'Instrument Serif',
-                fontSize: 44,
-                color: TEXT,
-                lineHeight: 1,
-                letterSpacing: '-0.02em',
-              }}
-            >
-              Contour
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                fontFamily: 'Instrument Serif',
-                fontStyle: 'italic',
-                fontSize: 22,
-                color: MUTED,
-              }}
-            >
-              contour-rosy.vercel.app
-            </div>
+            contour-rosy.vercel.app
           </div>
         </div>
       </div>

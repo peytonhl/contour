@@ -599,7 +599,13 @@ async def get_user_taste_card_data(user_id: str, db: AsyncSession = Depends(get_
         return_exceptions=True,
     )
     top_artists: list[dict] = []
+    # Genre counts are keyed by a NORMALIZED form (lowercase, only [a-z0-9])
+    # so Spotify's parallel spellings — "hip-hop", "hip hop", "Hip Hop", "hiphop"
+    # — collapse into a single entry instead of three pills on the card. We
+    # keep the first seen display form (typically the hyphenated variant
+    # Spotify ships, e.g. "hip-hop") for the card's pill label.
     genre_counts: dict[str, int] = {}
+    genre_display: dict[str, str] = {}
     for meta in artist_meta_results:
         if isinstance(meta, dict) and meta.get("name"):
             top_artists.append({
@@ -608,9 +614,18 @@ async def get_user_taste_card_data(user_id: str, db: AsyncSession = Depends(get_
                 "image_url": meta.get("image_url"),
             })
             for g in (meta.get("genres") or [])[:3]:
-                genre_counts[g] = genre_counts.get(g, 0) + 1
+                key = "".join(c for c in g.lower() if c.isalnum())
+                if not key:
+                    continue
+                genre_counts[key] = genre_counts.get(key, 0) + 1
+                # First-seen display wins. If a later artist's genres ship
+                # the same key in a prettier form, we don't replace —
+                # consistency across renders matters more than picking the
+                # "best" spelling.
+                genre_display.setdefault(key, g)
 
-    top_genres = sorted(genre_counts, key=lambda k: genre_counts[k], reverse=True)[:5]
+    top_genre_keys = sorted(genre_counts, key=lambda k: genre_counts[k], reverse=True)[:5]
+    top_genres = [genre_display[k] for k in top_genre_keys]
 
     # ── 3. Taste label — top genre + rating posture ──────────────────────────
     # Two-word label, e.g. "Indie maximalist", "Pop skeptic". The genre

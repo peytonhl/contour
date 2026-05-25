@@ -75,7 +75,20 @@ import { ACCENT_A as ACCENT } from "../theme.js";
 //  v19 (2026-05-24): added inset boxShadow on cover img + reverted
 //                    the unnecessary fetchAsDataUrl pre-fetch and
 //                    debug=1 path from v18.
-const CARD_VERSION = "19";
+//  v20 (2026-05-24): taste-card layout fix. Previous version stranded
+//                    a ~150px black void between genre pills and the
+//                    footer because marginTop:auto stretched the
+//                    container against an under-filled body. Promoted
+//                    rating breakdown to its own full-width section,
+//                    folded total+avg into that section's eyebrow
+//                    (kills the awkward dual-stat footer), removed
+//                    marginTop:auto so content flows naturally. Also
+//                    bumped artist tiles 180→210 + names 24→28 so the
+//                    most-personality-defining row carries weight.
+//                    Backend: deduped Spotify genres case/punctuation-
+//                    insensitively so "hip-hop" and "hip hop" stop
+//                    rendering as two separate pills.
+const CARD_VERSION = "20";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
