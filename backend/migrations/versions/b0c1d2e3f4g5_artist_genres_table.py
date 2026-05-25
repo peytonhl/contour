@@ -16,9 +16,17 @@ probe-* endpoints, and _normalize_genres_data which downstream
 consumers (the per-genre alias matcher, etc.) still depend on.
 The new structures are derived-and-synchronized, NOT replacements.
 
-Revision ID: a7b8c9d0e1f2
-Revises: z6a7b8c9d0e1
+Revision ID: b0c1d2e3f4g5
+Revises: a8b9c0d1e2f3
 Create Date: 2026-05-25
+
+Note on the revision-id jump: I initially used `a7b8c9d0e1f2` only
+to discover that slot was already taken by the push_notifications
+migration (my `git ls-files | tail -5` had truncated the listing
+and I missed it). The single-head test caught the collision in CI
+before any deploy damage. Renamed to b0c1d2e3f4g5 (clearly outside
+the existing rotated-letter namespace) and re-parented to the
+current head a8b9c0d1e2f3.
 """
 import json
 from typing import Sequence, Union
@@ -27,8 +35,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "a7b8c9d0e1f2"
-down_revision: Union[str, None] = "z6a7b8c9d0e1"
+revision: str = "b0c1d2e3f4g5"
+down_revision: Union[str, None] = "a8b9c0d1e2f3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

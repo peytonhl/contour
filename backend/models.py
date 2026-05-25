@@ -281,7 +281,7 @@ class TrackCache(Base):
     # JSON column stays as the canonical store (preserves featured-
     # artist ordering), the column here is purely a queryable index.
     # Populated by services.spotify._persist_track_to_db on every
-    # upsert + backfilled by migration a7b8c9d0e1f2.
+    # upsert + backfilled by migration b0c1d2e3f4g5.
     primary_artist_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
 
 
@@ -483,7 +483,7 @@ class DeviceToken(Base):
     Token uniqueness is per-token (not per-user-token-pair) so an account
     switch on a single device steals ownership cleanly: the second
     register-token call wins via INSERT ... ON CONFLICT (token) → swap
-    user_id. See migration a7b8c9d0e1f2.
+    user_id. See migration b0c1d2e3f4g5.
     """
     __tablename__ = "device_tokens"
 

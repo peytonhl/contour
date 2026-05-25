@@ -1006,7 +1006,7 @@ async def _compute_user_genre_signal(
         return {}
 
     # One row per 4-5★ rated track: (popularity, primary_artist_id).
-    # primary_artist_id is the new indexed column (a7b8c9d0e1f2);
+    # primary_artist_id is the new indexed column (b0c1d2e3f4g5);
     # no JSON parse required.
     rows = (await db.execute(
         select(TrackCache.popularity, TrackCache.primary_artist_id)
@@ -1192,7 +1192,7 @@ async def _fetch_genre_tracks_from_catalog(
     match_terms = _genre_match_terms(genre)
 
     # Step 1: artists tagged with the genre family — indexed lookup
-    # via artist_genres (migration a7b8c9d0e1f2). Server-side
+    # via artist_genres (migration b0c1d2e3f4g5). Server-side
     # SUM(tag_weight) HAVING threshold replaces the Python loop +
     # JSON parse + alias substring check the previous version ran.
     # Same weighted-confidence semantics; the threshold lives in
@@ -1204,7 +1204,7 @@ async def _fetch_genre_tracks_from_catalog(
 
     # Step 2: tracks whose primary artist is in the matching set.
     # Indexed lookup via track_cache.primary_artist_id (also
-    # migration a7b8c9d0e1f2). No more full-table scan + JSON parse.
+    # migration b0c1d2e3f4g5). No more full-table scan + JSON parse.
     track_query = (
         select(TrackCache)
         .where(
@@ -1429,7 +1429,7 @@ async def _fetch_similar_artist_tracks(
     if matched_id_to_name_key:
         # Step 4: tracks by primary_artist_id via the indexed
         # track_cache.primary_artist_id column (migration
-        # a7b8c9d0e1f2). Single SELECT scoped to the matched-artist
+        # b0c1d2e3f4g5). Single SELECT scoped to the matched-artist
         # IDs — no full-table scan, no JSON parse for the filter
         # decision.
         track_query = (
