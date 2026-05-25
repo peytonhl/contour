@@ -202,6 +202,131 @@ async def search_by_text(
     }
 
 
+async def get_new_releases(
+    limit: int = 12,
+    storefront: str = DEFAULT_STOREFRONT,
+    max_age_days: int = 60,
+) -> list[dict]:
+    """Pull recently-released albums from Apple Music's albums chart.
+
+    Replaces the Spotify-playlist-based new_releases source that
+    started 403'ing in late 2024 (Spotify gated /v1/playlists/{}/tracks
+    behind Extended Access). Apple's chart endpoint is in scope for
+    a developer-token call — no user sign-in needed.
+
+    Returns Apple-native stubs:
+        [{"apple_id", "name", "artist", "image_url", "release_date"}, ...]
+    Caller is responsible for resolving these to Spotify album IDs
+    before exposing them to the frontend's /album/{id} routing.
+    See featured.py for the orchestration.
+
+    Filtering: keeps items with `releaseDate` within the last
+    `max_age_days`. If the filter would leave fewer than `limit/2`
+    items, we return the unfiltered chart slice instead — better to
+    surface "current popular" than to render an empty grid when
+    Apple's chart happens to lean toward older catalog reissues
+    that week.
+
+    Empty list on any failure path (Apple unauthorized, network down,
+    schema drift). Caller treats empty as "no data, don't render the
+    grid" — same as the Spotify version did.
+    """
+    if not is_configured():
+        return []
+
+    # Apple charts are editorially curated; they shift slowly. 1h
+    # Redis cache strikes the balance — we re-fetch frequently enough
+    # to surface mid-day chart shake-ups but don't hammer Apple every
+    # request.
+    from services import redis_cache  # local import: keeps apple_music
+                                       # decoupled from Redis when
+                                       # not needed.
+    cache_key = f"apple:new_releases_chart:{storefront}:{limit}:{max_age_days}"
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # Fetch more than `limit` so the date filter has slack. Apple
+    # caps individual chart responses around 50 items; 30 is a
+    # comfortable over-fetch.
+    over_fetch = min(max(limit * 3, 20), 50)
+    async with httpx.AsyncClient() as client:
+        body = await _apple_get(
+            client,
+            f"/catalog/{storefront}/charts",
+            types="albums",
+            limit=over_fetch,
+        )
+    if not body:
+        return []
+
+    # Response shape:
+    #   {"results": {"albums": [{"chart": "most-played",
+    #                            "data": [{"id", "attributes": {...}}]}]}}
+    chart_groups = (body.get("results") or {}).get("albums") or []
+    if not chart_groups:
+        return []
+    # Multiple charts can appear (most-played, daily, etc.). Take
+    # the first group's `data` — the default is the canonical
+    # most-played list for the storefront.
+    items = chart_groups[0].get("data") or []
+    if not items:
+        return []
+
+    # Parse + filter
+    from datetime import date, timedelta
+    today = date.today()
+    cutoff = today - timedelta(days=max_age_days)
+
+    fresh: list[dict] = []
+    all_stubs: list[dict] = []
+    for item in items:
+        item_id = item.get("id")
+        if not item_id:
+            continue
+        attrs = item.get("attributes") or {}
+        name = attrs.get("name") or ""
+        artist = attrs.get("artistName") or ""
+        if not name or not artist:
+            continue
+        artwork_url = _extract_artwork_url(item)
+        release_date = _extract_release_date(item)
+
+        stub = {
+            "apple_id": item_id,
+            "name": name,
+            "artist": artist,
+            "image_url": artwork_url,
+            "release_date": release_date,
+        }
+        all_stubs.append(stub)
+
+        # Try to parse the release date — Apple uses YYYY / YYYY-MM /
+        # YYYY-MM-DD interchangeably depending on what they have. Any
+        # of those parse cleanly with split(); missing month/day default
+        # to 1, so a YYYY-only release lands on Jan 1 which is
+        # conservative for "is this recent" purposes.
+        if release_date:
+            try:
+                parts = release_date.split("-")
+                y = int(parts[0])
+                m = int(parts[1]) if len(parts) > 1 else 1
+                d = int(parts[2]) if len(parts) > 2 else 1
+                if date(y, m, d) >= cutoff:
+                    fresh.append(stub)
+            except (ValueError, IndexError):
+                continue
+
+    # Prefer fresh, but don't render an empty grid if the chart
+    # happens to lean older — fall back to the unfiltered slice.
+    output = fresh if len(fresh) >= max(limit // 2, 4) else all_stubs
+    output = output[:limit]
+
+    if output:
+        await redis_cache.set(cache_key, output, ttl=3600)  # 1h
+    return output
+
+
 async def fetch_meta_for_id(
     apple_music_id: str,
     entity_type: str,
