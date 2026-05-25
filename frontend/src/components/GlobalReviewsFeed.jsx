@@ -4,7 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { BadgeLeaderboard } from "./Badges.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
-import { ShareButton } from "./ShareButton.jsx";
+import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionBody } from "./Mentions.jsx";
 import { EmptyState } from "./EmptyState.jsx";
 import { PenIcon } from "./Icons.jsx";
@@ -67,22 +67,15 @@ function RatingBadge({ value }) {
 
 // One review card — clickable through to the entity page, anchor scrolls to the review.
 function ReviewCardItem({ item, user, onVote, badges }) {
-  // Share payload mirrors the Friends-tab review share so the two
-  // surfaces produce consistent messages and both fire content_shared.
+  // Tapping Share opens the CardPreviewModal scoped to this review,
+  // mirroring the Friends-tab + entity-page + post-deck-review share
+  // flows. Generates a "quote" card PNG via /api/og/review?id=<id>.
   // Anchor (#review-{id}) lands the recipient on the exact review when
   // they open the link on the album page.
+  const [cardOpen, setCardOpen] = useState(false);
   const userName = item.user?.display_name ?? "Someone";
-  const entityName = item.entity_name ?? `this ${item.entity_type}`;
-  const artists = item.entity_artists?.slice(0, 2).join(", ");
-  const bodyExcerpt = item.body && item.body.length > 200
-    ? `${item.body.slice(0, 200)}…`
-    : item.body;
-  const shareTitle = `${userName}'s review on Contour`;
-  const shareText = [
-    `${userName} reviewed ${entityName}${artists ? ` by ${artists}` : ""}`,
-    bodyExcerpt && `"${bodyExcerpt}"`,
-  ].filter(Boolean).join("\n");
-  const shareUrl = `${window.location.origin}/${item.entity_type}/${item.entity_id}#review-${item.id}`;
+  const cardShareUrl = `${window.location.origin}/${item.entity_type}/${item.entity_id}#review-${item.id}`;
+  const cardShareText = `${userName}'s review on Contour`;
 
   return (
     <div style={{ padding: "16px 0", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -153,13 +146,21 @@ function ReviewCardItem({ item, user, onVote, badges }) {
           <svg width="11" height="11" viewBox="0 0 24 24" fill={item.user_vote === -1 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           {item.downvotes > 0 ? item.downvotes : ""}
         </button>
-        <ShareButton
-          surface="review"
-          title={shareTitle}
-          text={shareText}
-          url={shareUrl}
-          style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 12 }}
-        />
+        <button
+          onClick={() => setCardOpen(true)}
+          title="Share this review as a card"
+          style={{
+            marginLeft: "auto",
+            background: "none",
+            border: "none",
+            padding: "4px 10px",
+            fontSize: 12,
+            color: "var(--text-muted)",
+            cursor: "pointer",
+          }}
+        >
+          Share
+        </button>
       </div>
 
       {/* Inline reply thread — same component the album-page review section
@@ -167,6 +168,15 @@ function ReviewCardItem({ item, user, onVote, badges }) {
           surfaces (collapsible thread, inline form, report flow). Replaces
           the older affordance that linked out to the entity page. */}
       <ReplyThread reviewId={item.id} user={user} initialCount={item.replies_count ?? 0} />
+
+      <CardPreviewModal
+        open={cardOpen}
+        onClose={() => setCardOpen(false)}
+        cardUrl={`${window.location.origin}/api/og/review?id=${item.id}`}
+        shareUrl={cardShareUrl}
+        shareText={cardShareText}
+        fileName={`contour-review-${item.id}.png`}
+      />
     </div>
   );
 }
