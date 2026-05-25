@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, lazy, Suspense, useState, useRef } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { Layout } from "./components/Layout.jsx";
 import { OnboardingModal } from "./components/OnboardingModal.jsx";
@@ -51,6 +51,117 @@ const TasteMatchPage     = lazyNamed(() => import("./pages/TasteMatchPage.jsx"),
  *
  * No-op on web — Capacitor.isNativePlatform() is false in the browser.
  */
+/**
+ * Capacitor app-lifecycle handler — addresses "white screen on resume."
+ *
+ * The Capacitor iOS app is a thin WKWebView shell loading
+ * https://contour-rosy.vercel.app. iOS can evict the WebView's JS
+ * heap when the app is backgrounded under memory pressure; on resume
+ * the page reloads from scratch. Two known failure modes during that
+ * reload:
+ *
+ *   1. SplashScreen.hide() is only called once at first main.jsx
+ *      parse. The Capacitor SplashScreen plugin has
+ *      launchAutoHide:false, so on the SECOND boot after eviction —
+ *      if for any reason main.jsx is slower to parse than usual —
+ *      the native splash can hold over a non-yet-mounted WebView.
+ *      We re-call .hide() on every resume defensively. No-op when
+ *      the splash isn't up.
+ *
+ *   2. Render exceptions during the resume path (expired auth, stale
+ *      localStorage shape, etc.) unmount the React tree. The
+ *      top-level ErrorBoundary in main.jsx catches those — this
+ *      listener just makes the lifecycle visible for diagnosis.
+ *
+ * Debug overlay: gated behind ?debug=resume in the URL. Renders a
+ * ring buffer of state-change events in the corner — finger-screenshot
+ * is the easiest way to send the data over. NOT shown in production
+ * by default; you have to opt in. Same pattern as ?debug=splash
+ * elsewhere in the codebase.
+ *
+ * Web is a no-op — Capacitor.isNativePlatform() returns false in
+ * Safari / Chrome so the listener never registers.
+ */
+function NativeResumeHandler() {
+  const [events, setEvents] = useState([]);
+  const ringRef = useRef([]);
+  const debug = typeof window !== "undefined"
+    && /[?&]debug=resume(\b|$)/.test(window.location.search);
+
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    let cancelled = false;
+    let removeAppState = null;
+    let removeResume = null;
+
+    function record(label) {
+      const t = new Date().toISOString().slice(11, 23);
+      const entry = `${t} ${label}`;
+      ringRef.current = [...ringRef.current.slice(-9), entry];
+      if (debug) setEvents([...ringRef.current]);
+      // eslint-disable-next-line no-console
+      console.log("[NativeResumeHandler]", entry);
+    }
+
+    async function hideSplashDefensively(reason) {
+      try {
+        const mod = await import("@capacitor/splash-screen");
+        // No-op if splash isn't showing. Failure is non-fatal — the
+        // user has the in-page boot splash + the React app to fall
+        // back on.
+        await mod.SplashScreen.hide({ fadeOutDuration: 150 });
+        record(`splash hide ok (${reason})`);
+      } catch (e) {
+        record(`splash hide err (${reason}): ${e?.message || e}`);
+      }
+    }
+
+    record("listener mounted");
+
+    import("@capacitor/app").then(({ App: CapApp }) => {
+      if (cancelled) return;
+      CapApp.addListener("appStateChange", ({ isActive }) => {
+        record(`appStateChange isActive=${isActive}`);
+        if (isActive) {
+          // Resumed from background. Defensive splash hide for the
+          // post-eviction "native splash never dismissed on second
+          // boot" case. Cheap; safe to call when splash isn't up.
+          hideSplashDefensively("appStateChange");
+        }
+      }).then((h) => { removeAppState = h; });
+
+      // The dedicated "resume" event isn't always emitted by every
+      // Capacitor version — listen for both and de-dup via the ring
+      // buffer.
+      CapApp.addListener("resume", () => {
+        record("resume");
+        hideSplashDefensively("resume");
+      }).then((h) => { removeResume = h; });
+    }).catch((e) => record(`@capacitor/app import err: ${e?.message || e}`));
+
+    return () => {
+      cancelled = true;
+      if (removeAppState && typeof removeAppState.remove === "function") removeAppState.remove();
+      if (removeResume && typeof removeResume.remove === "function") removeResume.remove();
+    };
+  }, [debug]);
+
+  if (!debug || !events.length) return null;
+  return (
+    <div style={{
+      position: "fixed", bottom: 12, right: 12, zIndex: 99998,
+      background: "rgba(0,0,0,0.82)", color: "#0ff",
+      padding: "6px 8px", borderRadius: 4,
+      fontSize: 10, fontFamily: "'SF Mono', Menlo, monospace",
+      lineHeight: 1.35, pointerEvents: "none",
+      maxWidth: 260, whiteSpace: "pre-wrap",
+    }}>
+      resume log:{"\n"}{events.join("\n")}
+    </div>
+  );
+}
+
+
 function NativeDeepLinkHandler() {
   const navigate = useNavigate();
   useEffect(() => {
@@ -96,6 +207,7 @@ export default function App() {
         visitors. Once dismissed (sign-in or guest-mode opt-in), the
         OnboardingModal takes over with genre picker + import upsell. */}
     <NativeDeepLinkHandler />
+    <NativeResumeHandler />
     <SigninGate />
     <OnboardingModal />
     {/* Lazy-loaded routes need a Suspense boundary. Fallback is just a

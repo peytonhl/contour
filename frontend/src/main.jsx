@@ -6,6 +6,7 @@ import { SplashScreen } from "@capacitor/splash-screen";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { initAnalytics } from "./services/analytics.js";
 import { registerServiceWorker } from "./sw-register.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import App from "./App.jsx";
 import "./index.css";
 
@@ -18,12 +19,20 @@ registerServiceWorker();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-        <Analytics />
-      </AuthProvider>
-    </BrowserRouter>
+    {/* Top-level ErrorBoundary catches uncaught render exceptions
+        anywhere in the tree. Without it, a single ReferenceError
+        during a resume-render path unmounts the entire app and the
+        WKWebView shows its default white background (the "white
+        screen on resume" failure mode). See ErrorBoundary.jsx for
+        the rationale + the limits of what error boundaries catch. */}
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+          <Analytics />
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>
 );
 
@@ -93,16 +102,21 @@ requestAnimationFrame(() => {
 // on screen, not from the moment main.jsx parsed.
 requestAnimationFrame(() => {
   const start = performance.now();
-  // SW-controlled = repeat visit (the SW takes control on the SECOND load;
-  // first load registers but doesn't control). Returning users skip the
-  // brand pause entirely — they don't need re-introducing to the wordmark.
-  const isRepeatLoad = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
-  const MIN_HOLD_MS = isRepeatLoad ? 0 : 350;
+  // Brand-pause is gone. The previous 350ms hold for first-launch
+  // users was a deliberate "brand moment" but the user has now
+  // reported "initial load takes a few seconds too long" twice,
+  // so the moment is over. The HTML splash + native LaunchScreen
+  // remain pixel-aligned, so dropping the splash the instant the
+  // font is ready (or 600ms ceiling, whichever first) still hands
+  // off cleanly — there just isn't a deliberate hold after the
+  // wordmark is ready.
+  const MIN_HOLD_MS = 0;
 
-  // Request Instrument Serif at 26px (Layout header size) and 76px (Era
-  // Score) so both the header and the first signature stat have the font
-  // ready when the splash drops. If document.fonts isn't available
-  // (older WebView), fall back to a fixed delay so the splash still hides.
+  // Request Instrument Serif at 26px (Layout header size) and 76px
+  // (Era Score) so both the header and the first signature stat
+  // have the font ready when the splash drops. If document.fonts
+  // isn't available (older WebView), fall back to a fixed delay so
+  // the splash still hides.
   const fontPromise = (document.fonts && document.fonts.load)
     ? Promise.all([
         document.fonts.load("400 26px 'Instrument Serif'"),
@@ -110,12 +124,17 @@ requestAnimationFrame(() => {
       ]).catch(() => {})
     : Promise.resolve();
 
-  // Hard ceiling so a stalled font request never strands the user on the
-  // splash forever — at 2s we drop the splash regardless and accept the
-  // brief font-swap rather than blocking the whole app.
+  // Hard ceiling on the font wait. Was 2000ms; reduced to 600ms
+  // after the "initial load too long on mobile" report. On a slow
+  // cellular connection, Google Fonts can take >2s — under the old
+  // ceiling that was 2 full seconds of splash. The Layout header
+  // will swap from Iowan Old Style (iOS serif fallback) to
+  // Instrument Serif when the font finally arrives; that's a
+  // tolerable single-glyph-shift well after the user has reached
+  // the app, much better than stranding them on the splash.
   const fontReady = Promise.race([
     fontPromise,
-    new Promise((resolve) => setTimeout(resolve, 2000)),
+    new Promise((resolve) => setTimeout(resolve, 600)),
   ]);
 
   fontReady.then(() => {
@@ -126,4 +145,20 @@ requestAnimationFrame(() => {
       if (splash) splash.style.display = "none";
     }, remaining);
   });
+
+  // Watchdog: hard-hide the splash 3.5s after main.jsx parsed
+  // regardless of font/timer state. If anything in the chain above
+  // throws or stalls (document.fonts API rejecting, the rAF callback
+  // never firing, etc), the user wouldn't otherwise escape the
+  // splash. 3.5s is comfortably past the 600ms ceiling + any
+  // reasonable React first-paint budget but still feels like a
+  // bug-recovery, not a normal path.
+  setTimeout(() => {
+    const splash = document.getElementById("boot-splash");
+    if (splash && splash.style.display !== "none") {
+      splash.style.display = "none";
+      // eslint-disable-next-line no-console
+      console.warn("[main] boot-splash watchdog fired — fontReady/timer chain stalled");
+    }
+  }, 3500);
 });
