@@ -785,11 +785,18 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           position: "absolute", inset: "-20px",
           backgroundImage: `url(${coverImage})`,
           backgroundSize: "cover", backgroundPosition: "center",
-          // Slightly darker brightness (0.40 vs the old 0.45) because
-          // the backdrop now sits behind text too, not just behind the
-          // floating cover image. Saturation kept at 1.5 for the
-          // "vinyl-jacket bloom" feel.
-          filter: "blur(40px) saturate(1.5) brightness(0.40)",
+          // 24px blur (was 40px). At 40px the backdrop had no
+          // high-frequency detail for the eye to track during a
+          // swipe — it appeared to "smear" while the sharper cover
+          // image and text moved crisply, contributing to the
+          // "moving at different speeds" perception the user
+          // reported. 24px still reads as atmospheric/soft but
+          // preserves enough structure (album-cover edges, broad
+          // color regions) for visual motion to feel coherent
+          // across all layers. Saturation bumped 1.5 → 1.7 to
+          // compensate for the less-aggressive blur so the
+          // backdrop color still pops at the lower brightness.
+          filter: "blur(24px) saturate(1.7) brightness(0.40)",
           transform: "scale(1.1)",
           zIndex: 0,
         }} />
@@ -854,7 +861,18 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
                   aspectRatio: "1 / 1",
                   maxWidth: "94%",
                   borderRadius: "var(--radius-lg)",
-                  boxShadow: "var(--shadow-hero)",
+                  // Light drop shadow only. The full `--shadow-hero`
+                  // (0 24px 80px rgba(0,0,0,0.55)) made the cover
+                  // image read as a polaroid floating above the
+                  // surface — your eye sees a 3D object hovering,
+                  // which is exactly the "two separate pieces" feel
+                  // the user reported. With a subtler shadow the
+                  // cover lives ON the surface, not above it, so
+                  // the cover + metadata feel like a single
+                  // continuous card during the swipe. Tuned by eye
+                  // to keep just enough lift for the cover to read
+                  // as a discrete frame, not a floating object.
+                  boxShadow: "0 6px 22px rgba(0, 0, 0, 0.35)",
                   objectFit: "cover",
                   position: "relative", zIndex: 1,
                   // Sharper upscale on Safari. Spotify's source images cap at
