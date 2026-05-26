@@ -144,10 +144,13 @@ async def test_blocked_users_reviews_hidden_from_global_feed(client, db_session)
     ))
     await db_session.commit()
 
-    # Before block — Alice can see Bob's review
+    # Before block — Alice can see Bob's review.
+    # Response shape changed from a flat list to {items, has_more}
+    # in commit 7145cf2 (pagination on /reviews/global) — pull the
+    # items array out instead of iterating the dict.
     r = client.get("/reviews/global", headers=_bearer(alice.id))
     assert r.status_code == 200
-    bodies = [rev["body"] for rev in r.json()]
+    bodies = [rev["body"] for rev in r.json()["items"]]
     assert "Bob's review" in bodies
 
     # Alice blocks Bob
@@ -155,7 +158,7 @@ async def test_blocked_users_reviews_hidden_from_global_feed(client, db_session)
 
     # After block — Bob's review is filtered out for Alice
     r = client.get("/reviews/global", headers=_bearer(alice.id))
-    bodies = [rev["body"] for rev in r.json()]
+    bodies = [rev["body"] for rev in r.json()["items"]]
     assert "Bob's review" not in bodies
 
 
