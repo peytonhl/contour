@@ -33,6 +33,20 @@ function Stars({ value = 0, size = 18, interactive = false, onHover, onClick }) 
     const within = x - i * starW;
     return Math.max(0.5, Math.min(5, i + (within < starW / 2 ? 0.5 : 1)));
   }
+  // When the user hasn't rated yet, the stars need to LOOK tappable.
+  // Previous treatment used var(--surface2) (dark gray fill) + var(--border)
+  // (dimmer gray stroke) — they blended into the dark page background and
+  // read as static decoration, not an affordance. User report: "it's not
+  // inherently obvious where to tap in order to rate this." Bumping the
+  // empty-star outline to gold at low opacity tells the eye "these COULD
+  // be gold" — they look like targets waiting to be filled. Only applies
+  // when the rating itself is empty AND the picker is interactive (so we
+  // don't recolor the community-aggregate stars that just happen to
+  // average to zero ratings).
+  const isUnratedInteractive = interactive && value === 0;
+  const emptyStrokeColor = isUnratedInteractive ? `${GOLD}99` : "var(--border)";
+  const emptyStrokeWidth = isUnratedInteractive ? 1 : 0.5;
+  const emptyFillColor = isUnratedInteractive ? `${GOLD}1a` : "var(--surface2)";
   return (
     <div
       style={{ display: "flex", gap: 2, cursor: interactive ? "pointer" : "default", touchAction: interactive ? "none" : "auto", userSelect: "none" }}
@@ -46,8 +60,9 @@ function Stars({ value = 0, size = 18, interactive = false, onHover, onClick }) 
           <svg key={n} width={size} height={size} viewBox="0 0 20 20" style={{ pointerEvents: "none", flexShrink: 0 }}>
             <polygon
               points="10,1 12.9,7 19.5,7.6 14.5,12 16.2,18.5 10,15 3.8,18.5 5.5,12 0.5,7.6 7.1,7"
-              fill={fill === "full" ? GOLD : fill === "half" ? `url(#h${n})` : "var(--surface2)"}
-              stroke={fill === "empty" ? "var(--border)" : GOLD} strokeWidth="0.5"
+              fill={fill === "full" ? GOLD : fill === "half" ? `url(#h${n})` : emptyFillColor}
+              stroke={fill === "empty" ? emptyStrokeColor : GOLD}
+              strokeWidth={fill === "empty" ? emptyStrokeWidth : 0.5}
             />
             {fill === "half" && (
               <defs><linearGradient id={`h${n}`} x1="0" x2="1" y1="0" y2="0">
@@ -876,11 +891,15 @@ export function ReviewSection({ entityType, entityId, user }) {
 
         {user ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>
-              {selectedRating ? "Your rating" : "Rate this"}
+            <span style={{
+              fontSize: 13,
+              fontWeight: selectedRating ? 500 : 600,
+              color: selectedRating ? "var(--text-muted)" : "var(--text)",
+            }}>
+              {selectedRating ? "Your rating" : "Tap a star to rate"}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Stars value={displayRating} size={24} interactive onHover={setHover} onClick={handleStarClick} />
+              <Stars value={displayRating} size={28} interactive onHover={setHover} onClick={handleStarClick} />
               {hover && <span style={{ fontSize: 13, color: GOLD }}>{hover} / 5</span>}
               {selectedRating && !hover && (
                 <button onClick={() => setShowForm((f) => !f)}
@@ -899,7 +918,7 @@ export function ReviewSection({ entityType, entityId, user }) {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)" }}>Rate this</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Rate this</span>
             <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Sign in to rate and review</span>
           </div>
         )}
