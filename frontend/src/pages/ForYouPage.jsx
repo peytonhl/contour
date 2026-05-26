@@ -866,35 +866,44 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           swipe animations. Explicit dimensions = no flex
           recomputation = no drift.
 
-          EDGE-TO-EDGE COVER (2026-05-25, third pass) — the image is
-          now full-width with NO border-radius, NO box-shadow, and
-          NO horizontal margins. Anchored to the BOTTOM of the
-          cover region (alignItems: flex-end) so the image's bottom
-          edge sits exactly at the boundary between the cover
-          region and the info region — no visible gap between
-          the album art and the metadata below.
+          EDGE-TO-EDGE COVER (2026-05-25, fourth pass) — the image is
+          full-width with NO border-radius, NO box-shadow, and NO
+          horizontal margins. Anchored to the TOP of the cover region
+          (alignItems: flex-start) per user feedback that the empty
+          backdrop band at the top — where the gear icon floats — felt
+          awkward. With top-anchor the album art touches the top of the
+          deck (flush against the tab header) and the gear / "···"
+          chrome buttons float ON the image, matching the TikTok / Reels
+          pattern where overlaid controls sit over the media. The
+          remaining empty backdrop (between the bottom of the square
+          image and the top of the info region) is small on phone-shape
+          viewports — image height equals card width = ~50% of card
+          height, leaving ~15% backdrop band below the image before the
+          info section at 65%. That band reads as a soft fade into the
+          metadata rather than a floating-polaroid feel.
 
-          Why this matters for the swipe perception: previously the
-          image was a centered square (94% × 94%) with a drop
-          shadow and rounded corners, which read as a "polaroid
-          photo floating on a colored backdrop." That framed-photo
-          feel made the cover look like a separate UI element from
-          the info section, and during a swipe the user perceived
-          card N's info + card N+1's cover as two distinct moving
-          objects. With the image edge-to-edge and touching the
-          info area, the card reads as one continuous vertical
-          band: chrome + backdrop at top, album art in the middle,
-          metadata on the same backdrop at the bottom. Adjacent
-          cards in a swipe transition look like the same kind of
-          vertical band flowing past.
+          Trade-off vs. the previous bottom-anchor:
+            • + Cover hits the top of the screen, no awkward dark band
+              at the top.
+            • + Cover is the dominant first impression of the card.
+            • − The image no longer kisses the info-region edge; the
+              boundary is now a ~15%-card-height backdrop strip. This
+              IS a visible gap, but because the backdrop is the
+              SAME blurred album-cover surface throughout the card
+              (set on the card root with inset:-20px), the gap reads
+              as continuous atmospheric color rather than two stacked
+              panels. The 5% bottom-mask gradient on the image fades
+              the album art into that backdrop so the boundary is a
+              soft fade, not a hard line.
 
-          The empty backdrop area now lives ABOVE the image (where
-          the "···" overflow button floats), not around all four
-          sides of it. */}
+          Why no border-radius, no box-shadow: the previous "centered
+          polaroid" treatment made the cover read as a separate UI
+          element from everything else. Flat + edge-to-edge = the
+          cover IS the card surface at this region; no framing. */}
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0, height: "65%",
         overflow: "hidden",
-        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        display: "flex", alignItems: "flex-start", justifyContent: "center",
         zIndex: 2,
       }}>
         {coverImage
