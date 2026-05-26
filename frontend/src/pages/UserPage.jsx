@@ -273,29 +273,11 @@ export function UserPage() {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", display: "flex", flexDirection: "column" }}>
 
-      {/* Back affordance — users landing here via an @-mention link, a
-          followers list, or a search result need a way out. Same pattern
-          as TasteMatchPage: navigate(-1) when there's history, fall back
-          to /friends on deep-link entry so users aren't stranded. */}
-      <button
-        onClick={() => {
-          if (window.history.length > 1) navigate(-1);
-          else navigate(ROUTES.FRIENDS);
-        }}
-        style={{
-          display: "flex", alignItems: "center", gap: 6,
-          background: "transparent", border: "none",
-          color: "var(--text-muted)", fontSize: 14,
-          padding: "16px 16px 0",
-          alignSelf: "flex-start",
-          cursor: "pointer",
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-        Back
-      </button>
+      {/* Back affordance previously rendered here was retired — it lives
+          in the Layout header now (mobile only, route-aware: shows on
+          any non-top-level route). The inline back here stacked on its
+          own row below the header's bell-icon row and wasted ~50px of
+          vertical space per visit. */}
 
       {/* ── Hero ── */}
       <div style={{

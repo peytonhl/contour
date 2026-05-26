@@ -205,30 +205,10 @@ export function TasteMatchPage() {
 
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "20px 16px 80px" }}>
-      {/* Back affordance — the page has no global back affordance in the
-          Layout header on mobile (only the notifications bell), so users
-          landing here from /user/{id} or from a deep link had no exit.
-          navigate(-1) walks one entry back in history; on a deep-link
-          entry with no history we fall back to /friends since that's the
-          most sensible "where I came from" given the comparison surface. */}
-      <button
-        onClick={() => {
-          if (window.history.length > 1) navigate(-1);
-          else navigate(ROUTES.FRIENDS);
-        }}
-        style={{
-          display: "flex", alignItems: "center", gap: 6,
-          background: "transparent", border: "none",
-          color: "var(--text-muted)", fontSize: 14,
-          padding: "8px 4px", marginBottom: 12,
-          cursor: "pointer",
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-        Back
-      </button>
+      {/* Back affordance moved to the Layout header (route-aware,
+          mobile-only) so it shares a row with the notifications bell
+          instead of stacking below the header on its own line. See
+          components/Layout.jsx → showBackInHeader. */}
 
       {/* Head-to-head hero */}
       <div

@@ -1605,9 +1605,15 @@ function ColdStartBanner({ ratingCount }) {
 
   return (
     <div style={{
-      // Right padding bumped to 54px (gear button is 30px wide + 10px right
-      // inset + 14px breathing room) so the gear no longer eats the label.
-      padding: "8px 54px 8px 16px",
+      // LEFT padding 54px to clear the floating gear button (top:8 left:10,
+      // 32px wide → right-edge at 42px + 12px breathing room). Comment
+      // here used to claim the RIGHT padding was for the gear, but the
+      // gear actually sits at LEFT — this was stale from before a
+      // gear-position change. Screenshot showed the gear circle
+      // overlapping the first progress segment and the leading edge of
+      // the label, leaving the user with a chopped-off "Rate 5 tracks
+      // to calibrate your feed" line. Standard 16px on the right.
+      padding: "8px 16px 8px 54px",
       background: "rgba(217,122,59,0.08)",
       borderBottom: "1px solid rgba(217,122,59,0.15)",
       display: "flex", alignItems: "center", gap: 10,
