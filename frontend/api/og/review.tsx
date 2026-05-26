@@ -101,32 +101,44 @@ export default async function handler(request) {
   if (fontRegular) fonts.push({ name: 'Instrument Serif', data: fontRegular, weight: 400, style: 'normal' });
   if (fontItalic)  fonts.push({ name: 'Instrument Serif', data: fontItalic,  weight: 400, style: 'italic'  });
 
-  // Auto-fit font sizing for the review quote. Previously truncated at
-  // 220 chars to fit four lines at 44px — but users complained that
-  // longer reviews showed up CUT OFF on the share card even though the
-  // in-app feed could show more (or be expanded). New approach: scale
-  // the font down as the body gets longer, so reviews up to ~800 chars
-  // fit in the quote region without truncation.
+  // Auto-fit font AND cover size for the review quote. The previous
+  // version (only scaled font, cover always 440) had a quiet bug —
+  // truncate cap was 800 chars but at 24px font with a 440 cover, only
+  // ~480 chars actually fit before crashing into the rating row.
+  // Reviews 480-800 chars were rendered with overlapping text.
   //
-  // Geometry note (from the v17 comment below): vertical room for the
-  // quote ≈ 1080 - cover(440) - subject(~80) - rating(~80) - padding(72)
-  // - gaps(96) ≈ 312px. At 44px font + 1.2 line-height = 53px/line, that's
-  // ~5 lines. Smaller fonts get more lines.
+  // New approach: shrink the cover AND the font together as the body
+  // grows. A smaller cover frees up ~120-220px of vertical real estate
+  // for the quote, enough to absorb a 2x-3x increase in body length.
+  // Cap raised to 3000 chars — enough to hold the long-tail of
+  // enthusiast reviews (5000 is the backend Pydantic limit).
   //
-  // Brackets picked by eye on representative content + worked-example
-  // math (chars/line ≈ canvas_width / (font_size * 0.55)). Cap at 800
-  // chars — reviews longer than that get an ellipsis. Most reviews are
-  // <300 chars in practice; the upper buckets exist for the long-form
-  // edge case.
+  // Geometry per bracket (cover_size × cover_size, font, total chars
+  // that fit at chars/line ≈ canvas_width / (font_size × 0.55)):
+  //   cover 440 / 44px → ~5 lines × ~40 chars = ~200 cap (short hero)
+  //   cover 440 / 36px → ~6 lines × ~50 chars = ~315 chars
+  //   cover 400 / 30px → ~8 lines × ~60 chars = ~480
+  //   cover 360 / 26px → ~11 lines × ~70 chars = ~770
+  //   cover 320 / 22px → ~14 lines × ~80 chars = ~1180
+  //   cover 280 / 19px → ~19 lines × ~92 chars = ~1750
+  //   cover 240 / 17px → ~22 lines × ~103 chars = ~2270
+  //   cover 220 / 16px → ~24 lines × ~110 chars = ~2640 (truncate at 3000)
+  //
+  // Each bracket leaves ~10% slack for variable wrap quality and
+  // characters wider than the average (uppercase, m/w-heavy reviews).
   const rawBody = data.review.body || "";
   const bodyLen = rawBody.length;
   let quoteFontSize: number;
-  if (bodyLen <= 200) quoteFontSize = 44;
-  else if (bodyLen <= 350) quoteFontSize = 38;
-  else if (bodyLen <= 550) quoteFontSize = 32;
-  else if (bodyLen <= 800) quoteFontSize = 27;
-  else quoteFontSize = 24;
-  const reviewBody = truncate(rawBody, 800);
+  let coverSize: number;
+  if (bodyLen <= 200)        { coverSize = 440; quoteFontSize = 44; }
+  else if (bodyLen <= 400)   { coverSize = 440; quoteFontSize = 36; }
+  else if (bodyLen <= 700)   { coverSize = 400; quoteFontSize = 30; }
+  else if (bodyLen <= 1000)  { coverSize = 360; quoteFontSize = 26; }
+  else if (bodyLen <= 1400)  { coverSize = 320; quoteFontSize = 22; }
+  else if (bodyLen <= 1800)  { coverSize = 280; quoteFontSize = 19; }
+  else if (bodyLen <= 2400)  { coverSize = 240; quoteFontSize = 17; }
+  else                       { coverSize = 220; quoteFontSize = 16; }
+  const reviewBody = truncate(rawBody, 3000);
   const rating = data.review.rating;  // raw number; rendered with inline SVG star below
   const entityName = data.entity.name ?? 'Unknown';
   const entityArtist = data.entity.artist ?? '';
@@ -190,19 +202,20 @@ export default async function handler(request) {
           padding: '24px 60px 48px',
           gap: 32,
         }}>
-          {/* Cover — centered horizontally, 440×440. Shrunk from 560 in
-              v17 because 560 + 4-line 56px quote + bottom row literally
-              didn't fit in 1080px — the quote was crashing through the
-              rating row (see v16 bug repro on review 73, Life of the
-              Party). 440 + 44px quote leaves clean spacing.
+          {/* Cover — centered horizontally. Size is dynamic (coverSize),
+              shrinking as the review body grows so longer reviews get
+              more vertical real estate for the quote. See the bracket
+              table above for the coverSize → quoteFontSize pairings.
+              Floor of 220×220 keeps the cover visible as a tile even
+              on the longest reviews.
               The inset boxShadow gives all-black covers (Donda etc.) a
               visible edge against the page bg — without it the cover
               boundary disappears entirely for solid-black artwork. */}
           {coverUrl ? (
             <img
               src={coverUrl}
-              width={440}
-              height={440}
+              width={coverSize}
+              height={coverSize}
               style={{
                 borderRadius: 8,
                 objectFit: 'cover',
@@ -214,8 +227,8 @@ export default async function handler(request) {
           ) : (
             <div
               style={{
-                width: 440,
-                height: 440,
+                width: coverSize,
+                height: coverSize,
                 borderRadius: 8,
                 backgroundColor: '#1a1a1d',
                 alignSelf: 'center',
