@@ -1824,15 +1824,34 @@ async def get_discover_feed(
 
     # Exclude tracks this user has already rated — track-level signal,
     # independent of artist-level dislikes.
+    #
+    # Also seed the variant-dedup set (name, primary-artist) from rated
+    # tracks. Catches the case where the user rated one variant of a song
+    # (radio edit) and the chart returns a different variant (deluxe
+    # edition, remastered, etc.) with a distinct Spotify ID. The
+    # entity-ID exclude above only catches exact ID matches; the variant
+    # set is the second layer that catches "same song, different ID."
+    # Also closes the Deezer-vs-Spotify gap (rated as resolved Spotify
+    # ID, served from Deezer with a numeric ID — same name+artist).
+    # outerjoin so ratings for tracks not yet in TrackCache (Deezer-only
+    # rated tracks whose Spotify equivalent never landed in cache) still
+    # add to exclude_ids; they just don't seed seen_variants.
     exclude_ids: set[str] = set()
+    seen_variants: set[tuple[str, str]] = set()
     if effective_user_id:
-        rated_ids = (await db.execute(
-            select(Rating.entity_id).where(
+        rated_rows = (await db.execute(
+            select(Rating.entity_id, TrackCache.name, TrackCache.artist)
+            .outerjoin(TrackCache, Rating.entity_id == TrackCache.spotify_id)
+            .where(
                 Rating.user_id == effective_user_id,
                 Rating.entity_type == "track",
             )
-        )).scalars().all()
-        exclude_ids.update(rated_ids)
+        )).all()
+        for entity_id, name, artist in rated_rows:
+            if entity_id:
+                exclude_ids.add(entity_id)
+            if name and artist:
+                seen_variants.add((name.lower().strip(), artist.lower().strip()))
 
     # Client-supplied session exclusion list — track IDs the user has
     # already seen this scroll session. Prevents prefetch batches from
@@ -1979,6 +1998,12 @@ async def get_discover_feed(
 
     tracks: list[dict] = []
     seen: set[str] = set()
+    # seen_variants was declared and seeded with the user's rated tracks
+    # earlier in this function (alongside exclude_ids). It catches "same
+    # song, different ID" cases — Spotify variants (radio/deluxe/remaster),
+    # Deezer-vs-Spotify cross-source duplicates, and chart re-pulls that
+    # surface a different reissue. Keyed on (lowercased name, lowercased
+    # primary artist).
     # Counter for the cover-spam filter — tracks dropped because they matched
     # _is_low_quality_cover. Logged at request end so we can see if patterns
     # are doing too much or too little and tune over time.
@@ -2087,7 +2112,22 @@ async def get_discover_feed(
                     and t["id"] not in seen
                     and artist_id not in excluded
                 ):
+                    # Variant dedup. Skip if a same-name, same-primary-artist
+                    # track has already landed in this batch OR was previously
+                    # rated. Catches Spotify variants (radio/deluxe/regional/
+                    # remaster all have distinct IDs but share name+artist)
+                    # and the Deezer-vs-Spotify cross-source duplicate that
+                    # the exact-ID exclude can't see. Only applies when both
+                    # name and primary-artist are present so we don't drop
+                    # tracks with malformed metadata.
+                    name_norm = (t.get("name") or "").lower().strip()
+                    primary_artist_norm = ((t.get("artists") or [""])[0] or "").lower().strip()
+                    variant_key = (name_norm, primary_artist_norm) if (name_norm and primary_artist_norm) else None
+                    if variant_key and variant_key in seen_variants:
+                        continue
                     seen.add(t["id"])
+                    if variant_key:
+                        seen_variants.add(variant_key)
                     tracks.append(t)
         return _add
 

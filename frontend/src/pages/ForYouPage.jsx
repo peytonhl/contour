@@ -1041,32 +1041,25 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
         </div>
       </div>
 
-      {/* Info + controls — overlaps the bottom of the cover region by
-          ~7% so the track title visually sits ON the cover image
-          (magazine-caption / TikTok-style). Was top:65% (flush with
-          the cover's bottom edge); now top:58%, so the title h2 lands
-          at roughly card-height 60%, which is within the cover image's
-          painted area (image fills card 15-65% on a phone-shape card,
-          anchored to the bottom of the cover region).
+      {/* Info + controls — sits BELOW the cover region (top:65% =
+          flush with the cover's bottom edge). The previous attempt
+          (top:58%, overlaying the title onto the cover image) was
+          reverted after a user report and screenshot showed albums
+          with busy bottom artwork (e.g. ELASTIBOY by PlaqueBoyMax
+          — track name printed on the cover next to a Parental
+          Advisory sticker) made the overlaid title unreadable. Even
+          with a text-shadow, our white title text competed with
+          whatever the album art itself had at the bottom. Title
+          visibility wins over the "title-and-cover-as-one-unit"
+          perception trick — readability is non-negotiable.
 
-          Why this kills the "title moves under the cover during a
-          swipe" perception: previously, during a forward swipe, the
-          title and the NEXT card's rising cover were geometrically
-          adjacent but VISUALLY distinct objects — the cover (heavy
-          opaque image) felt "in front" and the title (lighter text)
-          felt "behind", so the user read the title as ducking
-          under the cover. With the title overlaid ON the cover of
-          its OWN card, title-and-cover become one composite element
-          that moves as a unit. There's nothing for the title to
-          "duck under" because it's already on top of its cover, and
-          the next card's title is similarly on top of ITS cover —
-          there's no cross-card layering perception during the
-          transition.
-
-          The bottom-darken gradient at card-root (top:45% → bottom:0)
-          already darkens this area, providing legibility for the
-          white text on top of the album art. The title also picks
-          up an explicit text-shadow below for extra contrast.
+          The other "one card" fixes still stand: edge-to-edge
+          cover image with no boxShadow or borderRadius, anchored
+          to the bottom of the cover region (touching the info
+          region directly), with a 5% mask gradient at the image's
+          bottom so the boundary softens into the dark backdrop
+          gradient instead of being a hard line. These together
+          still convey "one card" without the readability tradeoff.
 
           overflowY:auto inside lets long tracklist / review content
           scroll within the section without affecting the cover
@@ -1076,7 +1069,7 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           The card-root unified blurred backdrop + bottom-darken
           gradient show through here. */}
       <div style={{
-        position: "absolute", top: "58%", left: 0, right: 0, bottom: 0,
+        position: "absolute", top: "65%", left: 0, right: 0, bottom: 0,
         display: "flex", flexDirection: "column",
         padding: "14px 24px 12px",
         gap: 10, overflowY: "auto",
