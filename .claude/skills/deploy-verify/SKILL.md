@@ -25,6 +25,23 @@ Pretty-print the JSON responses. Flag anything that looks off:
 - **`/discover/feed?limit=2` MUST be hit, not just `/discover/debug`.** `/discover/debug` probes the underlying tier components in isolation, so it stays green even when the `/feed` handler itself is broken. The 2026-05-25 NameError incident (commit 132be7d) is the canary: `/health` and `/discover/debug` were both 200 while every actual `/feed` call returned 500 for ~30 minutes because a new variable reference was placed before its assignment. **`/feed` is the real behavior check** — verify a 200 + a non-empty JSON list before declaring `discover.py` changes verified. See `feedback_test_what_you_push`.
 - The OG endpoint should return `200` + `Content-Type: image/png`. A `404` + `X-Vercel-Error: NOT_FOUND` means the function didn't register (likely a `.jsx` typo or missing tsconfig).
 
+## Backend test discipline
+
+When any file under `backend/` changed (any handler, any model, any service),
+**run pytest before declaring the deploy verified**. The 2026-05-26 incident:
+the pagination shape change in `routers/reviews.py` (commit 7145cf2) broke
+`tests/test_moderation.py` for five consecutive commits because I kept
+trusting "frontend build passed + curl returns 200" instead of running the
+backend test suite.
+
+```
+cd backend && python -m pytest -q
+```
+
+If pytest isn't runnable locally (Python version drift, etc.), the CI run
+on the push is the authoritative signal — but treat it as a blocker, not
+a "should be fine" assumption.
+
 ## Per-change-area extra checks
 
 When the touched files include a particular handler, also exercise its
