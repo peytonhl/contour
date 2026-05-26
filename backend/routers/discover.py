@@ -2039,6 +2039,25 @@ async def get_discover_feed(
     # banning artists the user partly loved.
     soft_excluded = disliked_set | pure_down_weighted
 
+    # ── Read computed signals from the user-state bundle ─────────────────
+    # All of target_popularity / decade_pref / negative_*_pref live
+    # inside the bundle we resolved above. See
+    # _get_or_compute_user_feed_state for the calibration logic
+    # (cold-start default 50, discovery offset of -10 for mainstream
+    # raters). user_state is None when the bundle compute failed —
+    # fall back to defaults so /feed degrades to cold-start ladder
+    # rather than crashing.
+    if user_state:
+        target_popularity = float(user_state.get("target_popularity") or 50.0)
+        decade_pref = user_state.get("decade_pref")
+        negative_decade_pref = user_state.get("negative_decade_pref")
+        negative_genre_pref = user_state.get("negative_genre_pref")
+    else:
+        target_popularity = 50.0
+        decade_pref = None
+        negative_decade_pref = None
+        negative_genre_pref = None
+
     # ── Cold-start negative-genre filter (2026-05-25) ─────────────────────
     # A new user who rates a country song 1★ excludes that ONE artist but
     # still sees other country artists in the cold-start ladder, because
@@ -2065,6 +2084,10 @@ async def get_discover_feed(
     # (~thousands of artists for a popular genre like country) but
     # adding to a Python set is O(N) and the per-track check is O(1).
     # Negligible vs. the rest of /feed.
+    #
+    # NOTE: this block MUST come after the user_state read above —
+    # negative_genre_pref is defined there. Placing it before that block
+    # caused a NameError that 500'd every /feed request (hotfix 4cf3f7d).
     blocked_genres: list[str] = []
     if negative_genre_pref:
         blocked_genres = [
@@ -2090,25 +2113,6 @@ async def get_discover_feed(
             # the user just gets the previous (no-genre-filter) behavior
             # this request. Logged for visibility.
             logger.warning("discover: blocked-genre artist resolution failed: %s", exc)
-
-    # ── Read computed signals from the user-state bundle ─────────────────
-    # All of target_popularity / decade_pref / negative_*_pref live
-    # inside the bundle we resolved above. See
-    # _get_or_compute_user_feed_state for the calibration logic
-    # (cold-start default 50, discovery offset of -10 for mainstream
-    # raters). user_state is None when the bundle compute failed —
-    # fall back to defaults so /feed degrades to cold-start ladder
-    # rather than crashing.
-    if user_state:
-        target_popularity = float(user_state.get("target_popularity") or 50.0)
-        decade_pref = user_state.get("decade_pref")
-        negative_decade_pref = user_state.get("negative_decade_pref")
-        negative_genre_pref = user_state.get("negative_genre_pref")
-    else:
-        target_popularity = 50.0
-        decade_pref = None
-        negative_decade_pref = None
-        negative_genre_pref = None
 
     # When the positive decade preference is concentrated (≥ 60% in one
     # decade), pin Spotify search to that year range so we don't waste a
