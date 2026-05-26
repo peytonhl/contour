@@ -88,7 +88,17 @@ import { ACCENT_A as ACCENT } from "../theme.js";
 //                    Backend: deduped Spotify genres case/punctuation-
 //                    insensitively so "hip-hop" and "hip hop" stop
 //                    rendering as two separate pills.
-const CARD_VERSION = "20";
+//  v21 (2026-05-25): taste-card rebalance (tiles 210→160, eyebrows
+//                    16→26, artist names 28→32, rating signature-stat
+//                    treatment) + review.tsx auto-fit body. Three
+//                    brackets: ≤200 chars at 44px / 440 cover,
+//                    ≤350 chars at 36px / 440 cover, ≤550 chars at
+//                    30px / 400 cover, > 550 chars truncate ellipsis.
+//                    OG cards under v=20 were rendering with the old
+//                    220-char hard truncate and the "— Author" em-dash
+//                    attribution — both still cached by Vercel CDN
+//                    + iOS WebView until this bump rotates the key.
+const CARD_VERSION = "21";
 
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
