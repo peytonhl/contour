@@ -224,7 +224,12 @@ router = APIRouter(prefix="/discover", tags=["discover"])
 #
 # Cache key includes a version digit so a shape change to the bundle
 # invalidates old entries without us having to flush keys manually.
-_USER_STATE_CACHE_VERSION = 1
+# v2 (2026-05-25): genre_signal tuples grew from 2-tuple
+# (count, avg_popularity) to 3-tuple (count, avg_popularity,
+# avg_high_rating). v1 entries deserialize as 2-element lists which
+# would break the weight-calc tuple unpack — the version bump
+# invalidates them cleanly.
+_USER_STATE_CACHE_VERSION = 2
 
 
 def _user_state_cache_key(user_id: str) -> str:
@@ -272,7 +277,7 @@ async def _get_or_compute_user_feed_state(
                                 AND minus negative-genre-filtered slugs
       year_range              — "1980-1989" style string or None;
                                 triggers vintage tier when set
-      genre_signal            — {slug: [rating_count, avg_popularity]}
+      genre_signal            — {slug: [rating_count, avg_popularity, avg_high_rating]}
       subgenre_tags           — list of inferred subgenre slugs
 
     Cache: Redis 30s TTL. Mutations (rate / unrate / dislike / taste
@@ -363,7 +368,7 @@ async def _get_or_compute_user_feed_state(
             eligible_genres = filtered
 
     # genre_signal — requires eligible_genres as input
-    genre_signal_dict: dict[str, tuple[int, Optional[float]]] = {}
+    genre_signal_dict: dict[str, tuple[int, Optional[float], Optional[float]]] = {}
     if eligible_genres:
         try:
             genre_signal_dict = await _compute_user_genre_signal(db, user_id, eligible_genres)
@@ -970,46 +975,60 @@ async def _matching_artists_by_family_sql(
 
 async def _compute_user_genre_signal(
     db: AsyncSession, user_id: str, eligible_genres: list[str],
-) -> dict[str, tuple[int, Optional[float]]]:
+) -> dict[str, tuple[int, Optional[float], Optional[float]]]:
     """
-    Per-genre rating affinity and target popularity, in one DB pass.
+    Per-genre rating affinity, target popularity, and "love score", in
+    one DB pass.
 
-    For each genre slug in `eligible_genres`, returns (rating_count,
-    avg_popularity):
+    For each genre slug in `eligible_genres`, returns
+    (rating_count, avg_popularity, avg_high_rating):
       - rating_count: how many of the user's 4-5★ track ratings have a
         primary artist tagged with that genre family. A user with 30 rap
         ratings and 10 classical ratings returns {"hip-hop": (30, ...),
         "classical": (10, ...), ...}.
       - avg_popularity: mean Spotify popularity of those same tracks. A
         user whose rap ratings average to popularity 82 but classical
-        ratings average to 45 returns {"hip-hop": (..., 82.0),
-        "classical": (..., 45.0)}. None when the bucket has zero
+        ratings average to 45 returns {"hip-hop": (..., 82.0, ...),
+        "classical": (..., 45.0, ...)}. None when the bucket has zero
         popularity-bearing tracks.
+      - avg_high_rating: mean rating VALUE of those 4-5★ ratings —
+        always in [4.0, 5.0] for genres with any high ratings, None
+        for declared-but-unrated genres. A user who 5★s every rap
+        track returns "hip-hop": (..., ..., 5.0); one who 4★s
+        everything returns "hip-hop": (..., ..., 4.0). DOWNVOTE-IMMUNE:
+        because the WHERE clause filters to value >= HIGH_RATING_THRESHOLD
+        (= 4.0), 1-3★ ratings never enter this calculation. A user who
+        loves jazz and rates 18 tracks 5★ + 2 tracks 1★ gets jazz
+        avg_high_rating = 5.0, not (90+2)/20 = 4.6.
 
     Used by tier 1 to:
-      1. Weight the genre sampler by REVEALED preference (rating count)
-         on top of the position decay. User explicitly wants 3× ratings
-         in rap → 3× rap sampling probability.
+      1. Weight the genre sampler by sqrt(count) × avg_high_rating on
+         top of the position decay. sqrt dampens raw-count dominance
+         so a heavily-rated genre doesn't bury a lightly-rated one with
+         consistently higher ratings; avg_high_rating gives a 4-5★
+         multiplier so a user's "I love every track I've rated in
+         this genre" signal punches through.
       2. Pass a per-genre target_popularity to search_tracks_by_genre
          instead of one global average. Stops the "rap pulls classical
-         search toward popularity 80" effect that left users seeing only
-         mainstream when they had cross-genre tastes.
+         search toward popularity 80" effect.
 
     Implementation: pull the user's 4-5★ track ratings as
-    (popularity, primary_artist_id) once, then per-genre run an
-    indexed lookup against artist_genres to find the matching artist
-    set and bucket the user's ratings. With N eligible genres this
-    is 1 + N indexed queries — at 5-10 slugs the total is
-    <50ms even at large catalog sizes.
+    (popularity, primary_artist_id, rating_value) once, then per-genre
+    run an indexed lookup against artist_genres to find the matching
+    artist set and bucket the user's ratings. With N eligible genres
+    this is 1 + N indexed queries — at 5-10 slugs the total is <50ms
+    even at large catalog sizes.
     """
     if not eligible_genres:
         return {}
 
-    # One row per 4-5★ rated track: (popularity, primary_artist_id).
-    # primary_artist_id is the new indexed column (b0c1d2e3f4g5);
-    # no JSON parse required.
+    # One row per 4-5★ rated track:
+    #   (popularity, primary_artist_id, rating_value).
+    # primary_artist_id is the new indexed column (b0c1d2e3f4g5); no
+    # JSON parse required. rating_value is added vs. the prior 2-column
+    # query to support the avg_high_rating bucketing below.
     rows = (await db.execute(
-        select(TrackCache.popularity, TrackCache.primary_artist_id)
+        select(TrackCache.popularity, TrackCache.primary_artist_id, Rating.value)
         .select_from(Rating)
         .join(TrackCache, Rating.entity_id == TrackCache.spotify_id)
         .where(
@@ -1022,14 +1041,16 @@ async def _compute_user_genre_signal(
     if not rows:
         return {}
 
-    # Bucket popularity values by primary artist id. Same artist rated
-    # multiple times contributes its rating count to its genre buckets
-    # multiple times.
-    artist_pops: dict[str, list[Optional[int]]] = {}
-    for pop, aid in rows:
+    # Bucket (popularity, rating_value) pairs by primary artist id. Same
+    # artist rated multiple times contributes its rating count to its
+    # genre buckets multiple times. We track rating_value here so the
+    # downstream loop can compute per-genre avg_high_rating without a
+    # second pass.
+    artist_data: dict[str, list[tuple[Optional[int], float]]] = {}
+    for pop, aid, rating_val in rows:
         if aid:
-            artist_pops.setdefault(aid, []).append(pop)
-    if not artist_pops:
+            artist_data.setdefault(aid, []).append((pop, float(rating_val)))
+    if not artist_data:
         return {}
 
     from services.spotify import _genre_match_terms
@@ -1037,24 +1058,33 @@ async def _compute_user_genre_signal(
     # Per-genre indexed artist lookup. Each call hits artist_genres
     # via the indexed tag_name LIKE chain + tag-weight HAVING clause
     # — server-side weighted matcher, no Python loop, no JSON parse.
-    out: dict[str, tuple[int, Optional[float]]] = {}
+    out: dict[str, tuple[int, Optional[float], Optional[float]]] = {}
     for slug in eligible_genres:
         terms = _genre_match_terms(slug)
         matching_artists = await _matching_artists_by_family_sql(db, terms)
         # Intersect with the user's rated-artist set so we only count
         # ratings of artists the user has actually engaged with.
-        relevant = matching_artists & artist_pops.keys()
+        relevant = matching_artists & artist_data.keys()
         count = 0
         pop_sum = 0
         pop_n = 0
+        rating_sum = 0.0
         for aid in relevant:
-            for p in artist_pops[aid]:
+            for p, r in artist_data[aid]:
                 count += 1
+                rating_sum += r
                 if p is not None:
                     pop_sum += p
                     pop_n += 1
-        avg = (pop_sum / pop_n) if pop_n else None
-        out[slug] = (count, avg)
+        avg_pop = (pop_sum / pop_n) if pop_n else None
+        # avg_high_rating in [4.0, 5.0] for any genre with rated tracks
+        # (since the WHERE clause filters to value >= 4.0). None for
+        # declared genres the user hasn't rated yet — the weight-calc
+        # site handles that case with an "is None → neutral 1.0
+        # multiplier" fallback so declared-not-rated genres still get
+        # baseline tier-1 representation.
+        avg_high = (rating_sum / count) if count else None
+        out[slug] = (count, avg_pop, avg_high)
     return out
 
 
@@ -2274,7 +2304,7 @@ async def get_discover_feed(
     # genre_list when the bundle isn't available.
     if user_state:
         eligible_genres = list(user_state.get("eligible_genres") or [])
-        genre_signal: dict[str, tuple[int, Optional[float]]] = (
+        genre_signal: dict[str, tuple[int, Optional[float], Optional[float]]] = (
             user_state.get("genre_signal") or {}
         )
     else:
@@ -2287,13 +2317,40 @@ async def get_discover_feed(
 
     # Tier 1 — weighted-genre pivot, Spotify deep pool.
     # Sampling weight per genre:
-    #     position_weight × max(rating_count, 1)
-    # Position weight (0.90^i) covers recency/freshness; rating_count
-    # covers REVEALED preference. The two multiply so a frequently-rated
-    # genre near the front of the list dominates batches, while never-
-    # rated genres (count=0 → floor 1) still surface periodically.
-    # Linear scaling on count is intentional — user wants 3× ratings in
-    # a genre → 3× sampling probability for that genre.
+    #     position_weight × sqrt(max(rating_count, 1)) × avg_high_rating
+    #
+    # Three terms, each doing one job:
+    #
+    #   • position_weight (0.90^i): recency/freshness decay across the
+    #     user's eligible_genres ordering.
+    #
+    #   • sqrt(rating_count): dampened REVEALED preference. The bare
+    #     count was previously linear, which made a user with 500 rap
+    #     ratings + 20 jazz ratings see rap roughly 28× more often than
+    #     jazz — even when their jazz avg was higher. sqrt softens that
+    #     to ~5× while still respecting volume as evidence of
+    #     engagement. floor of 1 so genres in the eligible list but
+    #     not yet rated still pick up some weight (declared interest
+    #     gets baseline representation).
+    #
+    #   • avg_high_rating: "love score" multiplier in [4.0, 5.0]. A user
+    #     who consistently 5★s tracks in a genre (avg_high = 5.0) gets
+    #     a 25% multiplier boost over one who mostly 4★s them
+    #     (avg_high = 4.0). DOWNVOTE-IMMUNE by construction:
+    #     _compute_user_genre_signal's WHERE clause filters to ratings
+    #     ≥ HIGH_RATING_THRESHOLD (4.0), so a user honestly rating 1-3★
+    #     tracks in a genre they love does NOT drag down avg_high.
+    #     None / not-yet-rated → neutral 1.0 fallback so declared-but-
+    #     unrated genres aren't unfairly punished by missing data.
+    #
+    # Worked example (the canonical case from the chat):
+    #   500 rap @ avg_high 4.3, position 0:
+    #     1.00 × sqrt(500) × 4.3 ≈ 96
+    #   20 jazz @ avg_high 4.5, position 1:
+    #     0.90 × sqrt(20) × 4.5 ≈ 18
+    #   Ratio: ~5.3× (vs ~28× under the old linear-count formula)
+    #   Jazz now genuinely surfaces; rap still dominant where the user
+    #   has overwhelming volume + love.
     #
     # Popularity targeting uses GLOBAL target_popularity, NOT per-genre.
     # The per-genre version (shipped briefly) concentrated sampling RIGHT
@@ -2306,12 +2363,24 @@ async def get_discover_feed(
     # The popularity-affinity data is still computed (and logged for
     # diagnostics) but not used as a sharpening signal.
     if eligible_genres and len(tracks) < limit:
+        import math
         n_pick = min(6, len(eligible_genres))
         weights = []
         for i, g in enumerate(eligible_genres):
             pos = 0.90 ** i
-            count = genre_signal.get(g, (0, None))[0]
-            weights.append(pos * max(count, 1))
+            # Tuple shape (count, avg_pop, avg_high_rating). Older
+            # cached entries are invalidated by the v1→v2 cache bump,
+            # but a defensive 3-element default keeps a stale read
+            # from crashing the tuple unpack.
+            sig = genre_signal.get(g, (0, None, None))
+            count = sig[0] if len(sig) > 0 else 0
+            avg_high = sig[2] if len(sig) > 2 else None
+            # None / declared-but-not-rated → neutral 1.0 multiplier so
+            # the genre keeps its baseline pos × 1 weight. Same numeric
+            # effect as the old "max(count, 1)" floor produced for
+            # count==0 genres.
+            love = avg_high if avg_high is not None else 1.0
+            weights.append(pos * math.sqrt(max(count, 1)) * love)
         sampled_genres = _weighted_sample(eligible_genres, weights, k=n_pick)
 
         # ── Tier 0: catalog pivot (DB-backed) ────────────────────────────
@@ -2390,12 +2459,25 @@ async def get_discover_feed(
             ], return_exceptions=True)
             _flatten_shuffle_add(genre_results, add_personalized)
 
-            # Compact per-genre summary for log: "hip-hop:30r@82,classical:10r@45"
-            sampled_summary = ",".join(
-                f"{g}:{genre_signal.get(g, (0, None))[0]}r"
-                + (f"@{int(genre_signal[g][1])}" if genre_signal.get(g, (0, None))[1] is not None else "")
-                for g in sampled_genres
-            )
+            # Compact per-genre summary for log:
+            #   "hip-hop:30r@82★4.5,classical:10r@45★4.8"
+            # = "{slug}:{count}r@{avg_popularity}★{avg_high_rating}"
+            # Both averages omitted when unavailable. avg_high_rating
+            # added alongside the popularity readout so the new weight
+            # term is visible in logs without needing the debug
+            # endpoint.
+            def _genre_log_fragment(g: str) -> str:
+                sig = genre_signal.get(g, (0, None, None))
+                count = sig[0] if len(sig) > 0 else 0
+                avg_pop = sig[1] if len(sig) > 1 else None
+                avg_high = sig[2] if len(sig) > 2 else None
+                s = f"{g}:{count}r"
+                if avg_pop is not None:
+                    s += f"@{int(avg_pop)}"
+                if avg_high is not None:
+                    s += f"★{avg_high:.1f}"
+                return s
+            sampled_summary = ",".join(_genre_log_fragment(g) for g in sampled_genres)
             logger.info(
                 "discover: tier1 (spotify weighted-genre) → %d tracks (sampled=%s, profile_size=%d, year_range=%s, neg_genres_filtered=%d, catalog_yield=%d)",
                 len(tracks) - tier1_start, sampled_summary,
@@ -2746,18 +2828,27 @@ async def discover_me_state(
     except Exception as exc:
         genre_signal = {"_error": str(exc)}
 
-    # Predicted tier-1 sampling weights
+    # Predicted tier-1 sampling weights. Mirrors the live formula at
+    # the top of /feed's tier-1 block:
+    #   pos × sqrt(max(count, 1)) × (avg_high_rating or 1.0)
     sampling_weights = []
     if eligible_genres and isinstance(genre_signal, dict) and "_error" not in genre_signal:
+        import math
         for i, g in enumerate(eligible_genres):
             pos = 0.90 ** i
-            count = genre_signal.get(g, (0, None))[0]
+            sig = genre_signal.get(g, (0, None, None))
+            count = sig[0] if len(sig) > 0 else 0
+            avg_high = sig[2] if len(sig) > 2 else None
+            love = avg_high if avg_high is not None else 1.0
+            final = pos * math.sqrt(max(count, 1)) * love
             sampling_weights.append({
                 "genre": g,
                 "position": i,
                 "position_weight": round(pos, 3),
                 "rating_count": count,
-                "final_weight": round(pos * max(count, 1), 2),
+                "avg_high_rating": round(avg_high, 2) if avg_high is not None else None,
+                "love_multiplier": round(love, 2),
+                "final_weight": round(final, 2),
             })
 
     # Subgenre tags inferred from rated artists (independent of picker)
@@ -2807,8 +2898,12 @@ async def discover_me_state(
         },
         "per_genre_signal": (
             {
-                g: {"rating_count": c, "avg_popularity": round(p, 1) if p is not None else None}
-                for g, (c, p) in genre_signal.items()
+                g: {
+                    "rating_count": c,
+                    "avg_popularity": round(p, 1) if p is not None else None,
+                    "avg_high_rating": round(r, 2) if r is not None else None,
+                }
+                for g, (c, p, r) in genre_signal.items()
             }
             if isinstance(genre_signal, dict) and "_error" not in genre_signal
             else genre_signal
