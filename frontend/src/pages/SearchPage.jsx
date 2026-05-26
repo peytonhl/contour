@@ -405,10 +405,26 @@ export function SearchPage() {
                 onMouseEnter={(e) => e.currentTarget.style.borderColor = ACCENT_A}
                 onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
               >
-                {item.image_url
-                  ? <img src={imageThumb(item.image_url)} alt={item.name} loading="lazy" decoding="async" style={{ width: 24, height: 24, borderRadius: item._type === "artist" ? "50%" : 4, objectFit: "cover", flexShrink: 0 }} />
-                  : <div style={{ width: 24, height: 24, borderRadius: item._type === "artist" ? "50%" : 4, background: "var(--surface2)", flexShrink: 0 }} />
-                }
+                {item.image_url ? (
+                  <img src={imageThumb(item.image_url)} alt={item.name} loading="lazy" decoding="async" style={{ width: 24, height: 24, borderRadius: item._type === "artist" || item._type === "user" ? "50%" : 4, objectFit: "cover", flexShrink: 0 }} />
+                ) : (item._type === "artist" || item._type === "user") ? (
+                  // Initials fallback for entities with names but no image
+                  // (e.g. Kanye West entries stored before the search API
+                  // reliably returned artist images, OR users without a
+                  // custom avatar). Matches the rest-of-app convention of
+                  // routing through ui-avatars.com for consistent letter
+                  // tiles. Albums + tracks keep the neutral placeholder
+                  // because a letter tile wouldn't read as cover art.
+                  <img
+                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(item.name || "?")}&background=7c3aed&color=fff&bold=true&size=64`}
+                    alt={item.name}
+                    loading="lazy"
+                    decoding="async"
+                    style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                  />
+                ) : (
+                  <div style={{ width: 24, height: 24, borderRadius: 4, background: "var(--surface2)", flexShrink: 0 }} />
+                )}
                 <div style={{ textAlign: "left", minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{item.name}</div>
                   {item.sub && <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{item.sub}</div>}

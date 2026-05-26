@@ -26,6 +26,7 @@ from models import (
     Review,
     ReviewVote,
     SearchEvent,
+    TrackCache,
     User,
 )
 
@@ -99,6 +100,33 @@ def _album_to_dict(row: Optional[AlbumCache], album_id: str) -> dict:
     }
 
 
+# Track-meta companion to _album_meta_map / _album_to_dict. Added so the
+# trending_reviews path can resolve track entities — previously track
+# reviews fell through with entity_meta=None and the frontend rendered
+# the raw Spotify ID (22-char string) as the entity name. Now track
+# reviews surface their actual track name + cover, mirroring how album
+# reviews already worked.
+async def _track_meta_map(db: AsyncSession, track_ids: list[str]) -> dict[str, TrackCache]:
+    if not track_ids:
+        return {}
+    rows = (await db.execute(
+        select(TrackCache).where(TrackCache.spotify_id.in_(track_ids))
+    )).scalars().all()
+    return {r.spotify_id: r for r in rows}
+
+
+def _track_to_dict(row: Optional[TrackCache], track_id: str) -> dict:
+    if row is None:
+        return {"id": track_id, "name": None, "artist": None, "image_url": None}
+    return {
+        "id": row.spotify_id,
+        "name": row.name,
+        "artist": row.artist,
+        "image_url": row.image_url,
+        "release_date": row.release_date,
+    }
+
+
 async def trending_albums(db: AsyncSession, window: str, limit: int) -> TrendingResult:
     """Albums ranked by # of new ratings within the window."""
     for w in _windows_to_try(window):
@@ -150,8 +178,23 @@ async def trending_reviews(db: AsyncSession, window: str, limit: int) -> Trendin
         users = (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()
         user_map = {u.id: u for u in users}
 
+        # Resolve entity metadata for BOTH track and album reviews.
+        # Previously this only batched album lookups; track reviews fell
+        # through with entity_meta=None and the frontend rendered the
+        # raw 22-char Spotify ID as the entity name (reported case:
+        # "Top reviews" section showed "393OFJFZKIIv66JmJcNm9D" etc.
+        # for 6 of 7 rows — all the track reviews).
         album_ids = [r.entity_id for r in reviews if r.entity_type == "album"]
-        meta_map = await _album_meta_map(db, album_ids)
+        track_ids = [r.entity_id for r in reviews if r.entity_type == "track"]
+        album_meta_map = await _album_meta_map(db, album_ids)
+        track_meta_map = await _track_meta_map(db, track_ids)
+
+        def _entity_meta_for(r: Review) -> Optional[dict]:
+            if r.entity_type == "album":
+                return _album_to_dict(album_meta_map.get(r.entity_id), r.entity_id)
+            if r.entity_type == "track":
+                return _track_to_dict(track_meta_map.get(r.entity_id), r.entity_id)
+            return None
 
         scored = [
             {
@@ -160,7 +203,7 @@ async def trending_reviews(db: AsyncSession, window: str, limit: int) -> Trendin
                 "created_at": r.created_at.isoformat() + "Z",
                 "entity_type": r.entity_type,
                 "entity_id": r.entity_id,
-                "entity_meta": _album_to_dict(meta_map.get(r.entity_id), r.entity_id) if r.entity_type == "album" else None,
+                "entity_meta": _entity_meta_for(r),
                 "score": score_map.get(r.id, 0),
                 "user": {
                     "id": r.user_id,
