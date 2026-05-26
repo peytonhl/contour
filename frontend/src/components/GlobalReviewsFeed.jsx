@@ -67,7 +67,29 @@ function RatingBadge({ value }) {
 }
 
 // One review card — clickable through to the entity page, anchor scrolls to the review.
+// Number of lines past which we show a "Show more" affordance. Anything
+// shorter than this fits entirely in the collapsed clamp, so the toggle
+// would be a no-op — we detect that case below and only render the
+// expand button when the body actually overflows.
+const COMMUNITY_CLAMP_LINES = 4;
+
 function ReviewCardItem({ item, user, onVote, badges }) {
+  // Track whether the user has chosen to expand THIS review's body
+  // (per-item state — collapsing back returns to the 4-line clamp).
+  const [bodyExpanded, setBodyExpanded] = useState(false);
+  // Track whether the clamp is actually clipping content. Set via a ref
+  // callback that compares scrollHeight to clientHeight on first paint.
+  // If the body fits in 4 lines, we hide the "Show more" button entirely
+  // (rendering it on a short review would be misleading — there's
+  // nothing to expand).
+  const [bodyOverflows, setBodyOverflows] = useState(false);
+  const measureBody = (el) => {
+    if (!el) return;
+    // Defer one frame so layout has settled (mentions can shift wrap).
+    requestAnimationFrame(() => {
+      setBodyOverflows(el.scrollHeight - el.clientHeight > 1);
+    });
+  };
   // Tapping Share opens the CardPreviewModal scoped to this review,
   // mirroring the Friends-tab + entity-page + post-deck-review share
   // flows. Generates a "quote" card PNG via /api/og/review?id=<id>.
@@ -132,9 +154,41 @@ function ReviewCardItem({ item, user, onVote, badges }) {
         </span>
       </div>
 
-      <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.65, margin: 0, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>
+      {/* Body — line-clamped at 4 lines by default. A "Show more" button
+          below toggles the clamp off so long reviews can be read in
+          full. Reported case: users in the Community feed couldn't
+          reach the end of longer reviews. Measure-on-mount detects
+          whether the body actually exceeds the clamp; the toggle is
+          hidden on short reviews where it would be a misleading
+          no-op. WebkitLineClamp="unset" rather than removing the
+          property entirely so the transition stays smooth and the
+          display:-webkit-box layout doesn't reflow. */}
+      <p
+        ref={measureBody}
+        style={{
+          fontSize: 14, color: "var(--text-muted)", lineHeight: 1.65, margin: 0,
+          display: "-webkit-box",
+          WebkitLineClamp: bodyExpanded ? "unset" : COMMUNITY_CLAMP_LINES,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+          whiteSpace: "pre-wrap",
+        }}
+      >
         <MentionBody body={item.body} mentions={item.mentions} />
       </p>
+      {bodyOverflows && (
+        <button
+          onClick={() => setBodyExpanded((e) => !e)}
+          style={{
+            alignSelf: "flex-start",
+            background: "none", border: "none", padding: "2px 0",
+            color: "var(--accent)", fontSize: 12, fontWeight: 600,
+            cursor: "pointer", marginTop: -2,
+          }}
+        >
+          {bodyExpanded ? "Show less" : "Show more"}
+        </button>
+      )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <button onClick={() => user && onVote(item.id, 1)} disabled={!user}
@@ -188,21 +242,27 @@ function ReviewCardItem({ item, user, onVote, badges }) {
  * (currently the For You page's "Reviews" tab). Was formerly the "All Reviews"
  * tab on /feed.
  */
+// Page size for the community feed. Picked small enough that the
+// initial load + render lands in <1s on a typical mobile connection,
+// large enough that most users won't immediately hit "Load more".
+const PAGE_SIZE = 10;
+
 export function GlobalReviewsFeed() {
   const { user } = useAuth();
   const [sort, setSort] = useState("recent");
 
-  // Cache per (surface, sort) — switching Recent ↔ Top ↔ Controversial
-  // and back is instant the second time around. Vote mutations update
-  // the cache in-place via `mutate` so the next tab return shows the
-  // updated counts without a refetch.
+  // Cache the first page per sort. Subsequent pages are appended
+  // imperatively below (not cached, since "Load more" is naturally
+  // session-bound — users who tab away and come back land on page 1).
+  // Switching Recent ↔ Top ↔ Controversial returns to page 1 for that
+  // sort, instant on second visits via the SWR cache.
   const {
-    data: reviews,
+    data: firstPage,
     loading,
-    mutate: mutateReviews,
+    mutate: mutateFirstPage,
   } = useCachedFetch(
-    `community:reviews:${sort}`,
-    () => api.getGlobalReviews(sort),
+    `community:reviews:${sort}:page0`,
+    () => api.getGlobalReviews(sort, "all", PAGE_SIZE, 0),
   );
   const { data: badges } = useCachedFetch(
     "community:badges",
@@ -210,19 +270,69 @@ export function GlobalReviewsFeed() {
     { freshMs: 5 * 60_000 }, // badges drift slowly; 5min fresh window
   );
 
-  function handleVote(reviewId, value) {
-    if (!user || !reviews) return;
-    api.voteReview(reviewId, value).then((res) => {
-      const next = reviews.map((r) =>
-        r.id === reviewId
-          ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote }
-          : r
-      );
-      mutateReviews(next);
-    });
+  // Accumulated extra pages beyond the cached first page. Reset to
+  // empty when sort changes (the cached first page already swaps
+  // automatically via the key).
+  const [extraPages, setExtraPages] = useState([]);
+  const [extraHasMore, setExtraHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  useEffect(() => {
+    // New sort selected → discard previously-loaded extra pages.
+    // First page swaps automatically via the cached fetch key.
+    setExtraPages([]);
+    setExtraHasMore(true);
+  }, [sort]);
+
+  // Combine first page (cached) + any "load more" results into one
+  // flat list. has_more comes from the most recent loaded page.
+  const firstItems = Array.isArray(firstPage?.items) ? firstPage.items : [];
+  const firstHasMore = !!firstPage?.has_more;
+  const reviewsList = [...firstItems, ...extraPages.flatMap((p) => p.items || [])];
+  const hasMore = extraPages.length > 0 ? extraHasMore : firstHasMore;
+
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const offset = firstItems.length + extraPages.reduce((n, p) => n + (p.items?.length || 0), 0);
+      const res = await api.getGlobalReviews(sort, "all", PAGE_SIZE, offset);
+      setExtraPages((prev) => [...prev, res]);
+      setExtraHasMore(!!res?.has_more);
+    } catch (e) {
+      // Surface failure briefly via has_more=false so user isn't
+      // stuck tapping a non-responsive button. Next refresh resets.
+      setExtraHasMore(false);
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
-  const reviewsList = reviews ?? [];
+  function handleVote(reviewId, value) {
+    if (!user) return;
+    api.voteReview(reviewId, value).then((res) => {
+      // Vote may land in firstPage's items OR in one of the extra
+      // pages — search both and update in-place. Keeps the optimistic
+      // UI consistent across the paginated boundary.
+      const inFirst = firstItems.some((r) => r.id === reviewId);
+      if (inFirst) {
+        const nextItems = firstItems.map((r) =>
+          r.id === reviewId
+            ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote }
+            : r
+        );
+        mutateFirstPage({ ...firstPage, items: nextItems });
+      } else {
+        setExtraPages((prev) => prev.map((page) => ({
+          ...page,
+          items: (page.items || []).map((r) =>
+            r.id === reviewId
+              ? { ...r, upvotes: res.upvotes, downvotes: res.downvotes, user_vote: res.user_vote }
+              : r
+          ),
+        })));
+      }
+    });
+  }
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "20px 20px" }}>
@@ -268,6 +378,25 @@ export function GlobalReviewsFeed() {
       {!loading && reviewsList.map((item) => (
         <ReviewCardItem key={item.id} item={item} user={user} onVote={handleVote} badges={badges} />
       ))}
+      {!loading && hasMore && reviewsList.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "center", padding: "16px 0 8px" }}>
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            style={{
+              padding: "10px 24px", fontSize: 13, fontWeight: 600,
+              background: "var(--surface2)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-xl)",
+              color: loadingMore ? "var(--text-muted)" : "var(--text)",
+              cursor: loadingMore ? "default" : "pointer",
+              transition: "background 0.12s",
+            }}
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

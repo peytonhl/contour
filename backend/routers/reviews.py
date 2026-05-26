@@ -130,11 +130,24 @@ async def _entity_meta(entity_type: str, entity_id: str, db: AsyncSession) -> di
 async def global_reviews(
     sort: str = Query("recent", pattern="^(recent|top|controversial)$"),
     entity_type: str = Query("all"),
-    limit: int = Query(50, le=100),
+    limit: int = Query(20, le=50),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
 ):
-    """Public feed of all reviews, sorted by recent / top / controversial."""
+    """Public feed of all reviews, sorted by recent / top / controversial.
+
+    Response shape: { items: [...], has_more: bool }.
+
+    Pagination via offset+limit. has_more is computed by fetching one
+    extra row (limit+1) and reporting whether that extra was present —
+    cheaper than a separate COUNT query and accurate to the current
+    sort + filter state. The "recent" sort path could be optimized to
+    push offset+limit into SQL via ORDER BY created_at DESC; "top" and
+    "controversial" depend on the enriched vote data so they stay
+    in-memory for now. Acceptable up to a few thousand reviews —
+    revisit if the global feed table gets dense.
+    """
     q = select(Review)
     if entity_type != "all":
         q = q.where(Review.entity_type == entity_type)
@@ -157,20 +170,27 @@ async def global_reviews(
     elif sort == "controversial":
         enriched.sort(key=lambda x: x["_controversial"], reverse=True)
 
-    enriched = enriched[:limit]
+    # Page slice. Fetch limit+1 to detect "is there more?" without a
+    # separate count query — drop the extra before returning.
+    page_end = offset + limit + 1
+    window = enriched[offset:page_end]
+    has_more = len(window) > limit
+    page = window[:limit]
 
-    # Batch-fetch entity metadata for unique entities
-    unique = list({(r["entity_type"], r["entity_id"]) for r in enriched})
+    # Batch-fetch entity metadata for unique entities (only the page,
+    # not the full enriched list — the previous code's batch covered
+    # the page slice anyway since `enriched` was already truncated).
+    unique = list({(r["entity_type"], r["entity_id"]) for r in page})
     metas = dict(zip(
         unique,
         await asyncio.gather(*[_entity_meta(et, eid, db) for et, eid in unique])
     ))
 
-    for r in enriched:
+    for r in page:
         meta = metas.get((r["entity_type"], r["entity_id"]), {})
         r["entity_name"] = meta.get("name")
         r["entity_image_url"] = meta.get("image_url")
         r["entity_artists"] = meta.get("artists", [])
         r.pop("_controversial", None)
 
-    return enriched
+    return {"items": page, "has_more": has_more}

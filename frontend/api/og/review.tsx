@@ -101,7 +101,32 @@ export default async function handler(request) {
   if (fontRegular) fonts.push({ name: 'Instrument Serif', data: fontRegular, weight: 400, style: 'normal' });
   if (fontItalic)  fonts.push({ name: 'Instrument Serif', data: fontItalic,  weight: 400, style: 'italic'  });
 
-  const reviewBody = truncate(data.review.body, 220);
+  // Auto-fit font sizing for the review quote. Previously truncated at
+  // 220 chars to fit four lines at 44px — but users complained that
+  // longer reviews showed up CUT OFF on the share card even though the
+  // in-app feed could show more (or be expanded). New approach: scale
+  // the font down as the body gets longer, so reviews up to ~800 chars
+  // fit in the quote region without truncation.
+  //
+  // Geometry note (from the v17 comment below): vertical room for the
+  // quote ≈ 1080 - cover(440) - subject(~80) - rating(~80) - padding(72)
+  // - gaps(96) ≈ 312px. At 44px font + 1.2 line-height = 53px/line, that's
+  // ~5 lines. Smaller fonts get more lines.
+  //
+  // Brackets picked by eye on representative content + worked-example
+  // math (chars/line ≈ canvas_width / (font_size * 0.55)). Cap at 800
+  // chars — reviews longer than that get an ellipsis. Most reviews are
+  // <300 chars in practice; the upper buckets exist for the long-form
+  // edge case.
+  const rawBody = data.review.body || "";
+  const bodyLen = rawBody.length;
+  let quoteFontSize: number;
+  if (bodyLen <= 200) quoteFontSize = 44;
+  else if (bodyLen <= 350) quoteFontSize = 38;
+  else if (bodyLen <= 550) quoteFontSize = 32;
+  else if (bodyLen <= 800) quoteFontSize = 27;
+  else quoteFontSize = 24;
+  const reviewBody = truncate(rawBody, 800);
   const rating = data.review.rating;  // raw number; rendered with inline SVG star below
   const entityName = data.entity.name ?? 'Unknown';
   const entityArtist = data.entity.artist ?? '';
@@ -229,16 +254,19 @@ export default async function handler(request) {
             )}
           </div>
 
-          {/* The quote — centered, big serif, full canvas width. Sized
-              to 44px so a max-length body (220 chars truncated) fits in
-              four lines without crashing through the rating row below.
-              At 56px (v16) a 178-char review wrapped to 4 lines = 258px,
-              which overflowed by ~50px and rendered the rating bar
-              on top of the last line. */}
+          {/* The quote — centered, big serif, full canvas width. Font
+              size auto-scales by body length (see quoteFontSize above):
+              44px for short reviews (≤200 chars), down to 24px for the
+              longest (~800 chars). The line-height stays at 1.2 because
+              Satori multiplies it against whatever font-size is in
+              effect, so vertical bounds scale together with the type.
+              Previous v17 used a fixed 44px + 220-char truncate; users
+              complained that long reviews showed up cut off on the share
+              card even though the in-app feed could expand them. */}
           <p
             style={{
               fontFamily: 'Instrument Serif',
-              fontSize: 44,
+              fontSize: quoteFontSize,
               lineHeight: 1.2,
               margin: 0,
               color: TEXT,

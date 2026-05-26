@@ -182,9 +182,13 @@ export const api = {
         ? { body, parent_reply_id, mention_user_ids: mentionUserIds }
         : { body, parent_reply_id }),
 
-  // Global reviews feed
-  getGlobalReviews: (sort = "recent", entityType = "all") =>
-    request(`/reviews/global?sort=${sort}&entity_type=${entityType}`),
+  // Global reviews feed — paginated.
+  // Response shape: { items: [...], has_more: bool }. Default page size
+  // 20; bumpable to 50 max via the backend. Pass `offset` for "Load
+  // more" pagination — the GlobalReviewsFeed surface tracks offset
+  // state and concatenates page items as the user scrolls.
+  getGlobalReviews: (sort = "recent", entityType = "all", limit = 20, offset = 0) =>
+    request(`/reviews/global?sort=${sort}&entity_type=${entityType}&limit=${limit}&offset=${offset}`),
 
   // Saved comparisons
   saveComparison: (body) => post("/comparisons/", body),

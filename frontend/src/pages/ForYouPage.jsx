@@ -3344,11 +3344,16 @@ export function ForYouPage() {
     let cancelled = false;
     (async () => {
       try {
-        const reviews = await api.getGlobalReviews?.("recent", "all");
+        // Probe only needs the first ~5 newest items to find the most
+        // recent non-self review — no need to pull a full page. Saves
+        // ~80% of the response payload on the freshness probe path.
+        // Response shape: { items, has_more } (paginated). Older
+        // shape was a flat list — Array.isArray fallback still works
+        // during the deploy crossover but should be removable soon.
+        const res = await api.getGlobalReviews?.("recent", "all", 5, 0);
         if (cancelled) return;
-        const newestForeign = Array.isArray(reviews)
-          ? reviews.find((r) => r?.user?.id && r.user.id !== user.id)
-          : null;
+        const list = Array.isArray(res) ? res : (res?.items || []);
+        const newestForeign = list.find((r) => r?.user?.id && r.user.id !== user.id) || null;
         const newest = newestForeign?.created_at
           ? new Date(newestForeign.created_at).getTime()
           : 0;
