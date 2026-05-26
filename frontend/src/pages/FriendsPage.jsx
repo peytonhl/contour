@@ -6,9 +6,19 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { ACCENT_A as ACCENT } from "../theme.js";
 import { userPath } from "../constants/routes.js";
 
-// Top-level Friends surface — bottom-nav and desktop-nav target. Wraps the
-// existing FollowingTab component (which still drives the For You "Friends"
-// sub-tab) with a page-level heading + a "find friends" action button.
+// Top-level Following surface — bottom-nav and desktop-nav target. Wraps
+// the existing FollowingTab component with a page-level heading + a
+// "find people" action button.
+//
+// User-facing copy was previously "Friends" (route is still /friends to
+// avoid breaking existing links / bookmarks / push-notification targets),
+// but a user reported confusion: the relationship action button on a
+// profile says "Follow", which is directional and one-way, while
+// "Friends" connotes mutuality. The data model is pure one-way follow —
+// there's no follows-back / is_friend / mutual check anywhere in the
+// codebase. So the label was lying about the relationship type.
+// Renamed all visible labels to "Following" to match what's actually
+// stored. Route + component file names kept for diff hygiene.
 //
 // The + button surfaces the existing get_suggested_users endpoint plus a
 // user-only search in a single modal — discoverable entry point for
@@ -49,12 +59,12 @@ export function FriendsPage() {
           color: "var(--text)",
           margin: 0,
         }}>
-          Friends
+          Following
         </h1>
         <button
           onClick={() => setFindOpen(true)}
-          aria-label="Find friends"
-          title="Find friends"
+          aria-label="Find people to follow"
+          title="Find people to follow"
           style={{
             width: 36, height: 36,
             display: "inline-flex", alignItems: "center", justifyContent: "center",

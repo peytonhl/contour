@@ -1547,7 +1547,46 @@ const DiscoverCard = memo(DiscoverCardBase, (prev, next) => (
 // 33% full" — the unit of progress matches the unit of action (one rating =
 // one chunk lights up). The lit chunks carry a soft accent glow so a newly
 // filled chunk reads as a small reward, not a passive state change.
+// Permanent "I've graduated past cold-start" flag. Set on the first render
+// where ratingCount crosses PERSONALIZATION_RAMP; checked on every subsequent
+// render to ensure the banner never re-appears.
+//
+// Without this, the banner could come back via two paths:
+//   1. Fresh device / cleared localStorage — local rating_count is 0 until
+//      /auth/me lands with the server count. During that ~100-500ms window
+//      the banner renders the cold-start message even though the user is
+//      experienced. Race.
+//   2. Future schema change that ever resets ratingCount.
+// The flag is set-and-forget: written once, never cleared. Even if the
+// user unrates a bunch of tracks, the banner stays gone.
+const CALIBRATED_KEY = "contour_calibrated_v1";
+
+function readCalibratedFlag() {
+  try { return localStorage.getItem(CALIBRATED_KEY) === "1"; } catch { return false; }
+}
+function writeCalibratedFlag() {
+  try { localStorage.setItem(CALIBRATED_KEY, "1"); } catch {}
+}
+
 function ColdStartBanner({ ratingCount }) {
+  // Set the flag once the user has crossed the ramp. useEffect so the
+  // write is post-render and not a side effect during the render phase
+  // (lints cleaner, plays nice with concurrent rendering). Idempotent
+  // — writeCalibratedFlag is a no-op if the key is already "1".
+  useEffect(() => {
+    if (ratingCount >= PERSONALIZATION_RAMP && !readCalibratedFlag()) {
+      writeCalibratedFlag();
+    }
+  }, [ratingCount]);
+
+  // If the user has previously crossed the calibration threshold,
+  // never show the banner again — even if ratingCount momentarily
+  // appears low (new device with empty local history before /auth/me
+  // lands, etc.). Reported case: "I rated 5 songs and it said feed
+  // calibrated. But now I go back it's asking me again to rate 5
+  // songs to calibrate." The flag is sticky once set.
+  if (readCalibratedFlag()) return null;
+
   // Visible while the user is in the cold-start band: 0..PERSONALIZATION_RAMP
   // inclusive (≤ 5). At exactly 5 the bar is full and we swap to a one-rating
   // "feed calibrated" celebration; on the 6th rating the banner is gone for

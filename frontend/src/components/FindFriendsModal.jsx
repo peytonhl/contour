@@ -90,7 +90,7 @@ export function FindFriendsModal({ open, onClose }) {
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Find friends"
+      aria-label="Find people to follow"
       style={{
         position: "fixed", inset: 0,
         background: "rgba(0,0,0,0.7)",
@@ -123,7 +123,7 @@ export function FindFriendsModal({ open, onClose }) {
           <span style={{
             fontFamily: "var(--font-display)",
             fontSize: 22, color: "var(--text)",
-          }}>Find friends</span>
+          }}>Find people</span>
           <button
             onClick={onClose}
             aria-label="Close"

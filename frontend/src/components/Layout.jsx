@@ -256,13 +256,19 @@ export function Layout() {
     }
   }, [location.pathname, hasNewFriends]);
 
-  // Primary nav: For You is the home (algorithmic feed). Friends is its own
-  // dedicated surface for followed-users activity (also still reachable as
-  // a sub-tab inside For You for now). Charts moved out of the top nav —
-  // it now lives as a tab on the Search page along with Trending.
+  // Primary nav: For You is the home (algorithmic feed). Following is its
+  // own dedicated surface for followed-users activity. Charts moved out of
+  // the top nav — it now lives as a tab on the Search page along with
+  // Trending.
+  //
+  // Label is "Following" not "Friends" to match the actual relationship
+  // type (one-way follow, no mutual concept anywhere in the codebase) —
+  // user feedback called this out as ambiguous: "It says Follow on the
+  // profile button but the bottom button says Friend; what makes someone
+  // a friend?" Route stays /friends to avoid breaking links.
   const desktopNavLinks = [
     { to: "/", label: "For You", end: true },
-    { to: "/friends", label: "Friends" },
+    { to: "/friends", label: "Following" },
     { to: "/search", label: "Search" },
     { to: "/compare", label: "Compare" },
     ...(user?.is_admin ? [{ to: "/admin/reports", label: "Admin" }] : []),
@@ -462,7 +468,7 @@ export function Layout() {
               chrome stays uncrowded on small phones. /compare still works
               as a direct URL. */}
           <BottomTab to="/" end label="For You" icon={<FeedIcon />} />
-          <BottomTab to={ROUTES.FRIENDS} label="Friends" icon={<CommunityIcon />} dot={hasNewFriends} />
+          <BottomTab to={ROUTES.FRIENDS} label="Following" icon={<CommunityIcon />} dot={hasNewFriends} />
           <BottomTab to={ROUTES.SEARCH} label="Search" icon={<SearchIcon />} />
 
           {user ? (
