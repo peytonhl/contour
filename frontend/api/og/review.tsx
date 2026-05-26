@@ -101,44 +101,36 @@ export default async function handler(request) {
   if (fontRegular) fonts.push({ name: 'Instrument Serif', data: fontRegular, weight: 400, style: 'normal' });
   if (fontItalic)  fonts.push({ name: 'Instrument Serif', data: fontItalic,  weight: 400, style: 'italic'  });
 
-  // Auto-fit font AND cover size for the review quote. The previous
-  // version (only scaled font, cover always 440) had a quiet bug —
-  // truncate cap was 800 chars but at 24px font with a 440 cover, only
-  // ~480 chars actually fit before crashing into the rating row.
-  // Reviews 480-800 chars were rendered with overlapping text.
+  // Auto-fit font + cover size for the review quote. Three brackets,
+  // capped at 550 chars. Reviews longer than that get truncated with
+  // an ellipsis — past ~500 chars the type either has to shrink to
+  // 16-18px (unreadable in a feed thumbnail) or the cover has to
+  // shrink to the point where it stops working as brand identity.
+  // Hard cap is a deliberate "this card is a teaser; click through
+  // for the full review" UX decision per user feedback: "at a certain
+  // point reviews that are too long shouldn't be shown."
   //
-  // New approach: shrink the cover AND the font together as the body
-  // grows. A smaller cover frees up ~120-220px of vertical real estate
-  // for the quote, enough to absorb a 2x-3x increase in body length.
-  // Cap raised to 3000 chars — enough to hold the long-tail of
-  // enthusiast reviews (5000 is the backend Pydantic limit).
+  // Geometry per bracket. Capacity is empirically calibrated against
+  // the 230-char Drake "Iceman" review which renders at 36px as 3
+  // lines / ~77 chars per line, implying chars-per-line ≈ 2700/font.
+  // Each bracket has ~15% slack above its cap so reviews near the
+  // bracket boundary have wrap room without crashing the rating row.
   //
-  // Geometry per bracket (cover_size × cover_size, font, total chars
-  // that fit at chars/line ≈ canvas_width / (font_size × 0.55)):
-  //   cover 440 / 44px → ~5 lines × ~40 chars = ~200 cap (short hero)
-  //   cover 440 / 36px → ~6 lines × ~50 chars = ~315 chars
-  //   cover 400 / 30px → ~8 lines × ~60 chars = ~480
-  //   cover 360 / 26px → ~11 lines × ~70 chars = ~770
-  //   cover 320 / 22px → ~14 lines × ~80 chars = ~1180
-  //   cover 280 / 19px → ~19 lines × ~92 chars = ~1750
-  //   cover 240 / 17px → ~22 lines × ~103 chars = ~2270
-  //   cover 220 / 16px → ~24 lines × ~110 chars = ~2640 (truncate at 3000)
+  //   cover 440 / 44px → ~4.5 lines × 61cpl = ~270 cap (≤200)
+  //   cover 440 / 36px → ~6.3 lines × 75cpl = ~425 cap (≤350)
+  //   cover 400 / 30px → ~7.5 lines × 90cpl = ~675 cap (≤550)
   //
-  // Each bracket leaves ~10% slack for variable wrap quality and
-  // characters wider than the average (uppercase, m/w-heavy reviews).
+  // Above 550 chars: same bucket (cover 400 / 30px) with truncate
+  // ellipsis. The truncated text fits in the same vertical space as
+  // a 550-char review so the layout stays stable.
   const rawBody = data.review.body || "";
   const bodyLen = rawBody.length;
   let quoteFontSize: number;
   let coverSize: number;
-  if (bodyLen <= 200)        { coverSize = 440; quoteFontSize = 44; }
-  else if (bodyLen <= 400)   { coverSize = 440; quoteFontSize = 36; }
-  else if (bodyLen <= 700)   { coverSize = 400; quoteFontSize = 30; }
-  else if (bodyLen <= 1000)  { coverSize = 360; quoteFontSize = 26; }
-  else if (bodyLen <= 1400)  { coverSize = 320; quoteFontSize = 22; }
-  else if (bodyLen <= 1800)  { coverSize = 280; quoteFontSize = 19; }
-  else if (bodyLen <= 2400)  { coverSize = 240; quoteFontSize = 17; }
-  else                       { coverSize = 220; quoteFontSize = 16; }
-  const reviewBody = truncate(rawBody, 3000);
+  if (bodyLen <= 200)      { coverSize = 440; quoteFontSize = 44; }
+  else if (bodyLen <= 350) { coverSize = 440; quoteFontSize = 36; }
+  else                     { coverSize = 400; quoteFontSize = 30; }
+  const reviewBody = truncate(rawBody, 550);
   const rating = data.review.rating;  // raw number; rendered with inline SVG star below
   const entityName = data.entity.name ?? 'Unknown';
   const entityArtist = data.entity.artist ?? '';
