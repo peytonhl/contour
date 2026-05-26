@@ -24,6 +24,7 @@ import { useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import { isNativePlatform } from "../utils/native.js";
 import { api } from "./api.js";
+import { logSilentError } from "../utils/observability.js";
 
 const STORAGE_KEY = "contour_push_token";
 
@@ -57,13 +58,22 @@ export function usePushNotifications(user) {
         // sync step; the JS-side import resolves to the runtime stub.
         const mod = await import("@capacitor/push-notifications");
         const PushNotifications = mod.PushNotifications;
-        if (!PushNotifications) return;
+        if (!PushNotifications) {
+          // Plugin import succeeded but the runtime export is missing —
+          // means Capacitor sync didn't pick up the plugin (typical when
+          // the IPA was built before the plugin was added to package.json).
+          logSilentError("push_plugin_export_missing", new Error("PushNotifications export missing"));
+          return;
+        }
 
         const perm = await PushNotifications.requestPermissions();
         if (cancelled) return;
         if (perm.receive !== "granted") {
-          // User declined the system prompt. Drop any previously-stored
-          // token so we don't keep claiming to be registered.
+          // User declined the system prompt OR has previously denied.
+          // Log so we know WHY no token is registering. Drop any
+          // previously-stored token so we don't keep claiming to be
+          // registered.
+          logSilentError("push_permission_denied", new Error(`receive=${perm.receive}`));
           try {
             const stale = localStorage.getItem(STORAGE_KEY);
             if (stale) {
@@ -80,21 +90,29 @@ export function usePushNotifications(user) {
           "registration",
           async (event) => {
             const token = event?.value;
-            if (!token) return;
+            if (!token) {
+              logSilentError("push_registration_no_token", new Error("event.value empty"));
+              return;
+            }
             try {
               await api.registerPushToken(token, detectPlatform());
               try { localStorage.setItem(STORAGE_KEY, token); } catch { /* ignore */ }
             } catch (e) {
               // eslint-disable-next-line no-console
               console.warn("[contour] push token register failed:", e?.message);
+              logSilentError("push_token_post_failed", e);
             }
           },
         );
         const errHandle = await PushNotifications.addListener(
           "registrationError",
           (err) => {
+            // APNs / FCM refused to issue a token. Most common cause on
+            // iOS: missing `aps-environment` entitlement, OR running in
+            // a simulator without push capability, OR APNs unreachable.
             // eslint-disable-next-line no-console
             console.warn("[contour] push registrationError:", err);
+            logSilentError("push_registration_error", err instanceof Error ? err : new Error(JSON.stringify(err)));
           },
         );
         removeListeners = () => {
@@ -104,10 +122,16 @@ export function usePushNotifications(user) {
 
         await PushNotifications.register();
       } catch (e) {
-        // Plugin missing (the IPA hasn't been rebuilt yet) or platform
-        // refused — log + give up. Web users hit this path silently.
+        // Plugin missing entirely (the IPA hasn't been rebuilt yet, OR the
+        // user is on an old TestFlight build that predates the plugin
+        // addition). Web users hit this path silently because the
+        // isNativePlatform() gate above filters them out before we get
+        // here. So any hit on this branch is a NATIVE-ONLY plugin-load
+        // failure — strong signal that the IPA needs a Codemagic rebuild
+        // tagged ios-v*.
         // eslint-disable-next-line no-console
         console.warn("[contour] push setup skipped:", e?.message);
+        logSilentError("push_setup_failed", e);
       }
     })();
 
