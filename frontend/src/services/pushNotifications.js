@@ -134,47 +134,76 @@ export function usePushNotifications(user) {
 
         // Wire listeners BEFORE calling register so we don't miss the
         // immediate "registration" event some platforms fire.
-        const regHandle = await PushNotifications.addListener(
-          "registration",
-          async (event) => {
-            const token = event?.value;
-            if (!token) {
-              _writeDiag("reg_event_no_token");
-              logSilentError("push_registration_no_token", new Error("event.value empty"));
-              return;
-            }
-            _writeDiag("reg_event_received", `token_len=${token.length}`);
-            try {
-              await api.registerPushToken(token, detectPlatform());
-              try { localStorage.setItem(STORAGE_KEY, token); } catch { /* ignore */ }
-              _writeDiag("token_post_success");
-            } catch (e) {
+        // Each await is fence-posted with a trace so a hang on either
+        // addListener call narrows to the exact gate. Wrapped in try
+        // so a sync throw still surfaces. The outer try-catch would
+        // also catch it but the more granular trace pins WHICH listener
+        // setup is the culprit vs. an opaque "setup_failed".
+        _writeDiag("before_add_reg_listener");
+        let regHandle;
+        try {
+          regHandle = await PushNotifications.addListener(
+            "registration",
+            async (event) => {
+              const token = event?.value;
+              if (!token) {
+                _writeDiag("reg_event_no_token");
+                logSilentError("push_registration_no_token", new Error("event.value empty"));
+                return;
+              }
+              _writeDiag("reg_event_received", `token_len=${token.length}`);
+              try {
+                await api.registerPushToken(token, detectPlatform());
+                try { localStorage.setItem(STORAGE_KEY, token); } catch { /* ignore */ }
+                _writeDiag("token_post_success");
+              } catch (e) {
+                // eslint-disable-next-line no-console
+                console.warn("[contour] push token register failed:", e?.message);
+                _writeDiag("token_post_failed", e?.message);
+                logSilentError("push_token_post_failed", e);
+              }
+            },
+          );
+        } catch (e) {
+          _writeDiag("add_reg_listener_threw", e?.message);
+          throw e;
+        }
+        _writeDiag("after_add_reg_listener");
+
+        _writeDiag("before_add_err_listener");
+        let errHandle;
+        try {
+          errHandle = await PushNotifications.addListener(
+            "registrationError",
+            (err) => {
+              // APNs / FCM refused to issue a token. Most common cause on
+              // iOS: missing `aps-environment` entitlement, OR running in
+              // a simulator without push capability, OR APNs unreachable.
               // eslint-disable-next-line no-console
-              console.warn("[contour] push token register failed:", e?.message);
-              _writeDiag("token_post_failed", e?.message);
-              logSilentError("push_token_post_failed", e);
-            }
-          },
-        );
-        const errHandle = await PushNotifications.addListener(
-          "registrationError",
-          (err) => {
-            // APNs / FCM refused to issue a token. Most common cause on
-            // iOS: missing `aps-environment` entitlement, OR running in
-            // a simulator without push capability, OR APNs unreachable.
-            // eslint-disable-next-line no-console
-            console.warn("[contour] push registrationError:", err);
-            _writeDiag("reg_error", JSON.stringify(err));
-            logSilentError("push_registration_error", err instanceof Error ? err : new Error(JSON.stringify(err)));
-          },
-        );
+              console.warn("[contour] push registrationError:", err);
+              _writeDiag("reg_error", JSON.stringify(err));
+              logSilentError("push_registration_error", err instanceof Error ? err : new Error(JSON.stringify(err)));
+            },
+          );
+        } catch (e) {
+          _writeDiag("add_err_listener_threw", e?.message);
+          throw e;
+        }
+        _writeDiag("after_add_err_listener");
+
         removeListeners = () => {
           regHandle?.remove?.();
           errHandle?.remove?.();
         };
 
         _writeDiag("register_called");
-        await PushNotifications.register();
+        try {
+          await PushNotifications.register();
+          _writeDiag("register_returned");
+        } catch (e) {
+          _writeDiag("register_threw", e?.message);
+          throw e;
+        }
       } catch (e) {
         // Plugin missing entirely (the IPA hasn't been rebuilt yet, OR the
         // user is on an old TestFlight build that predates the plugin
