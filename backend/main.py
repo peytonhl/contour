@@ -303,6 +303,36 @@ async def health():
     results["lastfm"] = {"ok": lastfm_key_set, "key_set": lastfm_key_set}
     # Last.fm missing = leaderboard won't seed, but app still works
 
+    # ── Push notifications (APNs config) ──────────────────────────────────────
+    # Reports whether all four APNs env vars are populated. Missing = no
+    # push notifications fire regardless of registered device tokens or
+    # user prefs (the _config_ok() short-circuit early-returns in
+    # services/push_sender.py:321). User report 2026-05-26: didn't get a
+    # push when followed — added this so it's the first thing /health
+    # surfaces instead of a Railway log dig.
+    try:
+        from services.push_sender import _config_ok as _push_config_ok
+        push_configured = _push_config_ok()
+    except Exception:
+        push_configured = False
+    push_env_present = {
+        k: bool(os.environ.get(k))
+        for k in ("APNS_TEAM_ID", "APNS_KEY_ID", "APNS_PRIVATE_KEY", "APNS_BUNDLE_ID")
+    }
+    results["push_notifications"] = {
+        "ok": push_configured,
+        "env": push_env_present,
+        "note": (
+            "All APNs env vars set — push fanout active."
+            if push_configured
+            else "Push DISABLED — at least one APNs env var missing on Railway. "
+                 "Set APNS_TEAM_ID / APNS_KEY_ID / APNS_PRIVATE_KEY / APNS_BUNDLE_ID."
+        ),
+    }
+    # Push missing = follows/replies/upvotes still create Notification rows
+    # (visible in /notifications) but no device push fires. Doesn't gate the
+    # overall health response.
+
     # ── Redis ─────────────────────────────────────────────────────────────────
     try:
         from services import redis_cache

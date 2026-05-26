@@ -294,3 +294,79 @@ async def update_preferences(
     user.notification_prefs = _json.dumps(current)
     await db.commit()
     return current
+
+
+@router.get("/diagnostic")
+async def push_diagnostic(
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Diagnostic for the authenticated user's push-notification state.
+    Surfaces every failure point in the follow → push pipeline so a user
+    who reports "I didn't get a push" can have it resolved in one curl
+    instead of a Railway log dig. Reports:
+
+      • Server-side push config: whether APNs env vars are all set
+        (without this, no push fires for anyone regardless of prefs/
+        tokens).
+      • Device tokens: count + last-seen timestamp per token. If 0,
+        the iOS app never called POST /notifications/register-token —
+        possibly the user didn't grant push permission, or the
+        register call failed silently.
+      • Notification prefs: each type's enabled state (follow / upvote
+        / reply / mention). If the type the user expected to push is
+        false, the push is correctly skipped by design.
+      • Recent notification count: how many Notification rows exist
+        for this user, broken down by type. Lets us confirm that the
+        in-app notification IS being created (i.e., the bug is purely
+        in the push leg, not the create leg).
+    """
+    user_id = _require_user(authorization)
+    user = (await db.execute(
+        select(User).where(User.id == user_id)
+    )).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    from services.push_sender import _config_ok as _push_config_ok
+    server_push_ok = _push_config_ok()
+
+    tokens = (await db.execute(
+        select(DeviceToken).where(DeviceToken.user_id == user_id)
+    )).scalars().all()
+    token_summary = [
+        {
+            "platform": t.platform,
+            "token_prefix": (t.token[:12] + "…") if t.token else None,
+            "created_at": t.created_at.isoformat() + "Z" if t.created_at else None,
+        }
+        for t in tokens
+    ]
+
+    prefs = _load_prefs(user.notification_prefs)
+
+    # In-app notifications for this user, last 50 rows, by type.
+    notif_rows = (await db.execute(
+        select(Notification.type, func.count(Notification.id))
+        .where(Notification.user_id == user_id)
+        .group_by(Notification.type)
+    )).all()
+    notif_counts = {row[0]: int(row[1]) for row in notif_rows}
+
+    return {
+        "server_push_configured": server_push_ok,
+        "device_tokens": {
+            "count": len(tokens),
+            "samples": token_summary[:5],
+        },
+        "preferences": prefs,
+        "in_app_notifications_by_type": notif_counts,
+        "verdict": (
+            "Push fully wired" if (server_push_ok and tokens and prefs.get("follow", True))
+            else "Push will NOT fire — " + (
+                "server APNs config missing" if not server_push_ok
+                else "no device tokens registered (iOS app didn't call /notifications/register-token)" if not tokens
+                else "user opted out of 'follow' notifications in preferences"
+            )
+        ),
+    }

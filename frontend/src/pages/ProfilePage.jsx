@@ -212,6 +212,12 @@ export function ProfilePage() {
   const [badges, setBadges] = useState(null);
   const [lists, setLists] = useState([]);
   const [listsHasMore, setListsHasMore] = useState(false);
+  // Backlog count — fetched as part of the profile bundle so the
+  // Backlog tab in StatTabs shows a count alongside the other 5
+  // tabs (Ratings / Reviews / Lists / Following / Followers). Without
+  // it, Backlog was the only tab without a number, which made the
+  // 3x2 grid on mobile look uneven — one cell had just the label.
+  const [backlogCount, setBacklogCount] = useState(0);
   const [loadingMoreLists, setLoadingMoreLists] = useState(false);
   const [loadingMoreRatings, setLoadingMoreRatings] = useState(false);
   const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
@@ -242,13 +248,14 @@ export function ProfilePage() {
     user ? `profile:bundle:${user.id}` : null,
     async () => {
       const emptyPage = { items: [], has_more: false, total: 0 };
-      const [p, fwing, fwers, userLists] = await Promise.all([
+      const [p, fwing, fwers, userLists, backlog] = await Promise.all([
         api.getProfile(),
         api.getFollowing(user.id).catch(() => []),
         api.getFollowers(user.id).catch(() => []),
         api.getUserLists(user.id).catch(() => emptyPage),
+        api.getMyBacklog().catch(() => []),
       ]);
-      return { p, fwing, fwers, userLists };
+      return { p, fwing, fwers, userLists, backlog };
     },
     { enabled: !!user },
   );
@@ -267,12 +274,16 @@ export function ProfilePage() {
     // `profile.bio`). Spreading `p.user` over `p` lifts them so both
     // the initial render AND the in-place patches converge on the
     // same structure.
-    const { p, fwing, fwers, userLists } = bundle;
+    const { p, fwing, fwers, userLists, backlog } = bundle;
     setProfile({ ...p, ...p.user });
     setFollowing(fwing);
     setFollowers(fwers);
     setLists(userLists.items ?? []);
     setListsHasMore(!!userLists.has_more);
+    // getMyBacklog returns an array directly (not a paginated object),
+    // so the count is just length. Defensive Array check covers the
+    // catch-fallback case where the fetch returned the [] default.
+    setBacklogCount(Array.isArray(backlog) ? backlog.length : 0);
   }, [bundle, bundleLoading, user, navigate]);
 
   // Probe hot-take eligibility in parallel. Independent of the main
@@ -412,7 +423,10 @@ export function ProfilePage() {
     { key: "following", label: "Following", count: following.length },
     { key: "followers", label: "Followers", count: followers.length },
     // Backlog appended to the end per Task 9 placement rules.
-    { key: "backlog",   label: "Backlog" },
+    // Count populated so the tab matches the visual rhythm of the
+    // other five — without it, the cell was just the label, which
+    // made the 3x2 mobile grid look asymmetric.
+    { key: "backlog",   label: "Backlog",   count: backlogCount },
   ];
 
   return (
