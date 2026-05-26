@@ -22,17 +22,26 @@
  * stub on next launch and self-uninstall.
  */
 
-// Bumped v2 → v3 (2026-05-14): the prior master push (sha 2d192e2, the splash
-// fix) shipped to Codemagic via the ios-v0.1.14 tag, but Vercel deduplicated
-// against the existing Preview build for that SHA and never built a Production
-// deploy. The IPA shipped to TestFlight loaded the stale dabe3ba HTML/JS from
-// contour-rosy.vercel.app — old JS doesn't call SplashScreen.hide(), new
-// native plugin has launchAutoHide: false, so the splash holds forever. This
-// version bump:
-//   (a) is a content change, so Vercel can't dedup the master deploy
-//   (b) invalidates v2 caches on activate, so any device that had stale
-//       cached entries from the old SW gets a clean slate
-const CACHE_VERSION = 'contour-v3';
+// Bumped v3 → v4 (2026-05-26): user reported "Save failed: 'text/html' is
+// not a valid javascript mime type" when downloading a review share card.
+// Root cause: the SW's cacheFirst strategy was caching the Vercel SPA-
+// fallback HTML under /assets/<chunk>.js URLs. Sequence:
+//   1. Old deploy: main bundle bakes in reference to /assets/media-A.js
+//   2. SW caches old main bundle (cacheFirst on /assets/)
+//   3. New deploy: chunk hash rotates to media-B.js
+//   4. User triggers dynamic import of @capacitor-community/media (save flow)
+//   5. Cached old main bundle imports /assets/media-A.js (which no longer
+//      exists in the new deploy)
+//   6. Vercel rewrites all unmatched paths to /index.html (vercel.json)
+//   7. SW receives 200 OK + text/html, caches it under the JS URL
+//   8. Browser tries to execute HTML as JS → MIME error
+//
+// This bump invalidates any v3 cache entries that may be HTML-disguised-
+// as-JS. Combined with the vercel.json fix (exclude /assets/ from the
+// SPA rewrite — non-existent assets now 404 cleanly) and the
+// Content-Type guard added to cacheFirst below, the failure mode is
+// shut at every layer.
+const CACHE_VERSION = 'contour-v4';
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
@@ -86,14 +95,50 @@ self.addEventListener('fetch', (event) => {
 async function cacheFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(req);
-  if (cached) return cached;
+  if (cached) {
+    // Defense in depth: a previously-cached entry under /assets/<x>.js
+    // could be the Vercel SPA-fallback HTML if this code shipped before
+    // the v4 bump that purged those stale entries. If the cached
+    // response has the wrong Content-Type for the URL extension, evict
+    // it and re-fetch fresh. This is the bug that surfaced as
+    // "Save failed: 'text/html' is not a valid javascript mime type."
+    if (!_responseMimeMatchesUrl(req.url, cached)) {
+      cache.delete(req).catch(() => {});
+    } else {
+      return cached;
+    }
+  }
   try {
     const fresh = await fetch(req);
-    if (fresh.ok) cache.put(req, fresh.clone()).catch(() => {});
+    // Only cache if the response Content-Type matches what the URL
+    // extension implies. Stops the SPA-fallback HTML from poisoning
+    // the /assets/ cache. If the asset genuinely 404s (after the
+    // vercel.json rewrite fix), the fresh response will have a 4xx
+    // status and we skip caching anyway via fresh.ok.
+    if (fresh.ok && _responseMimeMatchesUrl(req.url, fresh)) {
+      cache.put(req, fresh.clone()).catch(() => {});
+    }
     return fresh;
   } catch (e) {
     return cached || Response.error();
   }
+}
+
+// Returns true if the response's Content-Type is consistent with the
+// extension on the URL. Used by cacheFirst to refuse caching HTML under
+// JS/CSS URLs — the exact failure mode that produced the v3 → v4 bump.
+// Tolerant: when in doubt (extension we don't know about, missing
+// Content-Type header), returns true and trusts the response.
+function _responseMimeMatchesUrl(urlStr, response) {
+  let pathname = "";
+  try { pathname = new URL(urlStr).pathname; } catch { return true; }
+  const ct = (response.headers.get("Content-Type") || "").toLowerCase();
+  if (pathname.endsWith(".js") || pathname.endsWith(".mjs")) {
+    return ct.includes("javascript") || ct.includes("ecmascript");
+  }
+  if (pathname.endsWith(".css")) return ct.includes("css");
+  if (pathname.endsWith(".json")) return ct.includes("json");
+  return true;
 }
 
 async function networkFirst(req, cacheName) {
