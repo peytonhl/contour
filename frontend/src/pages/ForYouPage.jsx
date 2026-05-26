@@ -4,7 +4,7 @@ import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { logSilentError } from "../utils/observability.js";
-import { trackPath, artistPath, albumPath } from "../constants/routes.js";
+import { trackPath, artistPath, albumPath, ROUTES } from "../constants/routes.js";
 
 // Tier source for analytics — backend tags deezer-sourced tracks with _source,
 // everything else came through Spotify (tier 1 related-artist or tier 2 genre).
@@ -1684,6 +1684,28 @@ function ForYouFeed() {
   const [language, setLanguage] = useState(loadLanguage);
   const languageRef = useRef(loadLanguage());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Unread notification count, polled independently of the Layout's poll
+  // (Layout's count drives the desktop header bell; this one drives the
+  // mobile floating chip rendered on the deck). Same 60s cadence. Two
+  // polls instead of one shared state is a small inefficiency but
+  // avoids hoisting unread to a context just to surface it on a single
+  // page. User reported: on mobile the header is hidden on /, so the
+  // bell is invisible — landing in the app gives the user no visible
+  // path to engage with new follows/replies/upvotes without first
+  // navigating to /notifications by memory.
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  useEffect(() => {
+    if (!user) { setUnreadNotifs(0); return; }
+    let cancelled = false;
+    const probe = () => {
+      api.getUnreadCount()
+        .then((r) => { if (!cancelled) setUnreadNotifs(r?.count ?? 0); })
+        .catch(() => {});
+    };
+    probe();
+    const id = setInterval(probe, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
   // Genre-browse mode state. browseGenres = currently-applied selection
   // (drives fetchBatch). Ref companion for the inside-effect read in
   // fetchBatch so a stale closure doesn't send last-render's selection.
@@ -2855,6 +2877,50 @@ function ForYouFeed() {
         }}
       >⚙</button>
 
+      {/* Floating notification chip — top-center of the deck when the
+          user has unread notifications. Visible only when unreadNotifs
+          > 0 so it's never decorative dead weight. The mobile header
+          is hidden on / (the For You page), so without this chip the
+          user lands in the app with no visible path to /notifications
+          — they had to remember it was there. Now the moment they
+          open the app, if there's something to engage with, an orange
+          pill in the deck top-center says exactly what's waiting.
+          Tap → /notifications, which marks-as-read on visit (clears
+          this chip on the next 60s poll OR the next mount).
+          Position: top-center, between the gear (top-left) and the
+          per-card "···" overflow (top-right). Glassy background +
+          accent color matches the rest of the deck chrome. */}
+      {unreadNotifs > 0 && (
+        <button
+          onClick={() => navigate(ROUTES.NOTIFICATIONS)}
+          aria-label={`${unreadNotifs} unread notifications`}
+          className="glass"
+          style={{
+            position: "absolute",
+            top: 8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 5,
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "6px 14px 6px 12px",
+            borderRadius: "var(--radius-pill)",
+            background: `${ACCENT_A}33`,
+            border: `1px solid ${ACCENT_A}88`,
+            color: ACCENT_A,
+            fontSize: 13, fontWeight: 700,
+            cursor: "pointer",
+            boxShadow: `0 0 0 0 ${ACCENT_A}80`,
+            animation: "contour-notif-pulse 2.4s ease-in-out infinite",
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          <span>{unreadNotifs > 9 ? "9+" : unreadNotifs} new</span>
+        </button>
+      )}
+
       {/* Cold-start progress banner */}
       <ColdStartBanner ratingCount={ratingCount} />
 
@@ -3613,13 +3679,30 @@ export function ForYouPage() {
       {/* Content — both panels stay mounted so ForYouFeed never loses its
           track list or scroll position when the user flips tabs.
           isolation: isolate scopes any inner zIndex shenanigans to this
-          subtree — children cannot paint above the tab strip. */}
+          subtree — children cannot paint above the tab strip.
+
+          maxWidth + margin auto: the deck is a phone-portrait card and
+          looks wrong stretched to a 1900px desktop viewport (cover
+          image renders as a wide banner). Cap at 520px and center on
+          desktop; on mobile the cap is irrelevant (viewport is 393px,
+          well under 520). User screenshot 2026-05-26 showed the
+          unconstrained desktop deck — "this isn't very good at all."
+          Same cap doesn't apply to the Community feed which has its
+          own width treatment inside GlobalReviewsFeed. */}
       <div style={{
         position: "relative", background: "var(--bg)",
         isolation: "isolate",
         ...(isSwipe ? { flex: 1, overflow: "hidden", minHeight: 0 } : {}),
       }}>
-        <div style={{ display: tab === "discover" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
+        <div style={{
+          display: tab === "discover" ? "flex" : "none",
+          flexDirection: "column",
+          height: "100%",
+          maxWidth: 520,
+          margin: "0 auto",
+          width: "100%",
+          position: "relative",
+        }}>
           <ForYouFeed />
         </div>
         <div style={{ display: tab === "community" ? "block" : "none" }}>

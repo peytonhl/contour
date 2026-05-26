@@ -285,6 +285,20 @@ img[loading="lazy"] {
   .loading-pulse { animation: none; opacity: 0.55; }
 }
 
+/* Notification chip pulse — used by the unread-notifications affordance
+   on the For You deck (ForYouPage.jsx). Outer box-shadow expands from
+   0 → 10px and fades opacity 0.55 → 0 over 2.4s, creating a soft
+   "ping" ring effect that draws the user's eye without being noisy.
+   Reduced-motion users get a static accent ring instead. */
+@keyframes contour-notif-pulse {
+  0%   { box-shadow: 0 0 0 0    rgba(217, 122, 59, 0.55); }
+  70%  { box-shadow: 0 0 0 10px rgba(217, 122, 59, 0);    }
+  100% { box-shadow: 0 0 0 0    rgba(217, 122, 59, 0);    }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="contour-notif-pulse"] { animation: none !important; }
+}
+
 /* Prevent iOS from zooming into inputs */
 @media (max-width: 640px) {
   input, textarea, select {
