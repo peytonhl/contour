@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, memo, Component } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
@@ -2426,11 +2426,30 @@ function ForYouFeed() {
       if (!userRatings[track.id]) {
         setRatingCount((prev) => prev + 1);
         sessionRatingsRef.current += 1;
-        // Continuous recalibration: every RECALIBRATE_EVERY ratings within
-        // this session, refresh the unseen queue with the latest taste
-        // signal. queueMicrotask defers past this turn so we don't
-        // refetch in the middle of the current render.
-        if (sessionRatingsRef.current % RECALIBRATE_EVERY === 0) {
+        // Cold-start users (total rating_count below PERSONALIZATION_RAMP)
+        // recalibrate after EVERY rating instead of waiting for the
+        // every-5-ratings cadence. Reported case: a new user rates a
+        // country song 1★ trying to escape a country-heavy cold-start
+        // feed, then sees 4 more country songs before the every-5
+        // refresh hits — feels like the rating did nothing. With this,
+        // the very next batch reflects that 1★ signal.
+        //
+        // Experienced users (>= PERSONALIZATION_RAMP ratings) keep the
+        // every-5 cadence — their feed is already calibrated, and 5×
+        // the recalibrate fetches per session is unnecessary load
+        // when the marginal signal of one new rating is small against
+        // their existing profile.
+        //
+        // ratingCount is the value BEFORE this rating; the user becomes
+        // a "warm" user once they pass the threshold, so the `<` check
+        // uses the pre-increment value to ensure rating #5 itself
+        // still gets the cold-start fast-path.
+        const isColdStart = ratingCount < PERSONALIZATION_RAMP;
+        const shouldRecalibrate = isColdStart
+          || sessionRatingsRef.current % RECALIBRATE_EVERY === 0;
+        if (shouldRecalibrate) {
+          // queueMicrotask defers past this turn so we don't refetch
+          // in the middle of the current render.
           queueMicrotask(() => recalibrate());
         }
       }
@@ -3207,7 +3226,35 @@ export function ForYouPage() {
   // label keep its meaning of "go to home" without colliding with the
   // home-page sub-tab name. "Friends" was a third value here; that
   // surface lives at /friends (own bottom-nav slot) now.
-  const [tab, setTab] = useState("discover");
+  //
+  // URL-backed via ?tab=community (no param = discover, the default).
+  // Without this, browser back from a user page that the user reached
+  // FROM the Community sub-tab dropped them on Discover instead of
+  // restoring Community. Sync direction is state → URL (replace, not
+  // push, so accidental sub-tab toggling doesn't bloat history). The
+  // back-button case works because navigating away to /user/<id>
+  // unmounts ForYouPage; navigating back to / remounts it and
+  // useState(initialTab) re-reads the URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") === "community" ? "community" : "discover";
+  const [tab, setTab] = useState(initialTab);
+  // Keep the URL in sync when tab state changes. replace:true so a
+  // user toggling Discover↔Community 5 times doesn't push 5 entries
+  // onto history (the back button should leave the page, not unwind
+  // sub-tab clicks).
+  useEffect(() => {
+    const current = searchParams.get("tab") === "community" ? "community" : "discover";
+    if (current !== tab) {
+      const next = new URLSearchParams(searchParams);
+      if (tab === "discover") next.delete("tab");
+      else next.set("tab", tab);
+      setSearchParams(next, { replace: true });
+    }
+    // searchParams + setSearchParams deliberately excluded — they're
+    // stable refs from the hook and including them would cause an
+    // extra render every time the URL changes via this very effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const { user } = useAuth();
 
   // Activity badge + first-launch hint state.
