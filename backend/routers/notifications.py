@@ -174,35 +174,55 @@ class PushTraceBody(BaseModel):
     detail: Optional[str] = None
 
 
+def _bucket_from_detail(detail: Optional[str]) -> str:
+    """Pick which Redis bucket the trace goes in: native vs web. The
+    client encodes `plat=ios|android|web` and `native=true|false` in the
+    detail string (see pushNotifications.js::_writeDiag). Storing them
+    separately so a web/Firefox check doesn't overwrite the iOS trace
+    (which is the only one we actually care about for diagnosing push)."""
+    if not detail:
+        return "unknown"
+    if "plat=ios" in detail or "plat=android" in detail or "native=true" in detail:
+        return "native"
+    if "plat=web" in detail or "native=false" in detail:
+        return "web"
+    return "unknown"
+
+
 @router.post("/push-trace")
 async def push_trace(
     body: PushTraceBody,
     authorization: Optional[str] = Header(None),
 ):
     """Receive a push-registration breadcrumb from the iOS / Android app.
-    Stored in Redis under push_trace:{user_id} with 24h TTL so we can
-    diagnose "I'm not getting notifications" reports without needing
-    Xcode debugger access to the user's device.
+    Stored in Redis under push_trace:{user_id}:{bucket} (bucket = native
+    or web) with 24h TTL so we can diagnose "I'm not getting
+    notifications" reports without needing Xcode debugger access.
 
-    Each branch of the registration flow on the client (pushNotifications.js)
-    posts here with a state token: plugin_loaded, perm_returned,
-    register_called, reg_event_received, token_post_success, etc. Latest
-    state wins (overwrites the Redis key).
+    Each branch of the registration flow on the client posts here with a
+    state token: plugin_loaded, perm_returned, register_called,
+    reg_event_received, token_post_success, etc. Within a bucket, latest
+    state wins (overwrites the key). ACROSS buckets the keys are
+    separate — important because the iOS app's interesting trace
+    sequence (plugin_loaded → register_called → ...) used to get
+    trampled when the user opened contour-rosy.vercel.app from a
+    desktop browser, which always posts skip_non_native.
 
-    Read back via GET /notifications/diagnostic (added in this same
-    session) which includes the latest trace alongside server_push_
-    configured / device_tokens.count / etc.
+    Read back via GET /notifications/diagnostic which returns both
+    latest_native_trace and latest_web_trace.
     """
     user_id = _require_user(authorization)
     from datetime import datetime
     from services import redis_cache
+    bucket = _bucket_from_detail(body.detail)
     record = {
         "state": body.state,
         "at": datetime.utcnow().isoformat() + "Z",
         "detail": body.detail,
+        "bucket": bucket,
     }
     try:
-        await redis_cache.set(f"push_trace:{user_id}", record, ttl=86400)
+        await redis_cache.set(f"push_trace:{user_id}:{bucket}", record, ttl=86400)
     except Exception:
         # Redis is best-effort — losing a breadcrumb is acceptable. The
         # localStorage write on the client is the durable copy.
@@ -394,18 +414,34 @@ async def push_diagnostic(
     )).all()
     notif_counts = {row[0]: int(row[1]) for row in notif_rows}
 
-    # Latest push-registration breadcrumb from the client, if any.
-    # Posted via /notifications/push-trace from pushNotifications.js on
-    # each branch of the iOS register flow. Surfaces the EXACT failure
-    # mode without needing Xcode console access — e.g. plugin_loaded
-    # then nothing means register never fired; perm_not_granted with
-    # detail receive=denied means the user has to flip the iOS Settings
-    # toggle; etc. See pushNotifications.js for the full state list.
+    # Latest push-registration breadcrumb from the client, split by
+    # platform bucket so a desktop browser check doesn't trample the
+    # iOS app's trace. Posted via /notifications/push-trace from
+    # pushNotifications.js on each branch of the iOS register flow.
+    # Surfaces the EXACT failure mode without needing Xcode console
+    # access — e.g. plugin_loaded then nothing means register never
+    # fired; perm_not_granted with detail receive=denied means the
+    # user has to flip the iOS Settings toggle; etc. See
+    # pushNotifications.js for the full state list.
     from services import redis_cache
+    native_trace = None
+    web_trace = None
+    legacy_trace = None
     try:
-        trace = await redis_cache.get(f"push_trace:{user_id}")
+        native_trace = await redis_cache.get(f"push_trace:{user_id}:native")
     except Exception:
-        trace = None
+        pass
+    try:
+        web_trace = await redis_cache.get(f"push_trace:{user_id}:web")
+    except Exception:
+        pass
+    try:
+        # Old single-key format from the first push-trace deploy. Read
+        # and surface so an in-flight diagnosis doesn't lose history
+        # while clients on stale bundles still post to the old key.
+        legacy_trace = await redis_cache.get(f"push_trace:{user_id}")
+    except Exception:
+        pass
 
     return {
         "server_push_configured": server_push_ok,
@@ -415,7 +451,9 @@ async def push_diagnostic(
         },
         "preferences": prefs,
         "in_app_notifications_by_type": notif_counts,
-        "latest_client_trace": trace,
+        "latest_native_trace": native_trace,
+        "latest_web_trace": web_trace,
+        "latest_legacy_trace": legacy_trace,
         "verdict": (
             "Push fully wired" if (server_push_ok and tokens and prefs.get("follow", True))
             else "Push will NOT fire — " + (
