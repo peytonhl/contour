@@ -1115,9 +1115,23 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           gradient instead of being a hard line. These together
           still convey "one card" without the readability tradeoff.
 
-          overflowY:auto inside lets long tracklist / review content
-          scroll within the section without affecting the cover
-          region's size.
+          overflowY:visible (NOT auto) is intentional. With auto, this
+          section created an internal scrolling container — touching the
+          text area and dragging triggered iOS's native scroll-within
+          behavior INSTEAD OF the deck's touchmove handler. User
+          reported: "when I scroll in the text area vs from the cover
+          area, the words go behind the cover" — text was scrolling
+          up within the info-region and getting clipped at the top
+          edge (card 65%), which visually reads as "disappearing
+          behind the cover image" (which sits above that line).
+          With overflow visible, touches here propagate to the deck
+          swipe handler. The card-root's own `overflow: hidden`
+          still clips any actual content overflow at the card
+          boundary, so the no-internal-scroll choice doesn't
+          introduce a visible-bleed bug — and the review composer
+          lives in a separate bottom sheet (not inline here), so
+          there's no scenario where info-region content is tall
+          enough to genuinely need scroll.
 
           IMPORTANT: this section deliberately has NO own background.
           The card-root unified blurred backdrop + bottom-darken
@@ -1126,7 +1140,7 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
         position: "absolute", top: "65%", left: 0, right: 0, bottom: 0,
         display: "flex", flexDirection: "column",
         padding: "14px 24px 12px",
-        gap: 10, overflowY: "auto",
+        gap: 10, overflowY: "visible",
         zIndex: 3,
       }}>
 
