@@ -760,10 +760,22 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
         setSubmittedReview(result);
         setReviewOpen(false);
       } else {
+        // handleReview now throws labeled errors for every failure mode,
+        // so reaching this fallback means the upstream contract changed
+        // (e.g. someone reintroduced a return-null path) — log it loudly
+        // so the next regression is caught on the first occurrence.
         setReviewError("Couldn't save. Try again.");
+        logSilentError("foryou_review_submit_returned_falsy", new Error("handleReview returned non-truthy without throwing"));
       }
     } catch (e) {
+      // Show the actual error message instead of a generic placeholder.
+      // The labeled errors thrown by handleReview have specific copy
+      // (Spotify-resolve failed, missing review ID, timeout, etc.) that
+      // tells the user AND the next bug report exactly what failed.
+      // logSilentError also fires so we get telemetry on the failure
+      // mode without waiting for another user report.
       setReviewError(`Post failed: ${e?.message || e}`);
+      logSilentError("foryou_review_submit_failed", e);
     }
   }
 
@@ -2485,20 +2497,34 @@ function ForYouFeed() {
   }
 
   async function handleReview(track, body, ratingValue, mentionUserIds) {
-    try {
-      const spotifyId = await _resolveSpotifyId(track);
-      if (!spotifyId) return null;
-      const res = await api.submitReview("track", spotifyId, body, ratingValue, mentionUserIds);
-      analytics.reviewSubmitted("track", body.trim().length);
-      // Backend returns { ok, review_id }; the id is what the share-card
-      // modal needs to render the just-posted review. Spotify id is what
-      // the share URL deep-links to (track entity page + review anchor).
-      // Returns null on failure so the caller can branch on truthiness.
-      if (!res?.review_id) return null;
-      return { reviewId: res.review_id, spotifyId };
-    } catch {
-      return null;
+    // No catch-all wrapper here — errors propagate up to handleSubmitReview
+    // in DiscoverCard, which catches and renders e.message. The previous
+    // `try { ... } catch { return null; }` swallowed every failure mode
+    // into a generic "Couldn't save. Try again." with zero diagnostic
+    // signal, which left a user bug report with no information about
+    // WHY it failed (Spotify-resolve? timeout? auth? validation?).
+    // Specific failure modes now throw labeled errors that the UI
+    // surfaces verbatim and logSilentError captures for telemetry.
+    const spotifyId = await _resolveSpotifyId(track);
+    if (!spotifyId) {
+      const err = new Error(
+        "Couldn't link this track to Spotify — reviews need a Spotify ID. " +
+        "Try the song's track page directly."
+      );
+      err.code = "spotify_resolve_failed";
+      throw err;
     }
+    const res = await api.submitReview("track", spotifyId, body, ratingValue, mentionUserIds);
+    analytics.reviewSubmitted("track", body.trim().length);
+    // Backend returns { ok, review_id }; the id is what the share-card
+    // modal needs to render the just-posted review. Spotify id is what
+    // the share URL deep-links to (track entity page + review anchor).
+    if (!res?.review_id) {
+      const err = new Error("Server didn't return a review ID. Try again.");
+      err.code = "missing_review_id";
+      throw err;
+    }
+    return { reviewId: res.review_id, spotifyId };
   }
 
   /**
