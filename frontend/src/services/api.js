@@ -305,13 +305,17 @@ export const api = {
   // and serve the cold-start ladder instead. Used by the transparency
   // view's "Fresh feed" toggle so users can see what a clean-slate user
   // would see without nuking their profile.
-  getDiscoverFeed: ({ genres = [], liked_artists = [], disliked_artists = [], exclude = [], language = "english", limit = 10, fresh = false } = {}) => {
+  getDiscoverFeed: ({ genres = [], liked_artists = [], disliked_artists = [], exclude = [], language = "english", limit = 10, fresh = false, genre_browse = [] } = {}) => {
     const params = new URLSearchParams({ limit, language });
     if (genres.length) params.set("genres", genres.join(","));
     if (liked_artists.length) params.set("liked_artists", liked_artists.join(","));
     if (disliked_artists.length) params.set("disliked_artists", disliked_artists.join(","));
     if (exclude.length) params.set("exclude", exclude.join(","));
     if (fresh) params.set("fresh", "true");
+    // Browse mode: server bypasses personalization in favor of an equal-
+    // weight sample from this genre list. Rated tracks are still excluded
+    // server-side. Empty array (default) → no override.
+    if (genre_browse.length) params.set("genre_browse", genre_browse.join(","));
     return request(`/discover/feed?${params}`);
   },
 

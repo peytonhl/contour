@@ -1805,6 +1805,7 @@ async def get_discover_feed(
     english_only: bool = Query(True, description="DEPRECATED — use `language` instead. Kept for older mobile clients that still send this param; mapped to language=english when true, language=all when false."),
     language: Optional[str] = Query(None, description="Language filter: 'english' (Latin script only, default), 'spanish' (Spanish indicators required), 'all' (no filter). Overrides english_only when set."),
     fresh: bool = Query(False, description="When true, ignore the logged-in user's personalization (profile.genres, exclude_ids, target_popularity, decade_pref, etc.) and serve the cold-start ladder instead. Backs the 'Fresh feed' button on the transparency view — lets a user see what a clean-slate user would get without nuking their profile."),
+    genre_browse: Optional[str] = Query(None, description="Comma-separated genre slugs. When set, the feed enters 'browse mode' — bypasses the user's personalization (no decade pref, no target popularity, no disliked artists, no excluded genres) and serves an equal-weight sample from this genre set. The user's RATED tracks are still excluded so they don't see duplicates. Backs the gear-panel 'Browse by genre' affordance — lets a user temporarily see a feed of any genre they want without affecting their main taste profile's feed."),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
@@ -1815,15 +1816,43 @@ async def get_discover_feed(
     UserTasteProfile; client params act as a fallback for logged-out users.
     When `fresh=true`, even logged-in users get the cold-start ladder
     (useful for "what would I see without my history?" exploration).
+    When `genre_browse=...` is set, the personalization is bypassed in favor
+    of an equal-weight sample from the provided genre list (rated-track
+    exclusion still applies).
     """
-    # `fresh=true` short-circuits everything personalized — treat the
-    # request as logged-out for purposes of feed composition. Auth-level
-    # things (rate limiting, future per-user analytics) still see the
-    # real user_id; we just don't consult their profile or rating history.
-    effective_user_id = None if fresh else user_id
+    # Parse browse-mode genre list. Empty → not in browse mode. Capped at 6
+    # genres so the candidate pool stays narrow enough to feel "focused" —
+    # if the user picks 12 genres they're effectively asking for "any music"
+    # which is the cold-start ladder, not a focused browse.
+    browse_genres: list[str] = []
+    if genre_browse:
+        browse_genres = [
+            g.strip().lower() for g in genre_browse.split(",") if g.strip()
+        ][:6]
+
+    # `fresh=true` and `genre_browse=…` both short-circuit personalization —
+    # treat the request as logged-out for purposes of feed composition.
+    # Auth-level things (rate limiting, future per-user analytics) still
+    # see the real user_id; we just don't consult their profile.
+    #
+    # IMPORTANT: even in browse mode we still query the Rating table below
+    # (using the real user_id) so rated tracks are excluded from the
+    # candidate pool — a user shouldn't see songs they've already rated
+    # just because they switched into browse mode. That's a different
+    # axis from "skip personalized scoring" and the user would perceive
+    # it as a regression.
+    bypassing_personalization = fresh or bool(browse_genres)
+    effective_user_id = None if bypassing_personalization else user_id
 
     # Exclude tracks this user has already rated — track-level signal,
     # independent of artist-level dislikes.
+    #
+    # NOTE: this query uses the REAL user_id, not effective_user_id, so
+    # rated-track exclusion fires even when bypassing personalization
+    # (fresh=true or genre_browse=…). Users shouldn't see songs they've
+    # already rated just because they entered a different feed mode —
+    # that's a different axis from "skip personalized scoring." Only
+    # users with a known user_id (i.e. logged in) get this dedup.
     #
     # Also seed the variant-dedup set (name, primary-artist) from rated
     # tracks. Catches the case where the user rated one variant of a song
@@ -1838,12 +1867,12 @@ async def get_discover_feed(
     # add to exclude_ids; they just don't seed seen_variants.
     exclude_ids: set[str] = set()
     seen_variants: set[tuple[str, str]] = set()
-    if effective_user_id:
+    if user_id:
         rated_rows = (await db.execute(
             select(Rating.entity_id, TrackCache.name, TrackCache.artist)
             .outerjoin(TrackCache, Rating.entity_id == TrackCache.spotify_id)
             .where(
-                Rating.user_id == effective_user_id,
+                Rating.user_id == user_id,
                 Rating.entity_type == "track",
             )
         )).all()
@@ -1907,12 +1936,24 @@ async def get_discover_feed(
             except Exception:
                 pass
 
+    # Genre-browse override. When the user is in browse mode, the genres
+    # they picked completely replace the personalized genre_list — no
+    # weighting by rating count, no excluded-genre filter, no fallback to
+    # the client `genres` param. The user's choice is the choice.
+    # excluded_genre_set is also wiped because in browse mode the user
+    # has explicitly asked for these genres; we shouldn't second-guess
+    # them via a "but you said you don't like jazz" filter.
+    if browse_genres:
+        genre_list = browse_genres
+        excluded_genre_set = set()
+
     # Hard-filter the candidate genre list with the user's exclusions BEFORE
     # tier 1 sees them. Tier 1's weighted sample never picks an excluded
     # genre, which means we never spend a Spotify search slot on tracks the
     # user has explicitly said "not for me". This is the cheapest possible
     # negative-signal mechanism — no API calls, no post-filter, the genre
-    # is just gone from the eligible pool.
+    # is just gone from the eligible pool. (No-op in browse mode since
+    # excluded_genre_set was just wiped.)
     if excluded_genre_set:
         genre_list = [g for g in genre_list if g not in excluded_genre_set]
 

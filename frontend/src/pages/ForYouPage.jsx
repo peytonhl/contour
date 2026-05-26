@@ -30,6 +30,12 @@ function useEvent(handler) {
 import { GlobalReviewsFeed } from "../components/GlobalReviewsFeed.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { MentionInput } from "../components/Mentions.jsx";
+import {
+  GENRE_OPTIONS,
+  GENRE_OPTIONS_BASE,
+  GENRE_OPTIONS_EXTENDED,
+  GenreChip,
+} from "../components/OnboardingModal.jsx";
 // FollowingTab moved to the dedicated /friends route (FriendsPage). The
 // in-page "Friends" sub-tab here was retired alongside that move so users
 // have one canonical entry point to followed-user activity (bottom-nav
@@ -99,6 +105,33 @@ const LANGUAGE_KEY = "contour_language_v1";          // new 3-state key
 // transport.
 const SEEN_KEY = "contour_seen_v1";
 const SEEN_CAP = 1000;
+
+// Genre-browse mode. When non-empty, the user has explicitly picked a set
+// of genres to browse — the /feed request overrides personalization with
+// these genres (equal-weight sampling, no decade pref / target popularity
+// / disliked artists / excluded genres). Rated tracks are still excluded
+// server-side so the user doesn't see duplicates. Cleared on "Exit browse"
+// from the gear panel; persists across app launches via localStorage so a
+// user who deliberately switched into "show me jazz" mode doesn't lose
+// it on app close.
+const BROWSE_GENRES_KEY = "contour_browse_genres_v1";
+const BROWSE_GENRES_MAX = 6;  // mirrors backend cap; UX-side warning at 6
+
+function loadBrowseGenres() {
+  try {
+    const v = JSON.parse(localStorage.getItem(BROWSE_GENRES_KEY) || "[]");
+    return Array.isArray(v) ? v.filter(Boolean).slice(0, BROWSE_GENRES_MAX) : [];
+  } catch { return []; }
+}
+function saveBrowseGenres(slugs) {
+  try {
+    if (slugs && slugs.length) {
+      localStorage.setItem(BROWSE_GENRES_KEY, JSON.stringify(slugs.slice(0, BROWSE_GENRES_MAX)));
+    } else {
+      localStorage.removeItem(BROWSE_GENRES_KEY);
+    }
+  } catch {}
+}
 
 // Language filter — three modes:
 //   "english" → Latin script only, no Spanish-leaning bias (default; matches
@@ -1571,6 +1604,17 @@ function ForYouFeed() {
   const [language, setLanguage] = useState(loadLanguage);
   const languageRef = useRef(loadLanguage());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Genre-browse mode state. browseGenres = currently-applied selection
+  // (drives fetchBatch). Ref companion for the inside-effect read in
+  // fetchBatch so a stale closure doesn't send last-render's selection.
+  // pickerOpen, pendingPicks, showExtendedGenres are picker UI state —
+  // pendingPicks is the in-progress selection inside the picker, kept
+  // separate from the applied browseGenres so Cancel can discard.
+  const [browseGenres, setBrowseGenres] = useState(() => loadBrowseGenres());
+  const browseGenresRef = useRef(browseGenres);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pendingPicks, setPendingPicks] = useState([]);
+  const [showExtendedGenres, setShowExtendedGenres] = useState(false);
   const containerRef = useRef(null);
   const genresRef = useRef(loadGenres());
   const fetchingMoreRef = useRef(false);
@@ -1695,6 +1739,12 @@ function ForYouFeed() {
         language: languageRef.current,
         limit: 10,
         fresh: freshOnce,
+        // When non-empty, the server bypasses personalization in favor
+        // of an equal-weight sample from these genres. Rated tracks are
+        // still excluded server-side so the user doesn't see duplicates.
+        // Ref read (not state) so a fetch initiated mid-render sees the
+        // freshest selection.
+        genre_browse: browseGenresRef.current || [],
       });
 
       // If Spotify returned empty, retry once ignoring disliked filter
@@ -1761,6 +1811,73 @@ function ForYouFeed() {
   // so the user lands on a fresh card without an interim chrome state.
   function resetFeed() {
     clearSeen();
+    setSettingsOpen(false);
+    setTracks([]);
+    setActiveIdx(0);
+    fetchBatch();
+  }
+
+  // ── Genre-browse handlers ──────────────────────────────────────────────────
+  // Open the in-panel genre picker. Seed the in-progress selection with
+  // whatever's currently applied so the user can tweak instead of
+  // restarting from scratch.
+  function openPicker() {
+    setPendingPicks([...browseGenres]);
+    setPickerOpen(true);
+    setShowExtendedGenres(false);
+  }
+
+  // Toggle a genre slug in/out of the in-progress selection. Cap at
+  // BROWSE_GENRES_MAX (mirrors the server's cap) — silently no-op on
+  // attempts past the cap; the Apply button's count label warns at the
+  // edge.
+  function togglePick(slug) {
+    setPendingPicks((prev) => {
+      if (prev.includes(slug)) return prev.filter((s) => s !== slug);
+      if (prev.length >= BROWSE_GENRES_MAX) return prev;
+      return [...prev, slug];
+    });
+  }
+
+  // Cancel the picker without committing the selection. browseGenres
+  // (the applied list) is untouched.
+  function cancelPicker() {
+    setPickerOpen(false);
+    setShowExtendedGenres(false);
+    setPendingPicks([]);
+  }
+
+  // Apply the picker selection: commits to localStorage + the ref +
+  // state, closes the panel, and refetches a clean batch from the
+  // browse-mode feed.
+  function applyBrowseGenres() {
+    if (pendingPicks.length === 0) return;
+    const slugs = pendingPicks.slice(0, BROWSE_GENRES_MAX);
+    saveBrowseGenres(slugs);
+    browseGenresRef.current = slugs;
+    setBrowseGenres(slugs);
+    setPickerOpen(false);
+    setShowExtendedGenres(false);
+    setPendingPicks([]);
+    setSettingsOpen(false);
+    setTracks([]);
+    setActiveIdx(0);
+    // Drop SEEN history too — when the user explicitly switches into
+    // browse mode, they're starting a fresh exploration of that genre
+    // and shouldn't have to scroll past already-seen tracks from their
+    // personalized feed to get there.
+    clearSeen();
+    fetchBatch();
+  }
+
+  // Exit browse mode. Restores the personalized feed by clearing the
+  // applied selection. SEEN history is preserved so the user doesn't
+  // suddenly see tracks they swiped past while in browse mode reappear
+  // in their main feed.
+  function exitBrowseMode() {
+    saveBrowseGenres([]);
+    browseGenresRef.current = [];
+    setBrowseGenres([]);
     setSettingsOpen(false);
     setTracks([]);
     setActiveIdx(0);
@@ -2680,6 +2797,197 @@ function ForYouFeed() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Browse by genre — temporarily override the personalized
+              feed with an equal-weight sample from a user-picked genre
+              set. Doesn't change the underlying taste profile. Rated
+              tracks are still excluded server-side so the user doesn't
+              see duplicates. Three render branches:
+                (a) Not in browse mode + picker closed → "Enable" button
+                (b) In browse mode + picker closed → active genres chips
+                    + "Change" / "Exit browse" buttons
+                (c) Picker open → multi-select grid (base + expandable
+                    extended set) + Apply / Cancel
+
+              The picker is rendered inline in the gear panel rather
+              than a separate modal so it lives in the same surface as
+              the language toggle and reset button — feels like an
+              extension of the existing settings, not a new sub-mode.
+              maxHeight + overflowY:auto on the picker so it doesn't
+              push the deck entirely off-screen on a small viewport.
+              The settings panel is rendered as a sibling above the
+              deck div, so touches inside it never reach the deck's
+              swipe handlers — internal scroll is naturally isolated. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 13, color: "#fff", fontWeight: 600 }}>
+                Browse by genre
+              </p>
+              <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+                Temporarily browse a feed of specific genres. Doesn't change your usual feed.
+              </p>
+            </div>
+
+            {/* (a) Not in browse mode, picker closed */}
+            {browseGenres.length === 0 && !pickerOpen && (
+              <button
+                onClick={openPicker}
+                style={{
+                  padding: "9px 14px", fontSize: 12, fontWeight: 700,
+                  background: ACCENT_A, color: "#000",
+                  border: "none", borderRadius: "var(--radius-md)",
+                  cursor: "pointer", alignSelf: "flex-start",
+                  transition: "filter 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.filter = "brightness(1.06)"}
+                onMouseLeave={(e) => e.currentTarget.style.filter = "brightness(1)"}
+              >
+                Enable genre browse
+              </button>
+            )}
+
+            {/* (b) In browse mode, picker closed */}
+            {browseGenres.length > 0 && !pickerOpen && (
+              <>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {browseGenres.map((slug) => {
+                    const genre = GENRE_OPTIONS.find((g) => g.slug === slug);
+                    return (
+                      <span key={slug} style={{
+                        display: "inline-flex", alignItems: "center",
+                        padding: "4px 10px", fontSize: 11, fontWeight: 600,
+                        background: `${ACCENT_A}26`,
+                        color: ACCENT_A,
+                        borderRadius: "var(--radius-pill)",
+                        border: `1px solid ${ACCENT_A}55`,
+                      }}>
+                        {genre?.label || slug}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={openPicker}
+                    style={{
+                      padding: "7px 12px", fontSize: 12, fontWeight: 600,
+                      background: "rgba(255,255,255,0.08)",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      borderRadius: "var(--radius-md)",
+                      color: "rgba(255,255,255,0.9)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Change genres
+                  </button>
+                  <button
+                    onClick={exitBrowseMode}
+                    style={{
+                      padding: "7px 12px", fontSize: 12, fontWeight: 600,
+                      background: "transparent",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      borderRadius: "var(--radius-md)",
+                      color: "rgba(255,255,255,0.7)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Exit browse
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* (c) Picker open — multi-select grid */}
+            {pickerOpen && (
+              <div
+                style={{
+                  display: "flex", flexDirection: "column", gap: 10,
+                  maxHeight: "55vh", overflowY: "auto",
+                  // Keep mobile inertial scroll inside the picker
+                  // smooth without exposing the underlying deck. The
+                  // panel is already DOM-separate from the deck's
+                  // touch handlers, but pan-y here is belt-and-
+                  // suspenders so the gesture intent is unambiguous
+                  // even mid-flick.
+                  touchAction: "pan-y",
+                  WebkitOverflowScrolling: "touch",
+                  padding: "4px 2px",
+                }}
+              >
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", margin: 0 }}>
+                  Pick up to {BROWSE_GENRES_MAX}. Tap Apply when you're done.
+                </p>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {GENRE_OPTIONS_BASE.map((g) => (
+                    <GenreChip
+                      key={g.slug}
+                      genre={g}
+                      selected={pendingPicks}
+                      onToggle={togglePick}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setShowExtendedGenres((s) => !s)}
+                  style={{
+                    padding: "6px 12px", fontSize: 11, fontWeight: 600,
+                    background: "transparent",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    borderRadius: "var(--radius-sm)",
+                    color: "rgba(255,255,255,0.7)",
+                    cursor: "pointer",
+                    alignSelf: "flex-start",
+                  }}
+                >
+                  {showExtendedGenres ? "Show fewer genres" : "More genres"}
+                </button>
+
+                {showExtendedGenres && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {GENRE_OPTIONS_EXTENDED.map((g) => (
+                      <GenreChip
+                        key={g.slug}
+                        genre={g}
+                        selected={pendingPicks}
+                        onToggle={togglePick}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 6, position: "sticky", bottom: 0, paddingTop: 6, background: "linear-gradient(to top, rgba(10,10,10,0.95) 60%, rgba(10,10,10,0))" }}>
+                  <button
+                    onClick={applyBrowseGenres}
+                    disabled={pendingPicks.length === 0}
+                    style={{
+                      flex: 1, padding: "9px 14px", fontSize: 13, fontWeight: 700,
+                      background: pendingPicks.length > 0 ? ACCENT_A : "rgba(255,255,255,0.06)",
+                      color: pendingPicks.length > 0 ? "#000" : "rgba(255,255,255,0.3)",
+                      border: "none", borderRadius: "var(--radius-md)",
+                      cursor: pendingPicks.length > 0 ? "pointer" : "default",
+                    }}
+                  >
+                    Apply{pendingPicks.length > 0 ? ` (${pendingPicks.length})` : ""}
+                  </button>
+                  <button
+                    onClick={cancelPicker}
+                    style={{
+                      padding: "9px 14px", fontSize: 13, fontWeight: 600,
+                      background: "transparent",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      borderRadius: "var(--radius-md)",
+                      color: "rgba(255,255,255,0.7)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Reset feed — user-facing escape hatch when the algorithm
