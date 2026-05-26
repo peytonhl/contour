@@ -169,6 +169,47 @@ class RegisterTokenBody(BaseModel):
     platform: Literal["ios", "android"]
 
 
+class PushTraceBody(BaseModel):
+    state: str
+    detail: Optional[str] = None
+
+
+@router.post("/push-trace")
+async def push_trace(
+    body: PushTraceBody,
+    authorization: Optional[str] = Header(None),
+):
+    """Receive a push-registration breadcrumb from the iOS / Android app.
+    Stored in Redis under push_trace:{user_id} with 24h TTL so we can
+    diagnose "I'm not getting notifications" reports without needing
+    Xcode debugger access to the user's device.
+
+    Each branch of the registration flow on the client (pushNotifications.js)
+    posts here with a state token: plugin_loaded, perm_returned,
+    register_called, reg_event_received, token_post_success, etc. Latest
+    state wins (overwrites the Redis key).
+
+    Read back via GET /notifications/diagnostic (added in this same
+    session) which includes the latest trace alongside server_push_
+    configured / device_tokens.count / etc.
+    """
+    user_id = _require_user(authorization)
+    from datetime import datetime
+    from services import redis_cache
+    record = {
+        "state": body.state,
+        "at": datetime.utcnow().isoformat() + "Z",
+        "detail": body.detail,
+    }
+    try:
+        await redis_cache.set(f"push_trace:{user_id}", record, ttl=86400)
+    except Exception:
+        # Redis is best-effort — losing a breadcrumb is acceptable. The
+        # localStorage write on the client is the durable copy.
+        pass
+    return {"ok": True}
+
+
 @router.post("/register-token")
 async def register_token(
     body: RegisterTokenBody,
@@ -353,6 +394,19 @@ async def push_diagnostic(
     )).all()
     notif_counts = {row[0]: int(row[1]) for row in notif_rows}
 
+    # Latest push-registration breadcrumb from the client, if any.
+    # Posted via /notifications/push-trace from pushNotifications.js on
+    # each branch of the iOS register flow. Surfaces the EXACT failure
+    # mode without needing Xcode console access — e.g. plugin_loaded
+    # then nothing means register never fired; perm_not_granted with
+    # detail receive=denied means the user has to flip the iOS Settings
+    # toggle; etc. See pushNotifications.js for the full state list.
+    from services import redis_cache
+    try:
+        trace = await redis_cache.get(f"push_trace:{user_id}")
+    except Exception:
+        trace = None
+
     return {
         "server_push_configured": server_push_ok,
         "device_tokens": {
@@ -361,6 +415,7 @@ async def push_diagnostic(
         },
         "preferences": prefs,
         "in_app_notifications_by_type": notif_counts,
+        "latest_client_trace": trace,
         "verdict": (
             "Push fully wired" if (server_push_ok and tokens and prefs.get("follow", True))
             else "Push will NOT fire — " + (

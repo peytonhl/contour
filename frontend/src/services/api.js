@@ -247,6 +247,13 @@ export const api = {
     post(`/notifications/register-token`, { token, platform }),
   unregisterPushToken: (token) =>
     post(`/notifications/unregister-token`, { token }),
+  // Fire-and-forget breadcrumb from pushNotifications.js so the server
+  // can see WHICH branch of the iOS push register flow fired, without
+  // requiring Xcode-console access to the user's device. Stored in
+  // Redis under push_trace:{user_id} with 24h TTL; surfaced in
+  // /notifications/diagnostic.
+  postPushTrace: (state, detail) =>
+    post(`/notifications/push-trace`, { state, detail: detail ?? null }).catch(() => {}),
   getNotificationPrefs: () => request(`/notifications/preferences`),
   updateNotificationPrefs: (prefs) => put(`/notifications/preferences`, prefs),
 

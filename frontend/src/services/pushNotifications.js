@@ -30,8 +30,14 @@ const STORAGE_KEY = "contour_push_token";
 // Sticky breadcrumb of the most recent push-registration attempt's outcome.
 // Written on every branch (plugin missing / permission denied / token
 // registered / etc) so a user reporting "I'm not getting pushes" can read
-// it back from localStorage without needing Xcode's debugger. Format:
+// it back from localStorage AND so the server can see it without needing
+// Xcode debugger access to the user's device. Format:
 //   { state: "...", at: ISO timestamp, detail?: string }
+//
+// Two writes per call: (1) localStorage for client-side inspection,
+// (2) POST /notifications/push-trace (fire-and-forget) so the
+// server-side /notifications/diagnostic endpoint can read the latest
+// state without the user running a console snippet on iOS.
 const DIAG_KEY = "contour_push_diag";
 function _writeDiag(state, detail) {
   try {
@@ -41,6 +47,10 @@ function _writeDiag(state, detail) {
       ...(detail ? { detail: String(detail).slice(0, 200) } : {}),
     }));
   } catch { /* ignore */ }
+  // Server-side mirror. Fire-and-forget; the POST helper's .catch
+  // swallows failures so a network blip on a breadcrumb write doesn't
+  // disrupt the registration flow itself.
+  try { api.postPushTrace(state, detail); } catch { /* ignore */ }
 }
 
 
