@@ -9,6 +9,7 @@ import { userAvatar } from "../utils/userAvatar.js";
 import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { MentionBody } from "../components/Mentions.jsx";
+import { ExpandableReviewBody } from "../components/ExpandableReviewBody.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { EmptyState } from "../components/EmptyState.jsx";
 import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
@@ -918,9 +919,13 @@ export function ProfilePage() {
                     </div>
                     {r.value && <RatingBadge value={r.value} />}
                   </div>
-                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>
-                    <MentionBody body={r.body} mentions={r.mentions} />
-                  </p>
+                  <ExpandableReviewBody
+                    body={r.body}
+                    mentions={r.mentions}
+                    clampLines={4}
+                    fontSize={13}
+                    lineHeight={1.65}
+                  />
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = threadPath; }}

@@ -6,6 +6,7 @@ import { BadgeLeaderboard } from "./Badges.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionBody } from "./Mentions.jsx";
+import { ExpandableReviewBody } from "./ExpandableReviewBody.jsx";
 import { EmptyState } from "./EmptyState.jsx";
 import { PenIcon } from "./Icons.jsx";
 import { userPath } from "../constants/routes.js";
@@ -67,29 +68,11 @@ function RatingBadge({ value }) {
 }
 
 // One review card — clickable through to the entity page, anchor scrolls to the review.
-// Number of lines past which we show a "Show more" affordance. Anything
-// shorter than this fits entirely in the collapsed clamp, so the toggle
-// would be a no-op — we detect that case below and only render the
-// expand button when the body actually overflows.
-const COMMUNITY_CLAMP_LINES = 4;
-
+// Expand affordance now lives in <ExpandableReviewBody> (shared across
+// every surface that renders a review body). Body is clamped to 4
+// lines by default; a "Show more" button appears only when the clamp
+// is actually clipping content.
 function ReviewCardItem({ item, user, onVote, badges }) {
-  // Track whether the user has chosen to expand THIS review's body
-  // (per-item state — collapsing back returns to the 4-line clamp).
-  const [bodyExpanded, setBodyExpanded] = useState(false);
-  // Track whether the clamp is actually clipping content. Set via a ref
-  // callback that compares scrollHeight to clientHeight on first paint.
-  // If the body fits in 4 lines, we hide the "Show more" button entirely
-  // (rendering it on a short review would be misleading — there's
-  // nothing to expand).
-  const [bodyOverflows, setBodyOverflows] = useState(false);
-  const measureBody = (el) => {
-    if (!el) return;
-    // Defer one frame so layout has settled (mentions can shift wrap).
-    requestAnimationFrame(() => {
-      setBodyOverflows(el.scrollHeight - el.clientHeight > 1);
-    });
-  };
   // Tapping Share opens the CardPreviewModal scoped to this review,
   // mirroring the Friends-tab + entity-page + post-deck-review share
   // flows. Generates a "quote" card PNG via /api/og/review?id=<id>.
@@ -154,41 +137,11 @@ function ReviewCardItem({ item, user, onVote, badges }) {
         </span>
       </div>
 
-      {/* Body — line-clamped at 4 lines by default. A "Show more" button
-          below toggles the clamp off so long reviews can be read in
-          full. Reported case: users in the Community feed couldn't
-          reach the end of longer reviews. Measure-on-mount detects
-          whether the body actually exceeds the clamp; the toggle is
-          hidden on short reviews where it would be a misleading
-          no-op. WebkitLineClamp="unset" rather than removing the
-          property entirely so the transition stays smooth and the
-          display:-webkit-box layout doesn't reflow. */}
-      <p
-        ref={measureBody}
-        style={{
-          fontSize: 14, color: "var(--text-muted)", lineHeight: 1.65, margin: 0,
-          display: "-webkit-box",
-          WebkitLineClamp: bodyExpanded ? "unset" : COMMUNITY_CLAMP_LINES,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        <MentionBody body={item.body} mentions={item.mentions} />
-      </p>
-      {bodyOverflows && (
-        <button
-          onClick={() => setBodyExpanded((e) => !e)}
-          style={{
-            alignSelf: "flex-start",
-            background: "none", border: "none", padding: "2px 0",
-            color: "var(--accent)", fontSize: 12, fontWeight: 600,
-            cursor: "pointer", marginTop: -2,
-          }}
-        >
-          {bodyExpanded ? "Show less" : "Show more"}
-        </button>
-      )}
+      {/* Body — line-clamped at 4 lines by default; ExpandableReviewBody
+          surfaces a "Show more" toggle only when the clamp is actually
+          clipping content. */}
+      <ExpandableReviewBody body={item.body} mentions={item.mentions} clampLines={4} />
+
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <button onClick={() => user && onVote(item.id, 1)} disabled={!user}

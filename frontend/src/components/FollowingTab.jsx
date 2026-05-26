@@ -6,6 +6,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionBody } from "./Mentions.jsx";
+import { ExpandableReviewBody } from "./ExpandableReviewBody.jsx";
 import { EmptyState } from "./EmptyState.jsx";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
@@ -171,9 +172,13 @@ function FollowingItem({ item }) {
           </span>
         )}
         {isReview && item.body && (
-          <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, margin: 0, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>
-            <MentionBody body={item.body} mentions={item.mentions} />
-          </p>
+          <ExpandableReviewBody
+            body={item.body}
+            mentions={item.mentions}
+            clampLines={3}
+            fontSize={13}
+            lineHeight={1.6}
+          />
         )}
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {timeAgo(item.created_at)}

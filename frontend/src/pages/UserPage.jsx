@@ -14,6 +14,7 @@ import { LoadMoreButton } from "../components/LoadMoreButton.jsx";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { useCachedFetch } from "../utils/useCachedFetch.js";
 import { MentionBody } from "../components/Mentions.jsx";
+import { ExpandableReviewBody } from "../components/ExpandableReviewBody.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD, DANGER } from "../theme.js";
 import { ROUTES, userPath, listPath, tasteMatchPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
@@ -470,9 +471,13 @@ export function UserPage() {
                     </div>
                     {r.rating && <RatingBadge value={r.rating} />}
                   </div>
-                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>
-                    <MentionBody body={r.body} mentions={r.mentions} />
-                  </p>
+                  <ExpandableReviewBody
+                    body={r.body}
+                    mentions={r.mentions}
+                    clampLines={4}
+                    fontSize={13}
+                    lineHeight={1.65}
+                  />
 
                   {/* Vote row. Buttons stop propagation so tapping ▲/▼
                       doesn't also fire the row's navigation to the thread.
