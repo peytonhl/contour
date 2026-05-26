@@ -27,6 +27,21 @@ import { api } from "./api.js";
 import { logSilentError } from "../utils/observability.js";
 
 const STORAGE_KEY = "contour_push_token";
+// Sticky breadcrumb of the most recent push-registration attempt's outcome.
+// Written on every branch (plugin missing / permission denied / token
+// registered / etc) so a user reporting "I'm not getting pushes" can read
+// it back from localStorage without needing Xcode's debugger. Format:
+//   { state: "...", at: ISO timestamp, detail?: string }
+const DIAG_KEY = "contour_push_diag";
+function _writeDiag(state, detail) {
+  try {
+    localStorage.setItem(DIAG_KEY, JSON.stringify({
+      state,
+      at: new Date().toISOString(),
+      ...(detail ? { detail: String(detail).slice(0, 200) } : {}),
+    }));
+  } catch { /* ignore */ }
+}
 
 
 function detectPlatform() {
@@ -45,8 +60,15 @@ function detectPlatform() {
 
 export function usePushNotifications(user) {
   useEffect(() => {
-    if (!isNativePlatform()) return;
-    if (!user?.id) return;
+    if (!isNativePlatform()) {
+      _writeDiag("skip_non_native");
+      return;
+    }
+    if (!user?.id) {
+      _writeDiag("skip_no_user");
+      return;
+    }
+    _writeDiag("attempt_started");
 
     let cancelled = false;
     let removeListeners = () => {};
@@ -62,17 +84,21 @@ export function usePushNotifications(user) {
           // Plugin import succeeded but the runtime export is missing —
           // means Capacitor sync didn't pick up the plugin (typical when
           // the IPA was built before the plugin was added to package.json).
+          _writeDiag("plugin_export_missing");
           logSilentError("push_plugin_export_missing", new Error("PushNotifications export missing"));
           return;
         }
+        _writeDiag("plugin_loaded");
 
         const perm = await PushNotifications.requestPermissions();
         if (cancelled) return;
+        _writeDiag("perm_returned", `receive=${perm.receive}`);
         if (perm.receive !== "granted") {
           // User declined the system prompt OR has previously denied.
           // Log so we know WHY no token is registering. Drop any
           // previously-stored token so we don't keep claiming to be
           // registered.
+          _writeDiag("perm_not_granted", `receive=${perm.receive}`);
           logSilentError("push_permission_denied", new Error(`receive=${perm.receive}`));
           try {
             const stale = localStorage.getItem(STORAGE_KEY);
@@ -91,15 +117,19 @@ export function usePushNotifications(user) {
           async (event) => {
             const token = event?.value;
             if (!token) {
+              _writeDiag("reg_event_no_token");
               logSilentError("push_registration_no_token", new Error("event.value empty"));
               return;
             }
+            _writeDiag("reg_event_received", `token_len=${token.length}`);
             try {
               await api.registerPushToken(token, detectPlatform());
               try { localStorage.setItem(STORAGE_KEY, token); } catch { /* ignore */ }
+              _writeDiag("token_post_success");
             } catch (e) {
               // eslint-disable-next-line no-console
               console.warn("[contour] push token register failed:", e?.message);
+              _writeDiag("token_post_failed", e?.message);
               logSilentError("push_token_post_failed", e);
             }
           },
@@ -112,6 +142,7 @@ export function usePushNotifications(user) {
             // a simulator without push capability, OR APNs unreachable.
             // eslint-disable-next-line no-console
             console.warn("[contour] push registrationError:", err);
+            _writeDiag("reg_error", JSON.stringify(err));
             logSilentError("push_registration_error", err instanceof Error ? err : new Error(JSON.stringify(err)));
           },
         );
@@ -120,6 +151,7 @@ export function usePushNotifications(user) {
           errHandle?.remove?.();
         };
 
+        _writeDiag("register_called");
         await PushNotifications.register();
       } catch (e) {
         // Plugin missing entirely (the IPA hasn't been rebuilt yet, OR the
@@ -131,6 +163,7 @@ export function usePushNotifications(user) {
         // tagged ios-v*.
         // eslint-disable-next-line no-console
         console.warn("[contour] push setup skipped:", e?.message);
+        _writeDiag("setup_failed", e?.message);
         logSilentError("push_setup_failed", e);
       }
     })();
