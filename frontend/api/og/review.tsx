@@ -321,7 +321,7 @@ export default async function handler(request) {
                   color: TEXT,
                 }}
               >
-                — {authorName}
+                by {authorName}
               </span>
             </div>
             {rating != null && (

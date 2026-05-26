@@ -290,7 +290,7 @@ export default async function handler(request) {
                 color: TEXT,
               }}
             >
-              — {data.user.display_name}
+              by {data.user.display_name}
             </span>
           </div>
         </div>

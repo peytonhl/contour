@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
+import { api } from "../services/api.js";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD, DANGER } from "../theme.js";
 import { ROUTES, profileTabPath } from "../constants/routes.js";
 
@@ -151,8 +152,8 @@ export function GenreChip({ genre, selected, onToggle, excluded, onExclude }) {
       onClick={handleClick}
       title={
         !supportsExclude ? undefined
-        : isExcluded ? "Excluded — click to reset"
-        : isLiked ? "Liked — click to exclude"
+        : isExcluded ? "Excluded. Click to reset"
+        : isLiked ? "Liked. Click to exclude"
         : "Click to like"
       }
       style={{
@@ -219,27 +220,48 @@ function Dots({ total, active }) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 // Steps:
-//   0 — welcome / value prop
-//   1 — Backlog explainer (informational, skippable)
+//   0. welcome / value prop
+//   1. genre picker (NEW, brought back 2026-05-25)
+//   2. Backlog explainer (informational, skippable)
+//   3. Friends / social explainer
 //
-// The genre picker that used to sit at step 1 was cut — the For You feed's
-// ColdStartBanner asks the user to rate 5 tracks to calibrate, which produces
-// a higher-fidelity taste signal than 18 boxy chips. UserTasteProfile.genres
-// gets auto-populated from each 4–5★ rating via ratings._update_taste_from_rating,
-// so the calibration bar drives the same signal the picker used to seed.
+// The genre picker had been cut in the 2026-05-14 rebuild under the theory
+// that "rate 5 to calibrate" was a higher-fidelity signal than 18 boxy chips.
+// Reality check: a cold-start user with zero ratings sees the global Deezer
+// chart (currently country-heavy in the US), and rating one country song
+// 1★ excludes only THAT artist, not the genre. The user kept seeing country.
+// Bringing the picker back so new users can seed UserTasteProfile.genres at
+// signup — that one round-trip moves them out of cold-start mode and into
+// the personalized tier-1 weighted sample on their very first feed batch.
 //
-// The RYM import upsell that used to sit even earlier was cut for the same
+// Picker is OPTIONAL: skipping it falls back to the rate-to-calibrate
+// experience (which still works, just slower for users with strong genre
+// preferences to express).
+//
+// The RYM import upsell that used to sit even earlier was cut for the
 // "don't put a CSV workflow 30 seconds into a casual first run" reason.
 // /import is still reachable from /settings.
-//
-// GENRE_OPTIONS + GenreChip are still exported above because TasteSection
-// renders them on the profile page — kept exported, dropped from onboarding.
 export function OnboardingModal() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
   const [exiting, setExiting] = useState(false);
+  // Genre picker state (step 1). selectedGenres holds the in-progress
+  // picks; saving is async to avoid blocking the user on slow networks
+  // — we advance to step 2 as soon as the API call is fired, not when
+  // it returns. The save also fires the contour:taste-updated event so
+  // the For You feed re-fetches with the new genres on next mount.
+  const [selectedGenres, setSelectedGenres] = useState([]);
+  const [showExtendedGenres, setShowExtendedGenres] = useState(false);
+  const [savingGenres, setSavingGenres] = useState(false);
+  function toggleOnboardingGenre(slug) {
+    setSelectedGenres((prev) =>
+      prev.includes(slug)
+        ? prev.filter((s) => s !== slug)
+        : [...prev, slug].slice(0, 10),  // soft cap
+    );
+  }
 
   // Defer showing until the user has passed the SigninGate — either by
   // signing in (user becomes non-null) or by opting into guest browse mode.
@@ -287,6 +309,34 @@ export function OnboardingModal() {
     }, 220);
   }
 
+  // Step 1 → Step 2 advance. Saves the genre picks if any were made
+  // (skip → no save). Fire-and-forget the POST so a slow network
+  // doesn't block the user; we mirror the picks to local state and
+  // dispatch contour:taste-updated so ForYouPage refetches with them
+  // on next mount even before the API call resolves.
+  function finishGenrePickerStep(skip = false) {
+    const picks = skip ? [] : selectedGenres;
+    analytics.onboardingStepCompleted("genre_picker", true);
+    if (picks.length > 0) {
+      setSavingGenres(true);
+      // Mirror to localStorage so a logged-out user's cold-start
+      // feed picks up the genres immediately (the feedPrefetch in
+      // main.jsx reads contour_genres_v1 before React even mounts
+      // on the next launch).
+      try {
+        localStorage.setItem("contour_genres_v1", JSON.stringify(picks));
+      } catch {}
+      // Fire-and-forget. We don't await: the user can advance to
+      // step 2 immediately, and the feed will pick up the new
+      // profile on its next /discover/feed call.
+      api.saveTasteProfile(picks, [], false)
+        .catch(() => {})
+        .finally(() => setSavingGenres(false));
+      window.dispatchEvent(new CustomEvent("contour:taste-updated"));
+    }
+    setStep(2);
+  }
+
   function finishBacklogStep(deepLink) {
     analytics.onboardingStepCompleted("backlog_explainer", !deepLink);
     if (deepLink) {
@@ -297,11 +347,9 @@ export function OnboardingModal() {
       setVisible(false);
       navigate(profileTabPath("backlog"));
     } else {
-      // Advance to the friends step instead of dismissing — the
-      // third pillar (social / connecting with friends) needs the
-      // same explicit explainer the first two got. dismiss() only
-      // fires on the final step now.
-      setStep(2);
+      // Advance to the friends step (now step 3 after the genre
+      // picker was inserted at step 1).
+      setStep(3);
     }
   }
 
@@ -373,7 +421,7 @@ export function OnboardingModal() {
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={3} active={0} />
+                <Dots total={4} active={0} />
               </div>
 
               <button onClick={() => { analytics.onboardingStepCompleted("value_prop", false); setStep(1); }} style={{
@@ -387,8 +435,112 @@ export function OnboardingModal() {
             </>
           )}
 
-          {/* ── Step 1: Backlog explainer ── */}
+          {/* ── Step 1: Genre picker (new 2026-05-25) ──
+              Lets the user seed UserTasteProfile.genres at signup so
+              their very first feed batch can run the personalized
+              tier-1 weighted sample instead of the cold-start Deezer
+              chart. Optional: "Skip for now" advances to step 2
+              without saving. Picks are capped at 10 (soft) on toggle;
+              "More genres" reveals the extended ~40-slug list. */}
           {step === 1 && (
+            <>
+              <div style={{ textAlign: "center", marginBottom: 16 }}>
+                <h2 style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: 28, fontWeight: 400, margin: "0 0 8px",
+                  color: "var(--text)", lineHeight: 1.1,
+                }}>
+                  What do you usually listen to?
+                </h2>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
+                  Pick any that sound right. We use these to seed your first
+                  feed. You can change them anytime in Settings.
+                </p>
+              </div>
+
+              <div style={{
+                maxHeight: "40vh", overflowY: "auto",
+                marginBottom: 16, padding: "4px 2px",
+                WebkitOverflowScrolling: "touch",
+              }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {GENRE_OPTIONS_BASE.map((g) => (
+                    <GenreChip
+                      key={g.slug}
+                      genre={g}
+                      selected={selectedGenres}
+                      onToggle={toggleOnboardingGenre}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setShowExtendedGenres((s) => !s)}
+                  style={{
+                    marginTop: 10,
+                    padding: "6px 12px", fontSize: 11, fontWeight: 600,
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {showExtendedGenres ? "Show fewer genres" : "More genres"}
+                </button>
+
+                {showExtendedGenres && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                    {GENRE_OPTIONS_EXTENDED.map((g) => (
+                      <GenreChip
+                        key={g.slug}
+                        genre={g}
+                        selected={selectedGenres}
+                        onToggle={toggleOnboardingGenre}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <Dots total={4} active={1} />
+              </div>
+
+              <button
+                onClick={() => finishGenrePickerStep(false)}
+                disabled={savingGenres}
+                style={{
+                  width: "100%", padding: "14px 0", borderRadius: "var(--radius-lg)",
+                  background: selectedGenres.length > 0 ? ACCENT_A : "var(--surface2)",
+                  border: "none",
+                  color: selectedGenres.length > 0 ? "#fff" : "var(--text-muted)",
+                  fontSize: 14, fontWeight: 600,
+                  cursor: savingGenres ? "default" : "pointer",
+                  marginBottom: 8,
+                }}
+              >
+                {selectedGenres.length > 0
+                  ? `Continue with ${selectedGenres.length} selected`
+                  : "Pick at least one to continue"}
+              </button>
+
+              <button
+                onClick={() => finishGenrePickerStep(true)}
+                style={{
+                  width: "100%", padding: "8px 0",
+                  background: "none", border: "none",
+                  color: "var(--text-muted)", fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Skip for now
+              </button>
+            </>
+          )}
+
+          {/* ── Step 2: Backlog explainer ── */}
+          {step === 2 && (
             <>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h2 style={{
@@ -437,7 +589,7 @@ export function OnboardingModal() {
               </button>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={3} active={1} />
+                <Dots total={4} active={2} />
               </div>
 
               <button onClick={() => finishBacklogStep(false)} style={{
@@ -450,12 +602,13 @@ export function OnboardingModal() {
             </>
           )}
 
-          {/* ── Step 2: Friends / social explainer ──
+          {/* ── Step 3: Friends / social explainer ──
               The third pillar alongside Discover (step 0) and Backlog
-              (step 1). Previously onboarding ended at backlog, leaving
-              the social side of the app entirely unmentioned even
-              though "connect with friends" is core to the product. */}
-          {step === 2 && (
+              (step 2 — was step 1 before the genre picker insert).
+              Previously onboarding ended at backlog, leaving the
+              social side of the app entirely unmentioned even though
+              "connect with friends" is core to the product. */}
+          {step === 3 && (
             <>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h2 style={{
@@ -488,7 +641,7 @@ export function OnboardingModal() {
                   <PeopleIcon />
                 </span>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  Open <strong style={{ color: "var(--text)" }}>Friends</strong> to
+                  Open <strong style={{ color: "var(--text)" }}>Following</strong> to
                   find people whose taste matches yours. Their reviews show up
                   alongside yours on every album and track page.
                 </div>
@@ -502,11 +655,11 @@ export function OnboardingModal() {
                   padding: "0 0 16px", display: "block", marginInline: "auto",
                 }}
               >
-                Find friends
+                Find people
               </button>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={3} active={2} />
+                <Dots total={4} active={3} />
               </div>
 
               <button onClick={() => finishFriendsStep(false)} style={{

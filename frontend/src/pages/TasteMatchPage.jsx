@@ -200,7 +200,7 @@ export function TasteMatchPage() {
 
   const cardUrl = `/api/og/taste-match?viewer=${encodeURIComponent(viewer.id)}&other=${encodeURIComponent(other.id)}`;
   const shareUrl = `${window.location.origin}${userPath(other.id)}`;
-  const shareText = `${viewer.display_name} & ${other.display_name} — ${pct}% taste match on Contour`;
+  const shareText = `${viewer.display_name} & ${other.display_name}: ${pct}% taste match on Contour`;
   const fileName = `contour-taste-match-${viewer.id}-${other.id}.png`;
 
   return (

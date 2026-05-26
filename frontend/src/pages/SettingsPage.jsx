@@ -492,7 +492,7 @@ function FeedbackSection({ defaultEmail }) {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Your email (optional — for us to reply)"
+          placeholder="Your email (optional, for us to reply)"
           autoComplete="email"
           maxLength={200}
           style={{
@@ -548,7 +548,7 @@ function FeedbackSection({ defaultEmail }) {
         </div>
         {status === "sent" && (
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            Thanks — got it. You'll hear back if you left an email.
+            Thanks, got it. You'll hear back if you left an email.
           </span>
         )}
         {status === "error" && (

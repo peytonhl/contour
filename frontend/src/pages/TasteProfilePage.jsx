@@ -65,13 +65,13 @@ function ModeExplainer({ inferredMode, yearRange, decadePref }) {
   const isVintage = inferredMode?.startsWith("vintage");
   const isGenreLocked = inferredMode?.startsWith("genre-locked");
 
-  let summary = "Cold-start — your feed pulls from popular charts while you build a profile.";
+  let summary = "Cold-start. Your feed pulls from popular charts while you build a profile.";
   if (isVintage) {
     const topDecade = decadePref && Object.entries(decadePref).sort((a, b) => b[1] - a[1])[0];
     const pct = topDecade ? Math.round(topDecade[1] * 100) : null;
-    summary = `Vintage mode (${yearRange}) — ${pct ?? ""}% of your high ratings are from one decade, so the feed is locked to that era's catalog.`;
+    summary = `Vintage mode (${yearRange}). ${pct ?? ""}% of your high ratings are from one decade, so the feed is locked to that era's catalog.`;
   } else if (isGenreLocked) {
-    summary = "Genre-locked — your feed is drawn from your preferred genres only, not mainstream charts.";
+    summary = "Genre-locked. Your feed is drawn from your preferred genres only, not mainstream charts.";
   }
   return (
     <p style={{ margin: 0, fontSize: 13, color: "var(--text)", lineHeight: 1.55 }}>{summary}</p>

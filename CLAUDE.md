@@ -232,21 +232,72 @@ Source of truth is the docstring at the top of `routers/discover.py`.
 2. Deezer new-music search
 3. Deezer keyword fallback queries
 
+Cold-start tracks ARE filtered against the user's `negative_genre_pref`
+even though they don't go through the eligible_genres path. When a user
+has ≥0.30 negative weight on a genre (derived from their down-weighted
+artists), every artist tagged with that genre family is folded into
+`soft_excluded` at request time via `_matching_artists_by_family_sql`.
+The per-tier add filter then drops them across every tier including
+the Deezer chart. Reported case: brand-new user rates a country song
+1★ → country tagged 100% of their negative signal → every country
+artist in the chart is blocked on the very next fetch.
+
 **Vintage (year_range set; user has ≥60% decade pref in one decade):**
-1. Tier 0 (catalog pivot) — TrackCache × ArtistCache, genre-family-matched
-2. Tier 1 (Spotify) — weighted-genre pivot with `year_range` applied
+1. Tier 0 (catalog pivot) → TrackCache × ArtistCache, genre-family-matched
+2. Tier 1 (Spotify) → weighted-genre pivot with `year_range` applied
 3. Spotify genre-agnostic baselines (pop / rock / hip-hop, year-locked)
 
 **Genre-locked (user has eligible_genres but no decade dominance):**
-1. **Tier 0 — catalog pivot** (`_fetch_genre_tracks_from_catalog`).
+1. **Tier 0, catalog pivot** (`_fetch_genre_tracks_from_catalog`).
    Pulls from TrackCache joined by primary-artist genre family.
    Zero Spotify calls; gated by the weighted-confidence matcher
    (`_GENRE_MATCH_CONFIDENCE_THRESHOLD = 0.25`). Free at runtime.
-2. **Tier 1 — Spotify weighted-genre pivot** (`search_tracks_by_genre`).
+2. **Tier 1, Spotify weighted-genre pivot** (`search_tracks_by_genre`).
    Samples `k=6` genres from `eligible_genres` weighted by
-   `position_weight × max(rating_count, 1)`. Pool depth from offset
-   variants (cache key `spotify:genre_pool_v7:…`).
-3. Nuclear fallback — Deezer `/chart` + Deezer genre search, shuffled.
+   `position_weight × sqrt(max(count, 1)) × avg_high_rating` (see
+   "Tier-1 weight formula" below). Pool depth from offset variants
+   (cache key `spotify:genre_pool_v7:…`).
+3. Nuclear fallback, Deezer `/chart` + Deezer genre search, shuffled.
+
+**Tier-1 weight formula** (2026-05-25). Three terms:
+- `position_weight = 0.90 ** i` — position decay over the user's
+  eligible_genres ordering.
+- `sqrt(max(count, 1))` — dampened revealed preference. Linear count
+  made a user with 500 rap + 20 jazz ratings see rap ~28× more than
+  jazz; sqrt softens that to ~5×. Volume still wins when it's
+  overwhelming but no longer buries lightly-rated genres.
+- `avg_high_rating` — "love score" multiplier in [4.0, 5.0]. The avg
+  is computed ONLY over the user's ≥HIGH_RATING_THRESHOLD ratings
+  (i.e. 4-5★), so a user honestly downvoting tracks in a genre they
+  love (e.g. 18×5★ + 2×1★ jazz) gets jazz avg_high = 5.0, not 4.6.
+  Downvote-immune by construction. Defaults to 1.0 when the genre
+  has no high ratings yet (declared-but-not-rated keeps its old
+  baseline weight of pos × 1).
+
+Worked example: 500 rap @ ~4.3 avg_high (position 0) vs 20 jazz @
+~4.5 avg_high (position 1) → rap 68, jazz 16, ratio ~4×. Under the
+old formula (`position × count`) it was 250 vs 13.5, ratio ~18×.
+
+**Variant dedup** (2026-05-25). The exclude-by-ID check is string
+equality only, so a user who rates "Hell N Back" might still see
+"Hell N Back (Sped Up)" or the Deezer-source version with a numeric
+ID. `seen_variants` is a `(lowercased name, lowercased primary
+artist)` set seeded from the user's rated tracks (Rating outer-joined
+against TrackCache) and accumulated as the batch is built. A
+candidate matching an already-seen `(name, artist)` pair is dropped
+even when its track ID is unique. Catches Spotify variants
+(radio/deluxe/regional/remaster) AND the Deezer-vs-Spotify cross-
+source duplicate.
+
+**Browse mode** — `/discover/feed?genre_browse=hip-hop,rock` bypasses
+personalization entirely in favor of an equal-weight sample from the
+provided genre list (capped at 6). Rated-track exclusion still
+applies (query uses real user_id, not effective_user_id). Backs the
+gear-panel "Browse by genre" affordance. Picks persist via
+`contour_browse_genres_v1` localStorage; ratings in browse mode
+still count toward the user's main algorithm (this was a deliberate
+product decision, NOT a missing feature — see commit 6458162's
+message for rationale).
 
 **Artist-genre verification** runs on every tier 1 candidate via
 `_filter_pool_by_artist_genre`. Reads ArtistCache, looks up missing
@@ -272,6 +323,31 @@ parameter (comma-separated track IDs). The frontend passes the last ~80
 shown track IDs on prefetch (append-only — not on deliberate resets like
 toggling `english_only`). Any new caller of `/feed` should pass this too,
 or accept that successive batches may repeat tracks from the chart cache.
+
+### Cold-start UX
+
+A "cold-start user" is one with `ratingCount < PERSONALIZATION_RAMP`
+(currently 5). They see the global Deezer chart by default because
+there's no signal yet to personalize on. Two pieces work together to
+keep them from feeling stuck:
+
+- **Real-time recalibrate.** Cold-start users get a feed refetch after
+  EVERY rating (warm users still on the every-5 cadence from
+  `RECALIBRATE_EVERY`). The recalibrate truncates the unseen queue
+  to `activeIdx + 1` and appends a fresh batch built with the latest
+  signal, so the very next card reflects the rating they just made.
+- **Onboarding genre picker.** Step 1 of OnboardingModal collects
+  `UserTasteProfile.genres` before the user rates anything, which
+  moves them out of cold-start mode on their first feed fetch. Picks
+  are also mirrored to `contour_genres_v1` localStorage so the
+  pre-React `feedPrefetch.js` reads them on next launch. The picker
+  is OPTIONAL — skipping falls back to rate-to-calibrate, which still
+  works (just slower for users with strong genre preferences).
+- **Calibration banner sticky-flag.** `contour_calibrated_v1`
+  localStorage is set the first time `ratingCount >= PERSONALIZATION_RAMP`,
+  and the ColdStartBanner returns null forever after. Without this,
+  the banner could re-show on a new device / cleared cache when
+  `ratingCount` momentarily reads 0 before `/auth/me` lands.
 
 ### Artist-genre data flow
 

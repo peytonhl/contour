@@ -2039,6 +2039,58 @@ async def get_discover_feed(
     # banning artists the user partly loved.
     soft_excluded = disliked_set | pure_down_weighted
 
+    # ── Cold-start negative-genre filter (2026-05-25) ─────────────────────
+    # A new user who rates a country song 1★ excludes that ONE artist but
+    # still sees other country artists in the cold-start ladder, because
+    # the Deezer chart fallback doesn't know about negative_genre_pref —
+    # the existing filter only ran against eligible_genres (which is
+    # empty in cold-start). User feedback: "I rated 1 song 1★ and still
+    # see the same genre."
+    #
+    # Fix: when the user has STRONG negative signal on a genre (≥30% of
+    # their down-weighted-artist genre distribution), resolve all artists
+    # tagged with that genre family via the existing weighted matcher
+    # and fold them into soft_excluded. The existing per-tier add filter
+    # then drops them across every tier — Deezer chart included.
+    #
+    # Threshold mirrors the genre-list filter at the user-state level
+    # (≥0.30 means "this is a meaningful chunk of your negative signal,"
+    # not "a single 1★ rating tips into total genre ban"). For a brand
+    # new user with one 1★ on a single-genre artist, that artist's lone
+    # genre IS 100% of negative_genre_pref → crosses 0.30 easily →
+    # genre blocked. That's the desired behavior for the reported case.
+    #
+    # Cost: one DB query per blocked genre (typically 0-2 genres), each
+    # an indexed lookup against artist_genres. Result set is large
+    # (~thousands of artists for a popular genre like country) but
+    # adding to a Python set is O(N) and the per-track check is O(1).
+    # Negligible vs. the rest of /feed.
+    blocked_genres: list[str] = []
+    if negative_genre_pref:
+        blocked_genres = [
+            g for g, weight in negative_genre_pref.items()
+            if weight >= 0.30
+        ]
+    if blocked_genres:
+        from services.spotify import _genre_match_terms
+        try:
+            blocked_artist_sets = await asyncio.gather(*[
+                _matching_artists_by_family_sql(db, _genre_match_terms(g))
+                for g in blocked_genres
+            ])
+            for s in blocked_artist_sets:
+                soft_excluded = soft_excluded | s
+            logger.info(
+                "discover: cold-start negative-genre filter blocking %d artists across %s",
+                sum(len(s) for s in blocked_artist_sets),
+                blocked_genres,
+            )
+        except Exception as exc:
+            # Don't crash the feed if the genre→artist resolution fails;
+            # the user just gets the previous (no-genre-filter) behavior
+            # this request. Logged for visibility.
+            logger.warning("discover: blocked-genre artist resolution failed: %s", exc)
+
     # ── Read computed signals from the user-state bundle ─────────────────
     # All of target_popularity / decade_pref / negative_*_pref live
     # inside the bundle we resolved above. See
