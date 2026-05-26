@@ -40,17 +40,29 @@ const STORAGE_KEY = "contour_push_token";
 // state without the user running a console snippet on iOS.
 const DIAG_KEY = "contour_push_diag";
 function _writeDiag(state, detail) {
+  // Capture platform fingerprint on EVERY trace write so the server can
+  // tell whether a skip_non_native trace came from mobile Safari (where
+  // it's expected) or from the iOS Capacitor shell (where it'd be a
+  // real bug). Three signals because Capacitor.isNativePlatform() is
+  // the one that drives the actual control flow above, but if it ever
+  // lies the getPlatform() + UA strings are the corroborating evidence.
+  let capPlatform = "unknown";
+  let capIsNative = null;
+  try { capPlatform = Capacitor.getPlatform(); } catch { /* ignore */ }
+  try { capIsNative = Capacitor.isNativePlatform(); } catch { /* ignore */ }
+  const ua = (typeof navigator !== "undefined" && navigator.userAgent) ? navigator.userAgent.slice(0, 120) : "";
+  const detailCombined = `${detail ? String(detail).slice(0, 100) + " | " : ""}plat=${capPlatform} native=${capIsNative} ua=${ua}`;
   try {
     localStorage.setItem(DIAG_KEY, JSON.stringify({
       state,
       at: new Date().toISOString(),
-      ...(detail ? { detail: String(detail).slice(0, 200) } : {}),
+      detail: detailCombined,
     }));
   } catch { /* ignore */ }
   // Server-side mirror. Fire-and-forget; the POST helper's .catch
   // swallows failures so a network blip on a breadcrumb write doesn't
   // disrupt the registration flow itself.
-  try { api.postPushTrace(state, detail); } catch { /* ignore */ }
+  try { api.postPushTrace(state, detailCombined); } catch { /* ignore */ }
 }
 
 
