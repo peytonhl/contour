@@ -4,6 +4,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
 import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
+import { StarIcon } from "../components/Icons.jsx";
+import { Pill, PillGroup } from "../components/Pill.jsx";
+import { ToggleGroup } from "../components/ToggleGroup.jsx";
 import { imageMedium } from "../utils/imageVariants.js";
 import { albumPath } from "../constants/routes.js";
 const SILVER = "#9ca3af";
@@ -43,8 +46,9 @@ function rankColor(rank) {
 function StarRating({ value }) {
   if (!value) return null;
   return (
-    <span style={{ fontSize: 11, color: GOLD, fontWeight: 700 }}>
-      ★ {value.toFixed(1)}
+    <span style={{ fontSize: 11, color: GOLD, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}>
+      <StarIcon size={10} filled />
+      {value.toFixed(1)}
     </span>
   );
 }
@@ -190,7 +194,7 @@ function LeaderboardRow({ entry, sort, onCompare }) {
         <div style={{
           display: "flex", alignItems: "center", gap: 14,
           padding: "10px 16px",
-          paddingRight: hovered ? 84 : 16,
+          paddingRight: 92,                          // always reserve room for the Compare button
           borderBottom: "1px solid var(--border)",
           transition: "background 0.1s",
           background: hovered ? "var(--surface2)" : "transparent",
@@ -249,20 +253,27 @@ function LeaderboardRow({ entry, sort, onCompare }) {
         </div>
       </Link>
 
-      {/* Compare button — appears on hover */}
-      {hovered && (
-        <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCompare(entry); }}
-          style={{
-            position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-            fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: "var(--radius-xl)",
-            border: `1px solid ${ACCENT_B}50`, background: `${ACCENT_B}15`, color: ACCENT_B,
-            cursor: "pointer", letterSpacing: "0.03em", whiteSpace: "nowrap",
-          }}
-        >
-          Compare
-        </button>
-      )}
+      {/* Compare button — always visible (touch users can't hover). Sits at
+          low opacity by default so it doesn't fight the row text for
+          attention, then ramps to full on hover/focus. Neutral surface3
+          chrome instead of ACCENT_B so it doesn't appropriate Compare's
+          entity-B brand semantic on a non-Compare surface. */}
+      <button
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCompare(entry); }}
+        style={{
+          position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+          fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: "var(--radius-xl)",
+          border: "1px solid var(--border)", background: "var(--surface3)",
+          color: "var(--text-muted)",
+          cursor: "pointer", letterSpacing: "0.03em", whiteSpace: "nowrap",
+          opacity: hovered ? 1 : 0.45,
+          transition: "opacity var(--motion-base) var(--ease), color var(--motion-base) var(--ease)",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+      >
+        Compare
+      </button>
     </div>
   );
 }
@@ -310,41 +321,25 @@ export function LeaderboardPage() {
 
       {/* Controls */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {/* Decade tabs */}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {/* Decade pills */}
+        <PillGroup>
           {DECADES.map((d) => (
-            <button key={d} onClick={() => setDecade(d)} style={{
-              padding: "5px 14px", fontSize: 13, borderRadius: "var(--radius-xl)",
-              fontWeight: decade === d ? 700 : 500,
-              background: decade === d ? ACCENT_A : "var(--surface2)",
-              color: decade === d ? "#000" : "var(--text-muted)",
-              border: decade === d ? "none" : "1px solid var(--border)",
-              cursor: "pointer", transition: "all 0.15s",
-            }}>
+            <Pill key={d} selected={decade === d} onClick={() => setDecade(d)}>
               {d === "all" ? "All Time" : d}
-            </button>
+            </Pill>
           ))}
-        </div>
+        </PillGroup>
 
         {/* Sort toggle */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
-            Sort by
-          </span>
-          <div style={{ display: "flex", background: "var(--surface2)", borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--border)" }}>
-            {[["era", "Era score"], ["streams", "Raw plays"]].map(([val, lbl]) => (
-              <button key={val} onClick={() => setSort(val)} style={{
-                padding: "6px 16px", fontSize: 13,
-                fontWeight: sort === val ? 700 : 400,
-                background: sort === val ? ACCENT_A : "transparent",
-                color: sort === val ? "#fff" : "var(--text-muted)",
-                border: "none", cursor: "pointer", transition: "all 0.15s",
-              }}>
-                {lbl}
-              </button>
-            ))}
-          </div>
-        </div>
+        <ToggleGroup
+          value={sort}
+          onChange={setSort}
+          label="Sort by"
+          options={[
+            { value: "era",     label: "Era score" },
+            { value: "streams", label: "Raw plays" },
+          ]}
+        />
       </div>
 
       {/* Classification legend */}

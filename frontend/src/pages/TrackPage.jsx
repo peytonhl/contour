@@ -10,6 +10,7 @@ import { WantToListenButton } from "../components/WantToListenButton.jsx";
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { EntityHeroSkeleton } from "../components/Skeleton.jsx";
 import { NoChartData } from "../components/NoChartData.jsx";
+import { StarIcon } from "../components/Icons.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { albumPath, artistPath } from "../constants/routes.js";
@@ -315,10 +316,11 @@ export function TrackPage() {
                 background: "var(--surface2)", flexShrink: 0,
               }} />
           }
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)", flex: 1, minWidth: 0 }}>
             <div style={{
               fontSize: "var(--text-sm)", fontWeight: 500,
               color: "var(--text-dim)",
+              marginBottom: "var(--space-1)",
             }}>Track</div>
 
             <h1 style={{
@@ -330,7 +332,14 @@ export function TrackPage() {
               {track.explicit && <span style={{ marginLeft: 10, fontSize: "var(--text-xs)", background: "var(--surface3)", borderRadius: "var(--radius-sm)", padding: "2px 6px", color: "var(--text-muted)", verticalAlign: "middle", fontWeight: 700, letterSpacing: "0.06em" }}>E</span>}
             </h1>
 
-            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", fontWeight: 600 }}>
+            {/* Artist credit — promoted to text-base / weight 600 so the
+                "track + artist" pairing reads as one perceptual unit
+                instead of artist disappearing into chrome. */}
+            <div style={{
+              fontSize: "var(--text-base)", color: "var(--text)", fontWeight: 600,
+              marginTop: "var(--space-1)",
+              overflow: "hidden", textOverflow: "ellipsis",
+            }}>
               {track.artists?.map((artist, i) => (
                 <span key={i}>
                   {i > 0 && ", "}
@@ -405,10 +414,11 @@ export function TrackPage() {
               borderRadius: "var(--radius-pill)",
               color: "#000", fontWeight: 700, fontSize: "var(--text-sm)",
               cursor: "pointer", letterSpacing: "0.01em",
-              display: "inline-flex", alignItems: "center", gap: "var(--space-1)",
+              display: "inline-flex", alignItems: "center", gap: 6,
             }}
           >
-            ★ Rate
+            <StarIcon size={14} filled />
+            Rate
           </button>
           <WantToListenButton entityType="track" entityId={id} />
           <button

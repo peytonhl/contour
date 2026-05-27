@@ -6,6 +6,7 @@ import { analytics } from "../services/analytics.js";
 import { EmptyHint } from "../components/Skeleton.jsx";
 import { ChartsTabs } from "../components/ChartsTabs.jsx";
 import { ACCENT_A, ACCENT_B, GOLD } from "../theme.js";
+import { Pill, PillGroup } from "../components/Pill.jsx";
 import { imageMedium } from "../utils/imageVariants.js";
 import { albumPath } from "../constants/routes.js";
 
@@ -416,23 +417,18 @@ export function TrendingPage() {
       </div>
 
       {/* Window picker */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <PillGroup>
         {WINDOW_OPTIONS.map((opt) => (
-          <button
+          <Pill
             key={opt.key}
+            size="sm"
+            selected={window === opt.key}
             onClick={() => setWindow(opt.key)}
-            style={{
-              padding: "6px 14px", borderRadius: "var(--radius-pill)",
-              border: `1px solid ${window === opt.key ? ACCENT_A : "var(--border)"}`,
-              background: window === opt.key ? `${ACCENT_A}18` : "transparent",
-              color: window === opt.key ? ACCENT_A : "var(--text-muted)",
-              fontSize: 12, fontWeight: 600, cursor: "pointer",
-            }}
           >
             {opt.label}
-          </button>
+          </Pill>
         ))}
-      </div>
+      </PillGroup>
 
       {/* ── Hero spotlight ── */}
       {albums == null ? (

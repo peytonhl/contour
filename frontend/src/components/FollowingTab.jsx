@@ -9,6 +9,7 @@ import { MentionBody } from "./Mentions.jsx";
 import { ExpandableReviewBody } from "./ExpandableReviewBody.jsx";
 import { EmptyState } from "./EmptyState.jsx";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD } from "../theme.js";
+import { StarIcon } from "./Icons.jsx";
 import { imageMedium } from "../utils/imageVariants.js";
 import { userPath } from "../constants/routes.js";
 
@@ -165,10 +166,15 @@ function FollowingItem({ item }) {
           )}
         </div>
         {item.value && (
-          <span style={{ display: "inline-flex", gap: 1 }}>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <span key={n} style={{ fontSize: 13, color: item.value >= n - 0.5 ? GOLD : "var(--border)", opacity: item.value >= n - 0.5 ? 1 : 0.3 }}>★</span>
-            ))}
+          <span style={{ display: "inline-flex", gap: 1, alignItems: "center" }}>
+            {[1, 2, 3, 4, 5].map((n) => {
+              const lit = item.value >= n - 0.5;
+              return (
+                <span key={n} style={{ color: lit ? GOLD : "var(--border)", opacity: lit ? 1 : 0.3, display: "inline-flex" }}>
+                  <StarIcon size={12} filled={lit} />
+                </span>
+              );
+            })}
           </span>
         )}
         {isReview && item.body && (

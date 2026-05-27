@@ -469,8 +469,16 @@ eyebrows). Do not reintroduce those patterns.
   H1/H2 or signature stat. Don't use sans-serif for page titles.
 - **Color palette**: pulled from the Contour logo.
   - `--accent` / `--accent-a` = `#d97a3b` (warm amber, primary brand)
-  - `--accent-b` = `#6a90b5` (dusty cobalt, used only in Compare for
-    "entity B" data semantics — not for general brand use)
+  - `--accent-b` = `#6a90b5` (dusty cobalt, secondary brand). Used in three
+    established patterns: (1) entity-B in Compare's side-by-side trajectory
+    chart; (2) the `ENTITY_COLOR = { album: A, track: B, artist: C }` map
+    in FollowingTab / GlobalReviewsFeed / ListDetailPage / BacklogTabContent
+    / ProfilePage / SearchPage TYPE_COLORS; (3) save / wishlist / "posted"
+    status semantics (WantToListenButton, TrendingPage backlog count,
+    "Saved ✓" / "Review posted ✓"). Also appears in the ACCENT_A → ACCENT_B
+    brand gradient for hero CTAs and progress bars. **Not** for arbitrary
+    text accent, hover tints, or as a fourth one-off type color. When
+    unsure, prefer `--text-muted` for chrome and ACCENT_A for brand.
   - `--gold` = `#f59e0b` (star ratings, RIAA milestones)
   - `--danger` = `#f87171` (errors)
   - **No emerald (`#34d399`)**, **no violet (`#a78bfa`)** as brand. Those

@@ -41,7 +41,8 @@ import {
 // have one canonical entry point to followed-user activity (bottom-nav
 // Friends icon → /friends) instead of two competing surfaces.
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
-import { AlertIcon } from "../components/Icons.jsx";
+import { GearIcon, CloseIcon } from "../components/Icons.jsx";
+import { ToggleGroup } from "../components/ToggleGroup.jsx";
 import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
 import { consumeInitialFeed } from "../services/feedPrefetch.js";
 
@@ -2763,6 +2764,22 @@ function ForYouFeed() {
     const tier3Err = tier3?.error;
     const deezerOk = tier3?.ok && (tier3?.track_count ?? 0) > 0;
 
+    // User-facing copy is intentionally vague — we don't surface API credentials,
+    // env-var names, or upstream provider state to users. Anything diagnostic
+    // lives behind the collapsed <details> at the bottom so a developer
+    // debugging a production report can still grab the raw tier dump without
+    // anyone else having to look at it.
+    const headline = fetchError
+      ? "We're having trouble loading new tracks."
+      : (dislikedCount >= 5
+          ? "The feed ran out of room."
+          : "Warming up the feed.");
+    const subcopy = dislikedCount >= 5
+      ? `${dislikedCount} artists are on your not-interested list. Clearing some out reopens the feed.`
+      : (fetchError
+          ? "Try again in a moment."
+          : "Pulling fresh tracks. Should only take a moment.");
+
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, color: "rgba(255,255,255,0.5)", padding: 40, textAlign: "center" }}>
         <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" aria-hidden style={{ color: "rgba(255,255,255,0.35)" }}>
@@ -2770,53 +2787,12 @@ function ForYouFeed() {
           <circle cx="12" cy="12" r="2.5" />
         </svg>
         <p style={{ fontFamily: "var(--font-display)", margin: 0, fontSize: 22, fontWeight: 400, color: "#fff", lineHeight: 1.2 }}>
-          {fetchError
-            ? "Can't reach the server."
-            : (dislikedCount >= 5
-                ? "The feed ran out of room."
-                : "Warming up the feed.")}
+          {headline}
         </p>
 
-        {/* Spotify-level diagnosis */}
-        {debugInfo && spotifyOk === false && (
-          <div style={{ padding: "10px 16px", background: `${DANGER}1a`, border: `1px solid ${DANGER}4d`, borderRadius: "var(--radius-md)", maxWidth: 300 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--danger)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <AlertIcon size={12} /> Spotify API unreachable
-            </p>
-            {spotifyErr && <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{spotifyErr}</p>}
-            <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
-              Check that SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are set in Railway.
-            </p>
-          </div>
-        )}
-
-        {debugInfo && spotifyOk === true && tier3Ok === false && (
-          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--radius-md)", maxWidth: 300 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--gold)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <AlertIcon size={12} /> Spotify auth OK but track search failed
-            </p>
-            <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-              {tier3Err}
-            </p>
-          </div>
-        )}
-
-        {debugInfo && spotifyOk === true && tier3Ok === true && tier3Count === 0 && (
-          <div style={{ padding: "10px 16px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--radius-md)", maxWidth: 300 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--gold)", fontWeight: 700 }}>Spotify returned 0 tracks</p>
-            <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-              {dislikedCount >= 5 ? `${dislikedCount} artists blocked by your not-interested list.` : "Playlist may be empty or region-restricted."}
-            </p>
-          </div>
-        )}
-
-        {!debugInfo && !fetchError && (
-          <p style={{ margin: 0, fontSize: 13, maxWidth: 300, lineHeight: 1.6 }}>
-            {dislikedCount >= 5
-              ? `${dislikedCount} artists are on your not-interested list. Clearing some out reopens the feed.`
-              : "Pulling fresh tracks. Should only take a moment."}
-          </p>
-        )}
+        <p style={{ margin: 0, fontSize: 13, maxWidth: 300, lineHeight: 1.6 }}>
+          {subcopy}
+        </p>
 
         <button
           onClick={() => fetchBatch()}
@@ -2840,13 +2816,20 @@ function ForYouFeed() {
           </button>
         )}
 
-        {/* Raw debug dump for dev diagnosis */}
+        {/* Diagnostic dump for engineering reports. Collapsed by default,
+            visually quiet (dim grey, small). Includes the structured Spotify
+            / tier 3 health flags AND the raw tiers object so a single
+            screenshot from a user report gives us everything. */}
         {debugInfo && (
           <details style={{ marginTop: 8, maxWidth: 320, textAlign: "left" }}>
-            <summary style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", cursor: "pointer" }}>Debug info</summary>
-            <pre style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-              {JSON.stringify(debugInfo?.tiers, null, 2)}
-            </pre>
+            <summary style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", cursor: "pointer" }}>Diagnostics</summary>
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6, fontSize: 10, color: "rgba(255,255,255,0.45)" }}>
+              <div>Spotify auth: {spotifyOk === false ? `failed (${spotifyErr || "unknown"})` : spotifyOk === true ? "ok" : "unknown"}</div>
+              <div>Tier 3 (popular): {tier3Ok === false ? `failed (${tier3Err || "unknown"})` : tier3Ok === true ? `ok, ${tier3Count} tracks` : "unknown"}</div>
+              <pre style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                {JSON.stringify(debugInfo?.tiers, null, 2)}
+              </pre>
+            </div>
           </details>
         )}
       </div>
@@ -2867,7 +2850,6 @@ function ForYouFeed() {
         className="glass"
         style={{
           position: "absolute", top: 8, left: 10, zIndex: 5,
-          fontSize: 15, lineHeight: 1,
           width: 32, height: 32, borderRadius: "var(--radius-pill)", padding: 0,
           border: "none",
           color: settingsOpen ? "var(--accent)" : "rgba(255,255,255,0.7)",
@@ -2875,7 +2857,9 @@ function ForYouFeed() {
           transition: "color var(--motion-base) var(--ease)",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}
-      >⚙</button>
+      >
+        <GearIcon size={16} />
+      </button>
 
       {/* Floating notification chip — top-center of the deck when the
           user has unread notifications. Visible only when unreadNotifs
@@ -2964,8 +2948,11 @@ function ForYouFeed() {
               .join(", ")}
           </span>
           <span aria-hidden="true" style={{
-            fontSize: 14, lineHeight: 1, opacity: 0.75, paddingLeft: 2,
-          }}>✕</span>
+            display: "inline-flex", alignItems: "center",
+            opacity: 0.75, paddingLeft: 2,
+          }}>
+            <CloseIcon size={12} />
+          </span>
         </button>
       )}
 
@@ -2983,7 +2970,9 @@ function ForYouFeed() {
             <span style={{ fontFamily: "var(--font-display)", fontSize: 17, color: "rgba(255,255,255,0.92)" }}>
               Feed settings
             </span>
-            <button onClick={() => setSettingsOpen(false)} aria-label="Close feed settings" style={{ fontSize: 16, background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer" }}>✕</button>
+            <button onClick={() => setSettingsOpen(false)} aria-label="Close feed settings" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", padding: 4 }}>
+              <CloseIcon size={14} />
+            </button>
           </div>
 
           {/* Language filter — three modes. Replaces the older English-only
@@ -2997,33 +2986,16 @@ function ForYouFeed() {
                 Filter the For You feed by song language.
               </p>
             </div>
-            <div style={{
-              display: "flex", padding: 3,
-              background: "rgba(255,255,255,0.08)",
-              borderRadius: "var(--radius-md)",
-              border: "1px solid rgba(255,255,255,0.1)",
-            }}>
-              {[
-                { key: "english", label: "English" },
-                { key: "spanish", label: "Spanish" },
-                { key: "all",     label: "All" },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setLanguagePref(key)}
-                  style={{
-                    flex: 1, padding: "7px 10px", fontSize: 12,
-                    fontWeight: language === key ? 700 : 500,
-                    background: language === key ? ACCENT_A : "transparent",
-                    color: language === key ? "#000" : "rgba(255,255,255,0.65)",
-                    border: "none", borderRadius: "var(--radius-sm)",
-                    cursor: "pointer", transition: "all 0.15s",
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <ToggleGroup
+              size="sm"
+              value={language}
+              onChange={setLanguagePref}
+              options={[
+                { value: "english", label: "English" },
+                { value: "spanish", label: "Spanish" },
+                { value: "all",     label: "All" },
+              ]}
+            />
           </div>
 
           {/* Browse by genre — temporarily override the personalized
@@ -3715,11 +3687,11 @@ export function ForYouPage() {
               position: "absolute", top: 6, right: 8,
               width: 22, height: 22, borderRadius: "var(--radius)",
               background: "none", border: "none", cursor: "pointer",
-              color: "rgba(255,255,255,0.5)", fontSize: 14, lineHeight: 1,
+              color: "rgba(255,255,255,0.5)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         </div>
       )}

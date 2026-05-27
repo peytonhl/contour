@@ -15,10 +15,21 @@
 // Primary brand — warm amber, pulled from the Contour logo.
 export const ACCENT_A = "#d97a3b";
 
-// Secondary brand — dusty cobalt. RESERVED for entity-B data semantics in
-// Compare (album/track B in a side-by-side trajectory chart). Not for
-// general brand use. If you're tempted to reach for this on a non-Compare
-// surface, use ACCENT_A instead — that's almost always what you want.
+// Secondary brand — dusty cobalt. Used in three established patterns:
+//   (1) Entity-B in Compare's side-by-side trajectory chart (primary use).
+//   (2) Track-type when paired against album-type — `ENTITY_COLOR = { album:
+//       ACCENT_A, track: ACCENT_B, artist: ACCENT_C }`. Used in
+//       FollowingTab, GlobalReviewsFeed, ListDetailPage, BacklogTabContent,
+//       ProfilePage row links.
+//   (3) Save / wishlist / "posted" status semantics — distinct from amber
+//       which means "rate / action." See WantToListenButton, TrendingPage
+//       backlog count, ForYouPage "Saved ✓" / "Review posted ✓".
+// Also appears in the ACCENT_A → ACCENT_B brand gradient (warm→cool pairing)
+// used in hero CTAs, avatar rings, and progress bars.
+//
+// NOT to be used for: arbitrary text accent, hover tints, generic info
+// affordances, or as a fourth one-off "type" color (e.g. users-as-type).
+// When unsure, prefer var(--text-muted) for chrome and ACCENT_A for brand.
 export const ACCENT_B = "#6a90b5";
 
 // Tertiary — orange, used only for Compare's optional side C overlay.

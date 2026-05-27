@@ -10,6 +10,7 @@ import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD } from "../theme.js";
 import { ROUTES, albumPath, trackPath, artistPath, userPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 import { useCachedFetch } from "../utils/useCachedFetch.js";
+import { StarIcon } from "../components/Icons.jsx";
 
 // withNativeAuthFlag appends ?from=native inside the Capacitor shell so the
 // backend OAuth callback redirects via the contour:// URL scheme. No-op on web.
@@ -33,7 +34,11 @@ function formatStreams(n) {
 }
 
 const TYPE_LABELS = { album: "album", track: "track", artist: "artist", user: "user" };
-const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C, user: "#60a5fa" };
+// Three branded types map to the ACCENT_A/B/C trio (see theme.js for the
+// entity-color contract). Users aren't a content type that benefits from a
+// fourth differentiating color — the avatar disc already does the visual
+// work — so it inherits --text-muted instead of a one-off blue.
+const TYPE_COLORS = { album: ACCENT_A, track: ACCENT_B, artist: ACCENT_C, user: "var(--text-muted)" };
 
 // ── Inline rating widget for search results ───────────────────────────────────
 // 5 tappable stars rendered to the right of an album/track row in the search
@@ -88,11 +93,11 @@ function InlineRate({ entityType, entityId, initialValue, onSaved }) {
               background: "none", border: "none", cursor: "pointer",
               color: lit ? GOLD : "var(--border)",
               opacity: lit ? 1 : 0.4,
-              fontSize: 16, lineHeight: 1,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
               transition: "color var(--motion-fast) var(--ease)",
             }}
           >
-            ★
+            <StarIcon size={16} filled={lit} />
           </button>
         );
       })}

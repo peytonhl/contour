@@ -82,3 +82,81 @@ export function AlertIcon({ size = 16 }) {
     </svg>
   );
 }
+
+// Five-point star — used for rating affordances. `filled` switches between an
+// outlined star (rating empty) and a solid one (rating set / hovered). Both
+// variants share the same path so swapping doesn't shift layout. Replaces
+// the literal "★" glyph that rendered as Apple Color Emoji on iOS and a
+// flat geometric shape on most desktop fonts.
+export function StarIcon({ size = 16, filled = false }) {
+  const path = "M12 2.5 L14.85 8.65 L21.5 9.5 L16.6 14.1 L17.9 20.7 L12 17.4 L6.1 20.7 L7.4 14.1 L2.5 9.5 L9.15 8.65 Z";
+  return (
+    <svg
+      width={size} height={size}
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={filled ? 0 : 1.5}
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flexShrink: 0, display: "inline-block", verticalAlign: "middle" }}
+    >
+      <path d={path} />
+    </svg>
+  );
+}
+
+// Gear / settings — replaces the literal "⚙" glyph that renders as color
+// emoji on iOS and a geometric shape on desktop. Hand-traced spokes so the
+// shape reads at small sizes (16-22px) without becoming a blob.
+export function GearIcon({ size = 18 }) {
+  return (
+    <svg width={size} height={size} {...baseProps} strokeWidth={1.6}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+// X / close — replaces "✕" / "×" literals across modals and dismiss buttons.
+// Sized to match other icons rather than the typographic ✕ which drifts
+// vertically vs. neighboring SVG/text.
+export function CloseIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} {...baseProps} strokeWidth={2}>
+      <line x1="5" y1="5" x2="19" y2="19" />
+      <line x1="19" y1="5" x2="5" y2="19" />
+    </svg>
+  );
+}
+
+// Overflow ⋯ — three dots, used for per-item action menus. Replaces literal
+// "···" which is a typographic ellipsis whose dot spacing/weight varies by
+// OS font. SVG keeps them consistent and a single tap target.
+export function OverflowIcon({ size = 18 }) {
+  return (
+    <svg
+      width={size} height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      style={{ flexShrink: 0, display: "inline-block", verticalAlign: "middle" }}
+    >
+      <circle cx="5" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="19" cy="12" r="1.8" />
+    </svg>
+  );
+}
+
+// Plus — used for "Add to list", "New comparison", and other affordances
+// that currently render the bare "+" glyph (which varies in stroke weight
+// across OS fonts and gets misaligned at small sizes).
+export function PlusIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} {...baseProps} strokeWidth={2}>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}

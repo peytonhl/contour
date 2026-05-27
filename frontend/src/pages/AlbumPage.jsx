@@ -10,6 +10,7 @@ import { WantToListenButton } from "../components/WantToListenButton.jsx";
 import { SpotifyIcon, AppleMusicIcon, YouTubeIcon } from "../components/PlatformIcons.jsx";
 import { EntityHeroSkeleton } from "../components/Skeleton.jsx";
 import { NoChartData } from "../components/NoChartData.jsx";
+import { StarIcon } from "../components/Icons.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { ACCENT_A as ACCENT } from "../theme.js";
@@ -175,9 +176,23 @@ export function AlbumPage() {
                 background: "var(--surface2)", flexShrink: 0,
               }} />
           }
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", flex: 1, minWidth: 0 }}>
-            {/* Eyebrow: artist credit, deemphasized so the title dominates */}
-            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", fontWeight: 600 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)", flex: 1, minWidth: 0 }}>
+            {/* Title — text-4xl, the page identity */}
+            <h1 style={{
+              fontSize: "var(--text-4xl)", fontWeight: 800,
+              lineHeight: 1.05, letterSpacing: "-0.025em",
+              margin: 0,
+            }}>{album.name}</h1>
+
+            {/* Artist credit — directly under the title, base size, semibold.
+                "What record + who made it" reads as one perceptual unit; the
+                old eyebrow placement deemphasized artist so hard it read as
+                page chrome rather than authorship. */}
+            <div style={{
+              fontSize: "var(--text-base)", color: "var(--text)", fontWeight: 600,
+              marginTop: "var(--space-1)",
+              overflow: "hidden", textOverflow: "ellipsis",
+            }}>
               {album.artists?.map((artist, i) => (
                 <span key={i}>
                   {i > 0 && ", "}
@@ -188,18 +203,11 @@ export function AlbumPage() {
               ))}
             </div>
 
-            {/* Title — text-4xl, the page identity */}
-            <h1 style={{
-              fontSize: "var(--text-4xl)", fontWeight: 800,
-              lineHeight: 1.05, letterSpacing: "-0.025em",
-              margin: 0,
-            }}>{album.name}</h1>
-
             {/* Meta row: release date + RIAA (when present), compact inline */}
             <div style={{
               display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap",
               fontSize: "var(--text-sm)", color: "var(--text-muted)",
-              marginTop: "var(--space-1)",
+              marginTop: "var(--space-2)",
             }}>
               <span>{formatReleaseDate(album.release_date)}</span>
               {topCert && (
@@ -249,10 +257,11 @@ export function AlbumPage() {
               borderRadius: "var(--radius-pill)",
               color: "#000", fontWeight: 700, fontSize: "var(--text-sm)",
               cursor: "pointer", letterSpacing: "0.01em",
-              display: "inline-flex", alignItems: "center", gap: "var(--space-1)",
+              display: "inline-flex", alignItems: "center", gap: 6,
             }}
           >
-            ★ Rate
+            <StarIcon size={14} filled />
+            Rate
           </button>
           <WantToListenButton entityType="album" entityId={id} />
           <button

@@ -16,6 +16,7 @@ import { useCachedFetch } from "../utils/useCachedFetch.js";
 import { MentionBody } from "../components/Mentions.jsx";
 import { ExpandableReviewBody } from "../components/ExpandableReviewBody.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD, DANGER } from "../theme.js";
+import { StarIcon } from "../components/Icons.jsx";
 import { ROUTES, userPath, listPath, tasteMatchPath } from "../constants/routes.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 
@@ -41,8 +42,10 @@ function RatingBadge({ value }) {
       background: high ? `${GOLD}18` : mid ? `${GOLD}0a` : "var(--surface2)",
       border: `1px solid ${high ? `${GOLD}50` : "var(--border)"}`,
       color: high ? GOLD : mid ? `${GOLD}99` : "var(--text-muted)",
+      display: "inline-flex", alignItems: "center", gap: 4,
     }}>
-      {value}★
+      {value}
+      <StarIcon size={11} filled />
     </div>
   );
 }

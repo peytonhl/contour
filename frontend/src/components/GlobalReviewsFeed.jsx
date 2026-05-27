@@ -8,7 +8,7 @@ import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionBody } from "./Mentions.jsx";
 import { ExpandableReviewBody } from "./ExpandableReviewBody.jsx";
 import { EmptyState } from "./EmptyState.jsx";
-import { PenIcon } from "./Icons.jsx";
+import { PenIcon, StarIcon } from "./Icons.jsx";
 import { userPath } from "../constants/routes.js";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD, DANGER } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
@@ -47,19 +47,19 @@ function RatingBadge({ value }) {
   // reported it read as "only one star" — the unicode ★ looked like a unit
   // glyph rather than part of a rating display.
   return (
-    <span style={{ display: "inline-flex", gap: 1, flexShrink: 0 }}>
+    <span style={{ display: "inline-flex", gap: 1, flexShrink: 0, alignItems: "center" }}>
       {[1, 2, 3, 4, 5].map((n) => {
         const lit = value >= n - 0.5;
         return (
           <span
             key={n}
             style={{
-              fontSize: 12,
               color: lit ? GOLD : "var(--border)",
               opacity: lit ? 1 : 0.35,
+              display: "inline-flex",
             }}
           >
-            ★
+            <StarIcon size={12} filled={lit} />
           </span>
         );
       })}
