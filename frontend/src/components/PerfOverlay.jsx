@@ -121,14 +121,55 @@ export function PerfOverlay() {
   );
 }
 
-// Convenience: check the URL gate. App.jsx can render
-// `{isPerfMode() && <PerfOverlay />}` instead of always mounting the hook
-// machinery. Returns false at SSR / during the initial pass when window
-// isn't defined.
+// localStorage key for the in-app toggle (Settings → Diagnostics →
+// "Show performance overlay"). The URL `?perf=1` gate also writes this
+// key so URL-set + Settings-set are the same source of truth — useful
+// when the URL is hit on a phone Safari tab and we want the value to
+// persist into the WKWebView shell that the Capacitor app loads from
+// the same origin (it doesn't, those WebViews don't share storage, but
+// future-us might find it useful for desktop workflows).
+const PERF_OVERLAY_KEY = "contour_perf_overlay_v1";
+
+export function isPerfOverlayEnabled() {
+  if (typeof window === "undefined") return false;
+  try { return localStorage.getItem(PERF_OVERLAY_KEY) === "1"; }
+  catch { return false; }
+}
+
+export function setPerfOverlayEnabled(on) {
+  try {
+    if (on) localStorage.setItem(PERF_OVERLAY_KEY, "1");
+    else localStorage.removeItem(PERF_OVERLAY_KEY);
+  } catch { /* localStorage may be full or disabled */ }
+}
+
+// Decides whether App.jsx should mount the overlay. Two gates, either
+// flips it on:
+//   - `?perf=1` in the URL — convenient for desktop browser sessions and
+//     also writes the localStorage key on first hit so refreshes keep it
+//     on without re-typing the param
+//   - localStorage flag set via the Settings toggle — the only way to
+//     enable the overlay inside the native Capacitor shell, which has
+//     no URL bar
+//
+// Reads happen at App-render time so the gate decision is made before
+// `<PerfOverlay />` mounts and starts its rAF loop.
 export function isPerfMode() {
   if (typeof window === "undefined") return false;
   try {
-    return new URLSearchParams(window.location.search).get("perf") === "1";
+    const urlGate = new URLSearchParams(window.location.search).get("perf") === "1";
+    if (urlGate) {
+      // Persist so the next plain `/` load keeps it on without the param.
+      // A page that explicitly passes `?perf=0` clears it.
+      setPerfOverlayEnabled(true);
+      return true;
+    }
+    const urlOff = new URLSearchParams(window.location.search).get("perf") === "0";
+    if (urlOff) {
+      setPerfOverlayEnabled(false);
+      return false;
+    }
+    return isPerfOverlayEnabled();
   } catch {
     return false;
   }
