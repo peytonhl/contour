@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, memo, Component } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, memo, Component, Fragment } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -1189,13 +1189,46 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
             // same legibility boost on light covers.
             textShadow: "0 1px 4px rgba(0, 0, 0, 0.5)",
           }}>
-            <a
-              href={track._source === "deezer" ? "#" : artistPath(track.artist_ids?.[0])}
-              onClick={(e) => { e.preventDefault(); onEntityClick?.(track, "artist"); }}
-              style={{ color: "rgba(255,255,255,0.75)", fontWeight: 600, textDecoration: "none", cursor: "pointer" }}
-            >
-              {track.artists?.[0]}
-            </a>
+            {/* All artists rendered, each tappable to its OWN /artist
+                page (not always artist_ids[0]). Important for collabs:
+                tapping "Drake" on "WAIT FOR U (feat. Drake & Tems)" now
+                navigates to Drake's page, not Future's. artist_ids and
+                artists are parallel arrays (verified for both Spotify
+                tracks and the few multi-artist tracks the Deezer
+                fallback returns). Deezer-sourced cards route through
+                onEntityClick's Spotify-resolution path; the artistId
+                override is ignored there since Deezer's `artists` array
+                gives us names but the corresponding Spotify IDs aren't
+                pre-resolved per artist. */}
+            {(track.artists && track.artists.length > 0
+              ? track.artists
+              : [""]
+            ).map((name, i) => {
+              const artistId = track.artist_ids?.[i];
+              const href = track._source === "deezer"
+                ? "#"
+                : (artistId ? artistPath(artistId) : "#");
+              return (
+                <Fragment key={`${artistId || name}-${i}`}>
+                  {i > 0 && <span style={{ color: "rgba(255,255,255,0.5)" }}>, </span>}
+                  <a
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onEntityClick?.(track, "artist", artistId);
+                    }}
+                    style={{
+                      color: "rgba(255,255,255,0.75)",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {name}
+                  </a>
+                </Fragment>
+              );
+            })}
             {track.album_name && (track._source !== "deezer") && track.album_id && (
               <> · <Link to={albumPath(track.album_id)} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none" }}>{track.album_name}</Link></>
             )}
@@ -2718,14 +2751,23 @@ function ForYouFeed() {
    * counterpart and navigates to the internal /track or /artist page rather
    * than opening Deezer in a new tab.
    *
+   * `artistIdOverride` is optional and only respected for entityType ===
+   * "artist" on Spotify-sourced tracks. It lets a multi-artist card route
+   * to the SPECIFIC artist the user tapped on (Future / Drake / Tems on
+   * "WAIT FOR U") rather than always landing on artist_ids[0]. Falls back
+   * to artist_ids[0] when omitted so existing callers (and Deezer cards
+   * which carry only one artist context) keep working.
+   *
    * Fallback chain when resolution fails (Spotify circuit open, no match,
    * track genuinely not on Spotify): open the external Deezer URL so the
    * user still gets *somewhere*.
    */
-  async function handleEntityClick(track, entityType) {
+  async function handleEntityClick(track, entityType, artistIdOverride) {
     // Spotify-sourced cards already have a usable internal ID.
     if (track._source !== "deezer") {
-      const id = entityType === "track" ? track.id : track.artist_ids?.[0];
+      const id = entityType === "track"
+        ? track.id
+        : (artistIdOverride || track.artist_ids?.[0]);
       if (id) navigate(`/${entityType}/${id}`);
       return;
     }
