@@ -161,13 +161,77 @@ async def get_chart_tracks(limit: int = 50) -> list[dict]:
         return []
 
 
+def _normalize_for_match(s: str) -> str:
+    """Lowercase + strip punctuation + collapse whitespace.
+
+    Used to compare a Deezer search result's title/artist against what we
+    asked for, to catch cross-track contamination where Deezer's relevance
+    ranks an unrelated more-popular track above the actual match.
+
+    Aggressive but safe:
+      - lowercase
+      - strip "(feat. ...)", "(ft. ...)", "(with ...)" parentheticals
+        (Spotify and Deezer disagree wildly on these)
+      - drop everything except alphanumerics + spaces
+      - collapse whitespace runs to a single space
+    """
+    s = s.lower()
+    s = re.sub(r"\((?:feat|ft|with)\.?\s[^)]*\)", " ", s)
+    s = re.sub(r"\[(?:feat|ft|with)\.?\s[^\]]*\]", " ", s)
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _is_match(asked_track: str, asked_artist: str, got_track: str, got_artist: str) -> bool:
+    """True if the Deezer search result is a plausible match for what we
+    asked for.
+
+    Title: normalized-equal OR one contains the other (handles version
+    suffixes like "Honey Bun (Remastered)" vs "Honey Bun"). NOT a generic
+    substring — that'd let "Honey" match "Honeysuckle Rose".
+
+    Artist: normalized-equal OR substring (handles "Kodak Black, Drake"
+    on one side vs "Kodak Black" on the other, common for features).
+    """
+    a_track = _normalize_for_match(asked_track)
+    a_artist = _normalize_for_match(asked_artist)
+    g_track = _normalize_for_match(got_track)
+    g_artist = _normalize_for_match(got_artist)
+    if not a_track or not g_track:
+        return False
+    title_ok = (
+        a_track == g_track
+        or g_track.startswith(a_track + " ")
+        or a_track.startswith(g_track + " ")
+    )
+    artist_ok = (
+        not a_artist
+        or a_artist == g_artist
+        or a_artist in g_artist
+        or g_artist in a_artist
+    )
+    return title_ok and artist_ok
+
+
 async def get_preview(track_name: str, artist_name: str) -> str | None:
     """
     Search Deezer for a matching track and return its 30-second preview URL.
     Returns None if no match is found or the request fails.
-    Cached 30d — preview URLs are immutable; this is called as a fallback for
-    Spotify tracks missing preview_url, so every For You card potentially fires
-    one of these on first show.
+
+    Cached at the Akamai-signed URL expiry (~15-30 min) for hits, 7d for
+    misses. Called as a fallback for Spotify tracks missing preview_url
+    after their late-2023 API change, so every For You card potentially
+    fires one of these on first show.
+
+    **Important match-quality detail.** Earlier versions of this function
+    sent a free-text query (`{artist} {track}`) with `limit=1` and used
+    whatever came back. Deezer's relevance ranker would sometimes float
+    an unrelated more-popular track above the actual match — e.g.
+    searching `Kodak Black Honey Bun` returned "ZEZE" because ZEZE has
+    higher popularity. We then cached ZEZE's preview URL under
+    `deezer:preview:kodak black:honey bun` and served it on every
+    Honey Bun card view. (Reported 2026-05-27.)
     """
     cache_key = f"deezer:preview:{artist_name.lower().strip()}:{track_name.lower().strip()}"
     cached = await redis_cache.get(cache_key)
@@ -176,15 +240,36 @@ async def get_preview(track_name: str, artist_name: str) -> str | None:
         # marking a previous miss — both are valid "we already tried this" signals)
         return cached or None
 
-    query = f"{artist_name} {track_name}"
+    # Use Deezer's strict-field syntax to anchor matching at the API
+    # level: `artist:"X" track:"Y"`. Falls back to free-text on no hit
+    # (a few rare tracks are findable only by free-text — most aren't,
+    # but the fallback costs little). Either way the response is
+    # validated against the asked-for (track, artist) below before
+    # we accept the preview URL.
+    strict_query = f'artist:"{artist_name}" track:"{track_name}"'
     result: str | None = None
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(_BASE, params={"q": query, "limit": 1})
+            # First pass: strict
+            resp = await client.get(_BASE, params={"q": strict_query, "limit": 3})
             resp.raise_for_status()
             items = resp.json().get("data", [])
-            if items and items[0].get("preview"):
-                result = items[0]["preview"]
+            # Fallback: free-text + accept only if title/artist match
+            if not items:
+                resp = await client.get(
+                    _BASE,
+                    params={"q": f"{artist_name} {track_name}", "limit": 5},
+                )
+                resp.raise_for_status()
+                items = resp.json().get("data", [])
+
+            for item in items:
+                got_title = item.get("title") or ""
+                got_artist = (item.get("artist") or {}).get("name") or ""
+                preview = item.get("preview")
+                if preview and _is_match(track_name, artist_name, got_title, got_artist):
+                    result = preview
+                    break
     except Exception:
         pass
 

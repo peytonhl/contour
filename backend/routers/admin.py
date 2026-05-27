@@ -885,6 +885,33 @@ async def reset_spotify_circuit(
     }
 
 
+@router.post("/clear-deezer-preview")
+async def clear_deezer_preview(
+    track: str,
+    artist: str,
+    user_id: str = Depends(require_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Drop a single Deezer preview-URL cache entry.
+
+    Use when get_preview cached the WRONG audio for a track (cross-track
+    contamination from the pre-validator era, see services/deezer.py
+    `get_preview` docstring). After the fix lands a bad entry will
+    self-expire in ~15 min (Akamai-signed URL TTL cap), but this
+    endpoint lets you bust it immediately so you don't have to wait.
+
+    Cache-key format mirrors get_preview exactly:
+      deezer:preview:{artist.lower().strip()}:{track.lower().strip()}
+
+    Admin-only. Returns the key that was deleted for auditability.
+    """
+    await _require_admin(db, user_id)
+    from services import redis_cache
+    key = f"deezer:preview:{artist.lower().strip()}:{track.lower().strip()}"
+    await redis_cache.delete(key)
+    return {"ok": True, "key": key}
+
+
 @router.post("/dedup-notifications")
 async def dedup_notifications(
     dry_run: bool = True,
