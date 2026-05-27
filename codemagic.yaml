@@ -305,8 +305,11 @@ workflows:
             exit 1
           fi
 
-          if grep -q "capacitorDidRegisterForRemoteNotifications" "$APP_DELEGATE"; then
-            echo ">>> AppDelegate already patched; skipping."
+          # Idempotency marker — codemagic regenerates the iOS scaffold
+          # via `cap add ios` on each build so this normally won't trip,
+          # but stays correct if the scaffold ever gets cached.
+          if grep -q "PATCHED_BY_CODEMAGIC_PUSH_v2" "$APP_DELEGATE"; then
+            echo ">>> AppDelegate already patched (v2); skipping."
             cat "$APP_DELEGATE"
             exit 0
           fi
@@ -323,17 +326,25 @@ workflows:
               src = f.read()
 
           inject = '''
-              // --- Push-notification forwarding (added by codemagic) ---
+              // --- Push-notification forwarding (PATCHED_BY_CODEMAGIC_PUSH_v2) ---
               // Required by @capacitor/push-notifications; without these
               // the JS-side `registration` / `registrationError` listeners
               // never fire because APNs's callback lands on AppDelegate
               // and isn't relayed to the plugin via NotificationCenter.
+              //
+              // Uses the Swift extension `.capacitorDidRegisterForRemoteNotifications`
+              // (defined in @capacitor/ios CAPNotifications.swift), NOT a
+              // raw string. The raw value is actually
+              // "CapacitorDidRegisterForRemoteNotificationsNotification"
+              // (capital C + Notification suffix). Going through the
+              // extension means the patch survives any future raw-name
+              // refactor in Capacitor core.
               func application(
                   _ application: UIApplication,
                   didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
               ) {
                   NotificationCenter.default.post(
-                      name: Notification.Name("capacitorDidRegisterForRemoteNotifications"),
+                      name: .capacitorDidRegisterForRemoteNotifications,
                       object: deviceToken
                   )
               }
@@ -343,7 +354,7 @@ workflows:
                   didFailToRegisterForRemoteNotificationsWithError error: Error
               ) {
                   NotificationCenter.default.post(
-                      name: Notification.Name("capacitorDidFailToRegisterForRemoteNotifications"),
+                      name: .capacitorDidFailToRegisterForRemoteNotifications,
                       object: error
                   )
               }
