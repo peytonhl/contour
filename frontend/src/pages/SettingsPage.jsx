@@ -4,7 +4,6 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
 import { ACCENT_A } from "../theme.js";
 import { ROUTES } from "../constants/routes.js";
-import { isPerfOverlayEnabled, setPerfOverlayEnabled } from "../components/PerfOverlay.jsx";
 
 // ── Reusable row primitives ──────────────────────────────────────────────────
 // Two flavors of row: a Link row (for navigating to another page) and a
@@ -339,8 +338,6 @@ export function SettingsPage() {
           <RowLink to={ROUTES.PRIVACY} title="Privacy policy" />
           <RowLink to={ROUTES.TERMS} title="Terms of service" isLast />
         </Section>
-
-        <DiagnosticsSection />
       </div>
     );
   }
@@ -441,46 +438,9 @@ export function SettingsPage() {
         <RowLink to={ROUTES.TERMS} title="Terms of service" isLast />
       </Section>
 
-      <DiagnosticsSection />
-
       <FeedbackSection defaultEmail={user.email ?? ""} />
 
     </div>
-  );
-}
-
-// ── Diagnostics ──────────────────────────────────────────────────────────────
-// Operator-facing toggles for in-app investigation. Currently just the
-// performance overlay (FPS / slow-frames / long-tasks heads-up display
-// — see components/PerfOverlay.jsx). Lives in Settings so it's reachable
-// from inside the Capacitor shell where the `?perf=1` URL gate isn't an
-// option (no address bar).
-//
-// `key`-on-the-toggle forces a re-read of localStorage each render so
-// flipping the switch in one tab stays consistent if multiple tabs are
-// open. Not strictly needed today but cheap insurance.
-function DiagnosticsSection() {
-  const [perfOn, setPerfOn] = useState(() => isPerfOverlayEnabled());
-  function toggle(next) {
-    setPerfOverlayEnabled(next);
-    setPerfOn(next);
-    // The overlay is mounted at App.jsx level via isPerfMode(). Flipping
-    // the flag won't re-evaluate that until a render — easiest way is
-    // a reload so the App boundary picks up the new gate value. The
-    // overlay's first measurement is "boot-time long task" which is
-    // exactly what we want to see anyway.
-    if (typeof window !== "undefined") setTimeout(() => window.location.reload(), 120);
-  }
-  return (
-    <Section label="Diagnostics">
-      <RowToggle
-        title="Show performance overlay"
-        description="Top-right FPS / slow-frames / long-task readout. For debugging swipe smoothness."
-        checked={perfOn}
-        onToggle={toggle}
-        isLast
-      />
-    </Section>
   );
 }
 

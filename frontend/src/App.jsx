@@ -3,7 +3,6 @@ import { Routes, Route, useNavigate } from "react-router-dom";
 import { Layout } from "./components/Layout.jsx";
 import { OnboardingModal } from "./components/OnboardingModal.jsx";
 import { SigninGate } from "./components/SigninGate.jsx";
-import { PerfOverlay, isPerfMode } from "./components/PerfOverlay.jsx";
 import { isNativePlatform } from "./utils/native.js";
 import { ROUTES } from "./constants/routes.js";
 import { api } from "./services/api.js";
@@ -291,7 +290,6 @@ export default function App() {
     <NativeResumeHandler />
     <SigninGate />
     <OnboardingModal />
-    {isPerfMode() && <PerfOverlay />}
     {/* Lazy-loaded routes need a Suspense boundary. Fallback is just a
         bg-coloured div so the previous route's content fades out into
         an empty page-bg surface rather than flashing white while the
