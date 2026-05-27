@@ -173,9 +173,27 @@ async def search_by_text(
     entity_type: str,
     storefront: str = DEFAULT_STOREFRONT,
 ) -> Optional[dict]:
-    """Text fallback. Returns {id, artwork_url} for the first match, or None."""
+    """Text fallback. Returns {id, artwork_url} for the first match that
+    actually matches the asked-for name + artist, or None.
+
+    EARLIER VERSIONS took the first result with no validation. That
+    reproduced the same cross-track-contamination bug that bit Deezer
+    (see services/deezer.py `get_preview` docstring): Apple's search
+    relevance can rank a more-popular unrelated track above the actual
+    match. The deep-link button would then open the wrong song on
+    Apple Music. (Spotted while fixing the Honey Bun → ZEZE Deezer
+    preview bug 2026-05-27 — same shape, different vendor.)
+
+    Now we fetch 5 candidates and validate each via the shared
+    `_is_match` from services.deezer (title + artist normalize-compare).
+    Returns the first candidate that passes. None if none match.
+    """
     if not name:
         return None
+    # Local import to avoid coupling apple_music to deezer at module load.
+    # The matcher utilities just happen to live there; they're
+    # provider-agnostic.
+    from services.deezer import _is_match
     types = "albums" if entity_type == "album" else "songs"
     term = f"{artist} {name}".strip() if artist else name
     async with httpx.AsyncClient() as client:
@@ -184,7 +202,7 @@ async def search_by_text(
             f"/catalog/{storefront}/search",
             term=term,
             types=types,
-            limit=1,
+            limit=5,
         )
     if not body:
         return None
@@ -192,14 +210,25 @@ async def search_by_text(
     items = results.get("data") or []
     if not items:
         return None
-    item = items[0]
-    if not item.get("id"):
-        return None
-    return {
-        "id": item.get("id"),
-        "artwork_url": _extract_artwork_url(item),
-        "release_date": _extract_release_date(item),
-    }
+    for item in items:
+        if not item.get("id"):
+            continue
+        attrs = item.get("attributes") or {}
+        got_title = attrs.get("name") or ""
+        got_artist = attrs.get("artistName") or ""
+        # For albums and artists `_is_match`'s title/artist match still
+        # works (artist tracks treat title as primary key). For artists
+        # specifically `name` from the caller IS the artist name and
+        # there's no separate artist field, so we pass empty artist
+        # to relax the artist check.
+        ask_artist = artist if entity_type != "artist" else ""
+        if _is_match(name, ask_artist, got_title, got_artist):
+            return {
+                "id": item.get("id"),
+                "artwork_url": _extract_artwork_url(item),
+                "release_date": _extract_release_date(item),
+            }
+    return None
 
 
 async def get_new_releases(

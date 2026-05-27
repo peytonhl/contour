@@ -1281,33 +1281,66 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           // already shows above. On a Puccini opera card you'd see the
           // album cover + title at top, then the iframe's mini-thumbnail +
           // title pill, then the rating stars — visually redundant and
-          // read as a layout bug. Replaced with a clean external-link
-          // affordance that opens the track in Spotify (app on mobile,
-          // web on desktop). Inline playback is lost for these tracks but
-          // the cards stay readable, and tracks WITH preview_url still
-          // get the inline audio player branch above.
-          track.external_url && (
-            <a
-              href={track.external_url}
-              target="_blank"
-              rel="noreferrer noopener"
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 8,
-                alignSelf: "flex-start",
-                padding: "8px 14px",
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                borderRadius: "var(--radius-pill)",
-                color: "rgba(255,255,255,0.85)",
-                fontSize: 12, fontWeight: 600,
-                textDecoration: "none",
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none"/>
-              </svg>
-              Listen on Spotify
-            </a>
+          // read as a layout bug. Replaced with clean external-link
+          // pills that open the track in whichever streaming app the
+          // user has. Inline playback is lost for these tracks but the
+          // cards stay readable; tracks WITH preview_url still get the
+          // inline audio player branch above.
+          //
+          // Two pills (Spotify + Apple Music) rendered side-by-side when
+          // both are available. Apple Music coverage is broad enough
+          // that even tracks without a Deezer/Apple-preview match
+          // usually have an Apple Music deep link via
+          // /apple-music/match's text-search path. (Action menu already
+          // surfaces both; the no-preview branch was the inconsistency.)
+          (track.external_url || appleMusicUrl) && (
+            <div style={{
+              display: "flex", flexWrap: "wrap", gap: 8,
+              alignSelf: "flex-start",
+            }}>
+              {track.external_url && (
+                <a
+                  href={track.external_url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  onClick={() => analytics.spotifyLinkClicked("track")}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 8,
+                    padding: "8px 14px",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: "var(--radius-pill)",
+                    color: "rgba(255,255,255,0.85)",
+                    fontSize: 12, fontWeight: 600,
+                    textDecoration: "none",
+                  }}
+                >
+                  <SpotifyIcon size={14} />
+                  Spotify
+                </a>
+              )}
+              {appleMusicUrl && (
+                <a
+                  href={appleMusicUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  onClick={() => analytics.appleMusicLinkClicked("track")}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 8,
+                    padding: "8px 14px",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: "var(--radius-pill)",
+                    color: "rgba(255,255,255,0.85)",
+                    fontSize: 12, fontWeight: 600,
+                    textDecoration: "none",
+                  }}
+                >
+                  <AppleMusicIcon size={14} />
+                  Apple Music
+                </a>
+              )}
+            </div>
           )
         )}
 
