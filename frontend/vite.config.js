@@ -26,22 +26,33 @@ export default defineConfig({
     include: ["src/**/*.{test,spec}.{js,jsx,ts,tsx}"],
   },
   server: {
-    proxy: {
-      "/albums": "http://localhost:8000",
-      "/tracks": "http://localhost:8000",
-      "/artists": "http://localhost:8000",
-      "/compare": "http://localhost:8000",
-      "/comparisons": "http://localhost:8000",
-      "/ratings": "http://localhost:8000",
-      "/auth/login": "http://localhost:8000",
-      "/auth/callback": "http://localhost:8000",
-      "/auth/me": "http://localhost:8000",
-      "/auth/profile": "http://localhost:8000",
-      "/featured": "http://localhost:8000",
-      "/feed": "http://localhost:8000",
-      "/users": "http://localhost:8000",
-      "/reviews": "http://localhost:8000",
-      "/health": "http://localhost:8000",
-    },
+    proxy: (() => {
+      // Default target is the local backend (full-stack dev work). For
+      // frontend-only UI review you can point at production via
+      //   $env:VITE_DEV_PROXY_TARGET = "https://contour-production.up.railway.app"
+      // before running `npm run dev`. Read-only — never POST from a
+      // session pointed at prod.
+      const target = process.env.VITE_DEV_PROXY_TARGET || "http://localhost:8000";
+      const opts = target.startsWith("https://")
+        ? { target, changeOrigin: true, secure: true }
+        : target;
+      return {
+        "/albums": opts,
+        "/tracks": opts,
+        "/artists": opts,
+        "/compare": opts,
+        "/comparisons": opts,
+        "/ratings": opts,
+        "/auth/login": opts,
+        "/auth/callback": opts,
+        "/auth/me": opts,
+        "/auth/profile": opts,
+        "/featured": opts,
+        "/feed": opts,
+        "/users": opts,
+        "/reviews": opts,
+        "/health": opts,
+      };
+    })(),
   },
 });
