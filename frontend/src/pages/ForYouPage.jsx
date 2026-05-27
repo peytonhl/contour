@@ -994,8 +994,13 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
             title="More actions"
             aria-label="More actions"
             aria-expanded={showActions}
-            className="glass"
             style={{
+              // Solid translucent bg instead of .glass — backdrop-filter on
+              // a button that sits over a transforming card is recomputed
+              // every animation frame on iOS WebKit and was a measurable
+              // chunk of the swipe-jank investigation. Inline bg keeps the
+              // same visual at rest with zero per-frame cost.
+              background: "rgba(20, 20, 24, 0.78)",
               width: 32, height: 32, borderRadius: "50%",
               border: "none", cursor: "pointer",
               color: showActions ? "var(--accent)" : "rgba(255,255,255,0.85)",
@@ -1013,8 +1018,9 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           {showActions && (
             <div
               role="menu"
-              className="glass"
               style={{
+                // Solid bg, no .glass — see "More actions" button rationale.
+                background: "rgba(20, 20, 24, 0.95)",
                 position: "absolute", top: "calc(100% + 8px)", right: 0,
                 minWidth: 200,
                 borderRadius: "var(--radius-lg)",
@@ -2847,8 +2853,13 @@ function ForYouFeed() {
         onClick={() => setSettingsOpen(o => !o)}
         title="Feed settings"
         aria-label="Feed settings"
-        className="glass"
         style={{
+          // Solid translucent bg — was .glass with backdrop-filter, but
+          // this button sits over the transforming deck and the filter
+          // had to recompute every animation frame on iOS WebKit. The
+          // per-frame cost stacked with the notif chip + browse chip
+          // and contributed to swipe jank.
+          background: "rgba(20, 20, 24, 0.78)",
           position: "absolute", top: 8, left: 10, zIndex: 5,
           width: 32, height: 32, borderRadius: "var(--radius-pill)", padding: 0,
           border: "none",
@@ -2878,7 +2889,6 @@ function ForYouFeed() {
         <button
           onClick={() => navigate(ROUTES.NOTIFICATIONS)}
           aria-label={`${unreadNotifs} unread notifications`}
-          className="glass"
           style={{
             position: "absolute",
             // Slide down when the browse-mode chip is occupying top-center
@@ -2895,8 +2905,11 @@ function ForYouFeed() {
             color: ACCENT_A,
             fontSize: 13, fontWeight: 700,
             cursor: "pointer",
-            boxShadow: `0 0 0 0 ${ACCENT_A}80`,
-            animation: "contour-notif-pulse 2.4s ease-in-out infinite",
+            // Steady accent ring instead of contour-notif-pulse — the pulse
+            // animated box-shadow on a loop, which forced a paint cycle every
+            // frame even when the deck wasn't moving. A static glow reads as
+            // "look here" without the per-frame cost.
+            boxShadow: `0 0 0 2px ${ACCENT_A}30`,
             transition: "top var(--motion-base) var(--ease)",
           }}
         >
@@ -2921,7 +2934,6 @@ function ForYouFeed() {
           onClick={exitBrowseMode}
           aria-label={`Exit genre browse (${browseGenres.join(", ")})`}
           title="Tap to exit genre browse"
-          className="glass"
           style={{
             position: "absolute",
             top: 8,
