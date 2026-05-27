@@ -610,11 +610,25 @@ function RatingDistribution({ distribution, average }) {
                 height: "100%",
                 width: `${pct}%`,
                 borderRadius: "var(--radius-sm)",
+                // 5 tiers, each visually distinct:
+                //   5/4★ → full positive gradient (orange → blue)
+                //   3★   → warm neutral (gold → tertiary accent)
+                //   2★   → muted danger (red → darker red, dimmed opacity)
+                //   1★   → solid danger at higher opacity (strongest negative)
+                // Previously 1/2★ both got `var(--border)` which matched
+                // the bar's empty background `var(--surface2)` and made
+                // negative ratings literally invisible. User report
+                // 2026-05-27. Negative ratings should READ as negative
+                // (red palette, lower visual weight) but never blend
+                // into the chrome.
                 background: star >= 4
                   ? `linear-gradient(90deg, ${ACCENT_A}, ${ACCENT_B})`
                   : star === 3
                   ? `linear-gradient(90deg, ${GOLD}, ${ACCENT_C})`
-                  : "var(--border)",
+                  : star === 2
+                  ? "linear-gradient(90deg, var(--danger), #b91c1c)"
+                  : "linear-gradient(90deg, #ef4444, #991b1b)",
+                opacity: star <= 2 ? 0.7 : 1,
                 transition: "width 0.5s ease",
               }} />
             </div>
