@@ -109,22 +109,42 @@ def _row_to_track_result(row: TrackCache) -> TrackResult:
 
 async def _attach_preview_url(track: TrackResult) -> TrackResult:
     """
-    Ensure `track.preview_url` is populated, querying Deezer if needed.
+    Ensure `track.preview_url` is populated, walking the fallback chain.
 
-    Spotify dropped preview_url for most tracks in late 2023 (Extended Access
-    only). Deezer's public API still returns 30s previews for the bulk of
-    the catalog without an API key. Mirrors the enrichment pass that the
-    For You feed does in routers/discover.py.
+    Sources, in order:
+      1. Spotify (already on the track if present — late-2023 API change
+         means it usually isn't, but if it IS set we trust it and exit).
+      2. Deezer — covers ~80%+ of the catalog. Match-validated so a
+         poor search relevance result for one track doesn't get
+         cached under another's key (see services/deezer.py get_preview
+         docstring; reported 2026-05-27 Honey Bun → ZEZE).
+      3. Apple Music — catches tracks Deezer doesn't have. Many mixtape
+         cuts (Kodak Black's Honey Bun, etc.) fall into this gap. No
+         Akamai-signed-URL expiry to worry about — Apple's previews
+         are stable CloudFront URLs cacheable for 30d.
 
     Safe to call when preview_url is already set — short-circuits.
+    No-ops cleanly when Apple Music isn't configured (env vars unset).
     """
     if track.preview_url:
         return track
     primary_artist = track.artists[0] if track.artists else ""
     if not (track.name and primary_artist):
         return track
+
+    # Tier 2: Deezer
     try:
         url = await deezer_svc.get_preview(track.name, primary_artist)
+    except Exception:
+        url = None
+    if url:
+        track.preview_url = url
+        return track
+
+    # Tier 3: Apple Music
+    try:
+        from services import apple_music
+        url = await apple_music.get_preview(track.name, primary_artist)
     except Exception:
         url = None
     if url:

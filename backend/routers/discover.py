@@ -2742,9 +2742,13 @@ async def get_discover_feed(
     # results — i.e. the user got the algorithm's worst guesses first.
     result = tracks[:limit]
 
-    # ── Deezer preview enrichment (Spotify tracks only) ───────────────────────
+    # ── Preview enrichment (Spotify tracks only) ─────────────────────────────
     # Deezer-sourced tracks already carry preview_url from the search response.
     # Only enrich Spotify tracks that are still missing a preview clip.
+    # Two-tier fallback: Deezer first (covers ~80% of catalog with match
+    # validation per services/deezer.py), then Apple Music for the gap
+    # (mixtape cuts / deep catalog Deezer doesn't index — Honey Bun by
+    # Kodak Black is one such case, reported 2026-05-27).
     no_preview = [t for t in result if not t.get("preview_url") and t.get("_source") != "deezer"]
     if no_preview:
         import logging as _logging
@@ -2755,16 +2759,39 @@ async def get_discover_feed(
         ]
         deezer_urls = await asyncio.gather(*deezer_tasks, return_exceptions=True)
         url_iter = iter(deezer_urls)
-        filled = 0
+        filled_deezer = 0
         for t in result:
             if not t.get("preview_url") and t.get("_source") != "deezer":
                 url = next(url_iter)
                 if isinstance(url, str) and url:
                     t["preview_url"] = url
-                    filled += 1
+                    filled_deezer += 1
+
+        # Apple Music fallback for whatever Deezer still couldn't fill.
+        # No-ops if Apple Music isn't configured (env vars unset).
+        from services import apple_music
+        still_no_preview = [
+            t for t in result
+            if not t.get("preview_url") and t.get("_source") != "deezer"
+        ]
+        filled_apple = 0
+        if still_no_preview and apple_music.is_configured():
+            apple_tasks = [
+                apple_music.get_preview(t.get("name", ""), (t.get("artists") or [""])[0])
+                for t in still_no_preview
+            ]
+            apple_urls = await asyncio.gather(*apple_tasks, return_exceptions=True)
+            url_iter_a = iter(apple_urls)
+            for t in result:
+                if not t.get("preview_url") and t.get("_source") != "deezer":
+                    url = next(url_iter_a)
+                    if isinstance(url, str) and url:
+                        t["preview_url"] = url
+                        filled_apple += 1
+
         _log.info(
-            "[discover] Deezer preview enrichment: %d/%d Spotify tracks filled",
-            filled, len(no_preview),
+            "[discover] preview enrichment: deezer=%d apple=%d / %d Spotify tracks",
+            filled_deezer, filled_apple, len(no_preview),
         )
 
     # Visibility: log the final preview coverage so we can see at a glance how

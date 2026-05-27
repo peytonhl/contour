@@ -374,3 +374,84 @@ def deep_link(entity_type: str, apple_music_id: str, storefront: str = DEFAULT_S
     """Build the music.apple.com deep link for a given Apple Music ID."""
     path = "album" if entity_type == "album" else "song"
     return f"https://music.apple.com/{storefront}/{path}/{apple_music_id}"
+
+
+async def get_preview(
+    track_name: str,
+    artist_name: str,
+    storefront: str = DEFAULT_STOREFRONT,
+) -> Optional[str]:
+    """Search Apple Music for a track and return its 30-second preview URL.
+
+    Used as a TERTIARY preview-URL fallback after Spotify (no longer
+    serves previews for most tracks since late 2023) and Deezer
+    (catalog gaps — many mixtape tracks / deep cuts aren't in Deezer's
+    catalog, see services/deezer.py `get_preview` for the matching
+    validator). Reported case 2026-05-27: Honey Bun by Kodak Black
+    plays nothing under the Deezer-only chain because Deezer has 0
+    hits for that title; Apple Music has it.
+
+    Apple Music previews are plain CloudFront-hosted MP3/M4A URLs that
+    don't have the Akamai signed-URL expiry Deezer's previews do, so
+    the cache TTL can be much longer (30d vs. ~15-30 min for Deezer).
+
+    Returns None if Apple Music isn't configured (env vars missing) OR
+    no result matched OR the network request failed. Same
+    title/artist match validator as Deezer to avoid the same
+    cross-track-contamination bug — Apple's search relevance can
+    also surface unrelated tracks first.
+    """
+    if not is_configured():
+        return None
+    if not (track_name and artist_name):
+        return None
+
+    # Import here to avoid a forward-reference cycle at module load
+    # (deezer imports redis_cache; this also imports redis_cache; the
+    # match utility just happens to live in deezer.py).
+    from services import redis_cache
+    from services.deezer import _is_match
+
+    cache_key = (
+        f"apple:preview:{artist_name.lower().strip()}:{track_name.lower().strip()}"
+    )
+    cached = await redis_cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+
+    result: Optional[str] = None
+    term = f"{artist_name} {track_name}".strip()
+    try:
+        async with httpx.AsyncClient() as client:
+            body = await _apple_get(
+                client,
+                f"/catalog/{storefront}/search",
+                term=term,
+                types="songs",
+                limit=5,
+            )
+    except Exception:
+        body = None
+
+    if body:
+        items = (
+            ((body.get("results") or {}).get("songs") or {}).get("data") or []
+        )
+        for item in items:
+            attrs = item.get("attributes") or {}
+            got_title = attrs.get("name") or ""
+            got_artist = attrs.get("artistName") or ""
+            previews = attrs.get("previews") or []
+            preview_url = previews[0].get("url") if previews else None
+            if preview_url and _is_match(
+                track_name, artist_name, got_title, got_artist,
+            ):
+                result = preview_url
+                break
+
+    # 30d for hits (Apple's preview URLs are stable), 7d for misses (so
+    # we eventually re-check tracks that might newly appear in the
+    # catalog).
+    ttl = 30 * 24 * 60 * 60 if result else 7 * 24 * 60 * 60
+    await redis_cache.set(cache_key, result or "", ttl=ttl)
+    return result
