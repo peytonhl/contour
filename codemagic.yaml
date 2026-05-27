@@ -263,6 +263,108 @@ workflows:
           project.save
           RUBY
 
+      - name: Patch AppDelegate for push-notification callbacks
+        script: |
+          set -ex
+          # Why this step exists:
+          #   The entitlement makes iOS believe the app CAN receive pushes,
+          #   and PushNotifications.register() schedules
+          #   [UIApplication registerForRemoteNotifications]. APNs hands
+          #   the device token to the OS, which calls
+          #   `application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`
+          #   on AppDelegate. Capacitor's plugin listens for a
+          #   NotificationCenter notification named
+          #   `.capacitorDidRegisterForRemoteNotifications` (and the failure
+          #   variant) and forwards the payload to the JS bridge.
+          #
+          #   Capacitor's docs (https://capacitorjs.com/docs/apis/push-
+          #   notifications#ios) require app authors to add the forwarding
+          #   methods to AppDelegate.swift manually. `cap add ios` and
+          #   `cap sync` do NOT add them. Without these methods, iOS
+          #   silently drops the APNs token at the AppDelegate layer, the
+          #   plugin never gets notified, and the JS `register()` Promise
+          #   pends forever with no `registration` or `registrationError`
+          #   event firing.
+          #
+          # Symptom this fixes:
+          #   /notifications/diagnostic latest_native_trace stalls at
+          #   `register_called` with no `register_returned`,
+          #   `register_threw`, `reg_event_received`, or `reg_error` after
+          #   it. iOS Settings shows Contour with Allow Notifications ON
+          #   and the user has granted permission. (Confirmed
+          #   2026-05-27.)
+          #
+          # What this step does:
+          #   Patches AppDelegate.swift to add the two forwarding methods
+          #   IF they're not already present. Uses an idempotent grep
+          #   guard so re-running the step is safe.
+
+          APP_DELEGATE="frontend/ios/App/App/AppDelegate.swift"
+          if [ ! -f "$APP_DELEGATE" ]; then
+            echo ">>> FATAL: $APP_DELEGATE not found. Did 'cap add ios' run before this step?"
+            exit 1
+          fi
+
+          if grep -q "capacitorDidRegisterForRemoteNotifications" "$APP_DELEGATE"; then
+            echo ">>> AppDelegate already patched; skipping."
+            cat "$APP_DELEGATE"
+            exit 0
+          fi
+
+          # Insert the two methods just before the final closing brace of
+          # the @UIApplicationMain class. Locating the LAST `}` and
+          # inserting before it. The Capacitor scaffold's AppDelegate
+          # is small enough that this is safe.
+
+          python3 <<'PY'
+          import io, sys
+          path = "frontend/ios/App/App/AppDelegate.swift"
+          with open(path, "r") as f:
+              src = f.read()
+
+          inject = '''
+              // --- Push-notification forwarding (added by codemagic) ---
+              // Required by @capacitor/push-notifications; without these
+              // the JS-side `registration` / `registrationError` listeners
+              // never fire because APNs's callback lands on AppDelegate
+              // and isn't relayed to the plugin via NotificationCenter.
+              func application(
+                  _ application: UIApplication,
+                  didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+              ) {
+                  NotificationCenter.default.post(
+                      name: Notification.Name("capacitorDidRegisterForRemoteNotifications"),
+                      object: deviceToken
+                  )
+              }
+
+              func application(
+                  _ application: UIApplication,
+                  didFailToRegisterForRemoteNotificationsWithError error: Error
+              ) {
+                  NotificationCenter.default.post(
+                      name: Notification.Name("capacitorDidFailToRegisterForRemoteNotifications"),
+                      object: error
+                  )
+              }
+          '''
+
+          # Insert right before the last `}` in the file (the class's
+          # closing brace).
+          last_brace = src.rfind("}")
+          if last_brace < 0:
+              print("FATAL: could not locate closing brace in AppDelegate.swift", file=sys.stderr)
+              sys.exit(1)
+
+          patched = src[:last_brace] + inject + src[last_brace:]
+          with open(path, "w") as f:
+              f.write(patched)
+          print(">>> Patched AppDelegate.swift")
+          PY
+
+          echo ">>> AppDelegate.swift after patch:"
+          cat "$APP_DELEGATE"
+
       - name: Set the build number
         script: |
           set -ex
