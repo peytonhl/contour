@@ -210,11 +210,14 @@ async def test_get_notifications_requires_auth(client):
 async def test_unread_count_decrements_after_read_all(client, db_session):
     """The bell badge reads /notifications/unread-count. Tapping the bell
     fires /notifications (which marks-read on the frontend) and the
-    badge should drop to 0. Pin the read-all → unread=0 invariant."""
+    badge should drop to 0. Pin the read-all → unread=0 invariant.
+
+    Uses 3 distinct actors because create_notification dedups follow
+    notifications by (recipient, actor) — same-actor loops collapse to
+    one row by design (see create_notification docstring)."""
     recipient = await _mkuser(db_session)
-    actor = await _mkuser(db_session)
-    # Seed 3 notifications directly via the helper
-    for _ in range(3):
+    actors = [await _mkuser(db_session) for _ in range(3)]
+    for actor in actors:
         await create_notification(
             db_session, user_id=recipient.id, type="follow", actor_id=actor.id,
         )
@@ -234,10 +237,13 @@ async def test_unread_count_decrements_after_read_all(client, db_session):
 async def test_get_notifications_caps_at_40(client, db_session):
     """The endpoint hard-caps at 40 rows — older notifs disappear silently.
     Test that the cap is respected; if it ever returned all rows, the
-    NotificationsPage payload could balloon for power users."""
+    NotificationsPage payload could balloon for power users.
+
+    Uses 45 distinct actors — same dedup reasoning as the unread-count
+    test above."""
     recipient = await _mkuser(db_session)
-    actor = await _mkuser(db_session)
-    for _ in range(45):
+    actors = [await _mkuser(db_session) for _ in range(45)]
+    for actor in actors:
         await create_notification(
             db_session, user_id=recipient.id, type="follow", actor_id=actor.id,
         )
@@ -246,3 +252,58 @@ async def test_get_notifications_caps_at_40(client, db_session):
     assert r.status_code == 200
     body = r.json()
     assert len(body) == 40
+
+
+async def test_create_notification_dedups_follow_from_same_actor(client, db_session):
+    """A friend tapping Follow → Unfollow → Follow rapidly should only
+    create ONE notification row, not one per Follow event. The
+    notification's meaning is 'this person is now following you' —
+    once delivered, repeating the event adds no signal AND would fire
+    duplicate pushes for the same final state.
+
+    Pinned because the dedup is application-level (no unique constraint
+    on the table), so a future refactor of create_notification could
+    silently break this. Reported 2026-05-27."""
+    recipient = await _mkuser(db_session)
+    actor = await _mkuser(db_session)
+    for _ in range(3):
+        await create_notification(
+            db_session, user_id=recipient.id, type="follow", actor_id=actor.id,
+        )
+    await db_session.commit()
+    rows = (await db_session.execute(
+        select(Notification).where(
+            Notification.user_id == recipient.id,
+            Notification.type == "follow",
+            Notification.actor_id == actor.id,
+        )
+    )).scalars().all()
+    assert len(rows) == 1
+
+
+async def test_create_notification_dedups_upvote_per_review(client, db_session):
+    """Same logic as follow but scoped per-review. Toggling an upvote off
+    and back on shouldn't fire a fresh notification. Capping by review_id
+    so an upvoter who hits SEVERAL of your reviews still pings once per
+    review (just not multiple times per review)."""
+    author = await _mkuser(db_session)
+    voter = await _mkuser(db_session)
+    # Different review_ids should NOT dedup; same review_id should.
+    for _ in range(3):
+        await create_notification(
+            db_session, user_id=author.id, type="upvote",
+            actor_id=voter.id, review_id=42,
+        )
+    await create_notification(
+        db_session, user_id=author.id, type="upvote",
+        actor_id=voter.id, review_id=43,
+    )
+    await db_session.commit()
+    rows = (await db_session.execute(
+        select(Notification).where(
+            Notification.user_id == author.id,
+            Notification.type == "upvote",
+            Notification.actor_id == voter.id,
+        )
+    )).scalars().all()
+    assert len(rows) == 2  # one per review_id, dedup within each

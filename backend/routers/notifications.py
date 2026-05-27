@@ -140,6 +140,55 @@ async def create_notification(
     """
     if user_id == actor_id:
         return
+
+    # Type-specific dedup. The semantics differ by event:
+    #
+    #   follow: ONE notification per (recipient, actor) pair, ever. The
+    #     event's meaning is "this person is now following you" — once
+    #     delivered, a re-follow adds no new signal. Without this,
+    #     a friend tapping Follow → Unfollow → Follow rapidly creates
+    #     2+ rows AND fires 2+ pushes for the same final state.
+    #     (Reported 2026-05-27 by Peyton: one follower showed up twice
+    #     in the bell.)
+    #
+    #   upvote: ONE notification per (recipient, actor, review_id). Same
+    #     reasoning — toggling an upvote off and back on doesn't deserve
+    #     a fresh ping. Capping by review_id (not just actor) so an
+    #     upvoter who hits several of your reviews still pings once
+    #     per review.
+    #
+    #   reply / mention: NO dedup. Each reply is a separate authored
+    #     piece of content and a separate event. Same for mentions —
+    #     someone @-tagging you twice in different reviews should ping
+    #     twice.
+    #
+    # Application-level dedup has a theoretical race (two requests
+    # interleave between the SELECT and the INSERT). Acceptable here:
+    # the worst case is two rows for one event, the realistic-case
+    # repeat-tap pattern is fully covered, and a unique partial index
+    # would need a migration we don't need to ship today.
+    if type == "follow":
+        existing = (await db.execute(
+            select(Notification.id).where(
+                Notification.user_id == user_id,
+                Notification.type == "follow",
+                Notification.actor_id == actor_id,
+            ).limit(1)
+        )).scalar_one_or_none()
+        if existing is not None:
+            return
+    elif type == "upvote" and review_id is not None:
+        existing = (await db.execute(
+            select(Notification.id).where(
+                Notification.user_id == user_id,
+                Notification.type == "upvote",
+                Notification.actor_id == actor_id,
+                Notification.review_id == review_id,
+            ).limit(1)
+        )).scalar_one_or_none()
+        if existing is not None:
+            return
+
     db.add(Notification(
         user_id=user_id,
         type=type,
