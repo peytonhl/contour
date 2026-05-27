@@ -25,14 +25,14 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import json as _json
 
 from constants import HIGH_RATING_THRESHOLD
 from database import get_db
-from models import AlbumCache, AppleMusicLink, Rating, TrackCache, User, UserTasteProfile
+from models import AlbumCache, AppleMusicLink, Notification, Rating, TrackCache, User, UserTasteProfile
 from routers.auth import require_user_id
 from services import apple_music, enrichment_sweeper, instrumentation, spotify
 
@@ -883,3 +883,104 @@ async def reset_spotify_circuit(
         "circuit_remaining_seconds_before": round(before, 2),
         "circuit_remaining_seconds_after": round(after, 2),
     }
+
+
+@router.post("/dedup-notifications")
+async def dedup_notifications(
+    dry_run: bool = True,
+    user_id: str = Depends(require_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """One-shot cleanup for duplicate follow + upvote notifications that
+    accumulated BEFORE the create_notification dedup landed (commit
+    9b60446, 2026-05-27).
+
+    Reported case: a friend tapped Follow → Unfollow → Follow on
+    Peyton's account and his bell showed two follow rows. Going
+    forward, create_notification dedups at insert time; this endpoint
+    cleans up the backfill.
+
+    Semantics (mirror create_notification's dedup):
+      - follow: keep oldest row per (user_id, actor_id), delete rest.
+      - upvote: keep oldest row per (user_id, actor_id, review_id),
+        delete rest (NULL review_id rows are left alone — likely the
+        rare upvote-on-non-review edge case).
+      - reply / mention: not touched (no dedup by design).
+
+    Default is dry_run=true — pass ?dry_run=false to actually delete.
+    Returns counts of what would-be / was deleted so a curl with
+    dry_run=true safely previews the impact first.
+
+    Admin-only because it's a destructive op across all users' data.
+    """
+    await _require_admin(db, user_id)
+
+    # FOLLOW: rank rows within (user_id, actor_id) by created_at asc,
+    # keep rank=1, return ids of rank>1 for deletion.
+    follow_rows = (await db.execute(
+        select(
+            Notification.id,
+            Notification.user_id,
+            Notification.actor_id,
+            Notification.created_at,
+        )
+        .where(Notification.type == "follow")
+        .order_by(Notification.user_id, Notification.actor_id, Notification.created_at)
+    )).all()
+
+    follow_to_delete: list[int] = []
+    seen_follow: set[tuple[str, str]] = set()
+    for row in follow_rows:
+        key = (row.user_id, row.actor_id)
+        if key in seen_follow:
+            follow_to_delete.append(row.id)
+        else:
+            seen_follow.add(key)
+
+    # UPVOTE: rank within (user_id, actor_id, review_id).
+    upvote_rows = (await db.execute(
+        select(
+            Notification.id,
+            Notification.user_id,
+            Notification.actor_id,
+            Notification.review_id,
+            Notification.created_at,
+        )
+        .where(Notification.type == "upvote")
+        .where(Notification.review_id.isnot(None))
+        .order_by(
+            Notification.user_id, Notification.actor_id,
+            Notification.review_id, Notification.created_at,
+        )
+    )).all()
+
+    upvote_to_delete: list[int] = []
+    seen_upvote: set[tuple[str, str, int]] = set()
+    for row in upvote_rows:
+        key = (row.user_id, row.actor_id, row.review_id)
+        if key in seen_upvote:
+            upvote_to_delete.append(row.id)
+        else:
+            seen_upvote.add(key)
+
+    result = {
+        "dry_run": dry_run,
+        "follow_duplicates": len(follow_to_delete),
+        "upvote_duplicates": len(upvote_to_delete),
+        "follow_total_after": len(seen_follow),
+        "upvote_total_after": len(seen_upvote),
+    }
+
+    if not dry_run:
+        if follow_to_delete:
+            await db.execute(
+                delete(Notification).where(Notification.id.in_(follow_to_delete))
+            )
+        if upvote_to_delete:
+            await db.execute(
+                delete(Notification).where(Notification.id.in_(upvote_to_delete))
+            )
+        await db.commit()
+        result["deleted"] = True
+
+    return result
