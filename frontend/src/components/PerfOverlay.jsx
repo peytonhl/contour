@@ -27,6 +27,7 @@ import { useEffect, useRef, useState } from "react";
 // the corner of the screen). Tune via HISTORY_WINDOW_MS if it ever feels
 // off.
 const HISTORY_WINDOW_MS = 5000;
+const HISTORY_SAMPLE_MS = 100;      // 10Hz — catches sub-second swipe dips
 const SPARKLINE_SAMPLES = 60;       // ~3s at 20Hz sampling
 const SPARKLINE_W = 110;
 const SPARKLINE_H = 18;
@@ -86,16 +87,28 @@ export function PerfOverlay() {
         setSparkPath(points);
       }
 
-      // History — one entry per second for the rolling-min calculation.
-      if (now - lastHistoryAtRef.current > 1000) {
+      // History — sampled at HISTORY_SAMPLE_MS (10Hz) so brief swipe dips
+      // actually register. A typical card-commit animation is 200-300ms;
+      // 1Hz sampling smoothed those into the 1-second FPS average and the
+      // "min" reading barely moved. 10Hz gives ~3 samples per swipe so
+      // the worst momentary frame-time bucket lands in the window.
+      if (now - lastHistoryAtRef.current > HISTORY_SAMPLE_MS) {
         lastHistoryAtRef.current = now;
         const hist = historyRef.current;
         hist.push({ t: now, fps: currentFps, slow: currentSlow });
         const cutoff = now - HISTORY_WINDOW_MS;
         while (hist.length && hist[0].t < cutoff) hist.shift();
         if (hist.length) {
-          setMinFps(Math.min(...hist.map((h) => h.fps)));
-          setPeakSlow(Math.max(...hist.map((h) => h.slow)));
+          // Manual min/max instead of Math.min/max(...arr) — spreading
+          // 50-entry arrays into a variadic call has measurable overhead
+          // at 10Hz on a hot path that also drives the swipe handler.
+          let minF = Infinity, maxS = -Infinity;
+          for (let i = 0; i < hist.length; i++) {
+            if (hist[i].fps < minF) minF = hist[i].fps;
+            if (hist[i].slow > maxS) maxS = hist[i].slow;
+          }
+          setMinFps(minF);
+          setPeakSlow(maxS);
         }
       }
 
