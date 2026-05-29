@@ -6,6 +6,7 @@ import { ReportModal } from "./ReportModal.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionInput, MentionBody } from "./Mentions.jsx";
 import { LoadMoreButton } from "./LoadMoreButton.jsx";
+import { clearGuestMode } from "./SigninGate.jsx";
 import { ACCENT_A as ACCENT, GOLD, DANGER } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 import { userPath } from "../constants/routes.js";
@@ -763,8 +764,18 @@ export function ReviewSection({ entityType, entityId, user }) {
     }
   }
 
+  // Guests can hover the stars to preview the half-star mechanic, but a click
+  // can't persist anything — so surface the sign-in gate instead of silently
+  // no-op'ing. clearGuestMode + the event re-show the full-screen SigninGate
+  // (App-level), which listens for this exact event.
+  function promptSignInToRate() {
+    analytics.signinPrompted?.("rate", entityType);
+    clearGuestMode();
+    try { window.dispatchEvent(new CustomEvent("contour:guest-mode-changed")); } catch {}
+  }
+
   async function handleStarClick(val) {
-    if (!user) return;
+    if (!user) { promptSignInToRate(); return; }
     setSelectedRating(val);
     setShowForm(true);
     await api.rateEntity(entityType, entityId, val);
@@ -919,7 +930,15 @@ export function ReviewSection({ entityType, entityId, user }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Rate this</span>
-            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Sign in to rate and review</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Guests get the real interactive selector to preview the
+                  half-star mechanic; a click opens the sign-in gate rather
+                  than saving (handled in promptSignInToRate). */}
+              <Stars value={hover ?? 0} size={28} interactive onHover={setHover} onClick={promptSignInToRate} />
+              <span style={{ fontSize: 13, color: hover ? GOLD : "var(--text-muted)" }}>
+                {hover ? `${hover} / 5 · sign in to save` : "Tap a star — sign in to save"}
+              </span>
+            </div>
           </div>
         )}
       </div>
