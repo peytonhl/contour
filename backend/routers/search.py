@@ -186,11 +186,12 @@ async def unified_search(
     q_stripped = q.strip()
     pattern = f"%{q_stripped}%"
 
-    # Log search events for queries that look like real intent (≥ MIN_CHARS).
-    # Powers the /trending/searched endpoint. Capped length protects the index.
-    q_norm = q_stripped.lower()[:128]
-    if len(q_norm) >= MIN_CHARS:
-        background_tasks.add_task(_log_search_event, q_norm, user_id)
+    # NOTE: we deliberately do NOT log a search event here. This endpoint fires
+    # on every debounced autocomplete keystroke, so logging here leaked raw
+    # mid-typing fragments ("tit", "rus", "frank") onto the public
+    # /trending/searched surface. Search intent is now recorded only when the
+    # user commits — see POST /search/log, called from the frontend when a
+    # result is actually selected.
 
     # ── Step 1: DB searches — always run, always free ─────────────────────────
 
@@ -392,3 +393,24 @@ async def unified_search(
         albums=albums[:10],
         tracks=tracks[:8],
     )
+
+
+class LogSearchBody(BaseModel):
+    q: str
+
+
+@router.post("/log")
+async def log_committed_search(
+    body: LogSearchBody,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    user_id: Optional[str] = Depends(optional_user_id),
+):
+    """Record a *committed* search — i.e. one the user acted on (selected a
+    result), not a mid-typing autocomplete fragment. This is the only path that
+    feeds /trending/searched, so the surface stays clean of partial keystrokes.
+    Fire-and-forget from the frontend; failures are non-fatal.
+    """
+    q_norm = body.q.strip().lower()[:128]
+    if len(q_norm) >= MIN_CHARS:
+        background_tasks.add_task(_log_search_event, q_norm, user_id)
+    return {"ok": True}

@@ -103,6 +103,11 @@ export const api = {
   // Unified search — returns { users, albums, tracks } in one request with smart triage
   search: (q) => request(`/search?q=${encodeURIComponent(q)}`),
 
+  // Record a committed search (user selected a result). This — NOT the
+  // per-keystroke autocomplete search above — is what feeds /trending/searched,
+  // so the public surface never shows mid-typing fragments. Fire-and-forget.
+  logSearch: (q) => post("/search/log", { q }).catch(() => {}),
+
   // Albums
   searchAlbums: (q) => request(`/albums/search?q=${encodeURIComponent(q)}`),
   getAlbum: (id) => request(`/albums/${id}`),

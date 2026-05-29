@@ -213,6 +213,11 @@ export function SearchPage() {
   }
 
   function handleSelect(item) {
+    // Record the committed search — the query that actually led somewhere.
+    // This is the only signal that feeds /trending/searched (autocomplete
+    // keystrokes are no longer logged), keeping the public surface free of
+    // mid-typing fragments.
+    if (query.trim()) api.logSearch(query.trim());
     saveRecent({ id: item.id, name: item.name, image_url: item.image_url, _type: item._type,
       sub: Array.isArray(item.artists) ? item.artists.join(", ") : (item.artists ?? "") });
     setRecent(loadRecent());

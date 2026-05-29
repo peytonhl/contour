@@ -251,19 +251,45 @@ async def trending_backlogged(db: AsyncSession, window: str, limit: int) -> Tren
     return TrendingResult(items=[], actual_window_used="all", label=label_for("all"))
 
 
+def _drop_typed_fragments(rows: list) -> list:
+    """Strip mid-typing keystroke fragments from a list of (query, count) rows.
+
+    Historically every debounced autocomplete keystroke was logged, so the raw
+    data still contains prefix fragments ("fra"/"fran"/"frank" on the way to
+    "frank ocean"). New events are commit-only (see routers/search.py), but
+    legacy rows linger until they age out of the window — so we also filter at
+    read time: a query is dropped when another, longer query in the same set
+    begins with it (i.e. it's a strict prefix of a more complete search).
+    """
+    queries = [r.query for r in rows]
+    kept = []
+    for r in rows:
+        q = r.query
+        is_fragment = any(
+            other != q and other.startswith(q) and len(other) > len(q)
+            for other in queries
+        )
+        if not is_fragment:
+            kept.append(r)
+    return kept
+
+
 async def trending_searched(db: AsyncSession, window: str, limit: int) -> TrendingResult:
     """Search queries appearing most often within the window."""
     for w in _windows_to_try(window):
         since = _since(w)
+        # Pull a generous candidate pool (not just `limit`) so the prefix
+        # filter can see a fragment's longer completion even when the
+        # completion ranks below the cut line, then trim to `limit` after.
         stmt = (
             select(SearchEvent.query, func.count(SearchEvent.id).label("cnt"))
             .group_by(SearchEvent.query)
             .order_by(func.count(SearchEvent.id).desc())
-            .limit(limit)
+            .limit(max(limit * 10, 100))
         )
         if since is not None:
             stmt = stmt.where(SearchEvent.created_at >= since)
-        rows = (await db.execute(stmt)).all()
+        rows = _drop_typed_fragments((await db.execute(stmt)).all())[:limit]
         if len(rows) >= MIN_ITEMS or w == "all":
             items = [{"query": r.query, "count": int(r.cnt)} for r in rows]
             return TrendingResult(items=items, actual_window_used=w, label=label_for(w))
