@@ -120,6 +120,9 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
                   this release would have <strong style={{ color: ACCENT }}>~{fmt(eraContext.era_adjusted_streams)}</strong> streams
                   ({eraContext.multiplier}× scale).
                 </div>
+                <div style={{ color: "var(--text-dim)", marginBottom: "var(--space-3)", fontStyle: "italic" }}>
+                  A modeled estimate, not recorded historical data.
+                </div>
                 <Link
                   to={ROUTES.METHODOLOGY}
                   style={{ color: ACCENT, fontWeight: 600, fontSize: "var(--text-sm)", textDecoration: "none" }}
@@ -186,6 +189,9 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
                 Scaled to <strong style={{ color: "var(--text)" }}>{eraContext.current_mau}M</strong> {currentYear} listeners,
                 this release would have <strong style={{ color: ACCENT }}>~{fmt(eraContext.era_adjusted_streams)}</strong> streams
                 ({eraContext.multiplier}× scale).
+              </div>
+              <div style={{ color: "var(--text-dim)", marginBottom: 10, fontStyle: "italic" }}>
+                A modeled estimate, not recorded historical data.
               </div>
               <Link
                 to={ROUTES.METHODOLOGY}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { ReviewSection } from "../components/ReviewSection.jsx";
@@ -10,7 +10,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { ACCENT_A } from "../theme.js";
 import { imageMedium } from "../utils/imageVariants.js";
-import { trackPath, albumPath } from "../constants/routes.js";
+import { trackPath, albumPath, ROUTES } from "../constants/routes.js";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 // Shared style for the three platform deep-link pills (Spotify / Apple
@@ -189,6 +189,14 @@ export function ArtistPage() {
   const [albumsLoading, setAlbumsLoading] = useState(true);
   const [albumsEmpty, setAlbumsEmpty] = useState(false);
   const [showAllAlbums, setShowAllAlbums] = useState(false);
+  // True while we're still waiting on background stream enrichment to settle.
+  // Gates whether a missing stream count reads "loading…" (settling) or "—"
+  // (we've stopped waiting) — so rows never spin forever (reported: GNX /
+  // Not Like Us stuck on "loading…").
+  const [streamsSettling, setStreamsSettling] = useState(false);
+  const retryTimerRef = useRef(null);
+  const retryCountRef = useRef(0);
+  const MAX_STREAM_RETRIES = 3;
 
   async function loadAlbums() {
     setAlbumsLoading(true);
@@ -197,6 +205,20 @@ export function ArtistPage() {
       const data = await api.getArtistAlbums(id);
       setAlbums(data);
       setAlbumsEmpty(data.length === 0);
+
+      // Some releases come back mid-enrichment (no streams yet, status
+      // "pending"). Refetch a few times on a delay so the counts fill in
+      // without a manual reload, then stop — anything still missing falls
+      // back to "—" rather than an indefinite spinner.
+      const anyPending = data.some((a) => !a.streams && a.enrichment_status === "pending");
+      clearTimeout(retryTimerRef.current);
+      if (anyPending && retryCountRef.current < MAX_STREAM_RETRIES) {
+        retryCountRef.current += 1;
+        setStreamsSettling(true);
+        retryTimerRef.current = setTimeout(loadAlbums, 6000);
+      } else {
+        setStreamsSettling(false);
+      }
     } catch {
       setAlbumsEmpty(true);
     } finally {
@@ -210,6 +232,9 @@ export function ArtistPage() {
     setAlbums([]);
     setAlbumsLoading(true);
     setAlbumsEmpty(false);
+    setStreamsSettling(false);
+    retryCountRef.current = 0;
+    clearTimeout(retryTimerRef.current);
 
     // Load artist info + top tracks together (these rarely fail)
     Promise.all([
@@ -225,6 +250,8 @@ export function ArtistPage() {
 
     // Albums fetch is independent — has its own loading/retry state
     loadAlbums();
+
+    return () => clearTimeout(retryTimerRef.current);
   }, [id]);
 
   const sorted = [...albums].sort((a, b) => {
@@ -347,6 +374,12 @@ export function ArtistPage() {
                 Era Score: {formatStreams(totalEraAdjusted)}
               </span>
             )}
+            <span style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", marginTop: 2 }}>
+              Modeled estimate, not recorded data.{" "}
+              <Link to={ROUTES.METHODOLOGY} style={{ color: "var(--text-muted)", textDecoration: "underline" }}>
+                How it works
+              </Link>
+            </span>
           </div>
         )}
 
@@ -534,7 +567,7 @@ export function ArtistPage() {
                             : formatStreams(album.streams)
                         ) : (
                           <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
-                            {album.enrichment_status === "pending" ? "loading…" : "—"}
+                            {streamsSettling && album.enrichment_status === "pending" ? "loading…" : "—"}
                           </span>
                         )}
                       </div>
