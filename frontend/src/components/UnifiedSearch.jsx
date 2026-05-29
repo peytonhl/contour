@@ -10,6 +10,25 @@ function formatDuration(ms) {
   return `${m}:${s}`;
 }
 
+// Collapse duplicate editions of the same release. Spotify lists standard /
+// deluxe / explicit / regional editions as distinct IDs with identical
+// name+artist, so the compare dropdown showed e.g. "good kid, m.A.A.d city"
+// several times. Keep the first occurrence — results arrive popularity-ordered,
+// so that's the canonical edition. Edition-level granularity still lives in the
+// EditionPicker after a pick.
+function dedupeByNameArtist(items) {
+  const seen = new Set();
+  const out = [];
+  for (const it of items) {
+    const artist = Array.isArray(it.artists) ? (it.artists[0] || "") : (it.artists || "");
+    const key = `${(it.name || "").toLowerCase().trim()}|${artist.toLowerCase().trim()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
+}
+
 const styles = {
   wrapper: { display: "flex", flexDirection: "column", gap: 6, position: "relative" },
   input: {
@@ -77,8 +96,8 @@ export function UnifiedSearch({ label, accentColor, selected, onSelect }) {
       try {
         const results = await api.search(val).catch(() => ({ users: [], albums: [], tracks: [] }));
         if (currentQueryRef.current !== val) return;
-        const a = (results.albums || []).slice(0, 8);
-        const t = (results.tracks || []).slice(0, 5);
+        const a = dedupeByNameArtist(results.albums || []).slice(0, 8);
+        const t = dedupeByNameArtist(results.tracks || []).slice(0, 5);
         setAlbums(a);
         setTracks(t);
         setOpen(a.length > 0 || t.length > 0);
