@@ -11,6 +11,25 @@ import { ACCENT_A, ACCENT_B, ACCENT_C, DANGER } from "../theme.js";
 import { albumPath, trackPath, savedComparePath } from "../constants/routes.js";
 const POLL_INTERVAL = 4000;
 
+// Turn a raw thrown-error message into something a user can act on. The most
+// common compare failures are transient — a browser-level "Failed to fetch"
+// (network blip / gateway hiccup / dropped connection) or our own request
+// timeout, both usually a brief Spotify rate-limit on the backend. Surface a
+// reassuring, retry-oriented message for those instead of the raw string.
+function friendlyError(message) {
+  const m = (message || "").toLowerCase();
+  if (m.includes("failed to fetch") || m.includes("timed out") || m.includes("networkerror") || m.includes("load failed")) {
+    return "Couldn't reach the server just now — this is usually a brief hiccup. Give it a moment and try again.";
+  }
+  if (m.includes("not found") || m.includes("404")) {
+    return "Couldn't pull stream data for one of these picks yet. Try again in a moment, or swap in a different album or track.";
+  }
+  if (m.includes("before 2006") || m.includes("422")) {
+    return message; // these 422s are already user-friendly copy from the backend
+  }
+  return `Something went wrong building this comparison (${message}). Try again.`;
+}
+
 // Tag an existing album object (from props) with _type so it fits the unified selection shape
 function tagAlbum(album) {
   return album ? { ...album, _type: "album" } : null;
@@ -350,13 +369,28 @@ export function ComparisonWidget({
         )}
       </div>
 
-      {error && (
+      {error && !loading && (
         <div style={{
           padding: "14px 16px", background: `${DANGER}1a`,
           border: `1px solid ${DANGER}4d`, borderRadius: "var(--radius-md)",
           color: "var(--danger)", fontSize: 13,
+          display: "flex", flexDirection: "column", gap: 10,
         }}>
-          Error: {error}
+          <div style={{ lineHeight: 1.5 }}>{friendlyError(error)}</div>
+          {canCompare && (
+            <div>
+              <button
+                onClick={runComparison}
+                style={{
+                  padding: "8px 18px", background: "transparent",
+                  border: `1px solid ${DANGER}`, borderRadius: "var(--radius-sm)",
+                  color: "var(--danger)", fontWeight: 600, fontSize: 13, cursor: "pointer",
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          )}
         </div>
       )}
 

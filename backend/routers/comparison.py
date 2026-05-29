@@ -240,11 +240,22 @@ async def default_comparison(
         "02JZ3Fonwh7jfHJ2DsRb0j",  # second standard (15 tracks)
     ])
 
+    # NOTE: call every parameter explicitly. compare_albums is a FastAPI route
+    # whose optional params default to Query(...) FieldInfo objects, not None.
+    # When invoked directly as a plain function (as here), any omitted param
+    # keeps its FieldInfo sentinel — and `if track_a_id:` then reads truthy,
+    # sending the stringified FieldInfo to Spotify as a track ID → 400 → the
+    # whole default comparison 500s. Pass None for every unused slot.
     return await compare_albums(
         album_a_id=TFS_ID,
         album_b_id="2tU04u3hxtziB4sOVJKak3",
+        album_c_id=None,
         edition_ids_a=None,
         edition_ids_b=GDLU_IDS,
+        edition_ids_c=None,
+        track_a_id=None,
+        track_b_id=None,
+        track_c_id=None,
         background_tasks=background_tasks,
         db=db,
     )
