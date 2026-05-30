@@ -45,6 +45,13 @@ const BORDER = 'rgba(250, 250, 250, 0.12)';
 const ACCENT = '#d97a3b';
 const GOLD = '#f59e0b';
 
+// Minimum ratings before a taste card has enough signal to render. This is
+// the SINGLE SOURCE OF TRUTH for the floor — the client never hardcodes it.
+// When a user is below it we return a structured 404 (below) carrying this
+// value + their current count, so CardPreviewModal can render an accurate
+// "rate N more cards" nudge that stays correct if this threshold ever moves.
+const TASTE_CARD_MIN_RATINGS = 3;
+
 async function loadFont(family: string, italic = false) {
   const css = await fetch(
     `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:ital@${italic ? 1 : 0}&display=swap`,
@@ -118,12 +125,25 @@ export default async function handler(request: Request) {
     return new Response('Failed to load taste card data', { status: 502 });
   }
 
-  // Soft floor — accounts with < 3 ratings don't have enough signal to
-  // render a useful card. Better to 404 than ship an empty stat sheet
-  // that reflects badly on the share. The frontend hides the share CTA
-  // below this threshold too, but the 404 protects against direct hits.
-  if ((data.total_ratings ?? 0) < 3) {
-    return new Response('Not enough ratings yet', { status: 404 });
+  // Soft floor — accounts below TASTE_CARD_MIN_RATINGS don't have enough
+  // signal to render a useful card. Better to 404 than ship an empty stat
+  // sheet that reflects badly on the share. The share CTA is intentionally
+  // NOT gated client-side (FriendsPage + ProfilePage), so this 404 is the
+  // thing the user actually hits — we return it as structured JSON carrying
+  // the current count + threshold so CardPreviewModal can show an actionable
+  // "rate N more cards" message instead of a misleading "try again" one.
+  // No Cache-Control here on purpose: this 404 must NOT be edge-cached, so
+  // the moment the user crosses the floor their card renders fresh.
+  const ratingsSoFar = data.total_ratings ?? 0;
+  if (ratingsSoFar < TASTE_CARD_MIN_RATINGS) {
+    return new Response(
+      JSON.stringify({
+        error: 'not_enough_ratings',
+        total_ratings: ratingsSoFar,
+        threshold: TASTE_CARD_MIN_RATINGS,
+      }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } },
+    );
   }
 
   const [fontRegular, fontItalic] = await Promise.all([fontPromise, fontItalicPromise]);

@@ -100,6 +100,38 @@ import { ACCENT_A as ACCENT } from "../theme.js";
 //                    + iOS WebView until this bump rotates the key.
 const CARD_VERSION = "21";
 
+// Shown when the PNG fetch fails for a reason we can't make actionable
+// (genuine 5xx, network blip, deleted entity). "In a moment" is honest here
+// because these ARE transient / retryable, unlike the rating-floor case below.
+const GENERIC_FETCH_ERROR = "Couldn't generate card. Try again in a moment.";
+
+// Turn a failed card-fetch Response into a user-facing message. Most OG
+// endpoints return a plain-text body on error, for which we show the generic
+// "try again" line. The taste-card endpoint is special: when the user is
+// below the rating floor it returns a STRUCTURED JSON 404 carrying the live
+// count + threshold, so we can render an accurate, actionable nudge that
+// counts down as the user rates more (the threshold is owned server-side, so
+// this message stays correct across every page even if the floor changes).
+async function friendlyFetchError(r) {
+  try {
+    const ct = r.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      const body = await r.json();
+      if (body?.error === "not_enough_ratings") {
+        const remaining = Math.max(
+          1,
+          (body.threshold ?? 3) - (body.total_ratings ?? 0),
+        );
+        const noun = remaining === 1 ? "card" : "cards";
+        return `Rate ${remaining} more ${noun} to unlock your taste card.`;
+      }
+    }
+  } catch {
+    // Body wasn't readable / not the shape we expected — fall through.
+  }
+  return GENERIC_FETCH_ERROR;
+}
+
 /**
  * Modal preview for a shareable PNG card (review / comparison / hot-take).
  *
@@ -152,8 +184,8 @@ export function CardPreviewModal({
     setError(null);
 
     fetch(versionedCardUrl)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      .then(async (r) => {
+        if (!r.ok) throw new Error(await friendlyFetchError(r));
         return r.blob();
       })
       .then((blob) => {
@@ -161,7 +193,7 @@ export function CardPreviewModal({
         createdUrl = URL.createObjectURL(blob);
         setBlobUrl(createdUrl);
       })
-      .catch((e) => { if (!cancelled) setError(e.message || "Failed to load"); });
+      .catch((e) => { if (!cancelled) setError(e.message || GENERIC_FETCH_ERROR); });
 
     return () => {
       cancelled = true;
@@ -288,7 +320,7 @@ export function CardPreviewModal({
         }}>
           {error ? (
             <div style={{ color: "var(--text-muted)", textAlign: "center", padding: 20, fontSize: 14 }}>
-              Couldn't generate card. Try again in a moment.
+              {error}
             </div>
           ) : blobUrl ? (
             <img

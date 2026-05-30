@@ -86,12 +86,12 @@ export function FriendsPage() {
 
       {/* Share-my-taste-card banner — only for authenticated users. We
           intentionally don't gate by rating count here; the modal fetches
-          the PNG and the edge endpoint 404s under the 3-rating floor.
-          When that happens, CardPreviewModal surfaces a friendly
-          "Couldn't generate card" message inline, which doubles as a
-          nudge to rate more. Cheaper than duplicating the floor on the
-          client (and avoids the bug-class where the client check and
-          server check drift apart on threshold changes). */}
+          the PNG and the edge endpoint returns a structured 404 under the
+          rating floor. CardPreviewModal reads the count + threshold from
+          that response and surfaces an actionable "Rate N more cards to
+          unlock your taste card" nudge inline. The threshold lives only in
+          the edge function (single source of truth), so the client never
+          drifts from the server check on threshold changes. */}
       {user && (
         <div style={{
           maxWidth: 600,
