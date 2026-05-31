@@ -38,11 +38,19 @@ registerReplay("rate", async (p) => {
 });
 
 // ── Review ───────────────────────────────────────────────────────────────────
-// payload: { entityType, entityId, body, name? }. The review text WAS captured
-// (typed in the modal before the gate fired at submit), so this replays cleanly.
+// payload: { entityType, entityId, body, rating?, mentionUserIds?, name? }. The
+// review text + rating were typed before the gate fired at submit, so this
+// replays cleanly — passing the full submitReview signature so the rating and
+// @-mentions captured at compose time survive the round-trip.
 registerReplay("review", async (p) => {
   if (!p.entityId || !p.body) return {};
-  await api.submitReview(p.entityType || "track", p.entityId, p.body);
+  await api.submitReview(
+    p.entityType || "track",
+    p.entityId,
+    p.body,
+    p.rating ?? null,
+    p.mentionUserIds || [],
+  );
   analytics.reviewSubmitted(p.entityType || "track", p.body.length);
   return { toast: `Posted your review${forName(p.name)}` };
 });

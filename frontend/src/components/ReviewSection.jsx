@@ -7,6 +7,7 @@ import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionInput, MentionBody } from "./Mentions.jsx";
 import { LoadMoreButton } from "./LoadMoreButton.jsx";
 import { clearGuestMode } from "./SigninGate.jsx";
+import { requireAuth } from "../services/authGate.js";
 import { ACCENT_A as ACCENT, GOLD, DANGER } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
 import { userPath } from "../constants/routes.js";
@@ -775,7 +776,17 @@ export function ReviewSection({ entityType, entityId, user }) {
   }
 
   async function handleStarClick(val) {
-    if (!user) { promptSignInToRate(); return; }
+    // Guest: capture the rating + open the contextual sheet (replayed after
+    // auth via the "rate" registry). entityId is already the resolved id here.
+    if (!user) {
+      requireAuth({
+        kind: "rate",
+        triggerLabel: "rate",
+        returnTo: window.location.pathname,
+        payload: { entityType, entityId, rating: val },
+      });
+      return;
+    }
     setSelectedRating(val);
     setShowForm(true);
     await api.rateEntity(entityType, entityId, val);
@@ -787,6 +798,24 @@ export function ReviewSection({ entityType, entityId, user }) {
   async function handleSubmitReview(e) {
     e.preventDefault();
     if (!reviewText.trim()) return;
+    // Guest: the review body + rating are typed already, so capture them as the
+    // intent and prompt — after auth the review posts via the "review" registry
+    // without a redo. (The review form only renders for signed-in users today;
+    // this guards the path for when guests can compose, and is harmless now.)
+    if (!user) {
+      requireAuth({
+        kind: "review",
+        triggerLabel: "review",
+        returnTo: window.location.pathname,
+        payload: {
+          entityType, entityId,
+          body: reviewText,
+          rating: selectedRating,
+          mentionUserIds: reviewPickedIds,
+        },
+      });
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
