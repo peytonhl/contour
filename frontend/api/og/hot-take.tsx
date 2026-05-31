@@ -66,7 +66,18 @@ export default async function handler(request) {
   let data;
   try {
     const res = await fetch(`${API_BASE}/ratings/users/${encodeURIComponent(userId)}/hot-take`);
-    if (res.status === 404) return new Response('No hot take to show', { status: 404 });
+    // Backend 404 = the user has no qualifying divergent rating yet (either no
+    // ratings, or none differ >= 1 star from a >= 5-rating community consensus).
+    // Return it as structured JSON (parity with taste-card) so CardPreviewModal
+    // can show an actionable "keep rating" message and tag the failure
+    // reason=no_hot_take instead of a generic not_found. No Cache-Control: this
+    // must not be edge-cached so the card appears the moment a take qualifies.
+    if (res.status === 404) {
+      return new Response(
+        JSON.stringify({ error: 'no_hot_take' }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
     if (!res.ok) return new Response('Failed to load hot take', { status: 502 });
     data = await res.json();
   } catch {

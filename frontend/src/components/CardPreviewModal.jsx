@@ -143,6 +143,14 @@ async function classifyCardError(r) {
           status,
         };
       }
+      if (body?.error === "no_hot_take") {
+        return {
+          message:
+            "No hot take yet — keep rating and we'll surface where your taste splits from the crowd.",
+          reason: "no_hot_take",
+          status,
+        };
+      }
     }
   } catch {
     // Body wasn't readable / not the shape we expected — fall through.
