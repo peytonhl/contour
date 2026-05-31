@@ -337,56 +337,80 @@ async def unified_search(
         background_tasks.add_task(_persist_tracks, spotify_tracks)
 
     # ── Step 3: Merge, deduplicate, return ────────────────────────────────────
+    #
+    # Dedup by BOTH spotify_id AND a (name, primary-artist) variant key. Spotify
+    # routinely returns the same release under multiple IDs — explicit/clean,
+    # single-vs-album, deluxe, regional re-issues — all with the IDENTICAL
+    # displayed name + artist. ID-only dedup let both survive, so the user saw
+    # e.g. two "ICEMAN — Drake — 2026" rows. The variant key collapses those;
+    # the first (most relevant — Spotify results precede DB rows, each already
+    # popularity-ordered) wins. Same (name, artist) key the For You feed's
+    # seen_variants uses. Plain lowercase: exact-name dupes only, so genuinely
+    # distinct titles ("ICEMAN" vs "ICEMAN (Deluxe)") are NOT merged.
+
+    def _variant_key(name: str, artists: list) -> tuple:
+        primary = artists[0] if artists else ""
+        return (str(name or "").strip().lower(), str(primary or "").strip().lower())
 
     seen_album_ids: set[str] = set()
+    seen_album_variants: set[tuple] = set()
     albums: list[AlbumResult] = []
 
+    def _add_album(result: AlbumResult) -> None:
+        vkey = _variant_key(result.name, result.artists)
+        if result.id in seen_album_ids or vkey in seen_album_variants:
+            return
+        seen_album_ids.add(result.id)
+        seen_album_variants.add(vkey)
+        albums.append(result)
+
     for a in spotify_albums:
-        if a["id"] not in seen_album_ids:
-            seen_album_ids.add(a["id"])
-            albums.append(AlbumResult(
-                id=a["id"],
-                name=a["name"],
-                artists=a.get("artists", []),
-                artist_ids=a.get("artist_ids", []),
-                release_date=a.get("release_date", ""),
-                release_date_precision=a.get("release_date_precision", "year"),
-                label=a.get("label"),
-                popularity=a.get("popularity"),
-                image_url=a.get("image_url"),
-                external_url=a.get("external_url"),
-            ))
+        _add_album(AlbumResult(
+            id=a["id"],
+            name=a["name"],
+            artists=a.get("artists", []),
+            artist_ids=a.get("artist_ids", []),
+            release_date=a.get("release_date", ""),
+            release_date_precision=a.get("release_date_precision", "year"),
+            label=a.get("label"),
+            popularity=a.get("popularity"),
+            image_url=a.get("image_url"),
+            external_url=a.get("external_url"),
+        ))
 
     for row in db_album_rows:
-        if row.spotify_id not in seen_album_ids:
-            seen_album_ids.add(row.spotify_id)
-            albums.append(_row_to_album_result(row))
+        _add_album(_row_to_album_result(row))
 
     seen_track_ids: set[str] = set()
+    seen_track_variants: set[tuple] = set()
     tracks: list[TrackResult] = []
 
+    def _add_track(result: TrackResult) -> None:
+        vkey = _variant_key(result.name, result.artists)
+        if result.id in seen_track_ids or vkey in seen_track_variants:
+            return
+        seen_track_ids.add(result.id)
+        seen_track_variants.add(vkey)
+        tracks.append(result)
+
     for t in spotify_tracks:
-        if t["id"] not in seen_track_ids:
-            seen_track_ids.add(t["id"])
-            tracks.append(TrackResult(
-                id=t["id"],
-                name=t["name"],
-                artists=t.get("artists", []),
-                artist_ids=t.get("artist_ids", []),
-                album_name=t.get("album_name", ""),
-                album_id=t.get("album_id"),
-                release_date=t.get("release_date", ""),
-                duration_ms=t.get("duration_ms"),
-                popularity=t.get("popularity"),
-                explicit=t.get("explicit", False),
-                image_url=t.get("image_url"),
-                external_url=t.get("external_url"),
-            ))
+        _add_track(TrackResult(
+            id=t["id"],
+            name=t["name"],
+            artists=t.get("artists", []),
+            artist_ids=t.get("artist_ids", []),
+            album_name=t.get("album_name", ""),
+            album_id=t.get("album_id"),
+            release_date=t.get("release_date", ""),
+            duration_ms=t.get("duration_ms"),
+            popularity=t.get("popularity"),
+            explicit=t.get("explicit", False),
+            image_url=t.get("image_url"),
+            external_url=t.get("external_url"),
+        ))
 
     for row in db_track_rows:
-        if row.spotify_id not in seen_track_ids:
-            seen_track_ids.add(row.spotify_id)
-            tracks.append(_row_to_track_result(row))
+        _add_track(_row_to_track_result(row))
 
     return SearchResponse(
         users=db_user_results,
