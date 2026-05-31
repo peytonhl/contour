@@ -1,15 +1,25 @@
 name: refresh-seed-artists
 
 # Monthly re-derivation of the onboarding artist picker roster
-# (frontend/src/data/seedArtists.js) from the current Deezer per-genre charts.
-# Opens a PR for review — never pushes to master directly, so a human approves
-# the new roster (and the noise filters) before it deploys.
+# (frontend/src/data/seedArtists.js) from the current Apple genre charts.
+#
+# Flow each run:
+#   1. Regenerate the roster (scripts/refresh-seed-artists.mjs) + a quality
+#      report (_quality.json). No change → stop.
+#   2. Gate on a real frontend build (the regenerated file must compile).
+#   3. Open a PR, assign it to Peyton (→ GitHub emails him), label it.
+#   4. Read the quality report:
+#        • autoMergeEligible (low churn, balanced, all photos valid)
+#          → squash-merge to master (auto-deploys via Vercel/Railway).
+#        • otherwise → leave the PR open for review (email already sent).
+#
+# Never force-merges a high-churn / unbalanced month. The first run will be
+# high-churn (hand-curated → chart-derived) and so will wait for review.
 
 on:
   schedule:
-    # 09:00 UTC on the 1st of every month.
-    - cron: "0 9 1 * *"
-  workflow_dispatch: {} # allow manual runs from the Actions tab
+    - cron: "0 9 1 * *" # 09:00 UTC, 1st of each month
+  workflow_dispatch: {} # manual runs from the Actions tab
 
 permissions:
   contents: write
@@ -25,27 +35,48 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Re-derive roster from Deezer charts
+      - name: Re-derive roster from Apple genre charts
         run: node scripts/refresh-seed-artists.mjs
 
-      - name: Verify the regenerated data file parses
-        run: node --input-type=module -e "await import('./frontend/src/data/seedArtists.js'); console.log('seedArtists.js imports OK')"
+      - name: Detect whether the roster changed
+        id: changed
+        run: |
+          if [ -f .seed-refresh-nochange ] || git diff --quiet -- frontend/src/data/seedArtists.js; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No roster change this month."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Open / update PR if the roster changed
+      # ── Build gate — the regenerated data file must compile in a real build.
+      - name: Install frontend deps
+        if: steps.changed.outputs.changed == 'true'
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend (gate)
+        if: steps.changed.outputs.changed == 'true'
+        working-directory: frontend
+        run: npm run build
+
+      - name: Open PR, then auto-merge if low-risk
+        if: steps.changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -f .seed-refresh-nochange ]; then
-            echo "No roster change this month — skipping PR."
-            exit 0
-          fi
-          if git diff --quiet -- frontend/src/data/seedArtists.js; then
-            echo "No file diff — skipping PR."
-            exit 0
-          fi
-
+          set -euo pipefail
           MONTH=$(date -u +%Y-%m)
           BRANCH="chore/refresh-seed-artists-${MONTH}"
+
+          # Pull the merge-decision values out of the quality report up front so
+          # the heredoc below has no fragile inline command substitutions.
+          ELIGIBLE=$(node -e "console.log(require('./_quality.json').autoMergeEligible)")
+          CHURN=$(node -e "console.log(require('./_quality.json').churn)")
+          CAP=$(node -e "console.log(require('./_quality.json').churnThreshold)")
+          ADDED=$(node -e "console.log((require('./_quality.json').added||[]).join(', ')||'(none)')")
+          REMOVED=$(node -e "console.log((require('./_quality.json').removed||[]).join(', ')||'(none)')")
+          KEPT=$(node -e "console.log(require('./_quality.json').keptCount)")
+
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
@@ -53,13 +84,35 @@ jobs:
           git commit -m "Onboarding: monthly seed-artist roster refresh (${MONTH})"
           git push -f origin "$BRANCH"
 
-          # Create the PR if one doesn't already exist for this branch.
+          printf '%s\n' \
+            "Automated monthly re-derivation of the onboarding artist picker roster from the current Apple genre charts. Each artist was validated through /artists/search and dropped unless it resolved to a real artist with a Spotify photo. The frontend build passed on this roster." \
+            "" \
+            "- Kept: ${KEPT}" \
+            "- Added: ${ADDED}" \
+            "- Removed: ${REMOVED}" \
+            "- Churn: ${CHURN} (auto-merge cap ${CAP})" \
+            "- Auto-merge eligible: ${ELIGIBLE}" \
+            "" \
+            "If auto-merge eligible, this PR is squash-merged automatically (deploys the new picker). Otherwise it's held for your review. See scripts/refresh-seed-artists.mjs." \
+            > pr_body.md
+
+          gh label create seed-refresh --color BFD4F2 --description "Monthly onboarding seed-artist refresh" 2>/dev/null || true
           if ! gh pr view "$BRANCH" >/dev/null 2>&1; then
             gh pr create \
-              --base master \
-              --head "$BRANCH" \
+              --base master --head "$BRANCH" \
               --title "Onboarding: monthly seed-artist roster refresh (${MONTH})" \
-              --body "Automated monthly re-derivation of the onboarding artist picker roster from the current Deezer per-genre charts (frontend/src/data/seedArtists.js). Each artist was validated through /artists/search and dropped if it didn't resolve to a real artist with a photo. **Review the added/removed artists before merging** — merging deploys the new picker. See scripts/refresh-seed-artists.mjs."
+              --body-file pr_body.md \
+              --assignee peytonhl \
+              --label seed-refresh
           else
-            echo "PR for $BRANCH already exists — updated the branch."
+            echo "PR for $BRANCH already exists — branch updated."
+          fi
+          rm -f pr_body.md
+
+          if [ "$ELIGIBLE" = "true" ]; then
+            echo "Low-risk change (churn ${CHURN} <= ${CAP}) — auto-merging."
+            sleep 8 # let GitHub compute mergeability before we ask to merge
+            gh pr merge "$BRANCH" --squash --delete-branch
+          else
+            echo "Held for review (churn ${CHURN}). PR left open; Peyton assigned + emailed."
           fi

@@ -6,32 +6,32 @@
 // from Apple's per-genre "Top Songs" RSS feeds, resolves each artist's photo via
 // our own /artists/search endpoint (Spotify CDN, same shape the file already
 // uses), and rewrites ONLY the `export const SEED_ARTISTS = [ … ]` block —
-// leaving the hand-written header docs, SEED_ARTIST_SCENES, and
-// groupedSeedArtists() untouched.
+// leaving the hand-written header docs, scene list, and grouping fn untouched.
 //
 // Run by .github/workflows/refresh-seed-artists.yml on the 1st of each month
-// (and on-demand via workflow_dispatch). The workflow opens a PR; nothing
-// auto-merges, so a human reviews the new roster before it deploys.
+// (and on-demand via workflow_dispatch). The workflow opens a PR, emails Peyton,
+// and AUTO-MERGES only when this script reports the change is low-risk (see the
+// quality report + autoMergeEligible below). High-churn / unbalanced months
+// stay open for human review.
 //
 // WHY APPLE RSS (and not Deezer or Last.fm):
 //   • Deezer's /chart/{genre_id}/artists IGNORES the genre id — every genre
-//     returns the identical global chart, itself full of SEO/spam artists
-//     ("Thao Sam", "BETH COSTANZO"). Verified dead 2026-05-31.
-//   • Last.fm tag.getTopArtists is clean + genre-segmented BUT needs an API key
-//     we don't have configured (no LASTFM_API_KEY in env or repo secrets).
-//   • Apple's legacy iTunes RSS (itunes.apple.com/us/rss/topsongs/genre=ID) is
-//     KEYLESS, genuinely genre-segmented, and reflects what's CURRENTLY charting
-//     — exactly what "re-derive the roster monthly" wants. Verified 2026-05-31.
+//     returns the identical global chart, full of SEO/spam. Verified dead
+//     2026-05-31.
+//   • Last.fm tag.getTopArtists is clean but needs an API key we don't have
+//     configured (no LASTFM_API_KEY in env or repo secrets).
+//   • Apple's legacy iTunes RSS is KEYLESS, genuinely genre-segmented, and
+//     reflects current charts — verified end-to-end 2026-05-31.
 //
-// Apple returns collab labels ("BigXthaPlug & Ella Langley", "Drake, Future &
-// Molly Santana"); we resolve the full label first, then fall back to the
-// primary artist (the segment before & / feat / x). Every candidate is validated
-// through /artists/search and dropped if it doesn't resolve to a real artist
-// with a Spotify photo — the junk filter AND the source of the baked-in image.
+// Apple returns collab labels ("Drake, Future & Molly Santana"); we resolve the
+// full label first, then fall back to the primary artist. Every candidate is
+// validated through /artists/search and dropped unless it resolves to a real
+// artist with a Spotify photo — the junk filter AND the source of the image.
 //
 // No API key required. Local testing:
 //   node scripts/refresh-seed-artists.mjs --dry-run
-//   → writes a preview file; the real seedArtists.js is left untouched.
+//   → writes a preview file + _quality.json; the real seedArtists.js is
+//     left untouched.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import fs from "node:fs";
@@ -39,7 +39,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SEED_FILE = path.join(__dirname, "..", "frontend", "src", "data", "seedArtists.js");
+const REPO_ROOT = path.join(__dirname, "..");
+const SEED_FILE = path.join(REPO_ROOT, "frontend", "src", "data", "seedArtists.js");
+const QUALITY_FILE = path.join(REPO_ROOT, "_quality.json");
 
 const BACKEND = process.env.CONTOUR_BACKEND || "https://contour-production.up.railway.app";
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -61,19 +63,25 @@ const SCENES = [
   { scene: "Latin",                genre: 12, count: 4 },
 ];
 
-// Always-keep pins (escape hatch for hand-curation). Names listed here are
-// force-included in their scene even if they fall off the chart this month.
-// Default empty — the roster is fully chart-derived. Add { name, scene } here
-// if you want a recruiting-community favorite to never drop out.
+// Always-keep pins (escape hatch for hand-curation). Names here are force-
+// included in their scene even if they fall off the chart this month. Default
+// empty — fully chart-derived. Add { name, scene } to protect a favorite.
 const PINS = [
   // { name: "Phoebe Bridgers", scene: "Indie / Alternative" },
 ];
 
-// Sanity floors — if a refresh comes back thinner than this (e.g. Apple feed
-// outage, network blip in CI), ABORT without writing rather than nuke the
-// roster down to a handful. The PR simply won't open that month.
+// Sanity floors — if a refresh comes back thinner than this (Apple outage, CI
+// network blip), ABORT without writing rather than nuke the roster. The PR
+// simply won't open that month.
 const MIN_TOTAL = 30;
 const MIN_PER_SCENE = 3;
+
+// Auto-merge gate. The workflow auto-merges (= auto-deploys) only when the
+// change is LOW-RISK: at most this fraction of the roster churned, all scenes
+// balanced, every artist has a real photo. Bigger shake-ups hold for review.
+// Churn = (added + removed) / (kept + added + removed) — i.e. fraction of the
+// union that changed. 0.35 ≈ "a third of the roster swapped." Tune here.
+const AUTO_MERGE_MAX_CHURN = 0.35;
 
 const SLEEP_MS = 1500; // throttle /artists/search (rate-limited)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -90,10 +98,9 @@ async function getJSONOnce(url, { timeout = 20000, ua = "contour-seed-refresh/1.
   }
 }
 
-// Retry-with-backoff. Both sources (Apple RSS, our /artists/search) can throw a
-// transient 429/503/empty body; an unattended monthly run must ride through
-// that rather than treat it as "this artist doesn't exist" and silently thin
-// the roster. 3 tries, 1.5s → 3s → 6s.
+// Retry-with-backoff. Both sources can throw a transient 429/503/empty body; an
+// unattended monthly run must ride through that rather than treat it as "this
+// artist doesn't exist" and silently thin the roster. 3 tries, 1.5s → 3s → 6s.
 async function getJSON(url, opts = {}) {
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -124,9 +131,7 @@ async function appleGenreArtists(genreId, limit) {
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "");
 
 // "BigXthaPlug & Ella Langley" → "BigXthaPlug"; "Drake, Future & Molly Santana"
-// → "Drake". Leaves a solo name (incl. "Tyler, The Creator", which we resolve
-// as the full label first) untouched. Only used as a fallback when the full
-// label doesn't resolve.
+// → "Drake". Only used as a fallback when the full label doesn't resolve.
 function primaryArtist(label) {
   return String(label)
     .split(/\s+(?:&|feat\.?|featuring|with|x|vs\.?|,)\s+/i)[0]
@@ -134,7 +139,7 @@ function primaryArtist(label) {
 }
 
 // Resolve an artist label to { name (canonical), image } via /artists/search.
-// Tries the full label, then the primary artist. Returns null if neither
+// Tries the full label, then the primary artist. Returns null unless one
 // resolves to a real artist with a Spotify photo — dropping the candidate.
 async function resolveArtist(label) {
   const tries = [label];
@@ -168,7 +173,6 @@ async function buildRoster() {
   const entries = [];
   const seen = new Set(); // dedupe across scenes by canonical name
 
-  // Pins first so a pinned artist claims its slot/scene.
   for (const pin of PINS) {
     const r = await resolveArtist(pin.name);
     await sleep(SLEEP_MS);
@@ -182,7 +186,6 @@ async function buildRoster() {
   }
 
   for (const { scene, genre, count } of SCENES) {
-    // Overfetch (collabs + dupes + unresolvable names thin the list out).
     let names = [];
     try {
       names = await appleGenreArtists(genre, Math.max(count * 4, 25));
@@ -197,7 +200,7 @@ async function buildRoster() {
       const r = await resolveArtist(nm);
       await sleep(SLEEP_MS);
       if (!r) continue;
-      if (seen.has(norm(r.name))) continue; // canonical-name dupe across scenes
+      if (seen.has(norm(r.name))) continue;
       seen.add(norm(r.name));
       entries.push({ name: r.name, scene, image: r.image });
       kept++;
@@ -218,7 +221,6 @@ function renderBlock(entries) {
       lines.push(`  { name: "${esc(e.name)}", scene: "${esc(e.scene)}", image: "${e.image}" },`);
     }
   }
-  // any pinned/unknown scene not in SCENES order, appended
   const known = new Set(SCENES.map((s) => s.scene));
   const extras = entries.filter((e) => !known.has(e.scene));
   if (extras.length) {
@@ -232,8 +234,6 @@ function renderBlock(entries) {
 }
 
 function validateSceneSync(src) {
-  // The scenes we generate must all exist in SEED_ARTIST_SCENES, else the
-  // picker would render them in a trailing fallback section.
   const m = src.match(/export const SEED_ARTIST_SCENES = \[([\s\S]*?)\]/);
   if (!m) throw new Error("SEED_ARTIST_SCENES not found in seed file");
   const declared = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
@@ -243,31 +243,31 @@ function validateSceneSync(src) {
   }
 }
 
+// Names inside the OLD `export const SEED_ARTISTS = [ … ]` block, scoped to the
+// block (NOT the whole file) so header-comment text can't pollute the diff.
+function namesInBlock(block) {
+  return [...block.matchAll(/name:\s*"([^"]+)"/g)].map((m) => m[1]);
+}
+
 async function main() {
   const src = fs.readFileSync(SEED_FILE, "utf8");
   validateSceneSync(src);
 
-  // Locate the existing SEED_ARTISTS array block to replace it in place.
   const startMarker = "export const SEED_ARTISTS = [";
   const startIdx = src.indexOf(startMarker);
   if (startIdx === -1) throw new Error("SEED_ARTISTS marker not found");
   const endIdx = src.indexOf("\n];", startIdx);
   if (endIdx === -1) throw new Error("end of SEED_ARTISTS array not found");
   const before = src.slice(0, startIdx);
+  const oldBlock = src.slice(startIdx, endIdx);
   const after = src.slice(endIdx + 3); // skip "\n];"
 
   console.log(`Refreshing roster from Apple genre charts (backend: ${BACKEND})…`);
   const entries = await buildRoster();
 
-  // Sanity floors.
   const perScene = {};
   for (const e of entries) perScene[e.scene] = (perScene[e.scene] || 0) + 1;
-  if (process.env.SEED_DIAG) {
-    fs.writeFileSync(
-      path.join(__dirname, "..", "_diag.json"),
-      JSON.stringify({ total: entries.length, perScene }, null, 1)
-    );
-  }
+
   const thinScenes = SCENES.filter((s) => (perScene[s.scene] || 0) < MIN_PER_SCENE)
     .map((s) => `${s.scene}=${perScene[s.scene] || 0}`);
   if (entries.length < MIN_TOTAL || thinScenes.length) {
@@ -282,28 +282,54 @@ async function main() {
   const block = renderBlock(entries);
   const next = before + block + after;
 
-  // Count diff vs current for the summary.
-  const oldNames = [...src.matchAll(/name:\s*"([^"]+)"/g)].map((m) => m[1])
-    .filter((n) => src.indexOf(`name: "${n}"`) < src.indexOf("SEED_ARTIST_SCENES"));
+  // ── Diff vs current (block-scoped, correct) ──
+  const oldNames = namesInBlock(oldBlock);
   const newNames = entries.map((e) => e.name);
-  const added = newNames.filter((n) => !oldNames.includes(n));
-  const removed = oldNames.filter((n) => !newNames.includes(n));
+  const oldSet = new Set(oldNames.map(norm));
+  const newSet = new Set(newNames.map(norm));
+  const added = newNames.filter((n) => !oldSet.has(norm(n)));
+  const removed = oldNames.filter((n) => !newSet.has(norm(n)));
+  const kept = oldNames.filter((n) => newSet.has(norm(n))).length;
+  const unionChanged = added.length + removed.length;
+  const churn = unionChanged === 0 ? 0 : unionChanged / (kept + added.length + removed.length);
+
+  const allImagesValid = entries.every((e) => /^https:\/\/i\.scdn\.co\/image\//.test(e.image || ""));
+  const allScenesBalanced = SCENES.every((s) => (perScene[s.scene] || 0) >= MIN_PER_SCENE);
+  const changed = next !== src;
+  const autoMergeEligible =
+    changed && allImagesValid && allScenesBalanced &&
+    entries.length >= MIN_TOTAL && churn <= AUTO_MERGE_MAX_CHURN;
+
+  const quality = {
+    changed,
+    total: entries.length,
+    perScene,
+    added,
+    removed,
+    keptCount: kept,
+    churn: Number(churn.toFixed(3)),
+    churnThreshold: AUTO_MERGE_MAX_CHURN,
+    allImagesValid,
+    allScenesBalanced,
+    autoMergeEligible,
+  };
+  fs.writeFileSync(QUALITY_FILE, JSON.stringify(quality, null, 1));
 
   console.log(`\n── Summary ──`);
-  console.log(`total: ${entries.length}  (added ${added.length}, removed ${removed.length})`);
+  console.log(`total: ${entries.length}  kept ${kept}  added ${added.length}  removed ${removed.length}  churn ${(churn * 100).toFixed(0)}%`);
   if (added.length) console.log(`  + ${added.join(", ")}`);
   if (removed.length) console.log(`  - ${removed.join(", ")}`);
+  console.log(`autoMergeEligible: ${autoMergeEligible} (churn ${(churn * 100).toFixed(0)}% vs cap ${(AUTO_MERGE_MAX_CHURN * 100).toFixed(0)}%, imagesValid ${allImagesValid}, balanced ${allScenesBalanced})`);
 
   if (DRY_RUN) {
-    const tmp = path.join(__dirname, "..", "seedArtists.preview.js");
-    fs.writeFileSync(tmp, next, "utf8");
-    console.log(`\n[dry-run] wrote preview to ${tmp} (real file untouched)`);
+    fs.writeFileSync(path.join(REPO_ROOT, "seedArtists.preview.js"), next, "utf8");
+    console.log(`\n[dry-run] wrote preview + _quality.json (real file untouched)`);
     return;
   }
 
-  if (next === src) {
+  if (!changed) {
     console.log("\nNo change — roster identical to current. Nothing to write.");
-    fs.writeFileSync(path.join(__dirname, "..", ".seed-refresh-nochange"), "1");
+    fs.writeFileSync(path.join(REPO_ROOT, ".seed-refresh-nochange"), "1");
     return;
   }
   fs.writeFileSync(SEED_FILE, next, "utf8");
