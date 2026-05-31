@@ -87,7 +87,9 @@ jobs:
           git push -f origin "$BRANCH"
 
           printf '%s\n' \
-            "Automated monthly re-derivation of the onboarding artist picker roster from the current Apple genre charts. Every artist was kept only if it confidently matched a real Spotify artist with a photo (no first-hit fallback). The frontend build passed on this roster." \
+            "@peytonhl — monthly onboarding seed-artist roster refresh is ready for review." \
+            "" \
+            "Automated re-derivation from the current Apple genre charts. Every artist was kept only if it confidently matched a real Spotify artist with a photo (no first-hit fallback). The frontend build passed on this roster." \
             "" \
             "- Kept: ${KEPT}" \
             "- Added: ${ADDED}" \
@@ -98,18 +100,23 @@ jobs:
             "Scheduled runs auto-merge when quality-eligible (deploys the new picker). Manual runs are always left open for review. See scripts/refresh-seed-artists.mjs." \
             > pr_body.md
 
-          gh label create seed-refresh --color BFD4F2 --description "Monthly onboarding seed-artist refresh" 2>/dev/null || true
+          # Create the PR first with only what pull-requests:write guarantees.
+          # Assignee + label are attached afterward as best-effort so a
+          # permissions hiccup on those can never fail the job or block the
+          # auto-merge. The body @mentions Peyton as a notification fallback.
           if ! gh pr view "$BRANCH" >/dev/null 2>&1; then
             gh pr create \
               --base master --head "$BRANCH" \
               --title "Onboarding: monthly seed-artist roster refresh (${MONTH})" \
-              --body-file pr_body.md \
-              --assignee peytonhl \
-              --label seed-refresh
+              --body-file pr_body.md
           else
             echo "PR for $BRANCH already exists — branch updated."
           fi
           rm -f pr_body.md
+
+          gh label create seed-refresh --color BFD4F2 --description "Monthly onboarding seed-artist refresh" 2>/dev/null || true
+          gh pr edit "$BRANCH" --add-assignee peytonhl || echo "WARN: assign failed (PR open + @mention sent)"
+          gh pr edit "$BRANCH" --add-label seed-refresh || echo "WARN: label failed"
 
           if [ "$ELIGIBLE" = "true" ] && [ "$EVENT_NAME" = "schedule" ]; then
             echo "Scheduled + quality-eligible — auto-merging."
