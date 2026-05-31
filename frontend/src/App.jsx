@@ -3,6 +3,8 @@ import { Routes, Route, useNavigate } from "react-router-dom";
 import { Layout } from "./components/Layout.jsx";
 import { OnboardingModal } from "./components/OnboardingModal.jsx";
 import { SigninGate } from "./components/SigninGate.jsx";
+import { AuthPromptSheet } from "./components/AuthPromptSheet.jsx";
+import { ToastHost } from "./components/ToastHost.jsx";
 import { isNativePlatform } from "./utils/native.js";
 import { ROUTES } from "./constants/routes.js";
 import { api } from "./services/api.js";
@@ -290,6 +292,11 @@ export default function App() {
     <NativeResumeHandler />
     <SigninGate />
     <OnboardingModal />
+    {/* Contextual auth: AuthPromptSheet opens on a gated action (over the
+        current screen); ToastHost confirms a replayed action after sign-in.
+        Both app-level so they survive a Google full-page-redirect auth. */}
+    <AuthPromptSheet />
+    <ToastHost />
     {/* Lazy-loaded routes need a Suspense boundary. Fallback is just a
         bg-coloured div so the previous route's content fades out into
         an empty page-bg surface rather than flashing white while the

@@ -4,6 +4,7 @@ import { api } from "../services/api.js";
 import { analytics, identify, reset } from "../services/analytics.js";
 import { usePushNotifications, unregisterCurrentDevice } from "../services/pushNotifications.js";
 import { clearAllCaches } from "../utils/useCachedFetch.js";
+import { replayPendingIntent } from "../services/authGate.js";
 
 const AuthContext = createContext(null);
 
@@ -92,6 +93,14 @@ export function AuthProvider({ children }) {
     if (isFirstLogin(u.id)) {
       analytics.signupCompleted(provider);
     }
+    // Convergence point for intent preservation: EVERY provider (Google web via
+    // AuthSuccessPage, Google native via the deep-link handler, Apple via the
+    // popup) lands here, so replaying the captured pending intent once here
+    // means no entry point can forget to replay. No-ops when nothing is pending
+    // (the returning-user "Log in" path). Headless — doesn't depend on which
+    // screen we're on. AuthSuccessPage still navigates to the intent's returnTo
+    // so a redirected user lands back on their task showing persisted state.
+    try { await replayPendingIntent(); } catch {}
     return u;
   }
 

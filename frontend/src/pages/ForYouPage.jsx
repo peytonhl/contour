@@ -45,6 +45,7 @@ import { GearIcon, CloseIcon } from "../components/Icons.jsx";
 import { ToggleGroup } from "../components/ToggleGroup.jsx";
 import { ACCENT_A, ACCENT_B, GOLD, DANGER } from "../theme.js";
 import { consumeInitialFeed } from "../services/feedPrefetch.js";
+import { requireAuth } from "../services/authGate.js";
 
 // ── Swipe physics ────────────────────────────────────────────────────────────
 // Helpers used by the touchmove/touchend handlers in ForYouFeed to make the
@@ -760,6 +761,11 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
   }
 
   async function handleRate(value) {
+    // Guests get to USE the picker (not just look at it) — the click flows to
+    // the parent, which fires the contextual sign-in prompt and captures the
+    // rating for replay. Return before the saving/saved/failed UI so a guest
+    // never sees a "Couldn't save" state; the prompt is the feedback.
+    if (!user) { onRate(track, value); return; }
     setRatedValue(value);
     setRatingStatus("saving");
     const ok = await onRate(track, value);
@@ -1420,7 +1426,11 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
         {/* Rating */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {!user ? (
-            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: 0 }}>Sign in to rate</p>
+            // Guests can USE the picker — tapping a star opens the contextual
+            // sign-in prompt (and the rating replays after auth). Previewing the
+            // half-star mechanic is the hook; the prompt is the ask, at the
+            // creative moment.
+            <StarPicker value={ratedValue} onChange={handleRate} disabled={false} />
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <StarPicker value={ratedValue} onChange={handleRate} disabled={ratingStatus === "saving"} />
@@ -2621,6 +2631,28 @@ function ForYouFeed() {
   }
 
   async function handleRate(track, value) {
+    // Contextual auth gate (guest): capture the rating as a pending intent and
+    // open the sign-in sheet over the deck — no full-screen wall, no doomed
+    // 401. We resolve the Spotify id NOW so the replay is self-contained: after
+    // a Google full-page redirect the swipe card is gone, so the replay (in
+    // AuthContext.login) can't depend on it. The user lands on a fresh
+    // personalized feed (reflecting the new rating) + a toast confirming it.
+    if (!user) {
+      const spotifyId = await _resolveSpotifyId(track).catch(() => null);
+      requireAuth({
+        kind: "rate",
+        triggerLabel: "rate",
+        returnTo: "/",
+        payload: {
+          entityType: "track",
+          entityId: spotifyId,
+          rating: value,
+          name: track.name,
+          artist: track.artists?.[0]?.name ?? track.artist,
+        },
+      });
+      return false;
+    }
     // Local cache update happens first so the For You feed's "rate ten
     // tracks" cold-start UX continues to feel responsive even when the
     // backend call hasn't completed yet. The returned boolean tells the

@@ -103,6 +103,17 @@ export const analytics = {
   feedBrowseEntered: (genre_count) =>
     track("feed_browse_entered", { genre_count }),
 
+  // ── Contextual auth funnel (2026-05-31) ───────────────────────────────────
+  // The auth moment is the single highest-risk point in the funnel and is
+  // invisible in most products. `trigger` is which gated action surfaced the
+  // prompt: rate | review | save | card | profile | onboarding. Compare
+  // shown→completed per trigger to see which action converts best AND to catch
+  // any entry point whose intent-preservation is silently broken (a big
+  // shown-without-completed gap at one trigger).
+  signupPromptShown: (trigger) => track("signup_prompt_shown", { trigger }),
+  signupPromptCompleted: (trigger) => track("signup_prompt_completed", { trigger }),
+  signupPromptDismissed: (trigger) => track("signup_prompt_dismissed", { trigger }),
+
   // A shareable card (review / comparison / hot-take / taste-card /
   // taste-match) failed to render in CardPreviewModal. `card_type` is the OG
   // endpoint slug; `reason` is one of not_enough_ratings / no_hot_take /

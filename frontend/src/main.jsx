@@ -8,6 +8,9 @@ import { initAnalytics } from "./services/analytics.js";
 import { registerServiceWorker } from "./sw-register.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { prefetchInitialFeed } from "./services/feedPrefetch.js";
+// Side-effect import: registers every gated-action replay before any auth can
+// complete, so replayPendingIntent() always finds a handler. See replays.js.
+import "./services/replays.js";
 import App from "./App.jsx";
 import "./index.css";
 
