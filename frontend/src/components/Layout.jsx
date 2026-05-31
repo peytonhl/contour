@@ -549,19 +549,19 @@ export function Layout() {
               <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.02em" }}>Profile</span>
             </NavLink>
           ) : (
-            <a
-              href={LOGIN_URL}
-              {...externalLinkProps()}
+            <button
+              onClick={openSignIn}
               style={{
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center",
                 gap: 3, minHeight: 44, padding: "6px 0",
-                textDecoration: "none", color: "var(--text-muted)",
+                background: "none", border: "none", cursor: "pointer",
+                color: "var(--text-muted)", font: "inherit",
               }}
             >
               <PersonIcon />
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.02em" }}>Sign In</span>
-            </a>
+            </button>
           )}
         </div>
       </nav>
