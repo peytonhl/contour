@@ -332,6 +332,13 @@ Two telemetry layers, both opt-in via env vars and both no-op when unconfigured:
 | `spotify_link_clicked` | `entity_type` (`album` / `track` / `artist`) | An open-in-Spotify link is clicked |
 | `content_shared` | `surface` (`album` / `track` / `artist` / `review`), `method` (`native` / `clipboard`) | A `ShareButton` completed a share — fired on resolved native share sheet OR successful clipboard write, NOT on cancellation. `surface` attributes share volume to a feature; `method` distinguishes mobile (native share sheet) vs desktop (clipboard fallback). |
 | `card_generation_failed` | `card_type` (OG endpoint slug, e.g. `taste-card`), `reason` (`not_enough_ratings` / `no_hot_take` / `not_found` / `server_error` / `client_error` / `network_error`), `status` (HTTP status, `null` for network errors) | A shareable card failed to render in `CardPreviewModal`. The most common expected case is a new user opening the taste card below the 3-rating floor (`reason=not_enough_ratings`) or the hot-take card with no divergent rating yet (`reason=no_hot_take`) — track it to measure retention drag from new users hitting these walls vs. genuine render failures. |
+| `feed_audio_failed` | `tier_source`, `media_error_code` (HTMLMediaError code 1–4), `track_id` | A For You preview failed to play. Usual cause is an expired Deezer signed URL (`media_error_code=4`). Previously console-only — this is the core-feed silent-churn signal. |
+| `feed_rating_failed` | `tier_source`, `reason` (`unresolved_track` / `save_error`) | A For You rating updated the local/optimistic UI but failed to persist server-side. Measures silent rating data loss. |
+| `for_you_rating_removed` | `tier_source` | A misclick-recovery un-rate on the For You deck. |
+| `signin_prompted` | `action` (e.g. `rate`), `entity_type` (`album` / `track` / `artist`) | A logged-out user hit a sign-in gate attempting a gated action. Top-of-funnel acquisition signal; pairs with `signup_completed`. |
+| `share_clicked` | `surface` | A share affordance was tapped (intent). The gap vs. `content_shared` (completed) = share abandon/failure rate. |
+
+> **Person properties** (set via `posthog.identify` on login + session restore, see `identifyTraits` in `AuthContext.jsx`): `email`, `display_name`, `rating_count`, `is_admin`, `platform` (`web` / `ios` / `android`). Use these for native PostHog cohorts/retention (e.g. the `rating_count >= 5` calibration cohort) instead of reconstructing segments from event counts.
 
 To add a new event, define a helper on the `analytics` object in
 `frontend/src/services/analytics.js` and call it from the relevant component.

@@ -1314,6 +1314,10 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
                   "[contour] preview audio failed to load:",
                   { code: err?.code, message: err?.message, src: e.currentTarget.src },
                 );
+                // Surface to analytics — the common cause is an expired
+                // Deezer signed URL (code 4), which is otherwise invisible
+                // because mobile users can't see the console.
+                analytics.feedAudioFailed(tierSourceOf(track), err?.code, track.id);
                 setPlaying(false);
               }}
             />
@@ -2638,7 +2642,13 @@ function ForYouFeed() {
     analytics.forYouRated(tier, value);
     try {
       const spotifyId = await _resolveSpotifyId(track);
-      if (!spotifyId) return false;  // Deezer-only track we can't match — surfaces as "Retry"
+      if (!spotifyId) {
+        // Deezer-only track we couldn't map to a Spotify id — surfaces as
+        // "Retry". The optimistic local rating stays, but it never persists
+        // server-side this session, so track the loss.
+        analytics.feedRatingFailed(tier, "unresolved_track");
+        return false;
+      }
 
       // Pass artist_id so the server auto-updates the taste profile on high ratings
       await api.rateEntity("track", spotifyId, value, track.artist_ids?.[0] ?? null);
@@ -2692,6 +2702,9 @@ function ForYouFeed() {
       }
       return true;
     } catch {
+      // The rate API threw (network / server). Local UI already updated
+      // optimistically, so without this the failed persist is invisible.
+      analytics.feedRatingFailed(tier, "save_error");
       return false;
     }
   }

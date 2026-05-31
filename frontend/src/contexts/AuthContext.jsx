@@ -1,10 +1,30 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
 import { api } from "../services/api.js";
 import { analytics, identify, reset } from "../services/analytics.js";
 import { usePushNotifications, unregisterCurrentDevice } from "../services/pushNotifications.js";
 import { clearAllCaches } from "../utils/useCachedFetch.js";
 
 const AuthContext = createContext(null);
+
+// PostHog person properties set on every identify (login + session restore).
+// These back native PostHog cohorts/retention so we don't have to reconstruct
+// segments from event counts — e.g. "users with rating_count >= 5" for the
+// calibration cohort, or platform splits (web vs iOS vs Android shell).
+// Point-in-time at identify, but identify runs on each app launch so they
+// stay reasonably fresh. (No signup_date yet — /auth/me doesn't return
+// created_at; would need a backend field to add it.)
+function identifyTraits(u) {
+  let platform = "web";
+  try { platform = Capacitor.getPlatform(); } catch { /* non-Capacitor web */ }
+  return {
+    email: u.email,
+    display_name: u.display_name,
+    rating_count: u.rating_count ?? 0,
+    is_admin: !!u.is_admin,
+    platform,
+  };
+}
 
 // Per-device flag: lets us distinguish a first login on this device (treated as
 // signup_completed) from subsequent logins. Misclassifies "logs in on a new
@@ -31,7 +51,7 @@ export function AuthProvider({ children }) {
     api.getMe(token)
       .then((u) => {
         setUser(u);
-        identify(u.id, { email: u.email });
+        identify(u.id, identifyTraits(u));
       })
       .catch((err) => {
         // ONLY drop the token on a genuine 401 (Unauthorized — token
@@ -68,7 +88,7 @@ export function AuthProvider({ children }) {
     try { window.dispatchEvent(new CustomEvent("contour:guest-mode-changed")); } catch {}
     const u = await api.getMe(token);
     setUser(u);
-    identify(u.id, { email: u.email });
+    identify(u.id, identifyTraits(u));
     if (isFirstLogin(u.id)) {
       analytics.signupCompleted(provider);
     }

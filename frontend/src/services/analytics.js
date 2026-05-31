@@ -112,4 +112,31 @@ export const analytics = {
   // eligibility gate vs. genuine render failures.
   cardGenerationFailed: (card_type, reason, status) =>
     track("card_generation_failed", { card_type, reason, status }),
+
+  // ── Failure / friction monitoring (2026-05-31) ────────────────────────────
+  // A For You preview failed to play. The usual cause is an expired Deezer
+  // Akamai-signed URL (hdnea=exp=…) surfacing as MEDIA_ERR_SRC_NOT_SUPPORTED
+  // (code 4) — previously console-only, so silent churn from the core feed.
+  // `media_error_code` is the HTMLMediaError code (1–4).
+  feedAudioFailed: (tier_source, media_error_code, track_id) =>
+    track("feed_audio_failed", { tier_source, media_error_code, track_id }),
+  // A For You rating failed to PERSIST to the backend. `reason` is
+  // `unresolved_track` (Deezer-only track we couldn't map to a Spotify id) or
+  // `save_error` (the rate API threw). The local/optimistic UI still updated,
+  // so this is otherwise invisible — it measures rating data loss.
+  feedRatingFailed: (tier_source, reason) =>
+    track("feed_rating_failed", { tier_source, reason }),
+  // A misclick-recovery un-rate on the For You deck.
+  forYouRatingRemoved: (tier_source) =>
+    track("for_you_rating_removed", { tier_source }),
+
+  // ── Intent signals (previously ghost calls that silently no-op'd) ─────────
+  // A sign-in gate was shown to a logged-out user attempting a gated action.
+  // `action` = what they tried (e.g. "rate"); `entity_type` = album/track/artist.
+  // Top-of-funnel acquisition signal — pairs with signup_completed.
+  signinPrompted: (action, entity_type) =>
+    track("signin_prompted", { action, entity_type }),
+  // A share affordance was TAPPED (intent), distinct from content_shared which
+  // only fires on a completed share. The gap between them = abandon/failure rate.
+  shareClicked: (surface) => track("share_clicked", { surface }),
 };
