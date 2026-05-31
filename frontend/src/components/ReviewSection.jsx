@@ -6,7 +6,6 @@ import { ReportModal } from "./ReportModal.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionInput, MentionBody } from "./Mentions.jsx";
 import { LoadMoreButton } from "./LoadMoreButton.jsx";
-import { clearGuestMode } from "./SigninGate.jsx";
 import { requireAuth } from "../services/authGate.js";
 import { ACCENT_A as ACCENT, GOLD, DANGER } from "../theme.js";
 import { imageThumb, imageMedium } from "../utils/imageVariants.js";
@@ -763,16 +762,6 @@ export function ReviewSection({ entityType, entityId, user }) {
     } finally {
       setLoadingMoreReviews(false);
     }
-  }
-
-  // Guests can hover the stars to preview the half-star mechanic, but a click
-  // can't persist anything — so surface the sign-in gate instead of silently
-  // no-op'ing. clearGuestMode + the event re-show the full-screen SigninGate
-  // (App-level), which listens for this exact event.
-  function promptSignInToRate() {
-    analytics.signinPrompted?.("rate", entityType);
-    clearGuestMode();
-    try { window.dispatchEvent(new CustomEvent("contour:guest-mode-changed")); } catch {}
   }
 
   async function handleStarClick(val) {
