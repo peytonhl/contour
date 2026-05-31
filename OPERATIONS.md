@@ -349,6 +349,103 @@ You never touch this manually. Two implications:
   intended commit (verify with `git ls-remote --tags origin`), the build
   is correct.
 
+### Rebuild vs. web push — the precise rule
+
+The question that decides everything: **does the change alter the native
+binary (compiled code, native config, or bundled assets), or only the web
+content the shell loads live?** That line *is* the rebuild line.
+
+**Just push — no rebuild, no version bump, instant on both platforms:**
+anything under `frontend/src/**` (React, CSS, pages, routes, new web
+features, bug fixes) or `backend/**` (API, logic, DB, migrations). Pushed
+to `master` → Vercel/Railway deploy → both apps load it on next launch.
+The store-facing version string stays frozen for months while the app
+iterates daily.
+
+**Requires a native rebuild + store submission** (see "When you actually
+need a new IPA rebuild" above for the full trigger list): a new/updated
+Capacitor plugin, app icon, splash, native permission, entitlement, deep
+link scheme, a `capacitor.config.json` *native* section (incl.
+`server.url`), or a Capacitor/SDK bump.
+
+**The nuance that saves most rebuilds — already-bundled plugins are free.**
+A rebuild adds a *capability*; it is not needed to *use* one already
+compiled into the installed binary. Once a plugin ships in the shell, you
+can build entire features against it with web-only pushes. Currently
+bundled (as of the v3 Android build / matching iOS shell):
+
+| Plugin | Free-via-web-push features |
+|---|---|
+| `@capacitor/share` | any share flow |
+| `@capacitor/filesystem` | save/read/cache files |
+| `@capacitor-community/media` | save image/video to camera roll |
+| `@capacitor/push-notifications` | new notification types + tap routing |
+| `@capacitor/app` | lifecycle + open-URL handling |
+| `@capacitor/splash-screen` | programmatic splash control |
+
+Anything *not* in that list (camera, geolocation, contacts, biometrics,
+IAP, calendar, BLE) needs a rebuild to add the plugin. Strategy: bundle
+the plugins you anticipate now, then ship features against them via web
+for months. Caveat: a bundled plugin still fails at runtime if its
+**permission** wasn't declared in the manifest/plist at build time —
+declare permissions when you rebuild, even for features shipping later.
+
+Gut-check: touched only `frontend/src/**` or `backend/**` → push, no
+version change. Touched `capacitor.config.json`, `android/`, `ios/`,
+plugin deps in `package.json`, icons, or entitlements → rebuild + bump
+version + submit.
+
+### Android rebuild (local AAB)
+
+The Android analogue of the iOS/Codemagic flow, but built locally on
+Windows (no CI yet). Always in this order — **skipping `cap sync` ships a
+stale config/bundle** (this exact mistake shipped a months-old build that
+predated `server.url`; see the cap-sync memory note):
+
+```bash
+cd frontend
+# 1. (if web changed) build web assets — usually skippable since server.url
+#    loads live; the bundled copy is only a dead fallback.
+npm run build
+# 2. Sync root capacitor.config.json + dist into the native project.
+#    This is what writes server.url into android/app/src/main/assets/.
+npx cap sync android
+# 3. Bump versionCode in frontend/android/app/build.gradle (MUST be higher
+#    than the last value uploaded to Play, or Play rejects the duplicate).
+# 4. Build the signed AAB (JDK = Android Studio's bundled JBR).
+cd android
+JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" \
+  PATH="$JAVA_HOME/bin:$PATH" ./gradlew bundleRelease
+```
+
+Output: `frontend/android/app/build/outputs/bundle/release/app-release.aab`.
+A real rebuild shows tasks "executed", not "UP-TO-DATE". Signing is
+automatic via `frontend/android/keystore.properties` (the upload key;
+Google re-signs with the Play app-signing key). Upload the AAB under
+**Play Console → Testing → Internal testing → Create new release**.
+
+### App icon (launcher icon) — NOT set in any web UI
+
+The home-screen launcher icon is baked into the AAB/IPA from project
+resources — it is **not** the Play Console "app icon" field (that 512×512
+field is only the *store-listing* thumbnail). To change the actual app
+icon:
+
+```bash
+cd frontend
+# Source logo lives at frontend/assets/icon.png (1024×1024).
+npx capacitor-assets generate --android   # regenerates mipmap-* + splash
+```
+
+Then **verify the adaptive icon** (Android 8+ uses a separate `_foreground`
+layer over a `_background` color): the generator may leave the adaptive
+background white while the foreground PNG has its own dark backdrop, which
+shows white seams under squircle/parallax masks. Fix is to set
+`android/app/src/main/res/values/ic_launcher_background.xml` to the brand
+dark `#08080a` so the adaptive background blends with the foreground. Read
+a generated `mipmap-xxxhdpi/ic_launcher.png` to confirm the logo isn't
+cropped. Icon change = native change → rebuild the AAB (above) and submit.
+
 ---
 
 ## Domain migration runbook
