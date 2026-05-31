@@ -1,0 +1,65 @@
+name: refresh-seed-artists
+
+# Monthly re-derivation of the onboarding artist picker roster
+# (frontend/src/data/seedArtists.js) from the current Deezer per-genre charts.
+# Opens a PR for review — never pushes to master directly, so a human approves
+# the new roster (and the noise filters) before it deploys.
+
+on:
+  schedule:
+    # 09:00 UTC on the 1st of every month.
+    - cron: "0 9 1 * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Re-derive roster from Deezer charts
+        run: node scripts/refresh-seed-artists.mjs
+
+      - name: Verify the regenerated data file parses
+        run: node --input-type=module -e "await import('./frontend/src/data/seedArtists.js'); console.log('seedArtists.js imports OK')"
+
+      - name: Open / update PR if the roster changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f .seed-refresh-nochange ]; then
+            echo "No roster change this month — skipping PR."
+            exit 0
+          fi
+          if git diff --quiet -- frontend/src/data/seedArtists.js; then
+            echo "No file diff — skipping PR."
+            exit 0
+          fi
+
+          MONTH=$(date -u +%Y-%m)
+          BRANCH="chore/refresh-seed-artists-${MONTH}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add frontend/src/data/seedArtists.js
+          git commit -m "Onboarding: monthly seed-artist roster refresh (${MONTH})"
+          git push -f origin "$BRANCH"
+
+          # Create the PR if one doesn't already exist for this branch.
+          if ! gh pr view "$BRANCH" >/dev/null 2>&1; then
+            gh pr create \
+              --base master \
+              --head "$BRANCH" \
+              --title "Onboarding: monthly seed-artist roster refresh (${MONTH})" \
+              --body "Automated monthly re-derivation of the onboarding artist picker roster from the current Deezer per-genre charts (frontend/src/data/seedArtists.js). Each artist was validated through /artists/search and dropped if it didn't resolve to a real artist with a photo. **Review the added/removed artists before merging** — merging deploys the new picker. See scripts/refresh-seed-artists.mjs."
+          else
+            echo "PR for $BRANCH already exists — updated the branch."
+          fi
