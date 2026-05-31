@@ -2,7 +2,7 @@ import { NavLink, Outlet, Link, useLocation, useNavigate } from "react-router-do
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { api } from "../services/api.js";
-import { userAvatar } from "../utils/userAvatar.js";
+import { userAvatar, avatarOnError } from "../utils/userAvatar.js";
 import { AppleSignInButton } from "./AppleSignInButton.jsx";
 import { BellIcon } from "./Icons.jsx";
 import { logSilentError } from "../utils/observability.js";
@@ -409,7 +409,7 @@ export function Layout() {
           )}
           {loading ? null : user ? (
             <Link to={ROUTES.PROFILE} style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-              <img src={userAvatar(user, 56)} alt={user.display_name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
+              <img src={userAvatar(user, 56)} referrerPolicy="no-referrer" onError={avatarOnError(user, 56)} alt={user.display_name} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
               <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{user.display_name}</span>
             </Link>
           ) : (
@@ -544,7 +544,7 @@ export function Layout() {
                 transition: "color 0.12s",
               })}
             >
-              <img src={userAvatar(user, 48)} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", border: "1.5px solid var(--border)" }} />
+              <img src={userAvatar(user, 48)} referrerPolicy="no-referrer" onError={avatarOnError(user, 48)} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", border: "1.5px solid var(--border)" }} />
               <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.02em" }}>Profile</span>
             </NavLink>
           ) : (

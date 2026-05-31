@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
-import { userAvatar } from "../utils/userAvatar.js";
+import { userAvatar, avatarOnError } from "../utils/userAvatar.js";
 import { ACCENT_A as ACCENT } from "../theme.js";
 import { tasteMatchPath } from "../constants/routes.js";
 
@@ -158,7 +158,7 @@ export function CompareTastePicker({ open, onClose }) {
               }}
             >
               <img
-                src={userAvatar(u, 80)}
+                src={userAvatar(u, 80)} referrerPolicy="no-referrer" onError={avatarOnError(u, 80)}
                 alt=""
                 style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
               />

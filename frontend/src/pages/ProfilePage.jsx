@@ -5,7 +5,7 @@ import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { StatTabs } from "../components/StatTabs.jsx";
-import { userAvatar } from "../utils/userAvatar.js";
+import { userAvatar, avatarOnError } from "../utils/userAvatar.js";
 import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { MentionBody } from "../components/Mentions.jsx";
@@ -453,7 +453,7 @@ export function ProfilePage() {
               padding: 2,
             }}>
               <img
-                src={userAvatar(profile ?? user, 200)}
+                src={userAvatar(profile ?? user, 200)} referrerPolicy="no-referrer" onError={avatarOnError(profile ?? user, 200)}
                 alt={user.display_name}
                 style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", display: "block", border: "3px solid var(--bg)" }}
               />

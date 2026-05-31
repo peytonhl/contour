@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
-import { userAvatar } from "../utils/userAvatar.js";
+import { userAvatar, avatarOnError } from "../utils/userAvatar.js";
 import { CardPreviewModal } from "../components/CardPreviewModal.jsx";
 import { ACCENT_A as ACCENT, ACCENT_B, GOLD } from "../theme.js";
 import { ROUTES, userPath, albumPath, trackPath } from "../constants/routes.js";
@@ -10,7 +10,7 @@ import { ROUTES, userPath, albumPath, trackPath } from "../constants/routes.js";
 function Avatar({ user, size = 88, ring }) {
   return (
     <img
-      src={userAvatar(user, size * 2)}
+      src={userAvatar(user, size * 2)} referrerPolicy="no-referrer" onError={avatarOnError(user, size * 2)}
       alt={user?.display_name || ""}
       style={{
         width: size,

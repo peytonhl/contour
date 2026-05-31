@@ -7,7 +7,7 @@ import { requireAuth } from "../services/authGate.js";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { BlockButton } from "../components/BlockButton.jsx";
 import { StatTabs } from "../components/StatTabs.jsx";
-import { userAvatar } from "../utils/userAvatar.js";
+import { userAvatar, avatarOnError } from "../utils/userAvatar.js";
 import { BadgeMark } from "../components/Badges.jsx";
 import { BacklogTabContent } from "../components/BacklogTabContent.jsx";
 import { EmptyHint } from "../components/Skeleton.jsx";
@@ -316,7 +316,7 @@ export function UserPage() {
           padding: 2, flexShrink: 0,
         }}>
           <img
-            src={userAvatar(profile, 180)}
+            src={userAvatar(profile, 180)} referrerPolicy="no-referrer" onError={avatarOnError(profile, 180)}
             alt={profile.display_name}
             style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", display: "block", border: "3px solid var(--bg)" }}
           />
