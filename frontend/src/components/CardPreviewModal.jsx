@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { shareCard, saveCard } from "../utils/share.js";
 import { ACCENT_A as ACCENT } from "../theme.js";
+import { analytics } from "../services/analytics.js";
 
 // Version stamp appended to every OG card URL. Bump this when the card
 // design changes meaningfully — the OG handler sends Cache-Control with
@@ -105,14 +106,27 @@ const CARD_VERSION = "21";
 // because these ARE transient / retryable, unlike the rating-floor case below.
 const GENERIC_FETCH_ERROR = "Couldn't generate card. Try again in a moment.";
 
-// Turn a failed card-fetch Response into a user-facing message. Most OG
-// endpoints return a plain-text body on error, for which we show the generic
-// "try again" line. The taste-card endpoint is special: when the user is
-// below the rating floor it returns a STRUCTURED JSON 404 carrying the live
-// count + threshold, so we can render an accurate, actionable nudge that
-// counts down as the user rates more (the threshold is owned server-side, so
-// this message stays correct across every page even if the floor changes).
-async function friendlyFetchError(r) {
+// Pull the card type out of an OG URL ("/api/og/taste-card?..." → "taste-card")
+// so the failure event can be sliced per card in PostHog. Falls back to
+// "unknown" for any URL shape we don't recognize.
+function cardTypeFromUrl(url) {
+  const m = /\/api\/og\/([a-z-]+)/i.exec(url || "");
+  return m ? m[1] : "unknown";
+}
+
+// Classify a failed card-fetch Response into { message, reason, status }.
+// `message` is what the user sees; `reason` + `status` are what we report to
+// analytics so we can measure how often (and why) card generation fails.
+//
+// Most OG endpoints return a plain-text body on error, which maps to the
+// generic "try again" line + an http-status-derived reason. The taste-card
+// endpoint is special: below the rating floor it returns a STRUCTURED JSON 404
+// carrying the live count + threshold, so we render an accurate, actionable
+// nudge that counts down as the user rates more (the threshold is owned
+// server-side, so this message stays correct across every page even if the
+// floor changes) and tag the failure as `not_enough_ratings`.
+async function classifyCardError(r) {
+  const status = r.status;
   try {
     const ct = r.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
@@ -123,13 +137,21 @@ async function friendlyFetchError(r) {
           (body.threshold ?? 3) - (body.total_ratings ?? 0),
         );
         const noun = remaining === 1 ? "card" : "cards";
-        return `Rate ${remaining} more ${noun} to unlock your taste card.`;
+        return {
+          message: `Rate ${remaining} more ${noun} to unlock your taste card.`,
+          reason: "not_enough_ratings",
+          status,
+        };
       }
     }
   } catch {
     // Body wasn't readable / not the shape we expected — fall through.
   }
-  return GENERIC_FETCH_ERROR;
+  // Map the HTTP status to a coarse reason so failures stay groupable even
+  // without a structured body.
+  const reason =
+    status >= 500 ? "server_error" : status === 404 ? "not_found" : "client_error";
+  return { message: GENERIC_FETCH_ERROR, reason, status };
 }
 
 /**
@@ -185,7 +207,12 @@ export function CardPreviewModal({
 
     fetch(versionedCardUrl)
       .then(async (r) => {
-        if (!r.ok) throw new Error(await friendlyFetchError(r));
+        if (!r.ok) {
+          const info = await classifyCardError(r);
+          const err = new Error(info.message);
+          err.cardError = info;  // structured info for the catch → analytics
+          throw err;
+        }
         return r.blob();
       })
       .then((blob) => {
@@ -193,7 +220,20 @@ export function CardPreviewModal({
         createdUrl = URL.createObjectURL(blob);
         setBlobUrl(createdUrl);
       })
-      .catch((e) => { if (!cancelled) setError(e.message || GENERIC_FETCH_ERROR); });
+      .catch((e) => {
+        if (cancelled) return;
+        // A network/CORS failure rejects before we get a Response, so there's
+        // no cardError attached — classify it as network_error with no status.
+        const info = e.cardError || {
+          message: e.message || GENERIC_FETCH_ERROR,
+          reason: "network_error",
+          status: null,
+        };
+        setError(info.message);
+        // Measure how often (and why) card generation fails — e.g. new users
+        // hitting the taste-card rating floor (reason="not_enough_ratings").
+        analytics.cardGenerationFailed(cardTypeFromUrl(cardUrl), info.reason, info.status);
+      });
 
     return () => {
       cancelled = true;

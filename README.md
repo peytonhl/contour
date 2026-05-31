@@ -331,6 +331,7 @@ Two telemetry layers, both opt-in via env vars and both no-op when unconfigured:
 | `apple_music_link_clicked` | `entity_type` | A "Play on Apple Music" button is clicked |
 | `spotify_link_clicked` | `entity_type` (`album` / `track` / `artist`) | An open-in-Spotify link is clicked |
 | `content_shared` | `surface` (`album` / `track` / `artist` / `review`), `method` (`native` / `clipboard`) | A `ShareButton` completed a share — fired on resolved native share sheet OR successful clipboard write, NOT on cancellation. `surface` attributes share volume to a feature; `method` distinguishes mobile (native share sheet) vs desktop (clipboard fallback). |
+| `card_generation_failed` | `card_type` (OG endpoint slug, e.g. `taste-card`), `reason` (`not_enough_ratings` / `not_found` / `server_error` / `client_error` / `network_error`), `status` (HTTP status, `null` for network errors) | A shareable card failed to render in `CardPreviewModal`. The most common expected case is a new user opening the taste card below the 3-rating floor (`reason=not_enough_ratings`) — track it to measure retention drag from new users hitting the wall vs. genuine render failures. |
 
 To add a new event, define a helper on the `analytics` object in
 `frontend/src/services/analytics.js` and call it from the relevant component.

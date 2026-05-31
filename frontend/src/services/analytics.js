@@ -82,4 +82,13 @@ export const analytics = {
   trendingPageViewed: () => track("trending_page_viewed"),
   onboardingStepCompleted: (step_name, skipped) =>
     track("onboarding_step_completed", { step_name, skipped }),
+
+  // A shareable card (review / comparison / hot-take / taste-card /
+  // taste-match) failed to render in CardPreviewModal. `card_type` is the OG
+  // endpoint slug; `reason` is one of not_enough_ratings / not_found /
+  // server_error / client_error / network_error; `status` is the HTTP status
+  // (null for network failures). Lets us measure retention drag from new
+  // users hitting the taste-card rating floor vs. genuine render failures.
+  cardGenerationFailed: (card_type, reason, status) =>
+    track("card_generation_failed", { card_type, reason, status }),
 };
