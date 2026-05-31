@@ -321,7 +321,7 @@ export function SearchPage() {
                       <InlineRate
                         entityType={item._type}
                         entityId={item.id}
-                        onSaved={() => analytics.ratingSubmitted?.(item._type, item.id, null)}
+                        onSaved={(v) => analytics.ratingSubmitted?.(item._type, item.id, v)}
                       />
                     )}
 

@@ -420,7 +420,10 @@ export function OnboardingModal() {
   // completion with 0 picks for the funnel.
   function finishGenrePickerStep(skip = false) {
     const picks = skip ? [] : selectedGenres;
-    analytics.onboardingStepCompleted("genre_picker", skip);
+    // `skipped` = "no genre signal provided", consistent with finishArtistStep.
+    // Keyed off the actual pick count, not which button was tapped, so a user
+    // who hits Continue with nothing selected is correctly counted as skipped.
+    analytics.onboardingStepCompleted("genre_picker", picks.length === 0);
     analytics.onboardingSeeded("genre", picks.length);
     if (picks.length > 0) {
       setSavingGenres(true);
