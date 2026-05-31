@@ -600,7 +600,7 @@ export function OnboardingModal() {
                   cursor: "pointer",
                 }}
               >
-                None of these — pick by genre
+                None of these: pick a genre
               </button>
             </>
           )}
