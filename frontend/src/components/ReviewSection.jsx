@@ -950,9 +950,10 @@ export function ReviewSection({ entityType, entityId, user }) {
             <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Rate this</span>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {/* Guests get the real interactive selector to preview the
-                  half-star mechanic; a click opens the sign-in gate rather
-                  than saving (handled in promptSignInToRate). */}
-              <Stars value={hover ?? 0} size={28} interactive onHover={setHover} onClick={promptSignInToRate} />
+                  half-star mechanic; a click routes through handleStarClick →
+                  requireAuth, which captures the rating and opens the
+                  contextual sign-in sheet (replayed after auth). */}
+              <Stars value={hover ?? 0} size={28} interactive onHover={setHover} onClick={handleStarClick} />
               <span style={{ fontSize: 13, color: hover ? GOLD : "var(--text-muted)" }}>
                 {hover ? `${hover} / 5 · sign in to save` : "Tap a star — sign in to save"}
               </span>
