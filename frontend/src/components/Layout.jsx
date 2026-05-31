@@ -6,7 +6,6 @@ import { userAvatar } from "../utils/userAvatar.js";
 import { AppleSignInButton } from "./AppleSignInButton.jsx";
 import { BellIcon } from "./Icons.jsx";
 import { logSilentError } from "../utils/observability.js";
-import { withNativeAuthFlag, externalLinkProps } from "../utils/native.js";
 import { ACCENT_A, ACCENT_B } from "../theme.js";
 import { ROUTES } from "../constants/routes.js";
 
@@ -415,15 +414,15 @@ export function Layout() {
             </Link>
           ) : (
             <>
-              <a href={LOGIN_URL} {...externalLinkProps()} style={{
+              <button onClick={openSignIn} style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "6px 14px", background: "#fff", borderRadius: "var(--radius-xl)",
-                color: "#3c3c3c", fontSize: 12, fontWeight: 600, textDecoration: "none",
+                color: "#3c3c3c", fontSize: 12, fontWeight: 600, cursor: "pointer",
                 border: "1px solid #dadce0",
               }}>
                 <GoogleIcon size={16} />
-                Sign in with Google
-              </a>
+                Sign In
+              </button>
               <AppleSignInButton />
             </>
           )}
@@ -480,15 +479,15 @@ export function Layout() {
               bell stays — /notifications is a distinct surface. */}
           {!loading && !user && (
             <>
-              <a href={LOGIN_URL} {...externalLinkProps()} style={{
+              <button onClick={openSignIn} style={{
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "5px 10px", background: "#fff", borderRadius: "var(--radius-xl)",
-                color: "#3c3c3c", fontSize: 11, fontWeight: 600, textDecoration: "none",
+                color: "#3c3c3c", fontSize: 11, fontWeight: 600, cursor: "pointer",
                 border: "1px solid #dadce0",
               }}>
                 <GoogleIcon size={13} />
                 Sign in
-              </a>
+              </button>
               <AppleSignInButton size="small" />
             </>
           )}
