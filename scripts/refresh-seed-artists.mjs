@@ -10,9 +10,8 @@
 //
 // Run by .github/workflows/refresh-seed-artists.yml on the 1st of each month
 // (and on-demand via workflow_dispatch). The workflow opens a PR, emails Peyton,
-// and AUTO-MERGES only when this script reports the change is low-risk (see the
-// quality report + autoMergeEligible below). High-churn / unbalanced months
-// stay open for human review.
+// and — on SCHEDULED runs only — auto-merges when the change is clean
+// (autoMergeEligible below). Manual runs always open a PR for review.
 //
 // WHY APPLE RSS (and not Deezer or Last.fm):
 //   • Deezer's /chart/{genre_id}/artists IGNORES the genre id — every genre
@@ -23,10 +22,19 @@
 //   • Apple's legacy iTunes RSS is KEYLESS, genuinely genre-segmented, and
 //     reflects current charts — verified end-to-end 2026-05-31.
 //
-// Apple returns collab labels ("Drake, Future & Molly Santana"); we resolve the
-// full label first, then fall back to the primary artist. Every candidate is
-// validated through /artists/search and dropped unless it resolves to a real
-// artist with a Spotify photo — the junk filter AND the source of the image.
+// FAKE-ARTIST GUARD: Apple returns collab labels ("Drake, Future & Molly
+// Santana") and the occasional SEO oddity. Every candidate is resolved through
+// /artists/search and kept ONLY when it CONFIDENTLY matches a real Spotify
+// artist (exact normalized name, or one name a clean substring of the other)
+// AND that artist has a Spotify photo. We do NOT fall back to "first search
+// hit" — that was the path that let a mis-resolved/wrong artist slip in. Names
+// that don't confidently resolve are dropped.
+//
+// Honest limit: Spotify strips artist popularity at our API tier, so a name
+// that's genuinely charting but obscure can still pass (it's a real artist with
+// a real photo — just not famous). Chart-order bias (we take the top of each
+// genre feed), the monthly PR review, and the PINS list are the safeguards for
+// that; this script can't rank by fame.
 //
 // No API key required. Local testing:
 //   node scripts/refresh-seed-artists.mjs --dry-run
@@ -71,17 +79,10 @@ const PINS = [
 ];
 
 // Sanity floors — if a refresh comes back thinner than this (Apple outage, CI
-// network blip), ABORT without writing rather than nuke the roster. The PR
-// simply won't open that month.
+// network blip, or the confident-match filter dropping too much), ABORT without
+// writing rather than nuke the roster. The PR simply won't open that month.
 const MIN_TOTAL = 30;
 const MIN_PER_SCENE = 3;
-
-// Auto-merge gate. The workflow auto-merges (= auto-deploys) only when the
-// change is LOW-RISK: at most this fraction of the roster churned, all scenes
-// balanced, every artist has a real photo. Bigger shake-ups hold for review.
-// Churn = (added + removed) / (kept + added + removed) — i.e. fraction of the
-// union that changed. 0.35 ≈ "a third of the roster swapped." Tune here.
-const AUTO_MERGE_MAX_CHURN = 0.35;
 
 const SLEEP_MS = 1500; // throttle /artists/search (rate-limited)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -138,9 +139,21 @@ function primaryArtist(label) {
     .trim();
 }
 
+// A search hit "confidently" matches the query when the normalized names are
+// equal, or one is a clean substring of the other with the shorter being
+// >= 4 chars (guards against "Eve" matching "Steve", etc.). NO blind
+// first-hit fallback — that's the anti-fake-artist rule.
+function confidentMatch(queryNorm, candidateName) {
+  const cand = norm(candidateName);
+  if (!cand || !queryNorm) return false;
+  if (cand === queryNorm) return true;
+  const [short, long] = cand.length <= queryNorm.length ? [cand, queryNorm] : [queryNorm, cand];
+  return short.length >= 4 && long.includes(short);
+}
+
 // Resolve an artist label to { name (canonical), image } via /artists/search.
-// Tries the full label, then the primary artist. Returns null unless one
-// resolves to a real artist with a Spotify photo — dropping the candidate.
+// Tries the full label, then the primary artist. Returns null unless a hit
+// CONFIDENTLY matches and has a Spotify photo — dropping the candidate.
 async function resolveArtist(label) {
   const tries = [label];
   const primary = primaryArtist(label);
@@ -156,15 +169,11 @@ async function resolveArtist(label) {
       continue;
     }
     const want = norm(q);
-    const pick =
-      arts.find((a) => norm(a.name) === want) ||
-      arts.find((a) => norm(a.name).includes(want) || want.includes(norm(a.name))) ||
-      arts[0];
-    if (!pick) continue;
+    const pick = arts.find((a) => confidentMatch(want, a.name));
+    if (!pick) continue; // no confident match for this query → try primary, else drop
     const image = pick.image_url || pick.image;
     if (!image || !/^https:\/\/i\.scdn\.co\/image\//.test(image)) continue;
-    const canonical = pick.name && norm(pick.name).length ? pick.name : q;
-    return { name: canonical, image };
+    return { name: pick.name, image };
   }
   return null;
 }
@@ -274,7 +283,7 @@ async function main() {
     console.error(
       `ABORT: roster too thin (total=${entries.length}, min=${MIN_TOTAL}` +
       (thinScenes.length ? `; under-${MIN_PER_SCENE} scenes: ${thinScenes.join(", ")}` : "") +
-      "). Not writing — likely a transient Apple/backend issue."
+      "). Not writing — likely a transient Apple/backend issue or the confident-match filter dropped too much."
     );
     process.exit(2);
   }
@@ -282,7 +291,7 @@ async function main() {
   const block = renderBlock(entries);
   const next = before + block + after;
 
-  // ── Diff vs current (block-scoped, correct) ──
+  // ── Diff vs current (block-scoped) — informational only ──
   const oldNames = namesInBlock(oldBlock);
   const newNames = entries.map((e) => e.name);
   const oldSet = new Set(oldNames.map(norm));
@@ -293,12 +302,16 @@ async function main() {
   const unionChanged = added.length + removed.length;
   const churn = unionChanged === 0 ? 0 : unionChanged / (kept + added.length + removed.length);
 
+  // Auto-merge gate: purely about QUALITY, not how much changed. Every entry is
+  // already a confident Spotify match with a photo (resolveArtist guarantees
+  // it), so the remaining checks are: there's a change, all photos valid, all
+  // scenes balanced, total above the floor. NO churn limit by design — a big
+  // monthly shake-up is fine as long as the artists are real. (Manual runs
+  // still open a PR for review; only the scheduled run consults this to merge.)
   const allImagesValid = entries.every((e) => /^https:\/\/i\.scdn\.co\/image\//.test(e.image || ""));
   const allScenesBalanced = SCENES.every((s) => (perScene[s.scene] || 0) >= MIN_PER_SCENE);
   const changed = next !== src;
-  const autoMergeEligible =
-    changed && allImagesValid && allScenesBalanced &&
-    entries.length >= MIN_TOTAL && churn <= AUTO_MERGE_MAX_CHURN;
+  const autoMergeEligible = changed && allImagesValid && allScenesBalanced && entries.length >= MIN_TOTAL;
 
   const quality = {
     changed,
@@ -307,8 +320,7 @@ async function main() {
     added,
     removed,
     keptCount: kept,
-    churn: Number(churn.toFixed(3)),
-    churnThreshold: AUTO_MERGE_MAX_CHURN,
+    churn: Number(churn.toFixed(3)), // reported for the PR body; NOT a gate
     allImagesValid,
     allScenesBalanced,
     autoMergeEligible,
@@ -316,10 +328,10 @@ async function main() {
   fs.writeFileSync(QUALITY_FILE, JSON.stringify(quality, null, 1));
 
   console.log(`\n── Summary ──`);
-  console.log(`total: ${entries.length}  kept ${kept}  added ${added.length}  removed ${removed.length}  churn ${(churn * 100).toFixed(0)}%`);
+  console.log(`total: ${entries.length}  kept ${kept}  added ${added.length}  removed ${removed.length}  churn ${(churn * 100).toFixed(0)}% (info)`);
   if (added.length) console.log(`  + ${added.join(", ")}`);
   if (removed.length) console.log(`  - ${removed.join(", ")}`);
-  console.log(`autoMergeEligible: ${autoMergeEligible} (churn ${(churn * 100).toFixed(0)}% vs cap ${(AUTO_MERGE_MAX_CHURN * 100).toFixed(0)}%, imagesValid ${allImagesValid}, balanced ${allScenesBalanced})`);
+  console.log(`autoMergeEligible: ${autoMergeEligible} (imagesValid ${allImagesValid}, balanced ${allScenesBalanced}, total>=${MIN_TOTAL})`);
 
   if (DRY_RUN) {
     fs.writeFileSync(path.join(REPO_ROOT, "seedArtists.preview.js"), next, "utf8");

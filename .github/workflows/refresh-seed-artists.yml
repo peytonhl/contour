@@ -8,18 +8,21 @@ name: refresh-seed-artists
 #      report (_quality.json). No change → stop.
 #   2. Gate on a real frontend build (the regenerated file must compile).
 #   3. Open a PR, assign it to Peyton (→ GitHub emails him), label it.
-#   4. Read the quality report:
-#        • autoMergeEligible (low churn, balanced, all photos valid)
-#          → squash-merge to master (auto-deploys via Vercel/Railway).
-#        • otherwise → leave the PR open for review (email already sent).
+#   4. Merge decision:
+#        • SCHEDULED run + autoMergeEligible (real artists, all photos valid,
+#          scenes balanced) → squash-merge to master (auto-deploys).
+#        • MANUAL run (workflow_dispatch) → always left open for review, even
+#          if eligible — so a hand-triggered test never deploys unsupervised.
+#        • not eligible → left open for review.
 #
-# Never force-merges a high-churn / unbalanced month. The first run will be
-# high-churn (hand-curated → chart-derived) and so will wait for review.
+# Quality gate is about whether the artists are REAL (confident Spotify match +
+# photo), NOT how much the roster changed — a big monthly shake-up auto-merges
+# fine as long as every artist is legit.
 
 on:
   schedule:
     - cron: "0 9 1 * *" # 09:00 UTC, 1st of each month
-  workflow_dispatch: {} # manual runs from the Actions tab
+  workflow_dispatch: {} # manual runs from the Actions tab (review-only)
 
 permissions:
   contents: write
@@ -59,20 +62,19 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Open PR, then auto-merge if low-risk
+      - name: Open PR, then auto-merge (scheduled + eligible only)
         if: steps.changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           MONTH=$(date -u +%Y-%m)
           BRANCH="chore/refresh-seed-artists-${MONTH}"
 
-          # Pull the merge-decision values out of the quality report up front so
-          # the heredoc below has no fragile inline command substitutions.
+          # Pull merge-decision values out of the quality report up front.
           ELIGIBLE=$(node -e "console.log(require('./_quality.json').autoMergeEligible)")
           CHURN=$(node -e "console.log(require('./_quality.json').churn)")
-          CAP=$(node -e "console.log(require('./_quality.json').churnThreshold)")
           ADDED=$(node -e "console.log((require('./_quality.json').added||[]).join(', ')||'(none)')")
           REMOVED=$(node -e "console.log((require('./_quality.json').removed||[]).join(', ')||'(none)')")
           KEPT=$(node -e "console.log(require('./_quality.json').keptCount)")
@@ -85,15 +87,15 @@ jobs:
           git push -f origin "$BRANCH"
 
           printf '%s\n' \
-            "Automated monthly re-derivation of the onboarding artist picker roster from the current Apple genre charts. Each artist was validated through /artists/search and dropped unless it resolved to a real artist with a Spotify photo. The frontend build passed on this roster." \
+            "Automated monthly re-derivation of the onboarding artist picker roster from the current Apple genre charts. Every artist was kept only if it confidently matched a real Spotify artist with a photo (no first-hit fallback). The frontend build passed on this roster." \
             "" \
             "- Kept: ${KEPT}" \
             "- Added: ${ADDED}" \
             "- Removed: ${REMOVED}" \
-            "- Churn: ${CHURN} (auto-merge cap ${CAP})" \
-            "- Auto-merge eligible: ${ELIGIBLE}" \
+            "- Churn: ${CHURN} (informational — not a merge gate)" \
+            "- Quality eligible: ${ELIGIBLE}" \
             "" \
-            "If auto-merge eligible, this PR is squash-merged automatically (deploys the new picker). Otherwise it's held for your review. See scripts/refresh-seed-artists.mjs." \
+            "Scheduled runs auto-merge when quality-eligible (deploys the new picker). Manual runs are always left open for review. See scripts/refresh-seed-artists.mjs." \
             > pr_body.md
 
           gh label create seed-refresh --color BFD4F2 --description "Monthly onboarding seed-artist refresh" 2>/dev/null || true
@@ -109,10 +111,10 @@ jobs:
           fi
           rm -f pr_body.md
 
-          if [ "$ELIGIBLE" = "true" ]; then
-            echo "Low-risk change (churn ${CHURN} <= ${CAP}) — auto-merging."
+          if [ "$ELIGIBLE" = "true" ] && [ "$EVENT_NAME" = "schedule" ]; then
+            echo "Scheduled + quality-eligible — auto-merging."
             sleep 8 # let GitHub compute mergeability before we ask to merge
             gh pr merge "$BRANCH" --squash --delete-branch
           else
-            echo "Held for review (churn ${CHURN}). PR left open; Peyton assigned + emailed."
+            echo "Left open for review (event=${EVENT_NAME}, eligible=${ELIGIBLE}). Peyton assigned + emailed."
           fi
