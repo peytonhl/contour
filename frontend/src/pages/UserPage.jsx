@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { requireAuth } from "../services/authGate.js";
 import { TasteSection } from "../components/TasteSection.jsx";
 import { BlockButton } from "../components/BlockButton.jsx";
 import { StatTabs } from "../components/StatTabs.jsx";
@@ -221,7 +222,17 @@ export function UserPage() {
   }
 
   async function handleFollow() {
-    if (!me) return;
+    // Guest: capture the follow + open the contextual sheet (replayed via the
+    // "follow" registry → toggleFollow(id) after auth).
+    if (!me) {
+      requireAuth({
+        kind: "follow",
+        triggerLabel: "save",
+        returnTo: window.location.pathname,
+        payload: { followType: "user", id, name: profile?.display_name },
+      });
+      return;
+    }
     setFollowLoading(true);
     try {
       const res = await api.toggleFollow(id);

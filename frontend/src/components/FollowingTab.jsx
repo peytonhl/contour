@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { requireAuth } from "../services/authGate.js";
 import { ReplyThread } from "./ReviewSection.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionBody } from "./Mentions.jsx";
@@ -209,7 +210,15 @@ export function SuggestedUser({ u, onFollow }) {
   const { user } = useAuth();
 
   async function handleFollow() {
-    if (!user) return;
+    if (!user) {
+      requireAuth({
+        kind: "follow",
+        triggerLabel: "save",
+        returnTo: window.location.pathname,
+        payload: { followType: "user", id: u.id, name: u.display_name },
+      });
+      return;
+    }
     setLoading(true);
     try {
       await api.toggleFollow(u.id);

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { requireAuth } from "../services/authGate.js";
 import { ACCENT_B } from "../theme.js";
 
 /**
@@ -31,8 +32,14 @@ export function WantToListenButton({ entityType = "album", entityId, albumId }) 
 
   async function toggle() {
     if (!user) {
-      // Send the user through the same sign-in nudge other gated actions use.
-      window.location.href = `${import.meta.env.VITE_API_URL ?? ""}/auth/login`;
+      // Guest: capture the save + open the contextual sheet (no full-page
+      // redirect away). Replayed via the "backlog" registry after auth.
+      requireAuth({
+        kind: "backlog",
+        triggerLabel: "save",
+        returnTo: window.location.pathname,
+        payload: { entityType: type, entityId: id },
+      });
       return;
     }
     if (pending) return;

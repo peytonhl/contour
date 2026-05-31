@@ -67,11 +67,12 @@ registerReplay("follow", async (p) => {
 });
 
 // ── Backlog / want-to-listen ─────────────────────────────────────────────────
-// payload: { albumId, name? }
+// payload: { entityType, entityId, name? }. addToBacklog takes (type, id) —
+// WantToListenButton works on both albums and tracks.
 registerReplay("backlog", async (p) => {
-  if (!p.albumId) return {};
-  await api.addToBacklog(p.albumId);
-  analytics.backlogAdded(p.albumId);
+  if (!p.entityId) return {};
+  await api.addToBacklog(p.entityType || "album", p.entityId);
+  analytics.backlogAdded(p.entityId);
   return { toast: `Saved to your backlog${forName(p.name)}` };
 });
 
