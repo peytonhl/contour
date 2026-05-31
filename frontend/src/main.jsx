@@ -16,6 +16,20 @@ import "./index.css";
 
 initAnalytics();
 
+// Guest-by-default (contextual-auth rework, Req 1). A visitor with no token is
+// treated as a guest IMMEDIATELY — the app opens straight into the onboarding
+// artist picker / feed instead of a full-screen sign-in wall. Sign-in is
+// demoted to (a) the contextual AuthPromptSheet at gated actions and (b) the
+// quiet "Sign In" affordance in the Layout. SigninGate now only renders as a
+// no-localStorage fallback. Set BEFORE React mounts so there's no wall flash on
+// first paint.
+try {
+  if (!localStorage.getItem("contour_token") &&
+      localStorage.getItem("contour_guest_mode") !== "1") {
+    localStorage.setItem("contour_guest_mode", "1");
+  }
+} catch { /* storage disabled → SigninGate fallback still catches them */ }
+
 // Fire the first /discover/feed request RIGHT NOW, before React even
 // mounts. The network round-trip overlaps with the rest of the boot
 // (createRoot, AuthProvider, Suspense, ForYouFeed mount). By the time

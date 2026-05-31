@@ -74,6 +74,13 @@ export function AuthProvider({ children }) {
         // through to "preserve" by default — exactly what we want.
         if (err && err.status === 401) {
           localStorage.removeItem("contour_token");
+          // Expired/invalid token → fall back to guest-by-default rather than
+          // the full-screen wall (contextual-auth rework). Notify SigninGate
+          // (which listens for this) so it stays dismissed without a reload.
+          try {
+            localStorage.setItem("contour_guest_mode", "1");
+            window.dispatchEvent(new CustomEvent("contour:guest-mode-changed"));
+          } catch {}
         }
       })
       .finally(() => setLoading(false));
@@ -118,6 +125,13 @@ export function AuthProvider({ children }) {
     // sign-in gate the user lands on right now) doesn't render the
     // previous account's data.
     clearAllCaches();
+    // Land on guest-by-default after logout, not the full-screen sign-in wall
+    // (contextual-auth rework). The Layout "Sign In" affordance + contextual
+    // prompts remain the way back in.
+    try {
+      localStorage.setItem("contour_guest_mode", "1");
+      window.dispatchEvent(new CustomEvent("contour:guest-mode-changed"));
+    } catch {}
   }
 
   // Hook into the push-notification lifecycle. No-ops on web; on native

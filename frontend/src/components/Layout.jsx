@@ -177,7 +177,17 @@ export function Layout() {
   // On native, append ?from=native so the OAuth callback redirects via the
   // contour:// URL scheme — that's what wakes the iOS / Android app out of
   // external Safari after sign-in. No-op in the browser. See utils/native.js.
-  const LOGIN_URL = withNativeAuthFlag(`${import.meta.env.VITE_API_URL ?? ""}/auth/login`);
+  // The quiet, always-available "Sign In" affordance (contextual-auth Req 4).
+  // Now that visitors are guests-by-default, this is the returning user's way
+  // back in. It opens the (demoted) standalone SigninGate — which offers BOTH
+  // Google and Apple, so an Apple-only user can return — by clearing guest mode
+  // so the gate re-renders. SigninGate's own "Browse without signing in" puts
+  // them back to guest if they change their mind. (Was a direct Google-only
+  // <a href>, which stranded Apple-only returning users.)
+  function openSignIn() {
+    clearGuestMode();
+    try { window.dispatchEvent(new CustomEvent("contour:guest-mode-changed")); } catch {}
+  }
 
   // Publish the header's measured height to CSS so descendants can position
   // sticky elements right beneath it. Header height varies with safe-area
