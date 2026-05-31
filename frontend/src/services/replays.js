@@ -55,13 +55,15 @@ registerReplay("review", async (p) => {
   return { toast: `Posted your review${forName(p.name)}` };
 });
 
-// ── Follow (artist / user) ───────────────────────────────────────────────────
-// payload: { followType: "artist"|"user", id, name? }. The guest wasn't
-// following anyone, so following (not toggling off) is always the intent.
+// ── Follow (user) ─────────────────────────────────────────────────────────────
+// payload: { id, name? }. Contour only has USER follow — toggleFollow(userId);
+// there is no artist-follow API. The guest wasn't following anyone, so a fresh
+// toggle is always "follow". If artist-follow is added later, branch on a
+// followType here against the REAL artist endpoint — do NOT route it through the
+// user-follow path.
 registerReplay("follow", async (p) => {
   if (!p.id) return {};
-  if (p.followType === "artist") await api.followUser(p.id);
-  else await api.toggleFollow(p.id);
+  await api.toggleFollow(p.id);
   analytics.followUser();
   return { toast: `Following${forName(p.name)}` };
 });
