@@ -40,6 +40,12 @@ const DISLIKED_KEY = "contour_disliked_v1";
 const LANGUAGE_KEY = "contour_language_v1";
 const ENGLISH_ONLY_KEY = "contour_english_only_v1";  // legacy boolean fallback
 const SEEN_KEY = "contour_seen_v1";
+// Onboarding artist-seed (cold-start prior). Included so a returning seeded
+// user — e.g. a guest who picked artists last session — gets their seeded
+// feed on the first paint, not after a refetch. ForYouPage clears this key
+// once the user crosses PERSONALIZATION_RAMP ratings, so a matured user has
+// an empty key here and the prefetch stops seeding on its own.
+const SEED_ARTISTS_KEY = "contour_seed_artists_v1";
 
 let _inflight = null;
 let _consumed = false;
@@ -80,11 +86,13 @@ function _buildInitialParams() {
   const genres = _readJSON(GENRES_KEY, []);
   const disliked = _readJSON(DISLIKED_KEY, []);
   const seen = _readJSON(SEEN_KEY, []).slice(0, 500);
+  const seedArtists = _readJSON(SEED_ARTISTS_KEY, []);
 
   return {
     genres: Array.isArray(genres) ? genres.slice(0, 3) : [],
     liked_artists: liked,
     disliked_artists: Array.isArray(disliked) ? disliked : [],
+    seed_artists: Array.isArray(seedArtists) ? seedArtists.slice(0, 8) : [],
     exclude: Array.from(new Set([...seen, ...ratedSourceIds])),
     language: _loadLanguage(),
     limit: 10,

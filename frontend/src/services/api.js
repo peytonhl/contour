@@ -321,7 +321,7 @@ export const api = {
   // and serve the cold-start ladder instead. Used by the transparency
   // view's "Fresh feed" toggle so users can see what a clean-slate user
   // would see without nuking their profile.
-  getDiscoverFeed: ({ genres = [], liked_artists = [], disliked_artists = [], exclude = [], language = "english", limit = 10, fresh = false, genre_browse = [] } = {}) => {
+  getDiscoverFeed: ({ genres = [], liked_artists = [], disliked_artists = [], exclude = [], language = "english", limit = 10, fresh = false, genre_browse = [], seed_artists = [] } = {}) => {
     const params = new URLSearchParams({ limit, language });
     if (genres.length) params.set("genres", genres.join(","));
     if (liked_artists.length) params.set("liked_artists", liked_artists.join(","));
@@ -332,6 +332,10 @@ export const api = {
     // weight sample from this genre list. Rated tracks are still excluded
     // server-side. Empty array (default) → no override.
     if (genre_browse.length) params.set("genre_browse", genre_browse.join(","));
+    // Onboarding artist-seed (cold-start prior). PIPE-delimited — artist
+    // names contain commas ("Tyler, The Creator"); the backend splits on
+    // "|". URLSearchParams percent-encodes it for transport.
+    if (seed_artists.length) params.set("seed_artists", seed_artists.join("|"));
     return request(`/discover/feed?${params}`);
   },
 

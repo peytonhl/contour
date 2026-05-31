@@ -1336,6 +1336,8 @@ async def _fetch_similar_artist_tracks(
     spotify_fallback_budget: int = 3,
     per_artist_cap: int = 3,
     total_cap: int = 30,
+    extra_seed_names: Optional[list[str]] = None,
+    include_seed_tracks: bool = False,
 ) -> tuple[list[dict], dict]:
     """Artist-similarity neighbor pivot.
 
@@ -1362,6 +1364,21 @@ async def _fetch_similar_artist_tracks(
     counts (seeds_used, similars_aggregated, catalog_matched_artists,
     fallback_searches, catalog_track_count, fallback_track_count) so
     callers can log a compact summary.
+
+    Onboarding seed channel (2026-05-30):
+      `extra_seed_names` carries artist NAMES picked in onboarding (the
+      guest/cold-start artist-seed). They're unioned with the names
+      resolved from `seed_artist_ids`, so this tier fires for a brand-new
+      user with zero profile — Last.fm's graph is name-keyed, so no
+      ArtistCache row is required (the ID→name step only matters for the
+      rating-derived seeds). These names are NEVER persisted; the client
+      decays them out as real ratings accumulate.
+      `include_seed_tracks=True` (the onboarding path only) also surfaces
+      the picked artists' OWN tracks, not just neighbors, so the first
+      batch is instantly recognizable as "about artists I love." The
+      rating-derived path leaves this False to keep neighbors-only
+      behavior (a user's feed shouldn't just replay artists they've
+      already rated).
     """
     debug: dict = {
         "seeds_used": 0,
@@ -1371,7 +1388,7 @@ async def _fetch_similar_artist_tracks(
         "catalog_track_count": 0,
         "fallback_track_count": 0,
     }
-    if not seed_artist_ids:
+    if not seed_artist_ids and not extra_seed_names:
         return [], debug
 
     seeds = seed_artist_ids[:max_seeds]
@@ -1383,9 +1400,21 @@ async def _fetch_similar_artist_tracks(
     seed_rows = (await db.execute(
         select(ArtistCache.spotify_id, ArtistCache.name)
         .where(ArtistCache.spotify_id.in_(seeds))
-    )).all()
+    )).all() if seeds else []
     seed_id_to_name = {sid: name for sid, name in seed_rows if name}
     seed_names = [seed_id_to_name[sid] for sid in seeds if sid in seed_id_to_name]
+
+    # Union the onboarding-picked names (the cold-start artist-seed). These
+    # arrive as raw names from the client and don't need an ArtistCache row
+    # — Last.fm's similarity graph keys off the name directly. Cap the
+    # combined seed set at max_seeds so we don't blow the parallel-fetch /
+    # fallback budgets. dict.fromkeys preserves order + dedups (onboarding
+    # names first so they win the budget when both are present).
+    if extra_seed_names:
+        seed_names = list(dict.fromkeys(
+            [n.strip() for n in extra_seed_names if n and n.strip()] + seed_names
+        ))[:max_seeds]
+
     if not seed_names:
         return [], debug
     debug["seeds_used"] = len(seed_names)
@@ -1424,6 +1453,21 @@ async def _fetch_similar_artist_tracks(
             if m > agg_match.get(key, -1.0):
                 agg_match[key] = m
                 name_orig_case[key] = n
+    # Onboarding seed preview: also surface the picked artists' OWN tracks
+    # (not just neighbors). The neighbor loop above skipped any key in
+    # seed_name_keys (don't recommend a seed back as its own neighbor), so
+    # inject the seeds here with a max score. A guest who picks Carti then
+    # sees Carti AND Ken Carson / Destroy Lonely — instant recognition plus
+    # adjacency. Only on the onboarding path; the rating-derived seed path
+    # leaves include_seed_tracks False so a user's feed isn't their own
+    # already-rated artists played back at them.
+    if include_seed_tracks:
+        for n in seed_names:
+            key = _normalize_artist_name_for_match(n)
+            if key:
+                agg_match[key] = max(agg_match.get(key, 0.0), 1.0)
+                name_orig_case.setdefault(key, n)
+
     debug["similars_aggregated"] = len(agg_match)
     if not agg_match:
         return [], debug
@@ -1836,6 +1880,7 @@ async def get_discover_feed(
     language: Optional[str] = Query(None, description="Language filter: 'english' (Latin script only, default), 'spanish' (Spanish indicators required), 'all' (no filter). Overrides english_only when set."),
     fresh: bool = Query(False, description="When true, ignore the logged-in user's personalization (profile.genres, exclude_ids, target_popularity, decade_pref, etc.) and serve the cold-start ladder instead. Backs the 'Fresh feed' button on the transparency view — lets a user see what a clean-slate user would get without nuking their profile."),
     genre_browse: Optional[str] = Query(None, description="Comma-separated genre slugs. When set, the feed enters 'browse mode' — bypasses the user's personalization (no decade pref, no target popularity, no disliked artists, no excluded genres) and serves an equal-weight sample from this genre set. The user's RATED tracks are still excluded so they don't see duplicates. Backs the gear-panel 'Browse by genre' affordance — lets a user temporarily see a feed of any genre they want without affecting their main taste profile's feed."),
+    seed_artists: Optional[str] = Query(None, description="PIPE-delimited artist NAMES picked during onboarding (the cold-start artist-seed). NOT comma-delimited — artist names contain commas (e.g. 'Tyler, The Creator'). Seeds the first batches via the Last.fm similarity pivot (the picked artists AND their neighbors), honored for guest AND signed-in users. NEVER persisted to the profile — the client decays these out as real ratings accumulate (see ForYouPage seed-decay), so the well-liked live algorithm takes over. A temporary cold-start prior, not a permanent input."),
     limit: int = Query(10, le=20),
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
@@ -1859,6 +1904,18 @@ async def get_discover_feed(
         browse_genres = [
             g.strip().lower() for g in genre_browse.split(",") if g.strip()
         ][:6]
+
+    # Onboarding artist-seed names. PIPE-delimited (not comma — "Tyler, The
+    # Creator" has a comma in the name). These seed the first cold-start
+    # batches via the Last.fm similarity pivot and are NEVER persisted —
+    # the client tapers them off as real ratings accumulate (WI3 decay).
+    # Honored regardless of auth so a logged-out guest gets a recognizable
+    # seeded preview before signing up. Capped at 8 picks.
+    onboarding_seed_names: list[str] = []
+    if seed_artists:
+        onboarding_seed_names = [
+            s.strip() for s in seed_artists.split("|") if s.strip()
+        ][:8]
 
     # `fresh=true` and `genre_browse=…` both short-circuit personalization —
     # treat the request as logged-out for purposes of feed composition.
@@ -2286,7 +2343,7 @@ async def get_discover_feed(
     # for the catalog to fill organically. Fires only when the user has a
     # pure-positive seed (no eligible_genres dependency — works even for
     # users who never picked genres in onboarding).
-    if seed_artist_ids and len(tracks) < limit:
+    if (seed_artist_ids or onboarding_seed_names) and len(tracks) < limit:
         try:
             neighbor_tracks, neighbor_debug = await _fetch_similar_artist_tracks(
                 db,
@@ -2294,6 +2351,8 @@ async def get_discover_feed(
                 exclude_track_ids=exclude_ids,
                 excluded_artist_ids=soft_excluded,
                 market=spotify_market,
+                extra_seed_names=onboarding_seed_names,
+                include_seed_tracks=bool(onboarding_seed_names),
             )
             _flatten_shuffle_add([neighbor_tracks], add_personalized)
             logger.info(

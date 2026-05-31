@@ -94,6 +94,13 @@ function rubberBand(distance, maxStretch) {
 const GENRES_KEY = "contour_genres_v1";
 const HISTORY_KEY = "contour_history_v1";
 const DISLIKED_KEY = "contour_disliked_v1";
+// Onboarding artist-seed (cold-start prior). JSON array of artist NAMES the
+// user picked in OnboardingModal. Sent to /discover/feed as `seed_artists`
+// to seed the first batches via the Last.fm similarity graph, then DECAYED
+// out as real ratings accumulate (see fetchBatch). NOT a server profile
+// field — a temporary prior, never a permanent input. Cleared once the user
+// crosses PERSONALIZATION_RAMP ratings so the live algorithm fully takes over.
+const SEED_ARTISTS_KEY = "contour_seed_artists_v1";
 const ENGLISH_ONLY_KEY = "contour_english_only_v1";  // legacy boolean key
 const LANGUAGE_KEY = "contour_language_v1";          // new 3-state key
 // Persistent "seen" list — every track the user has either swiped past
@@ -206,6 +213,17 @@ function saveGenre(genre) {
   if (!prev.includes(genre)) {
     localStorage.setItem(GENRES_KEY, JSON.stringify([genre, ...prev].slice(0, 10)));
   }
+}
+
+// ── Onboarding artist-seed ──────────────────────────────────────────────────
+function loadSeedArtists() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SEED_ARTISTS_KEY) || "[]");
+    return Array.isArray(v) ? v.filter(Boolean) : [];
+  } catch { return []; }
+}
+function clearSeedArtists() {
+  try { localStorage.removeItem(SEED_ARTISTS_KEY); } catch {}
 }
 
 
@@ -1692,15 +1710,15 @@ function ColdStartBanner({ ratingCount }) {
 
   return (
     <div style={{
-      // LEFT padding 54px to clear the floating gear button (top:8 left:10,
-      // 32px wide → right-edge at 42px + 12px breathing room). Comment
+      // LEFT padding 150px to clear the labeled "Adjust your feed" pill
+      // (top:8 left:10 — gear icon + text label, ~140px wide). Comment
       // here used to claim the RIGHT padding was for the gear, but the
       // gear actually sits at LEFT — this was stale from before a
       // gear-position change. Screenshot showed the gear circle
       // overlapping the first progress segment and the leading edge of
       // the label, leaving the user with a chopped-off "Rate 5 tracks
       // to calibrate your feed" line. Standard 16px on the right.
-      padding: "8px 16px 8px 54px",
+      padding: "8px 16px 8px 150px",
       background: "rgba(217,122,59,0.08)",
       borderBottom: "1px solid rgba(217,122,59,0.15)",
       display: "flex", alignItems: "center", gap: 10,
@@ -1792,6 +1810,10 @@ function ForYouFeed() {
   const [showExtendedGenres, setShowExtendedGenres] = useState(false);
   const containerRef = useRef(null);
   const genresRef = useRef(loadGenres());
+  // Onboarding artist-seed picks (names). Ref so a fetch fired mid-render
+  // (e.g. from the taste-updated listener right after onboarding) reads the
+  // freshest list, same pattern as genresRef.
+  const seedArtistsRef = useRef(loadSeedArtists());
   const fetchingMoreRef = useRef(false);
   // Continuous recalibration counter: how many ratings the user has made
   // in THIS session. When this hits a multiple of RECALIBRATE_EVERY, the
@@ -1906,6 +1928,26 @@ function ForYouFeed() {
         }
       } catch {}
 
+      // Onboarding artist-seed → similarity-seeded first batches, decaying
+      // out as real ratings accumulate so the well-liked live algorithm
+      // takes over (WI3). Linear taper keyed on total ratingCount:
+      //   seeds sent = ceil(picks × (1 − ratingCount / PERSONALIZATION_RAMP))
+      // → full set at 0 ratings, gone (and cleared from storage) at the ramp.
+      // Guests can't rate, so ratingCount stays 0 and the seed persists for
+      // the whole guest preview session — exactly the intended behavior.
+      let seedArtists = [];
+      const seedPicks = seedArtistsRef.current || [];
+      if (seedPicks.length) {
+        if (ratingCount >= PERSONALIZATION_RAMP) {
+          clearSeedArtists();
+          seedArtistsRef.current = [];
+        } else {
+          const strength = 1 - ratingCount / PERSONALIZATION_RAMP;
+          const n = Math.max(1, Math.ceil(seedPicks.length * strength));
+          seedArtists = seedPicks.slice(0, n);
+        }
+      }
+
       const batch = await api.getDiscoverFeed({
         genres: genresRef.current.slice(0, 3),
         liked_artists: likedArtists,
@@ -1920,6 +1962,8 @@ function ForYouFeed() {
         // Ref read (not state) so a fetch initiated mid-render sees the
         // freshest selection.
         genre_browse: browseGenresRef.current || [],
+        // Decayed onboarding artist-seed (empty once the user matures).
+        seed_artists: seedArtists,
       });
 
       // If Spotify returned empty, retry once ignoring disliked filter
@@ -2028,6 +2072,9 @@ function ForYouFeed() {
   function applyBrowseGenres() {
     if (pendingPicks.length === 0) return;
     const slugs = pendingPicks.slice(0, BROWSE_GENRES_MAX);
+    // WI4 instrumentation: did labeling the control actually drive genre
+    // browse? Correlate with session length / return visits downstream.
+    analytics.feedBrowseEntered(slugs.length);
     saveBrowseGenres(slugs);
     browseGenresRef.current = slugs;
     setBrowseGenres(slugs);
@@ -2082,6 +2129,7 @@ function ForYouFeed() {
   useEffect(() => {
     function handler() {
       genresRef.current = loadGenres();
+      seedArtistsRef.current = loadSeedArtists();
       setTracks([]);
       setActiveIdx(0);
       fetchBatch();
@@ -2925,9 +2973,16 @@ function ForYouFeed() {
           when we consolidated the chrome — feed UIs like TikTok / Reels
           don't show one either. */}
       <button
-        onClick={() => setSettingsOpen(o => !o)}
-        title="Feed settings"
-        aria-label="Feed settings"
+        onClick={() => setSettingsOpen(o => {
+          const next = !o;
+          // Instrument opens only (WI4): we want to know how many users
+          // discover the control, and downstream whether opening it
+          // correlates with longer sessions / return visits.
+          if (next) analytics.feedAdjustOpened();
+          return next;
+        })}
+        title="Adjust your feed"
+        aria-label="Adjust your feed"
         style={{
           // Solid translucent bg — was .glass with backdrop-filter, but
           // this button sits over the transforming deck and the filter
@@ -2936,15 +2991,20 @@ function ForYouFeed() {
           // and contributed to swipe jank.
           background: "rgba(20, 20, 24, 0.78)",
           position: "absolute", top: 8, left: 10, zIndex: 5,
-          width: 32, height: 32, borderRadius: "var(--radius-pill)", padding: 0,
+          // Labeled pill (was a bare 32px gear icon — nobody knew it changed
+          // the feed). The label is the primary in-session recovery path for
+          // a misfired seed. Banner left-padding below is bumped to clear it.
+          height: 32, borderRadius: "var(--radius-pill)", padding: "0 13px 0 11px",
           border: "none",
-          color: settingsOpen ? "var(--accent)" : "rgba(255,255,255,0.7)",
+          color: settingsOpen ? "var(--accent)" : "rgba(255,255,255,0.82)",
           cursor: "pointer",
           transition: "color var(--motion-base) var(--ease)",
-          display: "flex", alignItems: "center", justifyContent: "center",
+          display: "flex", alignItems: "center", gap: 6,
+          fontSize: 12, fontWeight: 700, letterSpacing: "0.01em",
         }}
       >
-        <GearIcon size={16} />
+        <GearIcon size={15} />
+        <span>Adjust your feed</span>
       </button>
 
       {/* Floating notification chip — top-center of the deck when the

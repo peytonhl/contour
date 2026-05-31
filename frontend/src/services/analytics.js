@@ -83,6 +83,26 @@ export const analytics = {
   onboardingStepCompleted: (step_name, skipped) =>
     track("onboarding_step_completed", { step_name, skipped }),
 
+  // ── Onboarding-rework instrumentation (2026-05-30) ────────────────────────
+  // How a user seeded their feed at onboarding. `method` ∈ "artist" (picked
+  // artists they love → similarity-seeded feed) | "genre" (fell back to the
+  // genre picker). `artist_count` is how many artists they picked (0 for the
+  // genre-fallback path). This is the core funnel input: compare first-rating
+  // conversion and early-return for artist-seeded vs genre-seeded cohorts.
+  onboardingSeeded: (method, artist_count) =>
+    track("onboarding_seeded", { method, artist_count }),
+
+  // The labeled "Adjust your feed" control (gear) was opened. Primary
+  // in-session recovery path for a misfired seed — measure whether opening
+  // it (and switching to genre browse) correlates with longer sessions /
+  // return visits.
+  feedAdjustOpened: () => track("feed_adjust_opened"),
+
+  // User committed a genre-browse selection from the Adjust-your-feed panel.
+  // `genre_count` is how many genres they picked.
+  feedBrowseEntered: (genre_count) =>
+    track("feed_browse_entered", { genre_count }),
+
   // A shareable card (review / comparison / hot-take / taste-card /
   // taste-match) failed to render in CardPreviewModal. `card_type` is the OG
   // endpoint slug; `reason` is one of not_enough_ratings / not_found /

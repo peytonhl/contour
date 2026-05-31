@@ -4,9 +4,18 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { analytics } from "../services/analytics.js";
 import { api } from "../services/api.js";
 import { ACCENT_A, ACCENT_B, ACCENT_C, GOLD, DANGER } from "../theme.js";
-import { ROUTES, profileTabPath } from "../constants/routes.js";
+import { profileTabPath } from "../constants/routes.js";
+import { groupedSeedArtists } from "../data/seedArtists.js";
 
 const STORAGE_KEY = "contour_onboarded_v2";
+
+// Onboarding artist-seed. Names the user picks here are stored as a JSON
+// array under this localStorage key and read by ForYouPage's fetchBatch,
+// which sends them to /discover/feed as `seed_artists`. NOT written to the
+// server profile — it's a decaying cold-start prior, not a persistent pref
+// (ForYouPage tapers it out as real ratings accumulate). Same key string
+// is referenced in ForYouPage.jsx (SEED_ARTISTS_KEY).
+const SEED_ARTISTS_KEY = "contour_seed_artists_v1";
 
 // ── Genre picker data (also exported for reuse in TasteSection) ───────────────
 //
@@ -176,27 +185,38 @@ export function GenreChip({ genre, selected, onToggle, excluded, onExclude }) {
   );
 }
 
-// Bookmark icon — used in the step 2 backlog explainer. The previous
-// value-prop icons (Star/Chart/Headphones) were deleted when step 0
-// collapsed from a 3-card carousel to a single welcome screen.
+// ── Artist seed chip ──────────────────────────────────────────────────────────
+// Multi-select pill for the onboarding artist picker. `name` is the artist
+// name (the value we seed the feed with). Text-only — a plain label pill,
+// no avatar/monogram.
+function ArtistChip({ artist, selected, onToggle }) {
+  const isSel = selected.includes(artist.name);
+  return (
+    <button
+      onClick={() => onToggle(artist.name)}
+      aria-pressed={isSel}
+      style={{
+        display: "inline-flex", alignItems: "center",
+        padding: "8px 16px",
+        borderRadius: "var(--radius-xl)",
+        fontSize: 13, fontWeight: 700,
+        border: `2px solid ${isSel ? ACCENT_A : "var(--border)"}`,
+        background: isSel ? `${ACCENT_A}22` : "transparent",
+        color: isSel ? ACCENT_A : "var(--text)",
+        cursor: "pointer", transition: "all 0.15s",
+        transform: isSel ? "scale(1.03)" : "scale(1)",
+      }}
+    >
+      {artist.name}
+    </button>
+  );
+}
+
+// Bookmark icon — used in the backlog explainer (signed-in users only).
 function BookmarkIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-// People icon — used by the step-3 friends explainer. Two-figure
-// silhouette so it reads as "social" at a glance, sized to match
-// BookmarkIcon's optical weight.
-function PeopleIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
   );
 }
@@ -219,39 +239,57 @@ function Dots({ total, active }) {
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
-// Steps:
-//   0. welcome / value prop
-//   1. genre picker (NEW, brought back 2026-05-25)
-//   2. Backlog explainer (informational, skippable)
-//   3. Friends / social explainer
+// Onboarding reworked 2026-05-30 around ARTIST-SEEDING (replay-session
+// finding: strangers who land anonymously bounce because day-one content
+// has no connection to them — unknown people rating unknown music). The
+// fix anchors the first feed on artists the user actually loves, via the
+// Last.fm similarity graph (NOT genre collapse).
 //
-// The genre picker had been cut in the 2026-05-14 rebuild under the theory
-// that "rate 5 to calibrate" was a higher-fidelity signal than 18 boxy chips.
-// Reality check: a cold-start user with zero ratings sees the global Deezer
-// chart (currently country-heavy in the US), and rating one country song
-// 1★ excludes only THAT artist, not the genre. The user kept seeing country.
-// Bringing the picker back so new users can seed UserTasteProfile.genres at
-// signup — that one round-trip moves them out of cold-start mode and into
-// the personalized tier-1 weighted sample on their very first feed batch.
+// Steps (string-keyed for the branch):
+//   "welcome"  → payoff-first value prop ("music for your taste")
+//   "artists"  → FIRST content step. Multi-select artists you love →
+//                seeds the feed via similarity. "None of these — pick by
+//                genre" falls back to the genre picker. Guests can do this
+//                and immediately see a seeded PREVIEW feed (no account).
+//   "genres"   → the EXISTING genre picker, now the fallback path.
+//   "backlog"  → save-to-listen explainer. SIGNED-IN ONLY (a guest has no
+//                profile to save to); guests dismiss straight to the feed
+//                after seeding, where the signup ask appears at the natural
+//                moment (when they try to rate).
 //
-// Picker is OPTIONAL: skipping it falls back to the rate-to-calibrate
-// experience (which still works, just slower for users with strong genre
-// preferences to express).
+// The friends/social explainer step was CUT: strangers have no social
+// connection on day one, so explaining the social layer wastes first-run
+// attention. It's discoverable in-app later.
 //
-// The RYM import upsell that used to sit even earlier was cut for the
-// "don't put a CSV workflow 30 seconds into a casual first run" reason.
-// /import is still reachable from /settings.
+// Artist picks are stored in localStorage (SEED_ARTISTS_KEY), NOT the
+// server profile — a decaying cold-start prior, not a permanent input.
+// Genre picks (the fallback) ARE persisted via saveTasteProfile because
+// declared genres are a durable preference, not a seed.
 export function OnboardingModal() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState("welcome");
   const [exiting, setExiting] = useState(false);
-  // Genre picker state (step 1). selectedGenres holds the in-progress
-  // picks; saving is async to avoid blocking the user on slow networks
-  // — we advance to step 2 as soon as the API call is fired, not when
-  // it returns. The save also fires the contour:taste-updated event so
-  // the For You feed re-fetches with the new genres on next mount.
+
+  // A "guest" (browsing without signing in) has no account, so no profile
+  // to save to and no backlog. They seed → preview → get the signup ask
+  // when they try to act. Detected as "no signed-in user."
+  const isGuest = !user;
+
+  // Artist picker state (step "artists"). Holds the picked NAMES.
+  const [selectedArtists, setSelectedArtists] = useState([]);
+  function toggleArtist(name) {
+    setSelectedArtists((prev) =>
+      prev.includes(name)
+        ? prev.filter((n) => n !== name)
+        : [...prev, name].slice(0, 12),  // soft cap
+    );
+  }
+
+  // Genre picker state (step "genres" — the fallback). selectedGenres holds
+  // the in-progress picks; saving is async to avoid blocking on slow
+  // networks. The save fires contour:taste-updated so the feed re-fetches.
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [showExtendedGenres, setShowExtendedGenres] = useState(false);
   const [savingGenres, setSavingGenres] = useState(false);
@@ -263,10 +301,11 @@ export function OnboardingModal() {
     );
   }
 
+  const seedSections = groupedSeedArtists();
+
   // Defer showing until the user has passed the SigninGate — either by
   // signing in (user becomes non-null) or by opting into guest browse mode.
-  // Otherwise the genre picker stacks behind / fights with the gate on
-  // first launch.
+  // Otherwise the picker stacks behind / fights with the gate on first launch.
   useEffect(() => {
     if (localStorage.getItem(STORAGE_KEY)) return;
     function maybeShow() {
@@ -288,11 +327,11 @@ export function OnboardingModal() {
   }, [user]);
 
   // Replay-tutorial hook: any caller (e.g. /settings) can fire this
-  // CustomEvent to re-open the onboarding from step 0 without a reload.
+  // CustomEvent to re-open the onboarding from the start without a reload.
   useEffect(() => {
     function handler() {
       localStorage.removeItem(STORAGE_KEY);
-      setStep(0);
+      setStep("welcome");
       setExiting(false);
       setVisible(true);
     }
@@ -309,62 +348,72 @@ export function OnboardingModal() {
     }, 220);
   }
 
-  // Step 1 → Step 2 advance. Saves the genre picks if any were made
-  // (skip → no save). Fire-and-forget the POST so a slow network
-  // doesn't block the user; we mirror the picks to local state and
-  // dispatch contour:taste-updated so ForYouPage refetches with them
-  // on next mount even before the API call resolves.
+  // Commit the artist seed. Persists to localStorage (NOT the server),
+  // fires the analytics seed event + taste-updated so the feed underneath
+  // re-fetches with the seed. Guests dismiss straight to their preview
+  // feed; signed-in users continue to the backlog explainer.
+  function finishArtistStep() {
+    const picks = selectedArtists;
+    analytics.onboardingStepCompleted("artist_picker", picks.length === 0);
+    analytics.onboardingSeeded("artist", picks.length);
+    try {
+      localStorage.setItem(SEED_ARTISTS_KEY, JSON.stringify(picks));
+    } catch {}
+    window.dispatchEvent(new CustomEvent("contour:taste-updated"));
+    if (isGuest) dismiss();
+    else setStep("backlog");
+  }
+
+  // "None of these" → fall back to the genre picker. Not a seeding event
+  // (they haven't seeded yet), just a navigation; the seed event fires
+  // from whichever step actually completes the seeding.
+  function goToGenrePicker() {
+    setStep("genres");
+  }
+
+  // Complete the genre-picker fallback. Genres ARE persisted (durable
+  // preference). skip → no save, but still counts as a genre-method
+  // completion with 0 picks for the funnel.
   function finishGenrePickerStep(skip = false) {
     const picks = skip ? [] : selectedGenres;
-    analytics.onboardingStepCompleted("genre_picker", true);
+    analytics.onboardingStepCompleted("genre_picker", skip);
+    analytics.onboardingSeeded("genre", picks.length);
     if (picks.length > 0) {
       setSavingGenres(true);
-      // Mirror to localStorage so a logged-out user's cold-start
-      // feed picks up the genres immediately (the feedPrefetch in
-      // main.jsx reads contour_genres_v1 before React even mounts
-      // on the next launch).
+      // Mirror to localStorage so a logged-out user's cold-start feed picks
+      // up the genres immediately (feedPrefetch reads contour_genres_v1
+      // before React mounts on next launch).
       try {
         localStorage.setItem("contour_genres_v1", JSON.stringify(picks));
       } catch {}
-      // Fire-and-forget. We don't await: the user can advance to
-      // step 2 immediately, and the feed will pick up the new
-      // profile on its next /discover/feed call.
+      // Fire-and-forget — don't block the user on the round-trip.
       api.saveTasteProfile(picks, [], false)
         .catch(() => {})
         .finally(() => setSavingGenres(false));
-      window.dispatchEvent(new CustomEvent("contour:taste-updated"));
     }
-    setStep(2);
+    window.dispatchEvent(new CustomEvent("contour:taste-updated"));
+    if (isGuest) dismiss();
+    else setStep("backlog");
   }
 
   function finishBacklogStep(deepLink) {
     analytics.onboardingStepCompleted("backlog_explainer", !deepLink);
     if (deepLink) {
-      // Deep-link exits onboarding entirely (user is being navigated
-      // away to see the feature) — mark complete so it doesn't
-      // re-trigger next launch.
       localStorage.setItem(STORAGE_KEY, "1");
       setVisible(false);
       navigate(profileTabPath("backlog"));
-    } else {
-      // Advance to the friends step (now step 3 after the genre
-      // picker was inserted at step 1).
-      setStep(3);
-    }
-  }
-
-  function finishFriendsStep(deepLink) {
-    analytics.onboardingStepCompleted("friends_explainer", !deepLink);
-    if (deepLink) {
-      localStorage.setItem(STORAGE_KEY, "1");
-      setVisible(false);
-      navigate(ROUTES.FRIENDS);
     } else {
       dismiss();
     }
   }
 
   if (!visible) return null;
+
+  // Progress dots. Guests have 2 steps (welcome → seed); signed-in have 3
+  // (welcome → seed → backlog). The artist + genre steps share the "seed"
+  // slot (index 1) since they're the same point in the flow.
+  const stepTotal = isGuest ? 2 : 3;
+  const activeDot = step === "welcome" ? 0 : step === "backlog" ? 2 : 1;
 
   return (
     <>
@@ -400,49 +449,131 @@ export function OnboardingModal() {
           {/* Drag handle */}
           <div style={{ width: 36, height: 4, borderRadius: "var(--radius-sm)", background: "var(--surface3)", margin: "0 auto 22px" }} />
 
-          {/* ── Step 0: Welcome ──
-              Anchored on the rate-to-calibrate concept now that the
-              genre picker is out. The actual progress bar lives in
-              ForYouPage's ColdStartBanner — this is just orientation. */}
-          {step === 0 && (
+          {/* ── Step: Welcome ──
+              Payoff-first. The old copy led with the work ("rate tracks to
+              calibrate"); this leads with the result (music for your taste)
+              and makes clear the very next step shows them something —
+              no rating, no account required. */}
+          {step === "welcome" && (
             <>
               <div style={{ textAlign: "center", marginBottom: 28, padding: "12px 4px 0" }}>
                 <h2 style={{
                   fontFamily: "var(--font-display)",
-                  fontSize: 36, fontWeight: 400, margin: "0 0 12px",
-                  color: "var(--text)", lineHeight: 1.05, letterSpacing: "-0.01em",
+                  fontSize: 34, fontWeight: 400, margin: "0 0 12px",
+                  color: "var(--text)", lineHeight: 1.08, letterSpacing: "-0.01em",
                 }}>
-                  Glad you're here.
+                  Music that sounds like you.
                 </h2>
-                <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0, lineHeight: 1.55, maxWidth: 320, marginInline: "auto" }}>
-                  Rate a few tracks and your feed sharpens around your taste.
-                  Takes about a minute.
+                <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0, lineHeight: 1.55, maxWidth: 330, marginInline: "auto" }}>
+                  Tell us a few artists you love and your feed fills up with
+                  songs for your taste — right now, nothing to rate first.
                 </p>
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={4} active={0} />
+                <Dots total={stepTotal} active={0} />
               </div>
 
-              <button onClick={() => { analytics.onboardingStepCompleted("value_prop", false); setStep(1); }} style={{
+              <button onClick={() => { analytics.onboardingStepCompleted("value_prop", false); setStep("artists"); }} style={{
                 width: "100%", padding: "14px 0", borderRadius: "var(--radius-lg)",
                 background: ACCENT_A, border: "none",
                 color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer",
                 letterSpacing: "0.01em",
               }}>
-                Continue
+                Get started
               </button>
             </>
           )}
 
-          {/* ── Step 1: Genre picker (new 2026-05-25) ──
-              Lets the user seed UserTasteProfile.genres at signup so
-              their very first feed batch can run the personalized
-              tier-1 weighted sample instead of the cold-start Deezer
-              chart. Optional: "Skip for now" advances to step 2
-              without saving. Picks are capped at 10 (soft) on toggle;
-              "More genres" reveals the extended ~40-slug list. */}
-          {step === 1 && (
+          {/* ── Step: Artist picker (first content step, new 2026-05-30) ──
+              Multi-select — several picks triangulate real taste where one
+              pick is just recognition. Seeds the feed via the Last.fm
+              similarity graph (the picked artists + their neighbors).
+              "None of these" escapes to the genre picker so nobody whose
+              taste isn't in the list gets stranded. */}
+          {step === "artists" && (
+            <>
+              <div style={{ textAlign: "center", marginBottom: 14 }}>
+                <h2 style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: 28, fontWeight: 400, margin: "0 0 8px",
+                  color: "var(--text)", lineHeight: 1.1,
+                }}>
+                  Pick a few artists you love
+                </h2>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
+                  We'll build your feed around them and artists like them.
+                  The more you pick, the better it gets.
+                </p>
+              </div>
+
+              <div style={{
+                maxHeight: "42vh", overflowY: "auto",
+                marginBottom: 14, padding: "4px 2px",
+                WebkitOverflowScrolling: "touch",
+              }}>
+                {seedSections.map(({ scene, artists }) => (
+                  <div key={scene} style={{ marginBottom: 14 }}>
+                    <div style={{
+                      fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
+                      margin: "0 0 8px 2px",
+                    }}>
+                      {scene}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {artists.map((a) => (
+                        <ArtistChip
+                          key={a.name}
+                          artist={a}
+                          selected={selectedArtists}
+                          onToggle={toggleArtist}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <Dots total={stepTotal} active={1} />
+              </div>
+
+              <button
+                onClick={finishArtistStep}
+                disabled={selectedArtists.length === 0}
+                style={{
+                  width: "100%", padding: "14px 0", borderRadius: "var(--radius-lg)",
+                  background: selectedArtists.length > 0 ? ACCENT_A : "var(--surface2)",
+                  border: "none",
+                  color: selectedArtists.length > 0 ? "#fff" : "var(--text-muted)",
+                  fontSize: 14, fontWeight: 600,
+                  cursor: selectedArtists.length > 0 ? "pointer" : "default",
+                  marginBottom: 8,
+                }}
+              >
+                {selectedArtists.length > 0
+                  ? `See my feed (${selectedArtists.length})`
+                  : "Pick a few to start"}
+              </button>
+
+              <button
+                onClick={goToGenrePicker}
+                style={{
+                  width: "100%", padding: "8px 0",
+                  background: "none", border: "none",
+                  color: "var(--text-muted)", fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                None of these — pick by genre
+              </button>
+            </>
+          )}
+
+          {/* ── Step: Genre picker (the fallback) ──
+              Reachable from the artist step's "None of these". Genres are a
+              durable declared preference, so these ARE persisted. */}
+          {step === "genres" && (
             <>
               <div style={{ textAlign: "center", marginBottom: 16 }}>
                 <h2 style={{
@@ -504,7 +635,7 @@ export function OnboardingModal() {
               </div>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={4} active={1} />
+                <Dots total={stepTotal} active={1} />
               </div>
 
               <button
@@ -539,8 +670,8 @@ export function OnboardingModal() {
             </>
           )}
 
-          {/* ── Step 2: Backlog explainer ── */}
-          {step === 2 && (
+          {/* ── Step: Backlog explainer (signed-in only) ── */}
+          {step === "backlog" && (
             <>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h2 style={{
@@ -589,80 +720,10 @@ export function OnboardingModal() {
               </button>
 
               <div style={{ marginBottom: 18 }}>
-                <Dots total={4} active={2} />
+                <Dots total={stepTotal} active={2} />
               </div>
 
               <button onClick={() => finishBacklogStep(false)} style={{
-                width: "100%", padding: "14px 0", borderRadius: "var(--radius-lg)",
-                background: ACCENT_A, border: "none",
-                color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
-              }}>
-                Continue
-              </button>
-            </>
-          )}
-
-          {/* ── Step 3: Friends / social explainer ──
-              The third pillar alongside Discover (step 0) and Backlog
-              (step 2 — was step 1 before the genre picker insert).
-              Previously onboarding ended at backlog, leaving the
-              social side of the app entirely unmentioned even though
-              "connect with friends" is core to the product. */}
-          {step === 3 && (
-            <>
-              <div style={{ textAlign: "center", marginBottom: 20 }}>
-                <h2 style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: 30, fontWeight: 400, margin: "0 0 8px",
-                  color: "var(--text)", lineHeight: 1.1,
-                }}>
-                  Listen with friends
-                </h2>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.55 }}>
-                  Follow other listeners to see their ratings + reviews in
-                  your activity feed. @-mention them in a review to start
-                  a conversation.
-                </p>
-              </div>
-
-              <div style={{
-                background: "var(--surface2)",
-                borderRadius: "var(--radius-lg)",
-                padding: "16px 16px", marginBottom: 16,
-                display: "flex", alignItems: "center", gap: 14,
-              }}>
-                <span style={{
-                  width: 48, height: 48, flexShrink: 0,
-                  borderRadius: "50%",
-                  background: `${ACCENT_A}1f`,
-                  color: ACCENT_A,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <PeopleIcon />
-                </span>
-                <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  Open <strong style={{ color: "var(--text)" }}>Following</strong> to
-                  find people whose taste matches yours. Their reviews show up
-                  alongside yours on every album and track page.
-                </div>
-              </div>
-
-              <button
-                onClick={() => finishFriendsStep(true)}
-                style={{
-                  background: "none", border: "none", color: ACCENT_A,
-                  fontSize: 12, fontWeight: 600, cursor: "pointer",
-                  padding: "0 0 16px", display: "block", marginInline: "auto",
-                }}
-              >
-                Find people
-              </button>
-
-              <div style={{ marginBottom: 18 }}>
-                <Dots total={4} active={3} />
-              </div>
-
-              <button onClick={() => finishFriendsStep(false)} style={{
                 width: "100%", padding: "14px 0", borderRadius: "var(--radius-lg)",
                 background: ACCENT_A, border: "none",
                 color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
