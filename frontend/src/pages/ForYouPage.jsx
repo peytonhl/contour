@@ -101,6 +101,12 @@ const DISLIKED_KEY = "contour_disliked_v1";
 // field — a temporary prior, never a permanent input. Cleared once the user
 // crosses PERSONALIZATION_RAMP ratings so the live algorithm fully takes over.
 const SEED_ARTISTS_KEY = "contour_seed_artists_v1";
+// Rating count captured when the artist-seed was (re)picked. The seed decays
+// over PERSONALIZATION_RAMP ratings measured from THIS baseline, not the
+// absolute count — so a returning user who replays onboarding from Settings
+// and re-picks gets a fresh full-strength similarity feed instead of an
+// instantly-decayed one. Written by OnboardingModal; cleared with the seed.
+const SEED_BASELINE_KEY = "contour_seed_baseline_v1";
 const ENGLISH_ONLY_KEY = "contour_english_only_v1";  // legacy boolean key
 const LANGUAGE_KEY = "contour_language_v1";          // new 3-state key
 // Persistent "seen" list — every track the user has either swiped past
@@ -223,7 +229,19 @@ function loadSeedArtists() {
   } catch { return []; }
 }
 function clearSeedArtists() {
-  try { localStorage.removeItem(SEED_ARTISTS_KEY); } catch {}
+  try {
+    localStorage.removeItem(SEED_ARTISTS_KEY);
+    localStorage.removeItem(SEED_BASELINE_KEY);
+  } catch {}
+}
+// Rating count at the moment the seed was picked. The seed decays over the
+// user's NEXT PERSONALIZATION_RAMP ratings counted from here. New users and
+// guests have no baseline (→ 0), so their behavior is unchanged.
+function loadSeedBaseline() {
+  try {
+    const v = parseInt(localStorage.getItem(SEED_BASELINE_KEY) || "0", 10);
+    return Number.isFinite(v) && v >= 0 ? v : 0;
+  } catch { return 0; }
 }
 
 
@@ -1938,11 +1956,18 @@ function ForYouFeed() {
       let seedArtists = [];
       const seedPicks = seedArtistsRef.current || [];
       if (seedPicks.length) {
-        if (ratingCount >= PERSONALIZATION_RAMP) {
+        // Decay relative to the baseline captured when the artists were
+        // (re)picked, NOT the absolute rating count. New users/guests have
+        // baseline 0 (full seed tapering over their first RAMP ratings); a
+        // returning user who replays onboarding gets baseline = their current
+        // count, so re-picking yields a fresh full-strength similarity feed
+        // that tapers over their NEXT RAMP ratings.
+        const effectiveRatings = Math.max(0, ratingCount - loadSeedBaseline());
+        if (effectiveRatings >= PERSONALIZATION_RAMP) {
           clearSeedArtists();
           seedArtistsRef.current = [];
         } else {
-          const strength = 1 - ratingCount / PERSONALIZATION_RAMP;
+          const strength = 1 - effectiveRatings / PERSONALIZATION_RAMP;
           const n = Math.max(1, Math.ceil(seedPicks.length * strength));
           seedArtists = seedPicks.slice(0, n);
         }

@@ -16,6 +16,11 @@ const STORAGE_KEY = "contour_onboarded_v2";
 // (ForYouPage tapers it out as real ratings accumulate). Same key string
 // is referenced in ForYouPage.jsx (SEED_ARTISTS_KEY).
 const SEED_ARTISTS_KEY = "contour_seed_artists_v1";
+// Decay baseline (see ForYouPage SEED_BASELINE_KEY). We stamp the user's
+// current rating count when they pick artists so the seed decays from here —
+// this is what lets a returning user who replays onboarding re-seed the
+// similarity feed at full strength instead of getting an already-decayed one.
+const SEED_BASELINE_KEY = "contour_seed_baseline_v1";
 
 // ── Genre picker data (also exported for reuse in TasteSection) ───────────────
 //
@@ -393,6 +398,10 @@ export function OnboardingModal() {
     analytics.onboardingSeeded("artist", picks.length);
     try {
       localStorage.setItem(SEED_ARTISTS_KEY, JSON.stringify(picks));
+      // Stamp the decay baseline = current rating count (0 for guests). This is
+      // what lets a returning user who replays onboarding re-seed at full
+      // strength: the seed tapers over their NEXT RAMP ratings, not from zero.
+      localStorage.setItem(SEED_BASELINE_KEY, String(user?.rating_count ?? 0));
     } catch {}
     window.dispatchEvent(new CustomEvent("contour:taste-updated"));
     if (isGuest) dismiss();
