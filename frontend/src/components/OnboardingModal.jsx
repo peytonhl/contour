@@ -187,17 +187,34 @@ export function GenreChip({ genre, selected, onToggle, excluded, onExclude }) {
 
 // ── Artist seed chip ──────────────────────────────────────────────────────────
 // Multi-select pill for the onboarding artist picker. `name` is the artist
-// name (the value we seed the feed with). Text-only — a plain label pill,
-// no avatar/monogram.
+// name (the value we seed the feed with); `artist.image` is a Spotify CDN
+// photo baked into data/seedArtists.js, rendered as a circular avatar. If an
+// entry has no image, or its CDN URL 404s at load time (onError), the avatar
+// falls back to a brand monogram of the artist's initials — so a name added
+// without a URL, or a rotated CDN path, degrades gracefully instead of
+// showing a broken-image icon.
+function artistInitials(name) {
+  const parts = String(name)
+    .replace(/[^\p{L}\p{N} ]/gu, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 function ArtistChip({ artist, selected, onToggle }) {
   const isSel = selected.includes(artist.name);
+  const [imgFailed, setImgFailed] = useState(false);
+  const showImg = artist.image && !imgFailed;
   return (
     <button
       onClick={() => onToggle(artist.name)}
       aria-pressed={isSel}
       style={{
-        display: "inline-flex", alignItems: "center",
-        padding: "8px 16px",
+        display: "inline-flex", alignItems: "center", gap: 8,
+        padding: "4px 14px 4px 4px",
         borderRadius: "var(--radius-xl)",
         fontSize: 13, fontWeight: 700,
         border: `2px solid ${isSel ? ACCENT_A : "var(--border)"}`,
@@ -207,6 +224,24 @@ function ArtistChip({ artist, selected, onToggle }) {
         transform: isSel ? "scale(1.03)" : "scale(1)",
       }}
     >
+      <span style={{
+        width: 28, height: 28, flexShrink: 0, borderRadius: "50%",
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        fontSize: 10, fontWeight: 800, letterSpacing: "0.02em",
+        background: isSel ? ACCENT_A : "var(--surface3)",
+        color: isSel ? "#fff" : "var(--text-muted)",
+        overflow: "hidden",
+      }}>
+        {showImg
+          ? <img
+              src={artist.image}
+              alt=""
+              loading="lazy"
+              onError={() => setImgFailed(true)}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          : artistInitials(artist.name)}
+      </span>
       {artist.name}
     </button>
   );
