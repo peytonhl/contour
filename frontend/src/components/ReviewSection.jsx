@@ -25,7 +25,7 @@ function timeAgo(iso) {
 }
 
 // ── Stars (read-only + interactive) ──────────────────────────────────────────
-function Stars({ value = 0, size = 18, interactive = false, onHover, onClick }) {
+export function Stars({ value = 0, size = 18, interactive = false, onHover, onClick }) {
   function calcVal(e) {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;

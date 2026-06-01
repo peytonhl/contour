@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { BadgeLeaderboard } from "./Badges.jsx";
-import { ReplyThread } from "./ReviewSection.jsx";
+import { ReplyThread, Stars } from "./ReviewSection.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionBody } from "./Mentions.jsx";
 import { ExpandableReviewBody } from "./ExpandableReviewBody.jsx";
@@ -41,30 +41,11 @@ function timeAgo(iso) {
 }
 
 function RatingBadge({ value }) {
-  // Render 5 stars with the appropriate count lit, matching FollowingTab's
-  // treatment so the same rating shows the same visual on both Friends and
-  // Community tabs. The earlier "4★" + number pill was compact but a tester
-  // reported it read as "only one star" — the unicode ★ looked like a unit
-  // glyph rather than part of a rating display.
-  return (
-    <span style={{ display: "inline-flex", gap: 1, flexShrink: 0, alignItems: "center" }}>
-      {[1, 2, 3, 4, 5].map((n) => {
-        const lit = value >= n - 0.5;
-        return (
-          <span
-            key={n}
-            style={{
-              color: lit ? GOLD : "var(--border)",
-              opacity: lit ? 1 : 0.35,
-              display: "inline-flex",
-            }}
-          >
-            <StarIcon size={12} filled={lit} />
-          </span>
-        );
-      })}
-    </span>
-  );
+  // Delegates to the shared Stars component which correctly renders half-stars
+  // via an SVG linear-gradient fill. The previous inline implementation used
+  // StarIcon (binary filled/empty) with `lit = value >= n - 0.5`, which
+  // collapsed half-star ratings into the next full star (3.5★ showed as 4★).
+  return <Stars value={value} size={12} />;
 }
 
 // One review card — clickable through to the entity page, anchor scrolls to the review.

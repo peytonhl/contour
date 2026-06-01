@@ -4,7 +4,7 @@ import { api } from "../services/api.js";
 import { analytics } from "../services/analytics.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { requireAuth } from "../services/authGate.js";
-import { ReplyThread } from "./ReviewSection.jsx";
+import { ReplyThread, Stars } from "./ReviewSection.jsx";
 import { CardPreviewModal } from "./CardPreviewModal.jsx";
 import { MentionBody } from "./Mentions.jsx";
 import { ExpandableReviewBody } from "./ExpandableReviewBody.jsx";
@@ -166,18 +166,7 @@ function FollowingItem({ item }) {
             <span style={{ color: "var(--text-muted)" }}> by {item.entity_artists.slice(0, 2).join(", ")}</span>
           )}
         </div>
-        {item.value && (
-          <span style={{ display: "inline-flex", gap: 1, alignItems: "center" }}>
-            {[1, 2, 3, 4, 5].map((n) => {
-              const lit = item.value >= n - 0.5;
-              return (
-                <span key={n} style={{ color: lit ? GOLD : "var(--border)", opacity: lit ? 1 : 0.3, display: "inline-flex" }}>
-                  <StarIcon size={12} filled={lit} />
-                </span>
-              );
-            })}
-          </span>
-        )}
+        {item.value && <Stars value={item.value} size={12} />}
         {isReview && item.body && (
           <ExpandableReviewBody
             body={item.body}
