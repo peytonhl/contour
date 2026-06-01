@@ -569,3 +569,35 @@ img[loading="lazy"] {
   scroll-snap-align: start;
   flex: 0 0 auto;
 }
+
+/* ── iPad Pro / large-tablet responsive refinements ──
+   These rules kick in above the mobile breakpoint (641px+) and scale
+   up elements that are sized for phone-first but look undersized on a
+   10–13" tablet canvas.
+   NOTE: inline styles on .hero-page set max-width:1000 — the !important
+   here is intentional to override that, not to win a specificity war. */
+
+/* Widen the hero container so it uses more of the iPad Pro landscape canvas
+   (1366px) — at 1000px it leaves 183px margins on each side. 1200px means
+   ~83px margins, much more proportionate. Still fine on desktop monitors
+   (1440px+) where it was already common to have wider content columns. */
+.hero-page {
+  max-width: 1200px !important;
+}
+
+/* Scale cover art up at tablet width so it doesn't look postage-stamp small
+   beside a large title. Inline size is 200px; 240 at tablet, 260 at iPad Pro
+   landscape / desktop. The mobile CSS (max-width:640px) already overrides to
+   220px for the stacked phone layout — these only fire above that breakpoint. */
+@media (min-width: 641px) {
+  .hero-row .hero-img {
+    width: 240px !important;
+    height: 240px !important;
+  }
+}
+@media (min-width: 1024px) {
+  .hero-row .hero-img {
+    width: 260px !important;
+    height: 260px !important;
+  }
+}
