@@ -56,9 +56,17 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
     const headlineNumber = hasEra ? eraContext.era_adjusted_streams : totalStreams;
     const headlineLabel = hasEra ? "Era-adjusted streams" : "Total streams";
     return (
-      <div style={{
+      // Alignment is OWNED BY CSS, not hardcoded here, so it matches the hero
+      // above it at every width: left on desktop/tablet (`.entity-hero > div`
+      // default), centered on phone (the `@media (max-width:640px)` rule that
+      // centers `.entity-hero > div` to match the stacked, centered cover +
+      // title). It used to hardcode `alignItems:center` inline, which beat the
+      // CSS and floated the big number to the middle on tablet while the cover
+      // + title hugged the left — the disconnected look in the store
+      // screenshots. The `era-hero-stat` class is the CSS hook.
+      <div className="era-hero-stat" style={{
         display: "flex", flexDirection: "column", gap: "var(--space-1)",
-        alignItems: "center", textAlign: "center",
+        alignItems: "flex-start", textAlign: "left",
       }}>
         <span style={{
           fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.01em",
@@ -68,7 +76,11 @@ export function EraAdjustedStat({ eraContext, totalStreams, onOpen, variant = "d
         </span>
         <span style={{
           fontFamily: "var(--font-display)",
-          fontSize: 76, fontWeight: 400, color: "var(--text)",
+          // Responsive: 76px on desktop, scaling down toward 48px on a phone so
+          // the signature stat doesn't overwhelm a small canvas. clamp keeps the
+          // magazine-headline identity (CLAUDE.md design system) while fitting
+          // tablet / phone widths for the app-store screenshots.
+          fontSize: "clamp(48px, 11vw, 76px)", fontWeight: 400, color: "var(--text)",
           letterSpacing: "-0.02em", lineHeight: 0.95,
           fontVariantNumeric: "tabular-nums",
         }}>

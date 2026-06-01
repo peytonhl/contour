@@ -390,6 +390,16 @@ img[loading="lazy"] {
   .entity-hero > div[style*="flex-direction: column"] {
     align-items: center !important;
   }
+  /* The EraAdjustedStat hero block carries an inline alignItems:flex-start
+     (its desktop/tablet default — left, lined up with the cover + title). On
+     phone the hero stacks + centers, so override the inline with !important to
+     center the stat + its big number too. Without this the number floats hard-
+     left while the centered title sits above it (the mismatch a left-only fix
+     introduced). */
+  .era-hero-stat {
+    align-items: center !important;
+    text-align: center !important;
+  }
 
   /* "Listen on" pill row on entity pages: force the label onto its own
      centered row above the three platform pills, so YouTube doesn't get
