@@ -958,7 +958,15 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0, height: "65%",
         overflow: "hidden",
-        display: "flex", alignItems: "flex-start", justifyContent: "center",
+        // flex-end pins the square cover image to the BOTTOM of the 65%
+        // cover region instead of the top. On portrait phones the card is
+        // taller than it is wide, so the 1:1 image (height = card_width)
+        // is shorter than the 65% region — flex-start left a dark gap
+        // between the image's bottom edge and the info region at top:65%.
+        // flex-end moves that breathing space to the TOP of the cover
+        // region (filled by the blurred backdrop, reads as intentional)
+        // and puts the art flush against the title and controls below it.
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
         zIndex: 2,
       }}>
         {coverImage
