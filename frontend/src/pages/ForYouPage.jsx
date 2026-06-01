@@ -958,15 +958,10 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0, height: "65%",
         overflow: "hidden",
-        // flex-end pins the square cover image to the BOTTOM of the 65%
-        // cover region instead of the top. On portrait phones the card is
-        // taller than it is wide, so the 1:1 image (height = card_width)
-        // is shorter than the 65% region — flex-start left a dark gap
-        // between the image's bottom edge and the info region at top:65%.
-        // flex-end moves that breathing space to the TOP of the cover
-        // region (filled by the blurred backdrop, reads as intentional)
-        // and puts the art flush against the title and controls below it.
-        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        // The image uses position:absolute to fill this container exactly,
+        // so flex alignment on the container is irrelevant — kept as a
+        // neutral default.
+        display: "flex", alignItems: "stretch", justifyContent: "center",
         zIndex: 2,
       }}>
         {coverImage
@@ -977,14 +972,22 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
                 decoding="async"
                 fetchpriority="high"
                 style={{
-                  // Full-width edge-to-edge. aspect-ratio computes the
-                  // height from the width (cardWidth × cardWidth square).
-                  // maxHeight: 100% safety-caps on landscape viewports
-                  // where cardWidth would otherwise exceed the cover
-                  // region's height.
+                  // Fill the entire 65% cover region — width AND height
+                  // 100% of the container, with objectFit:cover handling
+                  // the center-crop so the album art always fills edge to
+                  // edge with no gaps top, bottom, or sides. This is how
+                  // Spotify/Tidal/Apple Music handle art in swipe cards.
+                  //
+                  // The old approach (width:100%, aspectRatio:1/1,
+                  // maxHeight:100%) made the image height equal to its
+                  // width (a perfect square). On portrait phones the card
+                  // is taller than it is wide, so the square image was
+                  // shorter than the 65% cover region — a gap appeared
+                  // either above or below the art depending on flex
+                  // alignment. There's no gap with this approach because
+                  // the image dimensions always match the container.
                   width: "100%",
-                  aspectRatio: "1 / 1",
-                  maxHeight: "100%",
+                  height: "100%",
                   // No borderRadius — edge-to-edge means the image
                   // shares its sides + bottom with the card boundary
                   // and the info region. Rounded corners would
