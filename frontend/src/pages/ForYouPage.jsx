@@ -956,7 +956,14 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           element from everything else. Flat + edge-to-edge = the
           cover IS the card surface at this region; no framing. */}
       <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: "65%",
+        // min(65%, 100vw): on portrait phones the card is taller than wide,
+        // so 65% of card height > card width. Using the smaller of the two
+        // means the cover region is exactly as tall as the image is wide —
+        // the square album art fills it perfectly with zero crop and zero gap.
+        // On landscape / tablet (card wider than tall) 100vw > 65%, so the
+        // 65% cap applies as before and objectFit:cover handles the crop.
+        // MUST stay in sync with top:"min(65%,100vw)" on the info region below.
+        position: "absolute", top: 0, left: 0, right: 0, height: "min(65%, 100vw)",
         overflow: "hidden",
         // The image uses position:absolute to fill this container exactly,
         // so flex alignment on the container is irrelevant — kept as a
@@ -1197,7 +1204,8 @@ function DiscoverCardBase({ track, isActive, onRate, onReview, onDislike, onRemo
           The card-root unified blurred backdrop + bottom-darken
           gradient show through here. */}
       <div style={{
-        position: "absolute", top: "65%", left: 0, right: 0, bottom: 0,
+        // min(65%, 100vw): must stay in sync with the cover region's height above.
+        position: "absolute", top: "min(65%, 100vw)", left: 0, right: 0, bottom: 0,
         display: "flex", flexDirection: "column",
         padding: "14px 24px 12px",
         gap: 10, overflowY: "visible",
